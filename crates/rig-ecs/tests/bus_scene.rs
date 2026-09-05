@@ -537,6 +537,7 @@ fn a_loaded_scene_never_collides_with_minted_ids() {
     // A scene of answered effects with ids 0..3, loaded into a fresh world:
     // the next minted id must be past them, not 0 again.
     let scene = Scene {
+        next_id: None,
         handlers: Vec::new(),
         effects: (0..3)
             .map(|n| rig_ecs::bus::SceneEffect {
@@ -569,4 +570,392 @@ fn a_loaded_scene_never_collides_with_minted_ids() {
     let minted = app.world().get::<Issued>(fresh).expect("issued").0;
     assert_eq!(minted.as_u64(), 3, "past every saved id");
     assert_eq!(loaded.len(), 3);
+}
+
+#[test]
+fn pruned_effects_do_not_refund_issued_ids_after_scene_load() {
+    for retain_lower in [false, true] {
+        let counters = Arc::new(Counters::default());
+        let mut live = app();
+        register(&mut live, "model", MockModel::new(&counters));
+        let mut effects = Vec::new();
+        for expected in 0..3 {
+            let effect = live
+                .world_mut()
+                .spawn(PendingEffect::new("model", completion()))
+                .id();
+            tick_until(&mut live, "completed before pruning", |world| {
+                world.get::<EffectOutcome>(effect).is_some()
+            });
+            assert_eq!(
+                live.world().get::<Issued>(effect).unwrap().0.as_u64(),
+                expected
+            );
+            effects.push(effect);
+        }
+        for (index, effect) in effects.into_iter().enumerate() {
+            if !retain_lower || index != 0 {
+                live.world_mut().despawn(effect);
+            }
+        }
+        let scene = Scene::save(live.world_mut());
+        let scene: Scene = serde_json::from_value(serde_json::to_value(scene).unwrap()).unwrap();
+        let mut restored = app();
+        register(&mut restored, "model", MockModel::new(&counters));
+        scene.load(restored.world_mut()).unwrap();
+        // A second checkpoint with no fresh dispatch must preserve the same
+        // allocation history even when no effect entities survived.
+        let scene = Scene::save(restored.world_mut());
+        let scene: Scene = serde_json::from_value(serde_json::to_value(scene).unwrap()).unwrap();
+        let mut twice = app();
+        register(&mut twice, "model", MockModel::new(&counters));
+        scene.load(twice.world_mut()).unwrap();
+        let next = twice
+            .world_mut()
+            .spawn(PendingEffect::new("model", completion()))
+            .id();
+        tick_until(&mut twice, "fresh dispatch after pruning", |world| {
+            world.get::<EffectOutcome>(next).is_some()
+        });
+        assert_eq!(
+            twice.world().get::<Issued>(next).unwrap().0.as_u64(),
+            3,
+            "pruning is not an ID refund; lower survivor={retain_lower}"
+        );
+    }
+}
+
+#[test]
+fn removed_reservations_remain_consumed_after_scene_load() {
+    let mut live = app();
+    let reserved = live
+        .world_mut()
+        .spawn((
+            PendingEffect::new("model", completion()),
+            Reserved(rig_core::effect::EffectId::from_raw(20)),
+        ))
+        .id();
+    live.world_mut().despawn(reserved);
+    let scene = Scene::save(live.world_mut());
+    let scene: Scene = serde_json::from_value(serde_json::to_value(scene).unwrap()).unwrap();
+    let mut restored = app();
+    let counters = Arc::new(Counters::default());
+    register(&mut restored, "model", MockModel::new(&counters));
+    scene.load(restored.world_mut()).unwrap();
+    let next = restored
+        .world_mut()
+        .spawn(PendingEffect::new("model", completion()))
+        .id();
+    tick_until(&mut restored, "fresh dispatch after reservation", |world| {
+        world.get::<EffectOutcome>(next).is_some()
+    });
+    assert_eq!(restored.world().get::<Issued>(next).unwrap().0.as_u64(), 21);
+}
+
+#[test]
+fn exhausting_fresh_ids_refuses_the_next_dispatch_without_wrapping() {
+    let counters = Arc::new(Counters::default());
+    let mut live = app();
+    register(&mut live, "model", MockModel::new(&counters));
+    live.world_mut().resource_mut::<rig_ecs::bus::IdCounter>().0 = u64::MAX - 1;
+    let last = live
+        .world_mut()
+        .spawn(PendingEffect::new("model", completion()))
+        .id();
+    tick_until(&mut live, "last available id", |world| {
+        world.get::<EffectOutcome>(last).is_some()
+    });
+    assert_eq!(
+        live.world().get::<Issued>(last).unwrap().0.as_u64(),
+        u64::MAX - 1
+    );
+    let refused = live
+        .world_mut()
+        .spawn(PendingEffect::new("model", completion()))
+        .id();
+    tick_until(&mut live, "allocator exhaustion", |world| {
+        world.get::<EffectOutcome>(refused).is_some()
+    });
+    let error = live
+        .world()
+        .get::<EffectOutcome>(refused)
+        .unwrap()
+        .0
+        .as_ref()
+        .unwrap_err();
+    assert_eq!(error.kind, rig_core::error::ErrorKind::Request);
+    assert!(error.message.contains("exhausted"));
+    assert!(live.world().get::<Issued>(refused).is_none());
+    assert_eq!(
+        live.world().resource::<rig_ecs::bus::IdCounter>().0,
+        u64::MAX
+    );
+}
+
+#[test]
+fn maximum_reserved_id_is_refused_without_overflowing_the_insertion_hook() {
+    let counters = Arc::new(Counters::default());
+    let mut live = app();
+    register(&mut live, "model", MockModel::new(&counters));
+    let reserved = live
+        .world_mut()
+        .spawn((
+            PendingEffect::new("model", completion()),
+            Reserved(rig_core::effect::EffectId::from_raw(u64::MAX)),
+        ))
+        .id();
+    tick_until(&mut live, "invalid maximum reservation", |world| {
+        world.get::<EffectOutcome>(reserved).is_some()
+    });
+    assert_eq!(
+        live.world()
+            .get::<EffectOutcome>(reserved)
+            .unwrap()
+            .0
+            .as_ref()
+            .unwrap_err()
+            .kind,
+        rig_core::error::ErrorKind::Request
+    );
+    assert!(live.world().get::<Issued>(reserved).is_none());
+    assert_eq!(
+        live.world().resource::<rig_ecs::bus::IdCounter>().0,
+        u64::MAX
+    );
+}
+
+#[test]
+fn maximum_issued_id_never_wraps_the_insertion_hook() {
+    let mut live = app();
+    live.world_mut()
+        .spawn(Issued(rig_core::effect::EffectId::from_raw(u64::MAX)));
+    assert_eq!(
+        live.world().resource::<rig_ecs::bus::IdCounter>().0,
+        u64::MAX
+    );
+}
+
+#[test]
+fn cancelled_highest_id_remains_consumed_after_scene_load() {
+    let counters = Arc::new(Counters::default());
+    let mut live = app();
+    register(&mut live, "model", MockModel::new(&counters));
+    EffectLogResource::install(live.world_mut(), EffectLogRecorder::new());
+    let lower = live
+        .world_mut()
+        .spawn(PendingEffect::new("model", completion()))
+        .id();
+    tick_until(&mut live, "lower completed", |world| {
+        world.get::<EffectOutcome>(lower).is_some()
+    });
+    counters.hold.hold();
+    let highest = live
+        .world_mut()
+        .spawn(PendingEffect::new("model", completion()))
+        .id();
+    tick_until(&mut live, "highest in flight", |world| {
+        world.get::<InFlight>(highest).is_some()
+    });
+    assert_eq!(live.world().get::<Issued>(highest).unwrap().0.as_u64(), 1);
+    live.world_mut().despawn(highest);
+    let log = live.world().resource::<EffectLogResource>().log();
+    assert_eq!(log.records.len(), 2);
+    assert!(
+        matches!(&log.records[1].outcome, Err(error) if error.kind == rig_core::error::ErrorKind::Cancelled)
+    );
+    let scene = Scene::save(live.world_mut());
+    let scene: Scene = serde_json::from_value(serde_json::to_value(scene).unwrap()).unwrap();
+    counters.hold.release();
+    let mut restored = app();
+    register(&mut restored, "model", MockModel::new(&counters));
+    scene.load(restored.world_mut()).unwrap();
+    let fresh = restored
+        .world_mut()
+        .spawn(PendingEffect::new("model", completion()))
+        .id();
+    tick_until(&mut restored, "after cancelled highest", |world| {
+        world.get::<EffectOutcome>(fresh).is_some()
+    });
+    assert_eq!(restored.world().get::<Issued>(fresh).unwrap().0.as_u64(), 2);
+}
+
+#[test]
+fn scene_counter_never_rewinds_a_used_destination_and_preserves_exhaustion() {
+    for next_id in [None, Some(3), Some(101), Some(u64::MAX)] {
+        let scene = Scene {
+            next_id,
+            ..Scene::default()
+        };
+        let scene: Scene = serde_json::from_value(serde_json::to_value(scene).unwrap()).unwrap();
+        let mut restored = app();
+        restored
+            .world_mut()
+            .resource_mut::<rig_ecs::bus::IdCounter>()
+            .0 = 100;
+        scene.load(restored.world_mut()).unwrap();
+        let expected = next_id.unwrap_or(0).max(100);
+        assert_eq!(
+            restored.world().resource::<rig_ecs::bus::IdCounter>().0,
+            expected
+        );
+        let counters = Arc::new(Counters::default());
+        register(&mut restored, "model", MockModel::new(&counters));
+        EffectLogResource::install(restored.world_mut(), EffectLogRecorder::new());
+        let fresh = restored
+            .world_mut()
+            .spawn(PendingEffect::new("model", completion()))
+            .id();
+        tick_until(&mut restored, "used destination", |world| {
+            world.get::<EffectOutcome>(fresh).is_some()
+        });
+        if expected == u64::MAX {
+            assert!(restored.world().get::<Issued>(fresh).is_none());
+            assert!(
+                restored
+                    .world()
+                    .resource::<EffectLogResource>()
+                    .log()
+                    .records
+                    .is_empty()
+            );
+            assert_eq!(
+                restored
+                    .world()
+                    .get::<EffectOutcome>(fresh)
+                    .unwrap()
+                    .0
+                    .as_ref()
+                    .unwrap_err()
+                    .kind,
+                rig_core::error::ErrorKind::Request
+            );
+        } else {
+            assert_eq!(
+                restored.world().get::<Issued>(fresh).unwrap().0.as_u64(),
+                expected
+            );
+        }
+    }
+}
+
+#[test]
+fn saved_ids_omit_redundant_watermarks_and_reject_contradictions_before_spawning() {
+    use rig_ecs::agent::scene::{RunScene, SceneEntity, SceneKind, WorldScene, load_world};
+    let mut live = app();
+    live.world_mut().spawn((
+        PendingEffect::new("model", completion()),
+        Reserved(rig_core::effect::EffectId::from_raw(8)),
+    ));
+    let scene = Scene::save(live.world_mut());
+    let wire = serde_json::to_value(&scene).unwrap();
+    assert!(
+        wire.get("next_id").is_none(),
+        "surviving ids determine the counter"
+    );
+    for (id, next_id) in [(8, Some(4)), (u64::MAX, None)] {
+        let mut bad = scene.clone();
+        bad.effects[0].id = Some(rig_core::effect::EffectId::from_raw(id));
+        bad.next_id = next_id;
+        let bad: Scene = serde_json::from_value(serde_json::to_value(bad).unwrap()).unwrap();
+        let mut restored = app();
+        restored
+            .world_mut()
+            .resource_mut::<rig_ecs::bus::IdCounter>()
+            .0 = 5;
+        let before = restored.world().entities().len();
+        assert!(bad.load(restored.world_mut()).is_err());
+        assert_eq!(restored.world().entities().len(), before);
+        assert_eq!(restored.world().resource::<rig_ecs::bus::IdCounter>().0, 5);
+        let world_scene = WorldScene {
+            effects: bad,
+            graph: RunScene {
+                entities: vec![SceneEntity {
+                    kind: SceneKind::Agent,
+                    components: Default::default(),
+                    parent: None,
+                    relations: Vec::new(),
+                }],
+                ..RunScene::default()
+            },
+            ..WorldScene::default()
+        };
+        assert!(load_world(&world_scene, restored.world_mut()).is_err());
+        assert_eq!(
+            restored.world().entities().len(),
+            before,
+            "paired graph preflight must also refuse"
+        );
+        assert_eq!(restored.world().resource::<rig_ecs::bus::IdCounter>().0, 5);
+    }
+}
+
+#[test]
+fn an_exhausted_scene_can_resume_an_existing_reservation_but_cannot_mint() {
+    for (reserved_id, explicit) in [(5, true), (u64::MAX - 1, false), (u64::MAX - 1, true)] {
+        let mut live = app();
+        live.world_mut().spawn((
+            PendingEffect::new("model", completion()),
+            Reserved(rig_core::effect::EffectId::from_raw(reserved_id)),
+        ));
+        live.world_mut().resource_mut::<rig_ecs::bus::IdCounter>().0 = u64::MAX;
+        let mut scene = Scene::save(live.world_mut());
+        if explicit {
+            scene.next_id = Some(u64::MAX);
+        }
+        let scene: Scene = serde_json::from_value(serde_json::to_value(scene).unwrap()).unwrap();
+        let mut restored = app();
+        let counters = Arc::new(Counters::default());
+        register(&mut restored, "model", MockModel::new(&counters));
+        EffectLogResource::install(restored.world_mut(), EffectLogRecorder::new());
+        let loaded = scene.load(restored.world_mut()).unwrap()[0];
+        tick_until(&mut restored, "resume with exhausted allocator", |world| {
+            world.get::<EffectOutcome>(loaded).is_some()
+        });
+        assert_eq!(
+            restored.world().get::<Issued>(loaded).unwrap().0.as_u64(),
+            reserved_id
+        );
+        assert!(
+            restored
+                .world()
+                .get::<EffectOutcome>(loaded)
+                .unwrap()
+                .0
+                .is_ok()
+        );
+        let fresh = restored
+            .world_mut()
+            .spawn(PendingEffect::new("model", completion()))
+            .id();
+        tick_until(
+            &mut restored,
+            "fresh allocation remains exhausted",
+            |world| world.get::<EffectOutcome>(fresh).is_some(),
+        );
+        assert!(restored.world().get::<Issued>(fresh).is_none());
+        assert_eq!(
+            restored
+                .world()
+                .resource::<EffectLogResource>()
+                .log()
+                .records
+                .len(),
+            1
+        );
+        assert_eq!(
+            restored
+                .world()
+                .get::<EffectOutcome>(fresh)
+                .unwrap()
+                .0
+                .as_ref()
+                .unwrap_err()
+                .kind,
+            rig_core::error::ErrorKind::Request
+        );
+        assert_eq!(
+            restored.world().resource::<rig_ecs::bus::IdCounter>().0,
+            u64::MAX
+        );
+    }
 }

@@ -314,6 +314,15 @@ The required row names `<owner>/memory` as `memory` from `Remembers`. `Memory { 
 
 ## 13. Resume is a scene load; two runs
 
+The bus scene preserves consumed effect IDs even when their entities have been
+removed. Its optional `next_id` stores allocation history only when surviving
+saved IDs cannot reconstruct it; loading takes the maximum with the destination
+counter. Contradictory counters and an actual saved ID of `u64::MAX` are refused
+before graph/effect spawning. `u64::MAX` as a next-counter means exhausted: no
+fresh ID is minted or recorded, and dispatch returns a request error. Existing
+reserved IDs below that sentinel can still resume. This prevents ID reuse; it
+does not make an unanswered external write safe to repeat.
+
 Completed stream effects retain `Streamed` events, text and terminal outcome
 through JSON scenes and load without serving again (`bus_scene.rs`). The
 required nullable `SceneEffect.streamed` field distinguishes no state from

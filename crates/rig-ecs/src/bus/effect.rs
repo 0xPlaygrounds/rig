@@ -123,7 +123,10 @@ fn stamp_seq(mut world: DeferredWorld<'_>, context: HookContext) {
 /// increasing, unless the entity carries a [`Reserved`] id. Every
 /// `Reserved` or `Issued` inserted anywhere (a scene load, a log load, a
 /// host's own) bumps it past that id, so a minted id never collides with
-/// a saved one.
+/// a saved one. `u64::MAX` is the exhausted counter sentinel: fresh dispatch
+/// then returns a request error without minting or recording an effect. The
+/// maximum allocatable ID is `u64::MAX - 1`; invalid direct component insertion
+/// saturates the counter rather than wrapping it.
 #[derive(Resource, Debug, Default)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Resource))]
 pub struct IdCounter(pub u64);
@@ -142,14 +145,14 @@ pub struct Reserved(
 fn bump_ids_past_reserved(mut world: DeferredWorld<'_>, context: HookContext) {
     if let Some(Reserved(id)) = world.get::<Reserved>(context.entity).copied() {
         let mut counter = world.resource_mut::<IdCounter>();
-        counter.0 = counter.0.max(id.as_u64() + 1);
+        counter.0 = counter.0.max(id.as_u64().saturating_add(1));
     }
 }
 
 fn bump_ids_past_issued(mut world: DeferredWorld<'_>, context: HookContext) {
     if let Some(Issued(id)) = world.get::<Issued>(context.entity).copied() {
         let mut counter = world.resource_mut::<IdCounter>();
-        counter.0 = counter.0.max(id.as_u64() + 1);
+        counter.0 = counter.0.max(id.as_u64().saturating_add(1));
     }
 }
 
