@@ -876,8 +876,7 @@ fn cancel_loser(
     }
 }
 
-#[test]
-fn policy_replay_does_not_insert_an_outcome_for_the_cancelled_loser() {
+fn cancelled_loser_log() -> EffectLog {
     let mut live = bus_support::app();
     live.init_resource::<First>().add_observer(cancel_loser);
     let recorder = EffectLogRecorder::new();
@@ -922,6 +921,12 @@ fn policy_replay_does_not_insert_an_outcome_for_the_cancelled_loser() {
         rig_core::error::ErrorKind::Cancelled
     );
     assert!(live.world().get_entity(entities[0]).is_err());
+    log
+}
+
+#[test]
+fn policy_replay_does_not_insert_an_outcome_for_the_cancelled_loser() {
+    let log = cancelled_loser_log();
     let mut replay = bus_support::app();
     replay.init_resource::<First>().add_observer(cancel_loser);
     Handlers::with(replay.world_mut(), |handlers| {
@@ -941,6 +946,105 @@ fn policy_replay_does_not_insert_an_outcome_for_the_cancelled_loser() {
             .world()
             .contains_resource::<rig_ecs::bus::ReplayFailure>()
     );
+}
+
+#[test]
+fn policy_replay_allows_cancellation_after_multiple_judge_passes() {
+    let log = cancelled_loser_log();
+    for delay in [1_u8, 2, 5] {
+        let mut replay = bus_support::app();
+        replay.init_resource::<First>().add_observer(
+            |event: On<Add, EffectOutcome>,
+             effects: Query<&PendingEffect>,
+             mut first: ResMut<First>| {
+                let effect = effects.get(event.event().entity).unwrap();
+                if first.0.is_none() {
+                    first.0 = Some(effect.key.to_string());
+                }
+            },
+        );
+        replay.add_systems(
+            RigSchedule,
+            (move |effects: Query<(Entity, &PendingEffect, Option<&EffectOutcome>)>,
+                   mut stage: Local<u8>,
+                   mut progress: ResMut<rig_ecs::bus::Progress>,
+                   mut commands: Commands| {
+                if !effects.iter().any(|(_, effect, outcome)| {
+                    effect.key == HandlerKey::from("b") && outcome.is_some()
+                }) {
+                    return;
+                }
+                for (entity, effect, outcome) in &effects {
+                    if effect.key != HandlerKey::from("a") {
+                        continue;
+                    }
+                    if outcome.is_some() {
+                        return;
+                    }
+                    if *stage < delay {
+                        *stage += 1;
+                        progress.mark();
+                    } else {
+                        // The idle check must see this deferred removal even
+                        // when the final policy action does not mark Progress.
+                        commands.entity(entity).despawn();
+                    }
+                }
+            })
+            .in_set(BusSet::Judge),
+        );
+        Handlers::with(replay.world_mut(), |handlers| {
+            Replay::policy_visible().register(handlers, &log)
+        })
+        .unwrap()
+        .unwrap();
+        let loaded = Replay::load(replay.world_mut(), &log);
+        bus_support::tick_until(&mut replay, "delayed cancellation", |world| {
+            world.get_entity(loaded[0]).is_err()
+                || world.contains_resource::<rig_ecs::bus::ReplayFailure>()
+        });
+        assert!(
+            !replay
+                .world()
+                .contains_resource::<rig_ecs::bus::ReplayFailure>(),
+            "replay refused before the delayed cancellation: {:?}",
+            replay.world().get_resource::<rig_ecs::bus::ReplayFailure>()
+        );
+        assert!(replay.world().get_entity(loaded[0]).is_err());
+        replay.update();
+        assert_eq!(replay.world().resource::<First>().0.as_deref(), Some("b"));
+        assert!(
+            replay
+                .world()
+                .get::<EffectOutcome>(loaded[1])
+                .unwrap()
+                .0
+                .is_ok()
+        );
+        assert!(
+            !replay
+                .world()
+                .contains_resource::<rig_ecs::bus::ReplayFailure>()
+        );
+    }
+}
+
+#[test]
+fn policy_replay_refuses_when_quiescent_policy_never_cancels() {
+    let log = cancelled_loser_log();
+    let mut replay = bus_support::app();
+    Handlers::with(replay.world_mut(), |handlers| {
+        Replay::policy_visible().register(handlers, &log)
+    })
+    .unwrap()
+    .unwrap();
+    Replay::load(replay.world_mut(), &log);
+    bus_support::tick_until(&mut replay, "missing policy cancellation", |world| {
+        world.contains_resource::<rig_ecs::bus::ReplayFailure>()
+    });
+    let error = &replay.world().resource::<rig_ecs::bus::ReplayFailure>().0;
+    assert_eq!(error.kind, rig_core::error::ErrorKind::Divergence);
+    assert!(error.to_string().contains("did not reproduce cancellation"));
 }
 
 fn cancel_partial(streams: Query<(Entity, &Streamed)>, mut commands: Commands) {

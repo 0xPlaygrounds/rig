@@ -252,7 +252,12 @@ bytes. Default replay supports final-answer/exchange consumption and returns
 recorded cancellation errors; policy replay instead requires the same policy
 to cancel the effect without inventing an outcome for it. Missing metadata
 cannot establish policy fidelity; inconsistent metadata or an unreproduced
-cancellation is a diagnostic. Batch identity is not elapsed time.
+cancellation is a diagnostic. Cancellation is checked only after the entire
+`RigSchedule` is quiescent, using the world after deferred policy commands.
+A policy may mark `Progress` while advancing through multiple Judge passes
+before removing the effect; replay must not insert a cancellation outcome
+between those passes. A policy that becomes idle without cancelling is refused.
+Batch identity is not elapsed time.
 
 A future effect missing at Collect is diagnosed only after the complete
 `RigSchedule` is quiescent. Later continuation systems can advance through
