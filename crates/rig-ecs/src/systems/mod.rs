@@ -437,6 +437,7 @@ pub fn attach_retrieved(
     grants: Query<(&Grant, &Order, Has<Retrievable>)>,
     contexts: Query<(&Context, &Order)>,
     bound: Query<&Bound>,
+    indexes: Query<&Retrieves, (With<Retrieval>, With<Order>)>,
     documents: Query<(Entity, &DocumentId)>,
     mut orders: ResMut<OrderCounter>,
     mut progress: ResMut<Progress>,
@@ -456,9 +457,18 @@ pub fn attach_retrieved(
                     .collect()
             })
             .unwrap_or_default();
-        // Not spawned yet (`assemble`'s first pass is later this tick), or
-        // still out.
-        if effects.is_empty() || effects.iter().any(|(_, outcome)| outcome.is_none()) {
+        // Wait for an available index's effects to be spawned later this
+        // tick. With no available index, still attach the static links here.
+        let available_index = children.get(*agent).is_ok_and(|children| {
+            children.iter().any(|child| {
+                indexes
+                    .get(child)
+                    .is_ok_and(|Retrieves(index)| bound.get(*index).is_ok())
+            })
+        });
+        if (effects.is_empty() && available_index)
+            || effects.iter().any(|(_, outcome)| outcome.is_none())
+        {
             continue;
         }
         let mut retrieved_tools: Vec<String> = Vec::new();
@@ -866,12 +876,11 @@ pub fn assemble(
                     ChildOf(turn),
                 ));
             }
-            if spawned == 0 {
-                // No index is bound: nothing to wait for; the turn folds
-                // with its static links next pass.
-                commands.entity(turn).remove::<Retrieving>();
+            // If every index disappeared since attachment ran, leave the
+            // marker for the next attachment pass to restore static links.
+            if spawned > 0 {
+                progress.mark();
             }
-            progress.mark();
             continue;
         }
 

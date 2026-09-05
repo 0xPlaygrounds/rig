@@ -516,3 +516,78 @@ impl Serve for Subtractor {
         .await;
     }
 }
+
+#[test]
+fn unavailable_retrieval_preserves_static_context_and_tool_grants() {
+    for ordered in [true, false] {
+        check_static_retrieval_fallback(ordered);
+    }
+}
+
+fn check_static_retrieval_fallback(ordered: bool) {
+    let mut app = app();
+    let (model, requests) = Capturing::new(MODEL, "ok");
+    let model = register(&mut app, MODEL, model);
+    let add = register(&mut app, ADD, Adder::new(ADD));
+    let subtract = register(&mut app, SUB, Subtractor);
+    let agent = spawn_agent(app.world_mut(), "t", model);
+    let unavailable = if ordered {
+        app.world_mut().spawn_empty().id()
+    } else {
+        register(
+            &mut app,
+            INDEX,
+            Index {
+                key: INDEX,
+                queries: Arc::new(Mutex::new(Vec::new())),
+                documents: vec![],
+                ids: vec![],
+            },
+        )
+    };
+    let world = app.world_mut();
+    let document = world
+        .spawn((
+            DocumentId("static-id".into()),
+            DocumentText("static context".into()),
+        ))
+        .id();
+    world.spawn((Context(document), Order(0), ChildOf(agent)));
+    world.spawn((Grant(add), Order(1), ChildOf(agent)));
+    world.spawn((Grant(subtract), Retrievable, Order(2), ChildOf(agent)));
+    let mut link = world.spawn((
+        Retrieves(unavailable),
+        Retrieval {
+            samples: 1,
+            what: RetrievalKind::Documents,
+        },
+        ChildOf(agent),
+    ));
+    if ordered {
+        link.insert(Order(3));
+    }
+    let run = spawn_run(world, agent, &[], "hello", false, None);
+    tick_until(
+        &mut app,
+        "run without an available retrieval handler",
+        |world| ended(world, run) && quiet(world),
+    );
+    let requests = requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        requests[0]
+            .documents
+            .iter()
+            .map(|document| (document.id.as_str(), document.text.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("static-id", "static context")]
+    );
+    assert_eq!(
+        requests[0]
+            .tools
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["add"]
+    );
+}
