@@ -8,6 +8,7 @@
 
 pub(crate) mod artifacts;
 mod custom;
+mod diagnostics;
 mod identity;
 pub(crate) mod persistence;
 mod providers;
@@ -961,43 +962,79 @@ fn observe(world: &mut World) {
     }
 }
 
-async fn drive(mut app: App, run: Entity) -> Result<Evidence, Error> {
-    let result = drive_world(&mut app, run).await;
-    if let Err(error) = &result {
-        let host = app.world().resource::<Host>();
-        let bundle = artifacts::candidate(&host.case)?;
-        let effects = app.world().resource::<EffectLogResource>().log();
-        let observations = host.observations.clone();
-        let writes = host
-            .repair
-            .as_ref()
-            .map_or(host.workspace.writes, |state| state.project.writes());
-        let repair = host.repair.as_ref().map(|state| {
-            state
-                .snapshot()
-                .map(|snapshot| json!(snapshot))
-                .unwrap_or_else(|error| json!({"snapshot_error":error.to_string()}))
-        });
-        let pending: Vec<_> = app
-            .world_mut()
-            .query::<(&Issued, &PendingEffect, Option<&EffectOutcome>)>()
-            .iter(app.world())
-            .filter(|(_, _, outcome)| outcome.is_none())
-            .map(|(issued, pending, _)| json!({"effect":issued.0,"pending":pending}))
-            .collect();
-        artifacts::write(
-            &bundle.join("runtime-failure.json"),
-            &crate::cassettes::scrub_artifact(&json!({
-                "error":error.to_string(),"boundary":observations.last().map(|item|&item.boundary),
-                "observations":observations,"effects":effects,"pending":pending,"writes":writes,"repair":repair
-            })),
-        )?;
-        return Err(Error::Invariant(format!(
-            "{error}; runtime evidence {}",
-            bundle.display()
-        )));
+// The guard retains the world until failure evidence is saved, including when
+// an enclosing timeout drops the future or a provider assertion unwinds it.
+struct DriveEvidence {
+    app: App,
+    armed: bool,
+}
+
+impl Drop for DriveEvidence {
+    fn drop(&mut self) {
+        if self.armed
+            && let Err(error) = save_runtime_failure(
+                &mut self.app,
+                "execution cancelled or unwound before returning an outcome",
+            )
+        {
+            diagnostics::unavailable("runtime", &error.to_string());
+        }
     }
-    result
+}
+
+fn save_runtime_failure(app: &mut App, reason: &str) -> Result<std::path::PathBuf, Error> {
+    let host = app.world().resource::<Host>();
+    let bundle = artifacts::candidate(&host.case)?;
+    let effects = app.world().resource::<EffectLogResource>().log();
+    let observations = host.observations.clone();
+    let writes = host
+        .repair
+        .as_ref()
+        .map_or(host.workspace.writes, |state| state.project.writes());
+    let repair = host.repair.as_ref().map(|state| {
+        state
+            .snapshot()
+            .map(|snapshot| json!(snapshot))
+            .unwrap_or_else(|error| json!({"snapshot_error":error.to_string()}))
+    });
+    let pending: Vec<_> = app
+        .world_mut()
+        .query::<(Option<&Issued>, &PendingEffect, Option<&EffectOutcome>)>()
+        .iter(app.world())
+        .filter(|(_, _, outcome)| outcome.is_none())
+        .map(|(issued, pending, _)| json!({"effect":issued.map(|id|id.0),"pending":pending}))
+        .collect();
+    artifacts::write(
+        &bundle.join("runtime-failure.json"),
+        &crate::cassettes::scrub_artifact(&json!({
+        "error":reason,"boundary":observations.last().map(|item|&item.boundary),
+        "observations":observations,"effects":effects,"pending":pending,"writes":writes,"repair":repair
+        })),
+    )?;
+    let path = bundle.join("runtime-failure.json");
+    diagnostics::record("runtime", &path);
+    Ok(bundle)
+}
+
+async fn drive(app: App, run: Entity) -> Result<Evidence, Error> {
+    let mut retained = DriveEvidence { app, armed: true };
+    let result = drive_world(&mut retained.app, run).await;
+    retained.armed = false;
+    match result {
+        Ok(evidence) => Ok(evidence),
+        Err(error) => match save_runtime_failure(&mut retained.app, &error.to_string()) {
+            Ok(bundle) => Err(Error::Invariant(format!(
+                "{error}; runtime evidence {}",
+                bundle.display()
+            ))),
+            Err(snapshot_error) => {
+                diagnostics::unavailable("runtime", &snapshot_error.to_string());
+                Err(Error::Invariant(format!(
+                    "{error}; runtime evidence unavailable: {snapshot_error}"
+                )))
+            }
+        },
+    }
 }
 
 async fn drive_world(app: &mut App, run: Entity) -> Result<Evidence, Error> {

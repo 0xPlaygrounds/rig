@@ -193,6 +193,7 @@ pub(crate) fn compare_from(
             let bundle = candidate(case)?;
             save_evidence(&bundle, evidence)?;
             write(&bundle.join("differences.json"), &diffs)?;
+            super::diagnostics::record("semantic_difference", &bundle.join("differences.json"));
             return Err(Error::Invariant(format!(
                 "{} {name}: {} semantic differences; first at {}; failure evidence {}; reproduce: cargo run -p rig --example ecs-consumer -- verify --case {}",
                 case.id,

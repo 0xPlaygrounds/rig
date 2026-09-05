@@ -111,6 +111,7 @@ async fn one(
                 ));
             }
             let candidate = artifacts::candidate(case)?;
+            super::diagnostics::record("capture", &candidate);
             let requests_before = budget.used();
             let revision = artifacts::revision()?;
             let recorded = AssertUnwindSafe(providers::run(
@@ -350,6 +351,10 @@ fn compare_resume(
         if let Some(first) = diffs.first() {
             let bundle = artifacts::candidate(case)?;
             artifacts::write(&bundle.join("resume-differences.json"), &diffs)?;
+            super::diagnostics::record(
+                "resume_difference",
+                &bundle.join("resume-differences.json"),
+            );
             artifacts::save_evidence(&bundle, evidence)?;
             return Err(Error::Invariant(format!(
                 "resume {name} at {} diverges {}; evidence {}",
@@ -368,6 +373,45 @@ fn case_budget(command: &str, case: &Case, shared: &Budget) -> Budget {
     } else {
         Budget::new(Limits::for_case(case))
     }
+}
+
+fn file_identity(path: &std::path::Path) -> Result<serde_json::Value, Error> {
+    Ok(if path.is_file() {
+        json!({"path":path,"sha256":artifacts::digest(path)?})
+    } else {
+        json!({"path":path,"missing":true})
+    })
+}
+
+fn provider_failure_input(
+    case: &Case,
+    invocation: &Invocation,
+    diagnostics: &[serde_json::Value],
+) -> Result<serde_json::Value, Error> {
+    if case.provider == Provider::Synthetic {
+        return Ok(json!({"status":"inapplicable","reason":"synthetic stimulus"}));
+    }
+    if invocation.command == "record" {
+        let Some(path) = diagnostics
+            .iter()
+            .find(|item| item["kind"] == "capture")
+            .and_then(|item| item["path"].as_str())
+        else {
+            return Ok(
+                json!({"status":"unavailable","reason":"capture did not create a candidate"}),
+            );
+        };
+        let candidate = artifacts::root().join(path);
+        return Ok(
+            json!({"role":"captured_traffic","completed":file_identity(&candidate.join("provider.yaml"))?,
+            "partial":file_identity(&candidate.join("provider.partial.yaml"))?}),
+        );
+    }
+    let path = match &invocation.candidate {
+        Some(source) => source.join("provider.yaml"),
+        None => artifacts::cassette(case)?,
+    };
+    file_identity(&path)
 }
 
 pub(crate) async fn run(args: impl IntoIterator<Item = String>) -> Result<(), Error> {
@@ -432,7 +476,8 @@ pub(crate) async fn run(args: impl IntoIterator<Item = String>) -> Result<(), Er
             .await
             .map_err(|_| Error::Invariant("matrix elapsed-time budget exhausted".into()))?
         };
-        let result = AssertUnwindSafe(bounded).catch_unwind().await;
+        let (result, mut diagnostics) =
+            super::diagnostics::capture(AssertUnwindSafe(bounded).catch_unwind()).await;
         total_requests += case_budget.used() - requests_before;
         let mut row = match result {
             Ok(Ok(evidence)) => json!({"case":case.id,"status":"passed","evidence":evidence}),
@@ -457,9 +502,18 @@ pub(crate) async fn run(args: impl IntoIterator<Item = String>) -> Result<(), Er
             }
         };
         if row.get("status") == Some(&json!("failed")) {
+            if !diagnostics.iter().any(|item| item["kind"] == "runtime") {
+                diagnostics.push(json!({"kind":"runtime","status":"unavailable","reason":"failure occurred outside a retained running world; inspect the result and linked semantic artifacts"}));
+            }
             let bundle = artifacts::candidate(case)?;
             let mut fixture_digests = serde_json::Map::new();
-            for name in ["effects", "observations", "application", "checkpoints"] {
+            for name in [
+                "effects",
+                "observations",
+                "application",
+                "checkpoints",
+                "provenance",
+            ] {
                 let path = invocation.candidate.as_ref().map_or_else(
                     || artifacts::golden(case, name),
                     |path| path.join(format!("{name}.json")),
@@ -473,6 +527,8 @@ pub(crate) async fn run(args: impl IntoIterator<Item = String>) -> Result<(), Er
                     },
                 );
             }
+            let provider_input = provider_failure_input(case, &invocation, &diagnostics)?;
+            fixture_digests.insert("provider".into(), provider_input);
             let mut reproduce = vec![
                 "cargo".to_owned(),
                 "run".into(),
@@ -493,7 +549,10 @@ pub(crate) async fn run(args: impl IntoIterator<Item = String>) -> Result<(), Er
             }
             artifacts::write(
                 &bundle.join("failure.json"),
-                &json!({"schema":1,"case":case,"result":row,"fixtures":fixture_digests,"reproduce_argv":reproduce}),
+                &json!({"schema":2,"case":case,"result":row,"fixtures":fixture_digests,"reproduce_argv":reproduce,"reproduce_requires_live_authorization":invocation.command=="record",
+                    "configuration":{"command":invocation.command,"candidate":invocation.candidate,"cut":invocation.cut,"limits":case_budget.limits,
+                        "provider_model":providers::identity(case).ok().map(|(provider,_,_,model)|json!({"provider":provider,"model":model}))},
+                    "diagnostics":diagnostics}),
             )?;
             row.as_object_mut()
                 .ok_or_else(|| Error::Invariant("invalid case report".into()))?

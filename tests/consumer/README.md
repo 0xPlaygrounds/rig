@@ -189,13 +189,21 @@ and refuses using that log for policy-visible replay.
 1. Run `plan`, select the relevant matrix and verify it offline. Reports and
    failure bundles are under ignored `.ecs-consumer/`; preserve the failing
    candidate, case configuration and command before changing code.
-   `failure.json` supplies structured reproduction arguments and fixture hashes;
-   runtime failures also preserve the observed trace, effect log and unfinished
-   logical effect IDs. Artifact validation/redaction applies to these reports.
+   `failure.json` supplies effective limits/configuration, structured reproduction
+   arguments, fixture and selected cassette hashes, and `diagnostics` links.
+   Diagnostic paths are relative to the repository root. Runtime failures,
+   cancellation and unwinding retain the observed trace, effect log, pending
+   logical effect IDs and available repair snapshot before world teardown.
+   Unavailable evidence is explicit with a reason. Live failures identify their
+   actual full/partial capture separately from baseline fixtures. Artifact
+   validation/redaction applies to these reports.
 2. Reproduce the smallest selected case. A JSON difference names its pointer
    and artifact; inspect the surrounding effect, observations and checkpoint.
-   Distinguish request mismatch, producer error, application invariant failure,
-   replay divergence and an unavailable fixture.
+   Classify the failure as production defect, consumer/tool defect, scheduling
+   defect, fixture mismatch, intentional contract change, provider behavior,
+   missing environment or unsupported persistence contract. Use request mismatch,
+   producer errors, application invariants and replay divergence as evidence for
+   that classification.
 3. Add a regression asserting the intended contract. Use independent release
    gates for scheduling failures, not sleeps, retries or a weaker overlap check.
 4. Fix the confirmed production or harness defect. Rerun the frozen regression,
@@ -204,6 +212,83 @@ and refuses using that log for policy-visible replay.
 5. For an intentional semantic change, derive a separate candidate, inspect the
    difference, then promote it. Preserve the old failure evidence. Obtain an
    independent review before publishing a PR, with the repository's full PR gate.
+
+Start a focused offline repair-loop baseline with:
+
+```sh
+cargo run -p rig --example ecs-consumer -- plan --matrix repository-repair
+cargo run -p rig --example ecs-consumer -- verify --matrix repository-repair
+```
+
+Copy the `failure_bundle` path from the failed report row. Preserve that directory
+and any selected candidate it references. The following runs the recorded argv
+without shell interpretation and refuses a live-recording reproduction:
+
+```sh
+failure_bundle_path=.ecs-consumer/candidates/REPLACE_WITH_FAILED_CASE/failure.json
+python3 - "$failure_bundle_path" <<'PYCODE'
+import json, os, subprocess, sys
+from pathlib import Path
+failure = json.loads(Path(sys.argv[1]).read_text())
+if failure.get("reproduce_requires_live_authorization"):
+    raise SystemExit("Live reproduction requires separate authorization; inspect retained traffic first")
+argv = failure["reproduce_argv"]
+if argv[:7] != ["cargo", "run", "-p", "rig", "--example", "ecs-consumer", "--"]:
+    raise SystemExit("Unexpected reproduction command")
+if argv[7] not in ("verify", "replay", "resume", "derive"):
+    raise SystemExit("This operation requires deliberate review")
+env = os.environ.copy()
+for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"):
+    env.pop(key, None)
+env["RIG_PROVIDER_TEST_MODE"] = "replay"
+raise SystemExit(subprocess.run(argv, env=env).returncode)
+PYCODE
+```
+
+Inspect linked `semantic_difference`/`resume_difference` JSON for the first
+pointer and linked `runtime` JSON for the boundary, effect log, pending work and
+repair state. A missing source candidate is an unavailable reproduction input,
+not a passing replay; restore the preserved candidate before rerunning.
+
+These frozen regressions check the failure reporting itself using local faults:
+
+```sh
+cargo test -p rig --test ecs_consumer failure_bundle_preserves_effective_config_provider_digest_and_runtime_link
+cargo test -p rig --test ecs_consumer consumer::diagnostics
+cargo test -p rig --test ecs_consumer failed_capture_identity_uses_its_own_partial_traffic
+```
+
+The PR #2464 continuation exercised this loop on a consumer failure-reporting
+bug. At baseline `9df2b0e2b`, the CLI regression above deliberately mismatched a
+local cassette request, then failed because `failure.json` had no effective
+limits (`null` instead of `300`). The correction retained configuration, input
+hashes and runtime links; the same regression passed, followed by the full frozen
+42-case matrix with all 217 fixture hashes unchanged. Separate regressions drop
+an active repair future and inject a schedule panic to check retained state.
+This is the coding agent's harness repair, distinct from the recorded model's
+pagination patch. The completion handoff exports the before/after logs, matrix
+report, hashes and revision record from ignored
+`.ecs-consumer/repair-loop/evidence.json`; no temporary fault or replacement
+golden is promoted. Final review and the committed correction revision are
+recorded in that handoff when the completion gate finishes.
+
+For a concrete matrix-registration example, inspect `repair-stream-groups` in
+`tests/consumer/registry.rs`. It sets a grouped delivery size in the existing
+repository-repair tuple list and runs the shared producer, assertions and resume
+checks. A new case belongs in that registry with a unique ID and an actual fault
+or axis distinction; add its assertion in the owning consumer module before
+producing candidate artifacts. The existing example can be planned and run with:
+
+```sh
+cargo run -p rig --example ecs-consumer -- plan --case repair-stream-groups
+cargo run -p rig --example ecs-consumer -- verify --case repair-stream-groups
+cargo test -p rig --test ecs_consumer consumer_fixtures_match_the_executable_registry_and_producer_hashes
+```
+
+For a newly registered synthetic ID, use `derive --case <new-id>` to create its
+candidate, inspect its differences, and use the documented promotion command
+only after independent semantic review. A missing golden must fail verification;
+do not suppress the census or treat registration alone as coverage.
 
 The consumer exposed a premature missing-effect replay refusal after restoring
 a completed tool batch, and successful unpaced collection after a replay
