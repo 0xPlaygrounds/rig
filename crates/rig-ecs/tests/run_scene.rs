@@ -449,3 +449,53 @@ fn a_run_saved_while_retrieving_resumes_and_attaches() {
         .count();
     assert_eq!(attachments, 1, "the retrieved document is attached");
 }
+
+#[test]
+fn contradictory_effect_ids_refuse_the_paired_graph_before_spawning() {
+    use rig_core::effect::{EffectId, EffectKind};
+    use rig_ecs::{
+        agent::scene::{SceneEntity, SceneKind},
+        bus::{Reserved, Scene},
+    };
+    let mut live = run_support::app();
+    live.world_mut().spawn((
+        PendingEffect::new(
+            "custom",
+            EffectKind::Custom {
+                kind: "scene-preflight".into(),
+                payload: serde_json::Value::Null,
+            },
+        ),
+        Reserved(EffectId::from_raw(8)),
+    ));
+    let scene = Scene::save(live.world_mut());
+    for (id, next_id) in [(8, Some(4)), (u64::MAX, None)] {
+        let mut bad = scene.clone();
+        bad.effects[0].id = Some(EffectId::from_raw(id));
+        bad.next_id = next_id;
+        let bad: Scene = serde_json::from_value(serde_json::to_value(bad).unwrap()).unwrap();
+        let mut restored = run_support::app();
+        restored.world_mut().resource_mut::<IdCounter>().0 = 5;
+        let before = restored.world().entities().len();
+        let world_scene = WorldScene {
+            effects: bad,
+            graph: RunScene {
+                entities: vec![SceneEntity {
+                    kind: SceneKind::Agent,
+                    components: Default::default(),
+                    parent: None,
+                    relations: Vec::new(),
+                }],
+                ..RunScene::default()
+            },
+            ..WorldScene::default()
+        };
+        assert!(load_world(&world_scene, restored.world_mut()).is_err());
+        assert_eq!(
+            restored.world().entities().len(),
+            before,
+            "paired graph preflight must also refuse"
+        );
+        assert_eq!(restored.world().resource::<rig_ecs::bus::IdCounter>().0, 5);
+    }
+}

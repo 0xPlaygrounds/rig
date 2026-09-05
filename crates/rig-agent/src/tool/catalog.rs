@@ -25,8 +25,12 @@ pub type ToolLease = std::sync::Arc<dyn std::any::Any + Send + Sync>;
 pub type ToolLease = std::sync::Arc<dyn std::any::Any>;
 
 /// The tools one request advertises, with the exact registrations that
-/// serve them. A catalog is a snapshot: replacing a tool in the registry
-/// after the snapshot does not change what the snapshot dispatches to.
+/// serve them. Inline dispatch retains the original handler after replacement.
+/// Registry-generated bus keys also pin their generation. An explicitly reused
+/// key instead reaches its latest bus binding. An in-place replacement under
+/// the same name and key shares its existing lease. After removal or a key
+/// change, the replacement has a new lease; an older generation's catalog
+/// cannot extend or shorten that new binding's lifetime.
 #[derive(Clone)]
 pub struct ToolCatalog {
     definitions: Vec<ToolDefinition>,

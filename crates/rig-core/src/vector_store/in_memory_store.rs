@@ -260,7 +260,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
 
             docs.push(Reverse(RankingItem(distance, id, doc, embed_doc)));
 
-            // If the heap size exceeds n, pop the least old element.
+            // Evict the worst score, or the greatest id at an equal score.
             if docs.len() > n {
                 docs.pop();
             }
@@ -362,7 +362,7 @@ fn ranked<D: Serialize + Eq>(docs: EmbeddingRanking<'_, D>) -> Vec<RankingItem<'
 
 impl<D: Serialize + Eq> Ord for RankingItem<'_, D> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.cmp(&other.0)
+        self.0.cmp(&other.0).then_with(|| other.1.cmp(self.1))
     }
 }
 

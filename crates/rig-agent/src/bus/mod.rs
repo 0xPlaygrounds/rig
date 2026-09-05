@@ -130,6 +130,11 @@
 //!   a lifecycle event, unavailable is a wiring event.
 //! - Cancellation is drop: dropping a [`Pending`] or [`EffectStream`]
 //!   closes the handler's [`OutcomeSink`](rig_core::serve::OutcomeSink), and the adapters stop.
+//!   The driver propagates cancellation through retained ancestry even when
+//!   intermediate dispatches have completed. Descendants still waiting to send
+//!   or serve are refused; a retained handler dispatcher also refuses new work
+//!   after an ancestor is cancelled. Completed ancestors do not occupy serial
+//!   handler slots, and ancestry is reclaimed when its last owner drops.
 //! - Pause is client-side back-pressure: stop polling an [`EffectStream`]
 //!   and its bounded channel stalls the handler.
 //! - A [`Pending`] and an [`EffectStream`] are small, plain futures; their

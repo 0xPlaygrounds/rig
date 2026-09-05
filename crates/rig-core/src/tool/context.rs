@@ -166,8 +166,8 @@ impl TypeMap {
 /// only that execution. The dispatch surface returns result metadata without
 /// replacing the caller's inbound slots.
 ///
-/// Slots are keyed by the value's type name, so the accessors stay keyless:
-/// one value per type per map.
+/// Slots use the value type's declared [`ContextValue::KEY`]. Accessors need
+/// no key argument; types must use distinct keys to occupy distinct slots.
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct ToolContext {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -293,7 +293,8 @@ impl ToolContext {
         insert_slot(&mut self.inbound, value)
     }
 
-    /// Read an inbound typed value. `None` when absent or not decodable as `T`.
+    /// Read an inbound typed value: `Ok(None)` when absent, a decode error when
+    /// the stored value does not match `T`.
     pub fn get<T: ContextValue>(&self) -> Result<Option<T>, ToolContextError> {
         get_slot(&self.inbound)
     }

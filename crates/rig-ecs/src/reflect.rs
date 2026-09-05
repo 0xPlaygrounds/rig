@@ -13,7 +13,7 @@
 //! the equality `tests/reflect_scene.rs` checks between a world and the
 //! world its serde scene loads into.
 
-use std::collections::HashMap;
+use std::{any::TypeId, collections::HashMap};
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::{
@@ -276,14 +276,15 @@ impl ReflectedEntity {
                 }
                 other => other,
             };
-            // A relationship target (`Children`, the graph's `Grants`,
-            // `Runs`, ...) is a set here — its order is insertion order,
-            // the graph's order is the `Order` / `Seq` components — so its
-            // indexes are sorted: canonical, whatever order a world
-            // inserted them in.
+            // Only the graph's known inverse relationships are sets here:
+            // semantic order lives in Order / Seq. Preserve user components'
+            // order even when their serialized payload is a numeric array.
+            let unordered = component
+                .get_represented_type_info()
+                .is_some_and(|info| unordered_relationship(info.type_id()));
             let inner = match inner {
                 serde_json::Value::Array(items)
-                    if !items.is_empty() && items.iter().all(serde_json::Value::is_number) =>
+                    if unordered && items.iter().all(serde_json::Value::is_u64) =>
                 {
                     let mut items = items;
                     items.sort_by_key(|item| item.as_u64());
@@ -295,6 +296,26 @@ impl ReflectedEntity {
         }
         serde_json::Value::Object(object)
     }
+}
+
+// Restrict canonicalization to the inverse links owned by this graph. A
+// reflected Vec or tuple has no implied set semantics, including user-defined
+// relationship targets whose order the application may observe.
+fn unordered_relationship(id: TypeId) -> bool {
+    use crate::agent;
+    [
+        TypeId::of::<bevy_ecs::hierarchy::Children>(),
+        TypeId::of::<agent::ModelOf>(),
+        TypeId::of::<agent::RememberedBy>(),
+        TypeId::of::<agent::RetrievedBy>(),
+        TypeId::of::<agent::RoutedTo>(),
+        TypeId::of::<agent::Grants>(),
+        TypeId::of::<agent::ContextOf>(),
+        TypeId::of::<agent::AttachedTo>(),
+        TypeId::of::<agent::Runs>(),
+        TypeId::of::<agent::AdvertisedOn>(),
+    ]
+    .contains(&id)
 }
 
 /// Serializes every `Entity` as the index the scene gives it.

@@ -5825,6 +5825,147 @@ impl AgentHook for RewriteToolArgsHook {
     }
 }
 
+// Distinct inert tools stand in for a destructive target and a safe target.
+struct RenameBoundaryTool<const SAFE: bool>(Arc<AtomicU32>);
+
+impl<const SAFE: bool> Tool for RenameBoundaryTool<SAFE> {
+    const NAME: &'static str = if SAFE {
+        "safe_target"
+    } else {
+        "original_target"
+    };
+    type Error = ToolExecutionError;
+    type Args = serde_json::Value;
+    type Output = String;
+
+    fn description(&self) -> String {
+        "Count dispatches to this target".into()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({"type": "object"})
+    }
+
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        _args: Self::Args,
+    ) -> Result<String, Self::Error> {
+        self.0.fetch_add(1, SeqCst);
+        Ok(Self::NAME.into())
+    }
+}
+
+struct RenameToolTargetHook;
+
+impl AgentHook for RenameToolTargetHook {
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        match event.kind {
+            rig_core::effect::EffectKind::ToolCall { args, .. } => {
+                DispatchAction::Patch(rig_core::effect::EffectKind::ToolCall {
+                    name: RenameBoundaryTool::<true>::NAME.into(),
+                    args: args.clone(),
+                })
+            }
+            _ => DispatchAction::Proceed,
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+struct ToolTargetPolicySpy(Arc<AtomicU32>);
+impl AgentHook for ToolTargetPolicySpy {
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name().is_some() {
+            self.0.fetch_add(1, SeqCst);
+        }
+        DispatchAction::Proceed
+    }
+}
+
+async fn check_tool_target_patch_is_refused(streaming: bool) {
+    let original = Arc::new(AtomicU32::new(0));
+    let safe = Arc::new(AtomicU32::new(0));
+    let turns = [
+        ScriptedTurn::ToolCalls(vec![ScriptedToolCall {
+            id: "rename-call",
+            name: RenameBoundaryTool::<false>::NAME,
+            args: json!({}),
+        }]),
+        ScriptedTurn::Text("done"),
+    ];
+    let model = if streaming {
+        MockCompletionModel::from_stream_turns(
+            turns
+                .iter()
+                .map(|turn| turn.as_stream_events(StreamShape::Complete)),
+        )
+    } else {
+        MockCompletionModel::from_turns(turns.iter().map(ScriptedTurn::as_blocking_turn))
+    };
+    let observed = RecordingHook::default();
+    let policy = ToolTargetPolicySpy::default();
+    let runner = AgentBuilder::new(model)
+        .tool(RenameBoundaryTool::<false>(original.clone()))
+        .tool(RenameBoundaryTool::<true>(safe.clone()))
+        .build()
+        .runner("perform the requested operation")
+        .max_turns(3)
+        .add_hook(RenameToolTargetHook)
+        .add_hook(policy.clone())
+        .add_hook(observed.clone());
+    if streaming {
+        let mut stream = runner.stream().await;
+        let mut finished = false;
+        while let Some(item) = stream.next().await {
+            if let MultiTurnStreamItem::FinalResponse(response) =
+                item.expect("stream remains usable")
+            {
+                assert_eq!(response.output(), "done");
+                finished = true;
+            }
+        }
+        assert!(finished);
+    } else {
+        assert_eq!(
+            runner.run().await.expect("run remains usable").output,
+            "done"
+        );
+    }
+    assert_eq!(
+        original.load(SeqCst),
+        0,
+        "a renamed call must not execute the original tool"
+    );
+    assert_eq!(
+        safe.load(SeqCst),
+        0,
+        "dispatch patches cannot authorize a new target"
+    );
+    assert_eq!(
+        policy.0.load(SeqCst),
+        0,
+        "later policy must not observe an invalid target patch"
+    );
+    assert!(
+        observed
+            .tool_results()
+            .iter()
+            .any(|result| result.contains("target")),
+        "the model must receive the refusal reason"
+    );
+}
+
+#[tokio::test]
+async fn tool_target_patch_is_refused_on_run() {
+    check_tool_target_patch_is_refused(false).await;
+}
+
+#[tokio::test]
+async fn tool_target_patch_is_refused_on_stream() {
+    check_tool_target_patch_is_refused(true).await;
+}
+
 struct EchoStringArgs;
 
 impl Tool for EchoStringArgs {

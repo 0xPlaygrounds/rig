@@ -127,8 +127,9 @@ macro_rules! give {
 /// is refused before graph restoration; generic scenes have no restart cursor.
 ///
 /// Only the library's listed components and components explicitly registered
-/// with [`SceneExtensions`] are captured. Resources, arbitrary entities,
-/// system-local state, tasks and live handles remain the host's responsibility.
+/// with [`SceneExtensions`] are captured. The bus scene preserves its effect-ID
+/// allocator; other resources, arbitrary entities, system-local state, tasks
+/// and live handles remain the host's responsibility.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WorldScene {
     /// The graph.

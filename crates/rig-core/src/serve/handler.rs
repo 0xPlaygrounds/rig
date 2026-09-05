@@ -15,6 +15,9 @@ use crate::{
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
+#[cfg(test)]
+mod tests;
+
 /// The future the bus stores for a handler: boxed, because the driver's
 /// table holds handlers as `Arc<dyn Handler>` (an in-flight task holds its
 /// handler while the table is replaced) and the stored trait must be
@@ -214,9 +217,9 @@ pub async fn serve_inline_with(
     }
 }
 
-/// The consumer dropped its pending dispatch or its effect stream: nobody
-/// is listening. A streaming
-/// handler stops on it — that is how cancellation reaches a provider stream.
+/// The consumer dropped its pending dispatch or effect stream, or an
+/// ancestor was cancelled. A streaming handler stops on it — that is how
+/// cancellation reaches a provider stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SinkClosed;
 
@@ -274,8 +277,9 @@ pub struct OutcomeSink {
 /// count, recorder slot) until the detached sink answers or is dropped, so
 /// a serial key is not served twice concurrently and the log's order is
 /// the serve order. Cancellation reaches the resolver through
-/// [`DetachedSink::is_closed`]: the consumer dropped its `Pending`, and an
-/// answer will go nowhere.
+/// [`DetachedSink::is_closed`]: the consumer dropped its `Pending`, or an
+/// ancestor was cancelled. A late answer is discarded; a child consumer
+/// still listening receives cancellation.
 ///
 /// ```ignore
 /// impl Serve for WorldTool {
@@ -320,8 +324,8 @@ impl DetachedSink {
         self.0.is_stream()
     }
 
-    /// Whether the consumer is gone (its `Pending`/`EffectStream` dropped):
-    /// an answer would be discarded, and the record says cancelled.
+    /// Whether the consumer is gone or an ancestor was cancelled: a late
+    /// answer is discarded, and an unanswered dispatch records cancellation.
     pub fn is_closed(&self) -> bool {
         self.0.is_closed()
     }
@@ -352,9 +356,11 @@ impl DetachedSink {
 /// schedule reading an outcome component) installs none; a driver that is
 /// not (rig-agent's bus, whose consumer holds the reply channel) installs one per
 /// dispatch with [`OutcomeSink::with_observer`], and it is told the
-/// outcome exactly once — a stream's folded, at its terminal.
+/// outcome exactly once — at the terminal for a streaming dispatch.
 pub trait Observe: Send + Sync {
-    /// The outcome, as the consumer receives it (a stream's folded).
+    /// The completed handler response, or the fold of a streaming handler's
+    /// events. A resolved response retains content that has no stream block,
+    /// such as images emitted as unknown events.
     fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>);
     /// Whether streamed events are wanted verbatim ([`Self::event`]).
     fn keep_events(&self) -> bool;
@@ -448,7 +454,11 @@ impl Drop for OutcomeSink {
                     }
                 }
                 SinkInner::Stream { events, .. } => {
-                    let _ = events.try_send(Err(cancelled()));
+                    // Each mpsc sender has one reserved slot. The producer
+                    // may have filled its slot before being cancelled; a
+                    // fresh sender reserves one terminal slot so cancellation
+                    // cannot turn into an apparently truncated stream.
+                    let _ = events.clone().try_send(Err(cancelled()));
                 }
             }
         }
@@ -524,7 +534,8 @@ impl OutcomeSink {
     }
 
     /// Attach the driver's cancel marker (see the field): once set, the
-    /// sink is closed.
+    /// sink is closed. Cancellation reserves one additional terminal slot
+    /// when dropping a full stream, so buffered output cannot hide it.
     pub fn with_cancel(mut self, cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Self {
         self.cancelled = Some(cancelled);
         self
@@ -614,7 +625,11 @@ impl OutcomeSink {
 
     /// A streaming dispatch's item, seen by the observer: the event
     /// verbatim when it keeps them, and the fold's outcome at the terminal.
-    fn tell_item(&mut self, item: &Result<StreamEvent, ErrorReport>) {
+    fn tell_item(
+        &mut self,
+        item: &Result<StreamEvent, ErrorReport>,
+        resolved: Option<&Result<Outcome, ErrorReport>>,
+    ) {
         let Some(seen) = &mut self.observer else {
             return;
         };
@@ -628,7 +643,13 @@ impl OutcomeSink {
         {
             seen.observer.stream_error(error);
         }
-        if let Some(outcome) = seen.stream.observe(item) {
+        if let Ok(StreamEvent::Final(_)) = item
+            && let Some(outcome) = resolved
+        {
+            // Re-emission is not a lossless fold (images become Unknown).
+            // Keep the original answer, but only after accepting its Final.
+            seen.outcome(outcome);
+        } else if let Some(outcome) = seen.stream.observe(item) {
             seen.outcome(&outcome);
         }
     }
@@ -643,7 +664,8 @@ impl OutcomeSink {
         matches!(self.inner, SinkInner::Stream { .. })
     }
 
-    /// Whether the consumer is still listening.
+    /// Whether the consumer has stopped listening or the driver cancelled
+    /// the dispatch through an ancestor.
     pub fn is_closed(&self) -> bool {
         let cancelled_from_above = self
             .cancelled
@@ -657,55 +679,39 @@ impl OutcomeSink {
     }
 
     /// Resolve a unary dispatch. On a streaming dispatch a completion is
-    /// re-emitted as its events followed by `Final`; any other outcome, or an
-    /// error, is delivered as the stream's one item.
+    /// re-emitted as its events followed by `Final`; an error is delivered
+    /// as one stream item. A non-completion outcome becomes an error.
     pub fn resolve(mut self, outcome: Result<Outcome, ErrorReport>) -> HandlerFuture<'static> {
         Box::pin(async move {
-            // What the observer records is what the consumer receives: a stream
-            // dispatch answered with a non-completion outcome is delivered
-            // as an error, and recorded as that error.
-            let delivered: Result<Outcome, ErrorReport> = match (&self.inner, &outcome) {
-                (SinkInner::Stream { .. }, Ok(other))
-                    if !matches!(other, Outcome::Completion(_)) =>
-                {
-                    Err(ErrorReport::new(
-                        ErrorKind::Internal,
-                        format!(
-                            "a streaming dispatch was answered with a {} outcome",
-                            other.family()
-                        ),
-                    ))
-                }
-                _ => outcome.clone(),
-            };
-            self.tell_outcome(&delivered);
-            match &mut self.inner {
-                SinkInner::Unary { reply, .. } => {
-                    if let Some(reply) = reply.take() {
-                        // A dropped receiver is the consumer cancelling; nothing to do.
-                        let _ = reply.send(outcome);
-                    }
-                }
-                SinkInner::Stream { events, finished } => {
-                    if *finished {
+            if self.is_closed() {
+                // Drop reports cancellation to the observer and any child
+                // consumer still listening. A detached resolver cannot
+                // overwrite a cancellation already published by the driver.
+                return;
+            }
+            if self.is_stream() {
+                let items = match &outcome {
+                    Ok(Outcome::Completion(response)) => events_from_response(response),
+                    Ok(other) => vec![Err(wrong_stream_answer(other))],
+                    Err(report) => vec![Err(report.clone())],
+                };
+                for item in items {
+                    // Use the same readiness/cancellation and observation
+                    // boundary as an actual streaming handler. In particular,
+                    // no successful response is recorded before it is sent.
+                    if self.send_item(item, Some(&outcome)).await.is_err() {
                         return;
                     }
-                    match delivered {
-                        Ok(Outcome::Completion(response)) => {
-                            for item in events_from_response(&response) {
-                                if events.send(item).await.is_err() {
-                                    break;
-                                }
-                            }
-                        }
-                        Ok(other) => {
-                            let _ = events.send(Err(wrong_stream_answer(&other))).await;
-                        }
-                        Err(report) => {
-                            let _ = events.send(Err(report)).await;
-                        }
-                    }
+                }
+                if let SinkInner::Stream { finished, .. } = &mut self.inner {
                     *finished = true;
+                }
+            } else {
+                self.tell_outcome(&outcome);
+                if let SinkInner::Unary { reply, .. } = &mut self.inner
+                    && let Some(reply) = reply.take()
+                {
+                    let _ = reply.send(outcome);
                 }
             }
         })
@@ -715,24 +721,30 @@ impl OutcomeSink {
     /// accumulator and `Final` resolves the dispatch with the aggregated
     /// [`CompletionResponse`]; an error resolves it with the report.
     ///
-    /// `Err(SinkClosed)` means the consumer is gone: stop producing.
+    /// `Err(SinkClosed)` means the consumer is gone or the dispatch was
+    /// cancelled through an ancestor: stop producing.
     pub async fn send(&mut self, item: Result<StreamEvent, ErrorReport>) -> Result<(), SinkClosed> {
-        // A finished stream sink takes nothing more, and the observer sees only
-        // what the consumer could receive.
-        if let SinkInner::Stream { finished: true, .. } = &self.inner {
-            return Err(SinkClosed);
-        }
-        if self.is_stream() {
-            self.tell_item(&item);
-        }
-        match &mut self.inner {
+        self.send_item(item, None).await
+    }
+
+    async fn send_item(
+        &mut self,
+        item: Result<StreamEvent, ErrorReport>,
+        resolved: Option<&Result<Outcome, ErrorReport>>,
+    ) -> Result<(), SinkClosed> {
+        // Recheck cancellation on every readiness poll: a detached sender
+        // can be cancelled while it is waiting for buffer space.
+        futures::future::poll_fn(|cx| self.poll_ready(cx)).await?;
+        let observed = match &mut self.inner {
             SinkInner::Stream { events, .. } => {
                 // `Final` is not the end of the channel: a wire may still
                 // deliver frames after its terminal record (a late message
                 // id, a provider error), and the consumer's post-final rules
                 // are its own. The stream ends when the handler drops the
                 // sink.
-                events.send(item).await.map_err(|_| SinkClosed)
+                let observed = self.observer.as_ref().map(|_| item.clone());
+                events.start_send(item).map_err(|_| SinkClosed)?;
+                observed
             }
             SinkInner::Unary { reply, fold } => {
                 let Some(sender) = reply.as_ref() else {
@@ -755,15 +767,27 @@ impl OutcomeSink {
                 {
                     let _ = reply.send(outcome);
                 }
-                Ok(())
+                return Ok(());
             }
+        };
+        // The channel accepted the item. A blocked or rejected Final must
+        // never become a successful outcome in the observer's log.
+        if let Some(item) = observed {
+            self.tell_item(&item, resolved);
         }
+        if let SinkInner::Stream { events, .. } = &mut self.inner {
+            events.flush().await.map_err(|_| SinkClosed)?;
+        }
+        Ok(())
     }
 
     /// Wait until the consumer can take another item without the driver
     /// stalling — the back-pressure point a streaming handler may poll
-    /// explicitly. Resolves immediately on a unary dispatch.
+    /// explicitly. A live unary dispatch is immediately ready.
     pub fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), SinkClosed>> {
+        if self.is_closed() {
+            return Poll::Ready(Err(SinkClosed));
+        }
         match &mut self.inner {
             SinkInner::Stream { events, .. } => events.poll_ready(cx).map_err(|_| SinkClosed),
             SinkInner::Unary { .. } => Poll::Ready(Ok(())),

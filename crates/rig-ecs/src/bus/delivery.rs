@@ -315,18 +315,8 @@ pub fn collect_replayed(world: &mut World) {
                 continue;
             };
             if replay.policy_visible {
-                if replay.pending.is_empty()
-                    && !world.resource::<Progress>().0
-                    && world.get::<EffectOutcome>(entity).is_none()
-                {
-                    fail(
-                        world,
-                        invalid(format!(
-                            "policy replay did not reproduce cancellation of {id}"
-                        )),
-                    );
-                    return;
-                }
+                // Judge and later sets may need multiple passes. Diagnose an
+                // unreproduced cancellation only after full quiescence.
                 continue;
             }
             let count = match world.get::<Buffered>(entity) {
@@ -437,16 +427,42 @@ pub fn collect_replayed(world: &mut World) {
     });
 }
 
-/// Diagnose an absent replay request after every policy set has run. Called
-/// by the bus runner at quiescence, before it decides whether to stop ticking.
+/// Diagnose absent requests and unreproduced cancellations after every policy
+/// set has run. Called by the bus runner before it stops at quiescence.
 pub fn diagnose_idle_replay(world: &mut World) {
     if world.resource::<Progress>().0 || world.contains_resource::<ReplayFailure>() {
         return;
     }
-    let Some((id, batch)) = world
-        .get_resource::<ReplayDelivery>()
-        .and_then(|replay| replay.waiting_for)
-    else {
+    let mut effects = world.query::<(Option<&Issued>, Option<&Reserved>, Option<&EffectOutcome>)>();
+    let Some(replay) = world.get_resource::<ReplayDelivery>() else {
+        return;
+    };
+    let waiting_for = replay.waiting_for;
+    let uncancelled = if replay.policy_visible && replay.pending.is_empty() {
+        // Read the final world, not Collect's entity map: deferred policy
+        // commands may have removed the effect since that earlier snapshot.
+        effects
+            .iter(world)
+            .filter_map(|(issued, reserved, outcome)| {
+                let id = issued
+                    .map(|issued| issued.0)
+                    .or_else(|| reserved.map(|reserved| reserved.0))?;
+                (outcome.is_none() && replay.cancelled.contains(&id)).then_some(id)
+            })
+            .min()
+    } else {
+        None
+    };
+    if let Some(id) = uncancelled {
+        fail(
+            world,
+            invalid(format!(
+                "policy replay did not reproduce cancellation of {id}"
+            )),
+        );
+        return;
+    }
+    let Some((id, batch)) = waiting_for else {
         return;
     };
     // Late policy may have minted or queued the request during this pass.

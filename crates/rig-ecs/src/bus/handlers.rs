@@ -189,6 +189,9 @@ pub struct HandlerTable {
     /// registration made earlier in the same system, whose `Bound` the
     /// query cannot see yet (commands are deferred).
     keys: HashMap<HandlerKey, Entity>,
+    /// Removed logically, but still visible to queries until deferred
+    /// despawns run. These entities must never be rebound or removed twice.
+    pending_despawns: HashSet<Entity>,
 }
 
 impl HandlerTable {
@@ -216,8 +219,22 @@ impl HandlerTable {
 
 /// A `Bound` component removed — a deregistration, a despawn — takes the
 /// handler out of the table with it.
-pub fn unbound(removed: On<Remove, Bound>, mut table: NonSendMut<HandlerTable>) {
-    table.remove(removed.event().entity);
+pub fn unbound(
+    removed: On<Remove, Bound>,
+    mut table: NonSendMut<HandlerTable>,
+    mut commands: Commands,
+) {
+    let entity = removed.event().entity;
+    table.remove(entity);
+    // Remove observers still see the old Bound. Keep it excluded while
+    // other observers register replacements; cleanup runs after removal.
+    table.pending_despawns.insert(entity);
+    commands.queue(move |world: &mut World| {
+        world
+            .non_send_mut::<HandlerTable>()
+            .pending_despawns
+            .remove(&entity);
+    });
 }
 
 /// Register and deregister handlers from a system: the registry API over
@@ -383,7 +400,9 @@ impl Handlers<'_, '_> {
             .or_else(|| {
                 self.bound
                     .iter()
-                    .find(|(_, bound)| bound.key == key)
+                    .find(|(entity, bound)| {
+                        bound.key == key && !self.table.pending_despawns.contains(entity)
+                    })
                     .map(|(entity, bound)| (entity, bound.clone()))
             });
         // A registration earlier in this borrow, not yet a `Bound` the query
@@ -445,12 +464,15 @@ impl Handlers<'_, '_> {
         let entity = self.table.keys.get(key).copied().or_else(|| {
             self.bound
                 .iter()
-                .find(|(_, bound)| &bound.key == key)
+                .find(|(entity, bound)| {
+                    &bound.key == key && !self.table.pending_despawns.contains(entity)
+                })
                 .map(|(entity, _)| entity)
         });
         match entity {
             Some(entity) => {
                 self.table.remove(entity);
+                self.table.pending_despawns.insert(entity);
                 self.commands.entity(entity).despawn();
                 true
             }

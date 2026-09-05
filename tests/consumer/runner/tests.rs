@@ -9,12 +9,37 @@
 use super::*;
 
 #[tokio::test]
+async fn offline_case_budgets_do_not_exhaust_the_shared_live_allowance() -> Result<(), Error> {
+    let invocation = parse(["verify".into()])?;
+    let case = cases()
+        .into_iter()
+        .find(|case| case.id == "openai-unary")
+        .unwrap();
+    let shared = Budget::new(Limits::default());
+    for _ in 0..9 {
+        one(&case, &invocation, &case_budget("verify", &case, &shared)).await?;
+    }
+    assert_eq!(
+        shared.used(),
+        0,
+        "offline cases must not consume the shared live budget"
+    );
+    // Exercise live budget selection over local replay, without a paid call.
+    one(&case, &invocation, &case_budget("record", &case, &shared)).await?;
+    assert!(
+        shared.used() > 0,
+        "record selections must share the invocation allowance"
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn every_registered_case_verifies_its_committed_producer_and_json_replay() -> Result<(), Error>
 {
     let invocation = parse(["verify".into()])?;
     // Each case has its own bounded offline request budget, as in focused CLI runs.
     for case in select(&invocation)? {
-        one(&case, &invocation, &Budget::new(Limits::default()))
+        one(&case, &invocation, &Budget::new(Limits::for_case(&case)))
             .await
             .map_err(|error| Error::Invariant(format!("case {}: {error}", case.id)))?;
     }
@@ -119,7 +144,7 @@ async fn candidate_replay_checks_observations_and_resume_checks_the_supplied_cut
         candidate.path().display().to_string(),
     ])?;
     assert!(
-        one(&case, &invocation, &Budget::new(Limits::default()))
+        one(&case, &invocation, &Budget::new(Limits::for_case(&case)))
             .await
             .is_err(),
         "verify must check candidate sidecars"
@@ -253,7 +278,7 @@ async fn collapsed_batches_changed_descriptors_and_lost_stream_state_are_rejecte
         candidate.path().display().to_string(),
     ])?;
     assert!(
-        one(&case, &invocation, &Budget::new(Limits::default()))
+        one(&case, &invocation, &Budget::new(Limits::for_case(&case)))
             .await
             .is_err(),
         "supplied checkpoint with missing completed stream state must not pass"

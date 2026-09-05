@@ -126,6 +126,92 @@ fn tool_results(request: &rig_core::completion::CompletionRequest) -> Vec<(Strin
         .collect()
 }
 
+#[derive(Resource)]
+struct ActiveTools(Vec<String>);
+
+fn narrow_tools(
+    fresh: Query<Entity, With<rig_ecs::systems::Fresh>>,
+    allowed: Res<ActiveTools>,
+    mut commands: Commands,
+) {
+    for turn in &fresh {
+        commands.entity(turn).insert(rig_ecs::agent::RequestPatch {
+            active_tools: Some(allowed.0.clone()),
+            ..Default::default()
+        });
+    }
+}
+
+fn assert_active_tools(allowed: &[&str], executable: bool) {
+    let (mut app, agent, adder, requests) = tooling(vec![
+        vec![call("c1", "add", serde_json::json!({"x": 1, "y": 2}))],
+        vec![AssistantContent::text("done")],
+    ]);
+    let other = register(
+        &mut app,
+        "other",
+        NeverCalled {
+            name: "other".into(),
+        },
+    );
+    app.world_mut()
+        .spawn((Grant(other), Order(1), ChildOf(agent)));
+    app.insert_resource(ActiveTools(
+        allowed.iter().map(|name| (*name).to_owned()).collect(),
+    ));
+    add_system(
+        &mut app,
+        narrow_tools.after(RigSet::Advance).before(RigSet::Assemble),
+    );
+    let run = spawn_run(app.world_mut(), agent, &[], "add numbers", false, None);
+    ended(&mut app, run, "restricted tool decision");
+    let requests = requests.lock().expect("requests");
+    let advertised: Vec<_> = requests[0]
+        .tools
+        .iter()
+        .map(|tool| tool.name.as_str())
+        .collect();
+    assert_eq!(advertised, allowed);
+    if executable {
+        assert!(app.world().get::<Settled>(run).is_some());
+        assert_eq!(adder.peak.load(Ordering::SeqCst), 1);
+    } else {
+        assert_eq!(
+            adder.peak.load(Ordering::SeqCst),
+            0,
+            "excluded tool must never execute"
+        );
+        assert!(matches!(
+            app.world().get::<Failed>(run),
+            Some(Failed(Failure::UnknownToolCall { name })) if name == "add"
+        ));
+        assert!(app.world().get::<RunResult>(run).is_none());
+        assert!(
+            app.world()
+                .resource::<EffectLogResource>()
+                .log()
+                .records
+                .iter()
+                .all(|record| { !matches!(record.kind, EffectKind::ToolCall { .. }) })
+        );
+    }
+}
+
+#[test]
+fn active_tools_blocks_an_excluded_granted_tool() {
+    assert_active_tools(&["other"], false);
+}
+
+#[test]
+fn active_tools_empty_blocks_every_granted_tool() {
+    assert_active_tools(&[], false);
+}
+
+#[test]
+fn active_tools_keeps_an_allowed_tool_executable() {
+    assert_active_tools(&["add"], true);
+}
+
 #[test]
 fn a_turn_with_two_calls_is_a_batch_and_the_results_are_one_utterance() {
     let (mut app, agent, adder, requests) = tooling(two_calls_then_text());

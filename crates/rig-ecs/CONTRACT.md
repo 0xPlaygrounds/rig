@@ -1,8 +1,8 @@
-# CONTRACT — the completion-only run, as the goldens pin it
+# CONTRACT — ECS agent behavior and replay evidence
 
 The bytes rig-ecs's agent modules are held to, extracted from the corpus (`crates/rig-verify/fixtures/*.effects.json`) and from `rig_agent::run`'s docs read as a specification. Every row cites the golden(s) that pin it by fixture name and JSON pointer; every `policy::text` constant has a test in `src/policy/tests.rs` that compares it to its golden. Nothing here is read off a function body of the frozen crate.
 
-The set this stage covers: every golden whose records are all `completion` and whose header `hooks` is empty — 43 at 207 goldens (the superseded prompt counted 32 at an older head; the set is derived, never listed) (`crates/rig-verify/tests/corpus/world.rs::unsupported` derives the set; `anthropic_memory_history_bypass` is among the 43 but waits for stage 5's memory, since its required row names `golden/memory`).
+The world interpreter in `crates/rig-verify/tests/corpus/world.rs` executes every program in the legacy corpus: completions, tools, steering, layers, memory, retrieval, nesting and scene continuation. Unsupported programs fail their tests; there is no completion-only filter or deferred memory subset. The separate ECS consumer corpus (`tests/consumer/README.md`) exercises actual tools, scoped policy identity, provider cassettes and application state; its policy observations are not claims about the legacy interpreters.
 
 ## 1. The request: a walk over the graph
 
@@ -67,8 +67,8 @@ The fold is the only constructor of a `CompletionRequest` in the crate (`tests/c
 | the output tool called with a missing field, or text where it was due, with **no reprompt left** | the run settles with what it has (the partial arguments, or the text) — unpinned: no golden exhausts the budget; rig-agent's docs accept a text that already satisfies the schema and are silent on the rest | (none) |
 | a granted tool named like the minted output tool | `Failed(OutputToolCollision)` | `rig_agent::run::prepare` docs |
 | a call to a tool neither granted nor the output tool | an `InvalidCall` entity `ChildOf` the turn; `resolve_invalid_defaults` writes the run's `InvalidCalls.unhandled` unless a system wrote a `Resolution` first; `Fail` → `Failed(UnknownToolCall)`; `Ignore` → the call is dropped, what is left is the answer (an empty rest settles as `""`) | `mock_outcome_invalid_call_unhandled`, `mock_invalid_mixed_fail` (`Fail`); `mock_invalid_ignore_unary`, `mock_delta_ignore` (`Ignore`) |
-| a call to a granted tool | `Failed(Unsupported)`: tool dispatch is stage 3's | (no golden in this set) |
-| `Retry`, `Repair`, `Skip` written as a resolution | `Failed(Unsupported)`, named | (stage 4) |
+| a call to a granted tool | dispatch and resolve the tool batch (§8) | `anthropic_tool_call_turn` |
+| `Retry`, `Repair`, `Skip` written as a resolution | apply the invalid-call policy (§8.2) | `mock_invalid_tool_call_recovery`, `mock_invalid_repair_to_add`, `mock_invalid_skip_under_auto` |
 
 ## 5. Budgets and endings
 
@@ -80,7 +80,7 @@ The fold is the only constructor of a `CompletionRequest` in the crate (`tests/c
 
 ## 6. The header
 
-`replay::spec_json(agent)` is the JSON the header's `run_spec` hashes (`rig_effect_log::stable_hash`, keys canonicalised): the agent's identity, not a run's.
+`replay::stamp_header` retains the legacy builder JSON in the header’s `run_spec` hash (`rig_effect_log::stable_hash`, keys canonicalised). This is builder/corpus interoperability metadata. Effective run compatibility uses `spec_json(world, run)`, `stamp_run` and scoped program identity (§10).
 
 ```json
 {"preamble": <Preamble>, "static_context": [{"id","text",…props}], "additional_params": <AdditionalParams>,
@@ -90,9 +90,9 @@ The fold is the only constructor of a `CompletionRequest` in the crate (`tests/c
  "augment_output_preamble": true, "unhandled_invalid_tool_call": "fail"}
 ```
 
-Pinned by every golden's `/header/run_spec` (`anthropic_completion_smoke` = `171082663332529849`); the world interpreter asserts equality for all 42 it replays. A run's `max_turns`, its history, its stream flag and its invalid-call policy are **not** identity: `mock_delta_fail` and `mock_delta_ignore` share one hash.
+The legacy `/header/run_spec` is checked by the world interpreter (`anthropic_completion_smoke` = `171082663332529849`). It excludes per-run overrides: `mock_delta_fail` and `mock_delta_ignore` share that builder hash. This does not imply interchangeable runs: scoped identity includes supported effective settings, including turn budget, stream mode and invalid-call policy; application-specific semantics require a nonempty `PolicyVersion` (§10).
 
-`required`: the model's key as `completion`, every granted tool's key by its family (`anthropic_request_shape_tool_choice_none` `/header/required`). `hooks`: `[]`. `signature`: written by the recorder from what was dispatched.
+`required`: the model's key as `completion`, every granted tool's key by its family (`anthropic_request_shape_tool_choice_none` `/header/required`). `hooks`: the program’s declared hooks and layers (§10). `signature`: written by the recorder from what was dispatched.
 
 ## 7. Keys
 
@@ -100,7 +100,7 @@ Pinned by every golden's `/header/run_spec` (`anthropic_completion_smoke` = `171
 
 ## 8. Tools and batches
 
-Stage 3 (`rig-ecs-pr3-whole-corpus-prompt.md` ruling 3). A call to a granted tool is an effect entity `ChildOf` the turn; the turn's tool children are the batch; the results are one user utterance. Every row cites the golden and JSON pointer that pin it; the batch semantics are `rig_agent::agent::engine::drive_tool_calls`'s docs and `rig_agent::run::AgentRun::tool_results`'s, read as specification.
+A call to a granted tool is an effect entity `ChildOf` the turn; the turn's tool children are the batch; the results are one user utterance. Every row cites the golden and JSON pointer that pin it; the batch semantics are `rig_agent::agent::engine::drive_tool_calls`'s docs and `rig_agent::run::AgentRun::tool_results`'s, read as specification.
 
 ### 8.1 The batch
 
@@ -123,7 +123,7 @@ Stage 3 (`rig-ecs-pr3-whole-corpus-prompt.md` ruling 3). A call to a granted too
 
 ### 8.2 Invalid calls beside the batch
 
-`Resolution` gains its payloads here: `Retry { feedback }`, `Repair { to }`, `Skip { reason }`. Written by a user system before `Materialise` (stage 4's systems), or by `resolve_invalid_defaults` from `InvalidCalls.unhandled` (`Fail` / `Ignore`).
+`Resolution` gains its payloads here: `Retry { feedback }`, `Repair { to }`, `Skip { reason }`. Written by a user system before `Materialise` (§9), or by `resolve_invalid_defaults` from `InvalidCalls.unhandled` (`Fail` / `Ignore`).
 
 | resolution | what happens | pinned by |
 |---|---|---|
@@ -150,11 +150,11 @@ A tool served by a system (a world-served handler, §8.4) answers by submitting 
 
 ### 8.4 The tool context off the wire (format 5)
 
-`EffectKind::ToolCall { name, args }` and `Outcome::ToolResult { result }` carry no context. The inbound values reach the adapter through the sink's scope (`OutcomeSink::scope::<ToolContext>()`), attached by the driver — the world from the effect entity's `bus::ToolInputs`, rig-bus from the dispatch's own context — and the values a tool published come back beside the sink (`rig_core::tool::PublishedContext`), which the world reads into `bus::ToolOutputs` when the outcome lands. Every golden's context was empty (`{}` on 0 of 207 records' inbound or outbound maps); the re-stamp moves only `/records/*/kind/context` and `/records/*/outcome/Ok/context` and `/header/format` 4 → 5 (the PR pastes the count).
+`EffectKind::ToolCall { name, args }` and `Outcome::ToolResult { result }` carry no context. The inbound values reach the adapter through the sink's scope (`OutcomeSink::scope::<ToolContext>()`), attached by the driver — the world from the effect entity's `bus::ToolInputs`, rig-bus from the dispatch's own context — and the values a tool published come back beside the sink (`rig_core::tool::PublishedContext`), which the world reads into `bus::ToolOutputs` when the outcome lands. Published context is recorded separately from the tool outcome and restored by the consumer’s replay projection. The repository-repair consumer verifies typed write receipts before applying that projection; application state and approval decisions must also be saved for continuation.
 
 ## 9. Steering: every hook is a system
 
-Stage 4 (ruling 4). No hook trait: a user system writes a component at a set boundary and a library system reads it later. The spellings are `how-the-ecs-dissolves-rig-agent.md` §3's table; each row names the cell that pins it (`crates/rig-verify/tests/corpus/world_hooks.rs` writes them for the corpus). The moments, in schedule order: `On<Add, Run>` (run start) · a system after `RigSet::Advance` and before `RigSet::Select` (model selection) · before `RigSet::Assemble` (the completion call: `RequestPatch`, a hook's own dispatch) · `RigSet::Patch` (the folded effect) · the bus's `Gate` (a dispatch: deny, patch, hold) · the bus's `Judge` (an outcome: replace) · after `RigSet::Fold` (deltas) · `RigSet::Judge` (the model turn: retry, replace, stop) · before `RigSet::Materialise` (an invalid call) · `On<Add, Settled>` / `On<Add, Failed>` (run settled).
+No hook trait: a user system writes a component at a set boundary and a library system reads it later. The spellings are `how-the-ecs-dissolves-rig-agent.md` §3's table; each row names the cell that pins it (`crates/rig-verify/tests/corpus/world_hooks.rs` writes them for the corpus). The moments, in schedule order: `On<Add, Run>` (run start) · a system after `RigSet::Advance` and before `RigSet::Select` (model selection) · before `RigSet::Assemble` (the completion call: `RequestPatch`, a hook's own dispatch) · `RigSet::Patch` (the folded effect) · the bus's `Gate` (a dispatch: deny, patch, hold) · the bus's `Judge` (an outcome: replace) · after `RigSet::Fold` (deltas) · `RigSet::Judge` (the model turn: retry, replace, stop) · before `RigSet::Materialise` (an invalid call) · `On<Add, Settled>` / `On<Add, Failed>` (run settled).
 
 ### 9.1 Stopping: `Cancelled(reason)` on the run
 
@@ -213,7 +213,7 @@ A `PendingEffect` the system spawns `ChildOf` the run at the hook's moment (its 
 
 ### 9.6 Layers
 
-A layer is the handler's: the world registers the layered `ErasedHandler` (`handler.layered(intercept)`) exactly as `Replay::open` does, under the key the header names. A decision the layer makes before the handler is served leaves no record, and a verdict after leaves the handler's answer in the record: the world's `Dispatch` installs a sink observer (`bus::WorldObserver`, its slots on the entity as `bus::Observed`) for a handler whose descriptor names layers — the one way a layer's `discard` and `patch` reach any recorder, and the innermost handler's outcome the observer is told is what `settle` records (`bus_world::a_layers_decisions_reach_the_record_through_the_sinks_observer`). This is the substrate gap the PR reports beyond ruling 1's two: without the observer the world recorded a layer's denial and verdict. The suspending layer (`ApprovalLayer`) is answered by a thread the interpreter spawns as the program says.
+A layer is the handler's: the world registers the layered `ErasedHandler` (`handler.layered(intercept)`) exactly as `Replay::open` does, under the key the header names. A decision the layer makes before the handler is served leaves no record, and a verdict after leaves the handler's answer in the record: the world's `Dispatch` installs a sink observer (`bus::WorldObserver`, its slots on the entity as `bus::Observed`) for a handler whose descriptor names layers — the one way a layer's `discard` and `patch` reach any recorder, and the innermost handler's outcome the observer is told is what `settle` records (`bus_world::a_layers_decisions_reach_the_record_through_the_sinks_observer`). The suspending layer (`ApprovalLayer`) is answered by a thread the interpreter spawns as the program says.
 
 | cell | records | pinned by |
 |---|---|---|
@@ -252,7 +252,12 @@ bytes. Default replay supports final-answer/exchange consumption and returns
 recorded cancellation errors; policy replay instead requires the same policy
 to cancel the effect without inventing an outcome for it. Missing metadata
 cannot establish policy fidelity; inconsistent metadata or an unreproduced
-cancellation is a diagnostic. Batch identity is not elapsed time.
+cancellation is a diagnostic. Cancellation is checked only after the entire
+`RigSchedule` is quiescent, using the world after deferred policy commands.
+A policy may mark `Progress` while advancing through multiple Judge passes
+before removing the effect; replay must not insert a cancellation outcome
+between those passes. A policy that becomes idle without cancelling is refused.
+Batch identity is not elapsed time.
 
 A future effect missing at Collect is diagnosed only after the complete
 `RigSchedule` is quiescent. Later continuation systems can advance through
@@ -284,7 +289,7 @@ system ordering remain outside automatic verification.
 
 ## 11. Memory is the graph
 
-Stage 5 (ruling 5). The conversation graph *is* memory; a memory handler is where it persists. `agent::Remembers(entity)` on the agent names the memory handler entity; `agent::Conversation(id)` on the agent the conversation (the run carries a copy of it once spawned). Every op is an effect entity `ChildOf` the run, recorded like any other.
+The conversation graph *is* memory; a memory handler is where it persists. `agent::Remembers(entity)` on the agent names the memory handler entity; `agent::Conversation(id)` on the agent the conversation (the run carries a copy of it once spawned). Every op is an effect entity `ChildOf` the run, recorded like any other.
 
 | moment | what happens | pinned by |
 |---|---|---|
@@ -314,6 +319,15 @@ The required row names `<owner>/memory` as `memory` from `Remembers`. `Memory { 
 
 ## 13. Resume is a scene load; two runs
 
+The bus scene preserves consumed effect IDs even when their entities have been
+removed. Its optional `next_id` stores allocation history only when surviving
+saved IDs cannot reconstruct it; loading takes the maximum with the destination
+counter. Contradictory counters and an actual saved ID of `u64::MAX` are refused
+before graph/effect spawning. `u64::MAX` as a next-counter means exhausted: no
+fresh ID is minted or recorded, and dispatch returns a request error. Existing
+reserved IDs below that sentinel can still resume. This prevents ID reuse; it
+does not make an unanswered external write safe to repeat.
+
 Completed stream effects retain `Streamed` events, text and terminal outcome
 through JSON scenes and load without serving again (`bus_scene.rs`). The
 required nullable `SceneEffect.streamed` field distinguishes no state from
@@ -338,7 +352,7 @@ external deduplication or reconciliation is the host's responsibility.
 | what | how | pinned by |
 |---|---|---|
 | a run saved after its first tool turn's results (the head), resumed in a fresh world over the log's tail | `agent::scene::save_world` the pass after `land_batch` put the run back in `Assembling` (one schedule pass at a time: an `update` runs to quiescence); a fresh world binds the tail's replayers (positional per key, as the corpus's resumed engine does), `load_world`s the scene, installs its hooks after the load (no run-start observer fires), ticks to the ending: the head's records are the golden's to the cut, the tail's from it, the answer the golden's | every `corpus_resume.rs` row (18) as `world_resumed`; every `corpus_checkpoint.rs` program (14) as `world_payload`, `world_hash`, `world_full_log_refused` |
-| `Checkpoint::state` | the `WorldScene` itself: `Checkpoint<S>` is generic over the driver's state and a world cuts a `Checkpoint<WorldScene>` (the frozen engine's is a `Checkpoint<serde_json::Value>` until stage 7); a checkpoint is a cut of the log beside the scene, `EffectLog::from_checkpoint(&checkpoint, tail)` the continuation; a full log in the tail's place is refused by its first id | `corpus_checkpoint.rs` |
+| `Checkpoint::state` | the `WorldScene` itself: `Checkpoint<S>` is generic over the driver's state and a world cuts a `Checkpoint<WorldScene>` (the classic engine stores its serialized state in `Checkpoint<serde_json::Value>`); a checkpoint is a cut of the log beside the scene, `EffectLog::from_checkpoint(&checkpoint, tail)` the continuation; a full log in the tail's place is refused by its first id | `corpus_checkpoint.rs` |
 | a resumed run loads nothing and appends | the loaded utterances are `Remembered` in the scene; the append is the resumed run's (the world keeps its state, the frozen engine's driver had to) | `anthropic_serving_serial_memory_tools` resumed: `[Load, C, Tool, C, Append]` with the append in the tail |
 | durable execution | the same property as `durable_execution.rs`: nothing of the first world survives but two JSON strings — the head's log and the checkpoint (the scene as its `state`) — and the second world resumes to the same answer and the same tail | every world resume cell round-trips both |
 | an effect in flight at the cut | saved as intent, re-issued in the second world under its saved id, answered by the tail's replayer there: a note an outcome hook dispatched just before the cut is the tail's first record | `anthropic_host_custom_at_outcome{,_streamed}` resumed |

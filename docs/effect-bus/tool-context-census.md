@@ -1,8 +1,9 @@
 # `ToolContext` census (phase A2 of the effect bus)
 
-Baseline: `d9ed455cf`. Every in-tree insert or read of `ToolContext`'s two maps
-(inbound, result), with the port each entry takes when the storage becomes
-serde. Semantics-only calls (`for_dispatch`, `accept_dispatch_result`,
+Historical census baseline: `d9ed455cf`. The site tables below describe the
+original port of the inbound and result maps to serde; line numbers and counts
+are historical, not a current repository inventory. The accessor contract below
+has been reconciled with the current implementation. Semantics-only calls (`for_dispatch`, `accept_dispatch_result`,
 `clear_dispatch_result`) carry no value and keep their call pattern.
 
 ## Non-test sites
@@ -66,13 +67,21 @@ and dispatch-returns-result-without-replacing-inbound are preserved exactly.
 `MissingToolContext` is replaced by `ToolContextError`, which also reports
 encode/decode failures.
 
-## Accessor bounds after A2
+## Current accessor contract
 
-- `insert<T: Serialize + DeserializeOwned + 'static>(value) -> Result<Option<T>, ToolContextError>`
-- `get<T: DeserializeOwned + 'static>() -> Option<T>`
-- `require<T: DeserializeOwned + 'static>() -> Result<T, ToolContextError>`
-- `remove<T>() -> Option<T>`, `contains<T>() -> bool`
-- `insert_result` / `result` / `require_result` mirror the inbound trio
+Every typed accessor requires `T: ContextValue`, whose bounds are
+`Serialize + DeserializeOwned + 'static` and whose `KEY` names the serialized slot.
 
-Keys are derived from `std::any::type_name::<T>()`; no two values of one type
-were in flight anywhere in the census, so no explicit-key variants exist.
+- `insert(value) -> Result<Option<T>, ToolContextError>`
+- `get() -> Result<Option<T>, ToolContextError>`
+- `require() -> Result<T, ToolContextError>`
+- `remove() -> Result<Option<T>, ToolContextError>`
+- `contains() -> bool`
+- `insert_result`, `result` and `require_result` mirror the inbound trio.
+
+`get` returns `Ok(None)` only for absence; a stored value with the wrong shape
+returns a decode error. `require` additionally reports a missing slot. `remove`
+removes the slot even if decoding the removed value fails. Keys come from
+`ContextValue::KEY`, not `std::any::type_name`; the derive defaults to the type’s
+name and `#[context(key = "…")]` declares a stable explicit key. Types sharing a
+key share a slot, so applications must avoid accidental collisions.

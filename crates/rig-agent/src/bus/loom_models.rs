@@ -51,6 +51,7 @@ fn command(id: u64) -> (Box<Command>, Receiver) {
     std::mem::forget(cancel_guard);
     (
         Box::new(Command {
+            lineage: super::dispatcher::Lineage::new(EffectId::from_raw(id), None),
             id: EffectId::from_raw(id),
             key: HandlerKey::from("k"),
             kind: EffectKind::Custom {
@@ -92,7 +93,9 @@ fn loom_close_fails_what_the_driver_never_took() {
                 match shared.enqueue(cmd, &parked, &cx) {
                     Enqueue::Sent => (false, receiver),
                     Enqueue::Closed => (true, receiver),
-                    Enqueue::Parked(_) | Enqueue::Refused(_) => panic!("neither"),
+                    Enqueue::Parked(_) | Enqueue::Refused(_) | Enqueue::Cancelled(_) => {
+                        panic!("neither")
+                    }
                 }
             })
         };
@@ -134,6 +137,66 @@ impl Serve for Nothing {
     async fn serve(&self, _kind: EffectKind, _sink: rig_core::serve::OutcomeSink) {}
 }
 
+struct Tagged(&'static str);
+
+impl Serve for Tagged {
+    type Family = rig_core::effect::family::Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("k"),
+            family: FamilyDescriptor::Custom {
+                kind: self.0.into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _kind: EffectKind, sink: rig_core::serve::OutcomeSink) {
+        sink.resolve(Ok(rig_core::effect::Outcome::Custom {
+            payload: serde_json::json!(self.0),
+        }))
+        .await;
+    }
+}
+
+#[test]
+fn loom_concurrent_registrations_publish_and_serve_the_same_handler() {
+    use futures::FutureExt;
+
+    loom::model(|| {
+        let (dispatcher, registrar, mut driver) = Bus::channel();
+        let other = registrar.clone();
+        let first = thread::spawn(move || registrar.register("k", Tagged("first")));
+        let second = thread::spawn(move || other.register("k", Tagged("second")));
+        first.join().unwrap().expect("registered first");
+        second.join().unwrap().expect("registered second");
+
+        let key = HandlerKey::from("k");
+        let described = dispatcher.descriptor(&key).expect("published");
+        let FamilyDescriptor::Custom { kind } = described.family else {
+            panic!("custom handler");
+        };
+        let mut pending = dispatcher.dispatch(
+            &key,
+            EffectKind::Custom {
+                kind: kind.clone().into(),
+                payload: serde_json::Value::Null,
+            },
+        );
+        let (_flag, waker) = recording();
+        let mut cx = Context::from_waker(&waker);
+        assert!(pending.poll_unpin(&mut cx).is_pending());
+        let _ = driver.poll_unpin(&mut cx);
+        let std::task::Poll::Ready(Ok(rig_core::effect::Outcome::Custom { payload })) =
+            pending.poll_unpin(&mut cx)
+        else {
+            panic!("registered handler must answer");
+        };
+        assert_eq!(payload, serde_json::json!(kind));
+    });
+}
+
 /// A registration posted before a dispatch (program order on the
 /// registering thread) is installed before that dispatch is served: the
 /// driver takes the queue first and the mailbox second.
@@ -149,10 +212,9 @@ fn loom_a_registration_before_a_dispatch_is_installed_first() {
             let shared = Arc::clone(&shared);
             let mailbox = Arc::clone(&mailbox);
             thread::spawn(move || {
-                mailbox.post(Registration::Install {
-                    key: HandlerKey::from("k"),
-                    handler: ErasedHandler::new(Nothing),
-                });
+                mailbox
+                    .register(&shared, HandlerKey::from("k"), ErasedHandler::new(Nothing))
+                    .expect("register");
                 let (cmd, receiver) = command(1);
                 let (_flag, waker) = recording();
                 let cx = Context::from_waker(&waker);
@@ -220,7 +282,9 @@ fn loom_bound_is_never_exceeded_and_no_sender_is_lost() {
                             cmd = kept;
                             thread::yield_now();
                         }
-                        Enqueue::Refused(_) | Enqueue::Closed => panic!("neither"),
+                        Enqueue::Refused(_) | Enqueue::Cancelled(_) | Enqueue::Closed => {
+                            panic!("neither")
+                        }
                     }
                 }
                 (parked, flag)
@@ -314,7 +378,7 @@ impl Serve for Counted {
     }
 }
 
-/// Records opened, and outcomes that were failures.
+/// Records opened, and outcomes that were unexpected failures.
 #[derive(Clone)]
 struct Begun {
     begun: std::sync::Arc<std::sync::atomic::AtomicUsize>,
@@ -344,7 +408,9 @@ impl rig_core::serve::Recorder for Begun {
         _id: EffectId,
         outcome: Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
     ) {
-        if outcome.is_err() {
+        if let Err(report) = outcome
+            && report.kind != rig_core::error::ErrorKind::Cancelled
+        {
             self.failed.fetch_add(1, StdOrdering::SeqCst);
         }
     }
@@ -355,7 +421,8 @@ impl rig_core::serve::Recorder for Begun {
 /// handler was polled, no record ever resolves as the "handler dropped its
 /// sink" failure (before the fix, a cancel that landed before the driver's
 /// poll opened a record and then failed it that way), and the driver ends
-/// with nothing in flight.
+/// with nothing in flight. A handler already polled when cancellation arrives
+/// records `Cancelled`; that is a truthful terminal outcome, not a handler defect.
 #[test]
 fn loom_cancel_before_serve_never_polls_the_handler() {
     use futures::FutureExt;
@@ -443,7 +510,9 @@ fn loom_close_for_commands_never_strands_a_late_enqueue() {
                 match shared.enqueue(cmd, &parked, &cx) {
                     Enqueue::Sent => false,
                     Enqueue::Closed => true,
-                    Enqueue::Parked(_) | Enqueue::Refused(_) => panic!("neither"),
+                    Enqueue::Parked(_) | Enqueue::Refused(_) | Enqueue::Cancelled(_) => {
+                        panic!("neither")
+                    }
                 }
             })
         };
@@ -490,6 +559,10 @@ fn loom_a_nested_serial_dispatch_is_refused_from_any_thread() {
             thread::spawn(move || {
                 let (mut cmd, _receiver) = command(2);
                 cmd.parent = Some(EffectId::from_raw(1));
+                cmd.lineage = super::dispatcher::Lineage::new(
+                    cmd.id,
+                    Some(shared.retained_lineage(EffectId::from_raw(1))),
+                );
                 let (_flag, waker) = recording();
                 let cx = Context::from_waker(&waker);
                 let parked = std::sync::Arc::new(futures::task::AtomicWaker::new());
@@ -551,6 +624,111 @@ fn loom_a_parent_cancel_reaches_a_child_that_begins_meanwhile() {
                 flag.is_set(),
                 "a child in flight escaped its parent's cancel"
             ),
+        }
+    });
+}
+
+#[test]
+fn loom_cancel_crosses_a_completed_middle_while_grandchild_starts() {
+    loom::model(|| {
+        let shared = Arc::new(Shared::new(rig_core::serve::ServingPolicy::default()));
+        shared
+            .begin_in_flight(EffectId::from_raw(1), HandlerKey::from("root"), None)
+            .ok()
+            .unwrap();
+        shared
+            .begin_in_flight(
+                EffectId::from_raw(2),
+                HandlerKey::from("middle"),
+                Some(EffectId::from_raw(1)),
+            )
+            .ok()
+            .unwrap();
+        let middle = shared.retained_lineage(EffectId::from_raw(2));
+        shared.end_in_flight(EffectId::from_raw(2));
+        let cancelling = {
+            let shared = shared.clone();
+            thread::spawn(move || shared.cancel_descendants(EffectId::from_raw(1)))
+        };
+        let starting = {
+            let shared = shared.clone();
+            thread::spawn(move || {
+                shared
+                    .begin_lineage(
+                        super::dispatcher::Lineage::new(EffectId::from_raw(3), Some(middle)),
+                        HandlerKey::from("child"),
+                    )
+                    .ok()
+            })
+        };
+        cancelling.join().unwrap();
+        if let Some(flag) = starting.join().unwrap() {
+            assert!(flag.is_set());
+        }
+    });
+}
+
+#[test]
+fn loom_cancel_wakes_a_sender_parking_below_a_completed_middle() {
+    loom::model(|| {
+        let shared = Arc::new(Shared::new(rig_core::serve::ServingPolicy {
+            command_capacity: 1,
+            ..rig_core::serve::ServingPolicy::default()
+        }));
+        shared.dispatcher_opened();
+        shared
+            .begin_in_flight(EffectId::from_raw(1), HandlerKey::from("root"), None)
+            .ok()
+            .unwrap();
+        shared
+            .begin_in_flight(
+                EffectId::from_raw(2),
+                HandlerKey::from("middle"),
+                Some(EffectId::from_raw(1)),
+            )
+            .ok()
+            .unwrap();
+        let middle = shared.retained_lineage(EffectId::from_raw(2));
+        shared.end_in_flight(EffectId::from_raw(2));
+        let (_, filler_waker) = recording();
+        let (filler, _receiver) = command(10);
+        let parked = std::sync::Arc::new(futures::task::AtomicWaker::new());
+        assert!(matches!(
+            shared.enqueue(filler, &parked, &Context::from_waker(&filler_waker)),
+            Enqueue::Sent
+        ));
+        let sending = {
+            let shared = shared.clone();
+            thread::spawn(move || {
+                let (mut child, _receiver) = command(3);
+                child.parent = Some(EffectId::from_raw(2));
+                child.lineage = super::dispatcher::Lineage::new(child.id, Some(middle));
+                let (flag, waker) = recording();
+                let parked = std::sync::Arc::new(futures::task::AtomicWaker::new());
+                let result = shared.enqueue(child, &parked, &Context::from_waker(&waker));
+                (result, flag, parked)
+            })
+        };
+        let cancelling = {
+            let shared = shared.clone();
+            thread::spawn(move || shared.cancel_descendants(EffectId::from_raw(1)))
+        };
+        cancelling.join().unwrap();
+        let (result, flag, parked) = sending.join().unwrap();
+        match result {
+            Enqueue::Cancelled(_) => {}
+            Enqueue::Parked(child) => {
+                assert!(
+                    flag.0.load(StdOrdering::SeqCst),
+                    "cancel must wake parked descendant"
+                );
+                let (_, waker) = recording();
+                assert!(matches!(
+                    shared.enqueue(child, &parked, &Context::from_waker(&waker)),
+                    Enqueue::Cancelled(_)
+                ));
+            }
+            _ => panic!("full buffer only parks or refuses cancellation"),
         }
     });
 }

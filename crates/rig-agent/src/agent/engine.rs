@@ -2283,13 +2283,12 @@ pub(crate) async fn dispatch_tool_call(
         .await
     {
         DispatchAction::Proceed => (kind, None),
-        DispatchAction::Patch(patched) => match patched {
-            patched @ EffectKind::ToolCall { .. } => (patched, None),
-            other => {
-                let report = wrong_family_patch("tool call", &other);
-                (kind, Some(report))
+        DispatchAction::Patch(patched) => {
+            match super::hook::validate_dispatch_patch(&kind, &patched) {
+                Ok(()) => (patched, None),
+                Err(report) => (kind, Some(report)),
             }
-        },
+        }
         DispatchAction::Deny(report) => {
             if report.kind == ErrorKind::Cancelled {
                 return Err(ToolDispatchAbort::Cancelled(report.message));
@@ -2297,7 +2296,10 @@ pub(crate) async fn dispatch_tool_call(
             tracing::info!(tool_name = tool_name, reason = %report.message, "Tool call rejected");
             // A patch an earlier hook made before the denial is what the
             // skipped result reports.
-            let kind = ctx.take_salvaged_patch(id).unwrap_or(kind);
+            let salvaged = ctx.take_salvaged_patch(id);
+            let kind = salvaged
+                .filter(|patched| super::hook::validate_dispatch_patch(&kind, patched).is_ok())
+                .unwrap_or(kind);
             (kind, Some(report))
         }
     };

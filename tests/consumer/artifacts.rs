@@ -19,7 +19,7 @@ pub(crate) fn root() -> PathBuf {
 }
 
 pub(crate) fn cassette(case: &Case) -> Result<PathBuf, Error> {
-    let (provider, ..) = providers::identity(case.provider)?;
+    let (provider, ..) = providers::identity(case)?;
     Ok(cassette_path(
         provider,
         &format!("ecs_consumer/{}", case.id),
@@ -225,8 +225,17 @@ pub(crate) fn check_capture(
     capture: Option<&Value>,
     cassette: &Path,
 ) -> Result<(), Error> {
+    if case.repair
+        && case.provider != Provider::Synthetic
+        && !capture.is_some_and(|capture| {
+            capture.get("execution_succeeded") == Some(&Value::Bool(true))
+                && capture.get("source") == Some(&Value::String("live-provider".into()))
+        })
+    {
+        return Err(Error::Invariant("repository repair requires a completed genuine capture; failed or partial recordings cannot be derived or promoted".into()));
+    }
     if let Some(capture) = capture.filter(|capture| !capture.is_null()) {
-        let (provider, _, _, model) = providers::identity(case.provider)?;
+        let (provider, _, _, model) = providers::identity(case)?;
         if capture.get("case") != Some(&serde_json::json!(case.id))
             || capture.get("provider_model")
                 != Some(&serde_json::json!({"provider":provider,"model":model}))

@@ -1223,6 +1223,42 @@ fn register_refuses_a_family_change_under_a_live_key() {
 
 // ---- the registrar: descriptors now, handlers on the driver's next poll ----
 
+#[test]
+fn direct_registration_supersedes_an_earlier_mailbox_registration() {
+    let (dispatcher, registrar, mut driver) = Bus::channel();
+    let (earlier, earlier_served) = Echo::new();
+    let (latest, latest_served) = Echo::new();
+    registrar.register("echo", earlier).expect("queued");
+    driver.register("echo", latest).expect("installed");
+
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
+    assert!(pending.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    assert!(matches!(pending.poll_unpin(&mut cx), Poll::Ready(Ok(_))));
+    assert_eq!(earlier_served.load(Ordering::SeqCst), 0);
+    assert_eq!(latest_served.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn direct_deregistration_drops_an_earlier_mailbox_registration_immediately() {
+    let (_dispatcher, registrar, mut driver) = Bus::channel();
+    let dropped = Arc::new(AtomicUsize::new(0));
+    registrar
+        .register("flag", DropCounter(dropped.clone()))
+        .expect("queued");
+    let key = HandlerKey::from("flag");
+    assert!(driver.deregister(&key));
+    assert!(registrar.descriptor(&key).is_none());
+    assert_eq!(dropped.load(Ordering::SeqCst), 1);
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let _ = driver.poll_unpin(&mut cx);
+    assert!(
+        !driver.deregister(&key),
+        "removed handler cannot be resurrected"
+    );
+}
+
 #[tokio::test]
 async fn a_dispatch_right_after_a_runtime_registration_is_served_by_the_new_handler() {
     // No driver poll between the registration and the dispatch: the driver's
@@ -1601,6 +1637,7 @@ fn a_command_offered_after_the_close_is_refused_under_the_queue_lock() {
     let (_guard, cancel) = oneshot::channel();
     let offered = shared.enqueue(
         Box::new(super::dispatcher::Command {
+            lineage: super::dispatcher::Lineage::new(rig_core::effect::EffectId::from_raw(9), None),
             id: rig_core::effect::EffectId::from_raw(9),
             key: HandlerKey::from("echo"),
             kind: custom(json!(1)),
@@ -2597,6 +2634,72 @@ fn a_parent_cancel_reaches_a_child_in_flight_whose_pending_lives_elsewhere() {
 }
 
 #[test]
+fn a_detached_child_cannot_answer_success_after_its_parent_is_cancelled() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let mailbox = Arc::new(Mutex::new(Vec::new()));
+    driver
+        .register(
+            "world",
+            Detaching {
+                mailbox: mailbox.clone(),
+            },
+        )
+        .expect("register");
+    let held = Arc::new(Mutex::new(Vec::new()));
+    driver
+        .register(
+            "parent",
+            Parent {
+                key: HandlerKey::from("parent"),
+                child: HandlerKey::from("world"),
+                from_another_thread: false,
+                held: Some(held.clone()),
+                await_child: false,
+            },
+        )
+        .expect("register");
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let mut outer = dispatcher.dispatch(&HandlerKey::from("parent"), custom(json!("outer")));
+    assert!(outer.poll_unpin(&mut cx).is_pending());
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert_eq!(driver.in_flight(), 2);
+    let mut child = held
+        .lock()
+        .expect("held")
+        .pop()
+        .expect("child retained by host");
+    let sink = mailbox
+        .lock()
+        .expect("mailbox")
+        .pop()
+        .expect("sink retained by host");
+    drop(outer);
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert!(sink.is_closed(), "driver published ancestor cancellation");
+    assert_eq!(
+        driver.in_flight(),
+        1,
+        "host still owns the cancelled child's sink"
+    );
+    let mut resolve = sink.resolve(Ok(Outcome::Custom {
+        payload: json!("late success"),
+    }));
+    assert!(resolve.poll_unpin(&mut cx).is_ready());
+    let report = drive_to_outcome(&mut driver, &mut child)
+        .expect("resolved")
+        .expect_err("late host success cannot override ancestor cancellation");
+    assert_eq!(report.kind, ErrorKind::Cancelled);
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert_eq!(driver.in_flight(), 0);
+}
+
+#[test]
 fn a_parent_cancel_reaches_a_child_still_queued() {
     // Serial serving, the child's key busy with another consumer's dispatch:
     // the child is queued when its parent is cancelled. It is never served —
@@ -2841,4 +2944,266 @@ fn a_denied_dispatch_is_denied_on_the_consumers_pending_and_leaves_no_record() {
         0,
         "never resolved: no record"
     );
+}
+
+#[test]
+fn cancellation_reaches_grandchild_after_middle_dispatch_completes() {
+    use super::dispatcher::Shared;
+    use rig_core::effect::EffectId;
+    let shared = Shared::new(ServingPolicy::default());
+    let grandparent = EffectId::from_raw(1);
+    let middle = EffectId::from_raw(2);
+    let child = EffectId::from_raw(3);
+    let _grandparent = shared
+        .begin_in_flight(grandparent, HandlerKey::from("grandparent"), None)
+        .ok()
+        .expect("grandparent active");
+    let _middle = shared
+        .begin_in_flight(middle, HandlerKey::from("middle"), Some(grandparent))
+        .ok()
+        .expect("middle active");
+    let child_cancel = shared
+        .begin_in_flight(child, HandlerKey::from("child"), Some(middle))
+        .ok()
+        .expect("child active");
+    assert!(!shared.end_in_flight(middle));
+    shared.cancel_descendants(grandparent);
+    assert!(
+        child_cancel.is_set(),
+        "completed intermediate dispatch must not sever cancellation ancestry"
+    );
+}
+
+struct CaptureLineage {
+    captured: Arc<Mutex<Option<Dispatcher>>>,
+    complete: bool,
+    detached: Option<Arc<Mutex<Vec<rig_core::serve::DetachedSink>>>>,
+}
+impl Serve for CaptureLineage {
+    type Family = rig_core::effect::family::Dynamic;
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("capture"),
+            family: FamilyDescriptor::Custom {
+                kind: "capture".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+    async fn serve(&self, _: EffectKind, sink: OutcomeSink) {
+        *self.captured.lock().unwrap() = Some(super::SinkDispatch::dispatcher(&sink).unwrap());
+        if let Some(detached) = &self.detached {
+            detached.lock().unwrap().push(sink.detach());
+            return;
+        }
+        if !self.complete {
+            futures::future::pending::<()>().await;
+        }
+        sink.resolve(Ok(Outcome::Custom {
+            payload: json!("complete"),
+        }))
+        .await;
+    }
+}
+
+fn completed_middle_chain(policy: ServingPolicy) -> (Dispatcher, BusDriver, Pending, Dispatcher) {
+    completed_middle_chain_with_sink(policy, None)
+}
+
+fn completed_middle_chain_with_sink(
+    policy: ServingPolicy,
+    detached: Option<Arc<Mutex<Vec<rig_core::serve::DetachedSink>>>>,
+) -> (Dispatcher, BusDriver, Pending, Dispatcher) {
+    let (root, _registrar, mut driver) = Bus::channel_with(policy);
+    let outer_capture = Arc::new(Mutex::new(None));
+    let middle_capture = Arc::new(Mutex::new(None));
+    driver
+        .register(
+            "outer",
+            CaptureLineage {
+                captured: outer_capture.clone(),
+                complete: false,
+                detached,
+            },
+        )
+        .unwrap();
+    driver
+        .register(
+            "middle",
+            CaptureLineage {
+                captured: middle_capture.clone(),
+                complete: true,
+                detached: None,
+            },
+        )
+        .unwrap();
+    let mut outer = root.dispatch(&HandlerKey::from("outer"), custom(json!(null)));
+    let mut cx = Context::from_waker(noop_waker_ref());
+    assert!(outer.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    let parent = outer_capture.lock().unwrap().take().unwrap();
+    let mut middle = parent.dispatch(&HandlerKey::from("middle"), custom(json!(null)));
+    drive_to_outcome(&mut driver, &mut middle).unwrap().unwrap();
+    let retained = middle_capture.lock().unwrap().take().unwrap();
+    assert_eq!(retained.parent(), Some(middle.id()));
+    assert_eq!(
+        driver.in_flight(),
+        1,
+        "middle completed, outer remains active"
+    );
+    (root, driver, outer, retained)
+}
+
+#[test]
+fn retained_lineage_cancels_unpolled_buffered_active_and_serial_queued_children() {
+    for stage in 0..4 {
+        let (root, mut driver, outer, retained) = completed_middle_chain(ServingPolicy {
+            serial_per_handler: true,
+            ..ServingPolicy::default()
+        });
+        let (echo, _gate) = Echo::gated();
+        driver.register("echo", echo).unwrap();
+        let mut cx = Context::from_waker(noop_waker_ref());
+        let _busy = if stage == 3 {
+            let mut busy = root.dispatch(&HandlerKey::from("echo"), custom(json!("busy")));
+            assert!(busy.poll_unpin(&mut cx).is_pending());
+            let _ = driver.poll_unpin(&mut cx);
+            Some(busy)
+        } else {
+            None
+        };
+        let mut child = retained.dispatch(&HandlerKey::from("echo"), custom(json!("child")));
+        if stage > 0 {
+            assert!(child.poll_unpin(&mut cx).is_pending());
+        }
+        if stage > 1 {
+            let _ = driver.poll_unpin(&mut cx);
+        }
+        if stage == 3 {
+            assert_eq!(driver.queued(), 1);
+        }
+        drop(outer);
+        for _ in 0..4 {
+            let _ = driver.poll_unpin(&mut cx);
+        }
+        let report = drive_to_outcome(&mut driver, &mut child)
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(report.kind, ErrorKind::Cancelled, "stage {stage}");
+        assert_eq!(driver.queued(), 0);
+        let mut later = retained
+            .clone()
+            .dispatch(&HandlerKey::from("echo"), custom(json!("later")));
+        assert!(
+            matches!(later.poll_unpin(&mut cx), Poll::Ready(Err(ref e)) if e.kind == ErrorKind::Cancelled)
+        );
+    }
+}
+
+#[test]
+fn retained_lineage_cancels_parked_unary_and_stream_sends() {
+    let (root, mut driver, outer, retained) = completed_middle_chain(ServingPolicy {
+        command_capacity: 1,
+        ..ServingPolicy::default()
+    });
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let mut filler = root.dispatch(&HandlerKey::from("missing"), custom(json!(null)));
+    assert!(filler.poll_unpin(&mut cx).is_pending());
+    let mut unary = retained.dispatch(&HandlerKey::from("missing"), custom(json!(null)));
+    let mut stream = retained.dispatch_stream(
+        &HandlerKey::from("missing"),
+        EffectKind::Completion {
+            request: completion_request_value(),
+            stream: true,
+        },
+    );
+    assert!(unary.poll_unpin(&mut cx).is_pending());
+    assert!(stream.poll_next_unpin(&mut cx).is_pending());
+    assert_eq!(root.shared.parked_senders(), 2);
+    drop(outer);
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert!(
+        matches!(unary.poll_unpin(&mut cx), Poll::Ready(Err(ref e)) if e.kind == ErrorKind::Cancelled)
+    );
+    assert!(
+        matches!(stream.poll_next_unpin(&mut cx), Poll::Ready(Some(Err(ref e))) if e.kind == ErrorKind::Cancelled)
+    );
+    assert!(stream.poll_next_unpin(&mut cx).is_ready());
+}
+
+#[test]
+fn retained_lineage_checks_active_serial_occupancy_past_completed_nodes() {
+    let (_root, mut driver, outer, retained) = completed_middle_chain(ServingPolicy {
+        serial_per_handler: true,
+        ..ServingPolicy::default()
+    });
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let mut reentrant = retained.dispatch(&HandlerKey::from("outer"), custom(json!(null)));
+    assert!(
+        matches!(reentrant.poll_unpin(&mut cx), Poll::Ready(Err(ref e)) if e.kind == ErrorKind::Request)
+    );
+    let mut allowed = retained.dispatch(&HandlerKey::from("middle"), custom(json!(null)));
+    drive_to_outcome(&mut driver, &mut allowed)
+        .unwrap()
+        .unwrap();
+    drop(outer);
+}
+
+#[test]
+fn retained_lineage_reclaims_deep_unique_and_shared_chains_without_recursion() {
+    use super::dispatcher::Lineage;
+    std::thread::Builder::new()
+        .stack_size(64 * 1024)
+        .spawn(|| {
+            let root = Lineage::new(EffectId::from_raw(1), None);
+            let weak = Arc::downgrade(&root);
+            let mut last = root.clone();
+            for id in 2..10_002 {
+                last = Lineage::new(EffectId::from_raw(id), Some(last));
+            }
+            drop(last);
+            assert_eq!(Arc::strong_count(&root), 1);
+            drop(root);
+            assert!(weak.upgrade().is_none());
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
+fn retained_lineage_refuses_queued_child_while_cancelled_ancestor_sink_stays_detached() {
+    let detached = Arc::new(Mutex::new(Vec::new()));
+    let (root, mut driver, outer, retained) = completed_middle_chain_with_sink(
+        ServingPolicy {
+            serial_per_handler: true,
+            ..ServingPolicy::default()
+        },
+        Some(detached.clone()),
+    );
+    let (echo, _gate) = Echo::gated();
+    driver.register("echo", echo).unwrap();
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let mut busy = root.dispatch(&HandlerKey::from("echo"), custom(json!("busy")));
+    assert!(busy.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    let mut child = retained.dispatch(&HandlerKey::from("echo"), custom(json!("child")));
+    assert!(child.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(driver.queued(), 1);
+    assert_eq!(driver.in_flight(), 2);
+    drop(outer);
+    let _ = driver.poll_unpin(&mut cx);
+    assert_eq!(
+        driver.in_flight(),
+        2,
+        "detached ancestor and unrelated blocker remain"
+    );
+    assert!(detached.lock().unwrap()[0].is_closed());
+    assert!(
+        matches!(child.poll_unpin(&mut cx), Poll::Ready(Err(ref report)) if report.kind == ErrorKind::Cancelled)
+    );
+    assert_eq!(driver.queued(), 0);
 }

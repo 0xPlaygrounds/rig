@@ -11,6 +11,28 @@ fn http_error(status: u16) -> CompletionError {
 }
 
 #[test]
+fn retrieval_wrapping_preserves_embedding_error_classification() {
+    for (status, retryable) in [(400, false), (429, true), (503, true)] {
+        let inner = EmbeddingError::ProviderResponse(ProviderResponseError::new(
+            StatusCode::from_u16(status).expect("valid status"),
+            "embedding request failed",
+        ));
+        let direct = ErrorReport::from(&inner);
+        assert_eq!(direct.retryable, retryable);
+        let error = VectorStoreError::EmbeddingError(inner);
+        let wrapped = ErrorReport::from(&error);
+        assert_eq!(wrapped.kind, direct.kind);
+        assert_eq!(wrapped.http_status, direct.http_status);
+        assert_eq!(
+            wrapped.retryable, direct.retryable,
+            "wrapping status {status} must preserve retryability"
+        );
+        assert_eq!(wrapped.message, error.to_string());
+        assert!(!wrapped.source_chain.is_empty());
+    }
+}
+
+#[test]
 fn retry_table_per_status() {
     // Each (status, decision) row is a sign-off entry: 408/425/429/5xx retry,
     // every other status does not, a response-less failure does.
