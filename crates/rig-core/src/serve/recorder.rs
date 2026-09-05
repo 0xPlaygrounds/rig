@@ -33,6 +33,15 @@ pub struct Origin {
 /// it rides in the sink's observer, which is `Send + Sync` on every target, so
 /// a recorder is too.
 pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
+    /// Declare that this runtime records consumer-visible delivery boundaries.
+    /// Handler-only recorders may ignore this optional scheduling metadata.
+    fn begin_delivery_tracking(&self) {}
+    /// A transition at the consumer boundary, after collection rather than
+    /// when a handler produces a value. Order within a batch is call order.
+    fn delivery(&self, _delivery: crate::effect::Delivery) {}
+    /// This recording includes visibility outside the runtime's supported
+    /// observation boundary and cannot prove policy-visible replay.
+    fn unsupported_delivery(&self, _reason: &str) {}
     /// Handlers the driver serves: those registered when recording started,
     /// then each one installed later, as it is installed. A key described
     /// again is the same handler re-registered; the latest description
@@ -54,6 +63,9 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     fn keep_events(&self) -> bool;
     /// One streamed event of `id`.
     fn event(&self, id: EffectId, event: &StreamEvent);
+    /// An error item at its original position in a kept stream. Unlike the
+    /// folded outcome, this includes errors after an earlier terminal item.
+    fn stream_error(&self, _id: EffectId, _error: &ErrorReport) {}
     /// Explicitly published tool output, delivered before `resolve`. A driver
     /// snapshots it without consuming the caller's published context.
     fn tool_output(&self, id: EffectId, output: crate::tool::ToolResultContext);

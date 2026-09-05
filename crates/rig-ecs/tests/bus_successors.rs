@@ -146,6 +146,7 @@ fn a_rebind_before_registration_fails_at_first_dispatch_not_at_bind() {
             layers: Vec::new(),
         }],
         effects: vec![rig_ecs::bus::SceneEffect {
+            streamed: None,
             seq: rig_ecs::bus::Seq(0),
             key: HandlerKey::from("model"),
             kind: completion(),
@@ -159,7 +160,7 @@ fn a_rebind_before_registration_fails_at_first_dispatch_not_at_bind() {
             tool_outputs: None,
         }],
     };
-    let loaded = scene.load(app.world_mut());
+    let loaded = scene.load(app.world_mut()).unwrap();
     assert_eq!(loaded.len(), 1, "the load succeeds with nothing bound");
     assert!(
         app.world().get::<EffectOutcome>(loaded[0]).is_none(),

@@ -265,8 +265,10 @@
       "outcome": {
         "Ok": {
           "outcome": "custom",
-          "accepted": true,
-          "at": "outcome"
+          "payload": {
+            "accepted": true,
+            "at": "outcome"
+          }
         }
       }
     },
@@ -284,8 +286,10 @@
       "outcome": {
         "Ok": {
           "outcome": "custom",
-          "accepted": true,
-          "at": "outcome"
+          "payload": {
+            "accepted": true,
+            "at": "outcome"
+          }
         }
       }
     },

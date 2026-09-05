@@ -137,7 +137,7 @@ Stage 3 (`rig-ecs-pr3-whole-corpus-prompt.md` ruling 3). A call to a granted too
 
 ### 8.3 Nested dispatch (matrix Q)
 
-A tool served by a system (a world-served handler, §8.4) answers by inserting the `EffectOutcome` on its effect entity; what it dispatches on the way is a `PendingEffect` it spawns `ChildOf` the effect it serves, so the child's record names the tool's record as `parent` and inherits the run's `Scope`.
+A tool served by a system (a world-served handler, §8.4) answers by submitting `WorldOutcome::new(outcome)` on its effect entity; `Collect` publishes the `EffectOutcome` in submission order; what it dispatches on the way is a `PendingEffect` it spawns `ChildOf` the effect it serves, so the child's record names the tool's record as `parent` and inherits the run's `Scope`.
 
 | cell | the world | pinned by |
 |---|---|---|
@@ -235,6 +235,43 @@ A layer is the handler's: the world registers the layered `ErasedHandler` (`hand
 | `replay::check_replayable(world, run, &log)` | selects the run's exact `Scope`; rejects policy/row differences and missing handlers. Missing scoped identity or nonempty `PolicyVersion` declaration is unverified, with no builder-header fallback. Custom systems, ordering and otherwise-unhashed settings are the application's version declaration, not automatically fingerprinted code | `run_identity.rs`, `run_replay_policy.rs` |
 | `required` with a route | the agent's `Route` links' keys as `completion` | `anthropic_serving_model_route{,_unselected}` `/header/required` |
 
+Replayers retain recorded model identity/capabilities and include every
+`programs[*].required` row. They clear executable layer metadata until the
+application reapplies its middleware. The positive compatibility check runs
+in the fresh replay world, followed by execution; model, capability, effective
+setting and application-version changes are negative cases
+(`run_replay_metadata.rs`). No policy-hash inputs were dropped to accommodate
+synthetic replayer labels.
+
+### 10.1 Delivery observation
+
+ECS records outcome visibility and stream item batches separately from
+exchange dispatch order in `LogHeader::deliveries`. `Replay::policy_visible`
+enforces these batches between schedule passes and requires kept stream
+bytes. Default replay supports final-answer/exchange consumption and returns
+recorded cancellation errors; policy replay instead requires the same policy
+to cancel the effect without inventing an outcome for it. Missing metadata
+cannot establish policy fidelity; inconsistent metadata or an unreproduced
+cancellation is a diagnostic. Batch identity is not elapsed time.
+
+Policy observers may use `On<Add, EffectOutcome>` or systems ordered after
+all of `BusSet::Collect`, preserving their relevant live/replay ordering.
+Intermediate collector state and handler inboxes are not policy replay
+surfaces. World handlers submit `WorldOutcome` (or typed `Answer<E>`), which
+Collect publishes in submission order; submissions after Collect land in the
+next pass. A direct in-flight `EffectOutcome` insertion records a delivery
+limitation and makes policy replay refuse that recording. Gate denials and
+Judge replacements remain supported. World answer inboxes are transient;
+collect them before a scene save to preserve the submitted result.
+
+`run_delivery.rs` covers reversed concurrent arrivals and coincident answers
+under different archetypes; `bus_delivery.rs` covers opposite first-visible
+winners, single/multiple event batches, cancellations and resumed subsets.
+Agent materialisation and batch landing use `RunSeq` for coincident turns.
+Program-created IDs still depend on the reproduced causal dispatches; saved
+IDs alone do not prove program replay. Arbitrary world state and application
+system ordering remain outside automatic verification.
+
 ## 11. Memory is the graph
 
 Stage 5 (ruling 5). The conversation graph *is* memory; a memory handler is where it persists. `agent::Remembers(entity)` on the agent names the memory handler entity; `agent::Conversation(id)` on the agent the conversation (the run carries a copy of it once spawned). Every op is an effect entity `ChildOf` the run, recorded like any other.
@@ -266,6 +303,20 @@ The required row names `<owner>/memory` as `memory` from `Remembers`. `Memory { 
 | a route never selected | in the row, never dispatched | `anthropic_serving_model_route_unselected` |
 
 ## 13. Resume is a scene load; two runs
+
+Completed stream effects retain `Streamed` events, text and terminal outcome
+through JSON scenes and load without serving again (`bus_scene.rs`). The
+required nullable `SceneEffect.streamed` field distinguishes no state from
+an omitted prefix. Load is fallible: unfinished streams with observed progress
+are refused before the bus or paired graph is spawned. No restart cursor is
+recorded. Unanswered intents with no stream progress may restart under saved
+IDs; this is a cut restriction, not arbitrary mid-flight forking.
+
+Only supported library state and explicitly registered graph extensions are
+saved. Effect-entity application components, resources, system-local and
+external state are host-owned. Insertion observers/change detection can fire
+on load; install application observers afterward or guard restoration.
+
 
 The live-handler regressions in `tests/memory_resume.rs` cover memory finalization before
 scheduling, while queued, after an external write but before its outcome,

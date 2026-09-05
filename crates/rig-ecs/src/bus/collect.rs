@@ -11,10 +11,38 @@ use rig_core::{
 use super::{
     effect::{
         EffectOutcome, InFlight, Issued, Publishing, Serving, Streamed, Streaming, ToolOutputs,
+        WorldOutcome,
     },
     plugin::Progress,
-    record::{Observed, Recording},
+    record::{DeliveryBatch, Observed, Recording},
 };
+
+/// Marker for a library collector's outcome insertion. Removed by settlement;
+/// direct in-flight insertions without it cannot establish policy replay.
+#[derive(Component)]
+pub struct CollectedOutcome;
+
+/// Submitted world answers whose visible outcome has not landed.
+pub type WorldAnswersReady = (With<InFlight>, Without<EffectOutcome>);
+
+/// Publish submitted world answers at the same boundary as task results.
+/// Arrival order is independent of dispatch order and entity archetypes.
+pub fn collect_world(
+    mut commands: Commands,
+    ready: Query<(Entity, &WorldOutcome), WorldAnswersReady>,
+    mut progress: ResMut<Progress>,
+) {
+    let mut ready: Vec<_> = ready.iter().collect();
+    ready.sort_by_key(|(_, outcome)| outcome.order());
+    for (entity, outcome) in ready {
+        commands
+            .entity(entity)
+            .insert(CollectedOutcome)
+            .insert(EffectOutcome(outcome.outcome.clone()))
+            .remove::<WorldOutcome>();
+        progress.mark();
+    }
+}
 
 /// A unary handler's task finished: its outcome lands as [`EffectOutcome`]
 /// and the task leaves the entity; a tool call's published context lands
@@ -28,15 +56,18 @@ pub fn collect_tasks(
     for (entity, mut serving, publishing) in &mut serving {
         if let Some(outcome) = check_ready(&mut serving.0) {
             let mut entity_commands = commands.entity(entity);
-            entity_commands
-                .remove::<Serving>()
-                .insert(EffectOutcome(outcome));
+            entity_commands.remove::<Serving>();
             if let Some(Publishing(published)) = publishing {
                 entity_commands.remove::<Publishing>();
                 if let Some(context) = published.take() {
                     entity_commands.insert(ToolOutputs(context));
                 }
             }
+            // Outcome observers must see durable publication in both live
+            // collection and replay, including error outcomes.
+            entity_commands
+                .insert(CollectedOutcome)
+                .insert(EffectOutcome(outcome));
             progress.mark();
         }
     }
@@ -51,18 +82,24 @@ pub fn collect_streams(
     mut commands: Commands,
     mut streaming: Query<StreamingView, With<InFlight>>,
     recording: Option<Res<Recording>>,
+    batch: Res<DeliveryBatch>,
     mut progress: ResMut<Progress>,
 ) {
     for (entity, Issued(id), mut streaming, mut streamed, observed) in &mut streaming {
+        let mut items = 0;
         loop {
             match streaming.events.try_recv() {
                 Ok(item) => {
+                    items += 1;
                     // A layered handler's events are the observer's to
                     // record, from the innermost hop.
-                    if let (Some(recording), Ok(event), false) = (&recording, &item, observed)
+                    if let (Some(recording), false) = (&recording, observed)
                         && recording.keep_events()
                     {
-                        recording.event(*id, event);
+                        match &item {
+                            Ok(event) => recording.event(*id, event),
+                            Err(error) => recording.stream_error(*id, error),
+                        }
                     }
                     if streamed.outcome.is_none()
                         && let Some(outcome) = streaming.fold.observe(&item)
@@ -91,12 +128,22 @@ pub fn collect_streams(
                     commands
                         .entity(entity)
                         .remove::<Streaming>()
+                        .insert(CollectedOutcome)
                         .insert(EffectOutcome(outcome));
                     progress.mark();
                     break;
                 }
                 Err(TryRecvError::Empty) => break,
             }
+        }
+        if items != 0
+            && let Some(recording) = &recording
+        {
+            recording.delivery(
+                batch.0,
+                *id,
+                rig_core::effect::DeliveryKind::Stream { items },
+            );
         }
     }
 }
@@ -151,7 +198,9 @@ pub fn settle(
             }
             recording.resolve(id, recorded);
         }
-        commands.entity(entity).remove::<(InFlight, Observed)>();
+        commands
+            .entity(entity)
+            .remove::<(InFlight, Observed, CollectedOutcome)>();
         progress.mark();
     }
 }

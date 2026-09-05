@@ -22,6 +22,258 @@ fn request() -> CompletionRequest {
 }
 
 #[test]
+fn replay_keeps_recorded_model_semantics_even_when_it_has_records() {
+    use rig_core::{
+        completion::{ModelRef, ProviderCapabilities},
+        effect::{FamilyDescriptor, HandlerDescriptor},
+        serve::Serve,
+    };
+    let mut log = two_records();
+    for record in &mut log.records {
+        record.kind = EffectKind::Completion {
+            request: request(),
+            stream: false,
+        };
+        record.outcome = Ok(Outcome::Completion(CompletionResponse::new(
+            vec![AssistantContent::text("ok")],
+            Usage::new(),
+            "composing-model",
+        )));
+    }
+    log.header.signature = log
+        .records
+        .iter()
+        .map(|record| (record.key.clone(), record.kind.family()))
+        .collect();
+    let key = log.records[0].key.clone();
+    let family = FamilyDescriptor::Completion {
+        model: ModelRef::new("composing-model"),
+        capabilities: ProviderCapabilities::new().with_native_output_tool_composition(true),
+    };
+    log.header.handlers.push(HandlerDescriptor {
+        key: key.clone(),
+        family: family.clone(),
+        layers: vec!["ApplicationLayer".into()],
+    });
+    let log: EffectLog = serde_json::from_str(&serde_json::to_string(&log).unwrap()).unwrap();
+    for replayer in [
+        EffectLogReplayer::for_key(&log, &key).unwrap(),
+        EffectLogReplayer::for_key_by_id(&log, &key).unwrap(),
+    ] {
+        assert_eq!(replayer.descriptor().family, family);
+        assert!(
+            replayer.descriptor().layers.is_empty(),
+            "middleware must be reapplied by the program"
+        );
+    }
+}
+
+#[test]
+fn replay_registers_all_scope_requirements_and_rejects_conflicts() {
+    use rig_core::effect::{EffectFamily, EffectRow, FamilyDescriptor, HandlerDescriptor};
+    let mut log = EffectLog::default();
+    for (scope, keys) in [
+        ("one", vec!["shared", "first"]),
+        ("two", vec!["shared", "second"]),
+    ] {
+        let mut required = EffectRow::new();
+        for key in keys {
+            required.insert_if_absent(HandlerKey::from(key), EffectFamily::Memory);
+            if !log
+                .header
+                .handlers
+                .iter()
+                .any(|handler| handler.key.as_str() == key)
+            {
+                log.header.handlers.push(HandlerDescriptor {
+                    key: HandlerKey::from(key),
+                    family: FamilyDescriptor::Memory {},
+                    layers: vec![],
+                });
+            }
+        }
+        log.header.programs.insert(
+            scope.into(),
+            ProgramIdentity {
+                required,
+                policy: 0,
+            },
+        );
+    }
+    let replayers = EffectLogReplayer::for_log_by_id(&log).unwrap();
+    assert_eq!(replayers.len(), 3);
+    let mut missing = log.clone();
+    missing
+        .header
+        .handlers
+        .retain(|descriptor| descriptor.key.as_str() != "second");
+    let error = EffectLogReplayer::for_log_by_id(&missing)
+        .err()
+        .expect("a scoped descriptor is required");
+    assert!(
+        error.message.contains("second")
+            && error.message.contains("two")
+            && error.message.contains("descriptor")
+    );
+    let mut conflicting = EffectRow::new();
+    conflicting.insert_if_absent(HandlerKey::from("shared"), EffectFamily::Retrieve);
+    log.header.programs.insert(
+        "conflicting".into(),
+        ProgramIdentity {
+            required: conflicting,
+            policy: 0,
+        },
+    );
+    let error = EffectLogReplayer::check_header(&log).expect_err("conflicting scopes are invalid");
+    assert!(error.message.contains("shared"));
+}
+
+#[test]
+fn taking_resolved_records_releases_delivery_history_but_keeps_in_flight_batches() {
+    use rig_core::{
+        effect::{Delivery, DeliveryKind},
+        serve::{Origin, Recorder},
+    };
+    let recorder = EffectLogRecorder::new();
+    recorder.begin_delivery_tracking();
+    let stream = EffectId::from_raw(100);
+    recorder.begin(
+        stream,
+        HandlerKey::from("stream"),
+        EffectKind::Completion {
+            request: request(),
+            stream: true,
+        },
+        Origin::default(),
+    );
+    recorder.delivery(Delivery {
+        batch: 1,
+        id: stream,
+        kind: DeliveryKind::Stream { items: 1 },
+    });
+    for n in 0..4 {
+        let id = EffectId::from_raw(n);
+        recorder.begin(
+            id,
+            HandlerKey::from("custom"),
+            EffectKind::Custom {
+                kind: "test".into(),
+                payload: serde_json::Value::Null,
+            },
+            Origin::default(),
+        );
+        recorder.delivery(Delivery {
+            batch: n + 2,
+            id,
+            kind: DeliveryKind::Outcome,
+        });
+        recorder.resolve(
+            id,
+            Ok(Outcome::Custom {
+                payload: serde_json::json!(n),
+            }),
+        );
+        let taken = recorder.take();
+        assert_eq!(taken.header.deliveries.as_ref().unwrap().len(), 1);
+        assert_eq!(taken.header.deliveries.as_ref().unwrap()[0].id, id);
+        let retained = recorder.header().deliveries.unwrap();
+        assert_eq!(retained.len(), 1);
+        assert_eq!(retained[0].id, stream);
+    }
+    recorder.delivery(Delivery {
+        batch: 6,
+        id: stream,
+        kind: DeliveryKind::Outcome,
+    });
+    recorder.resolve(stream, Err(ErrorReport::new(ErrorKind::Response, "closed")));
+    let final_log = recorder.take();
+    assert_eq!(final_log.header.deliveries.as_ref().unwrap().len(), 2);
+    assert!(recorder.header().deliveries.unwrap().is_empty());
+    assert_eq!(recorder.in_flight(), 0);
+}
+
+#[test]
+fn discarded_records_do_not_retain_earlier_or_later_delivery_history() {
+    use rig_core::{
+        effect::{Delivery, DeliveryKind},
+        serve::{Origin, Recorder},
+    };
+    let recorder = EffectLogRecorder::new();
+    recorder.begin_delivery_tracking();
+    for n in 0..4 {
+        let id = EffectId::from_raw(n);
+        recorder.begin(
+            id,
+            HandlerKey::from("denied"),
+            EffectKind::Custom {
+                kind: "test".into(),
+                payload: serde_json::Value::Null,
+            },
+            Origin::default(),
+        );
+        let delivery = Delivery {
+            batch: n,
+            id,
+            kind: DeliveryKind::Outcome,
+        };
+        recorder.delivery(delivery.clone());
+        recorder.discard(id);
+        // The ECS outcome observer can run after an async layer discarded.
+        recorder.delivery(delivery);
+        assert!(recorder.take().records.is_empty());
+        assert!(recorder.header().deliveries.unwrap().is_empty());
+    }
+}
+
+#[test]
+fn stream_error_metadata_is_validated_and_released_with_its_records() {
+    use rig_core::serve::{Origin, Recorder};
+    let recorder = EffectLogRecorder::keeping_stream_events();
+    for discarded in [false, true] {
+        let id = EffectId::from_raw(u64::from(discarded));
+        recorder.begin(
+            id,
+            "stream".into(),
+            EffectKind::Completion {
+                request: request(),
+                stream: true,
+            },
+            Origin::default(),
+        );
+        let error = ErrorReport::new(ErrorKind::Response, "error item");
+        recorder.stream_error(id, &error);
+        if discarded {
+            recorder.discard(id);
+            recorder.stream_error(id, &error);
+            assert!(recorder.header().stream_errors.is_empty());
+        } else {
+            recorder.resolve(id, Err(error));
+            let log = recorder.take();
+            assert_eq!(log.header.stream_errors[&id][0].item, 0);
+            EffectLogReplayer::check_header(&log).unwrap();
+            assert!(log.tail(1).header.stream_errors.is_empty());
+            assert!(recorder.header().stream_errors.is_empty());
+            let mut invalid = log.clone();
+            invalid.header.stream_errors.get_mut(&id).unwrap()[0].item = 99;
+            assert!(
+                EffectLogReplayer::check_header(&invalid)
+                    .unwrap_err()
+                    .message
+                    .contains("positions")
+            );
+            let mut invalid = log;
+            invalid.records.clear();
+            assert!(
+                EffectLogReplayer::check_header(&invalid)
+                    .unwrap_err()
+                    .message
+                    .contains("kept stream")
+            );
+        }
+    }
+}
+
+#[test]
 fn effect_record_and_log_round_trip() {
     let log: EffectLog = EffectLog::from_records(vec![
         EffectRecord {
@@ -124,7 +376,12 @@ fn the_recorder_finds_the_newest_slot_first() {
         kind(),
         rig_core::serve::Origin::default(),
     );
-    recorder.resolve(id, Ok(Outcome::Custom(serde_json::json!("newest"))));
+    recorder.resolve(
+        id,
+        Ok(Outcome::Custom {
+            payload: serde_json::json!("newest"),
+        }),
+    );
     let log = recorder.take();
     assert_eq!(log.records.len(), 1, "one slot resolved");
     assert_eq!(
@@ -190,9 +447,9 @@ fn two_records() -> EffectLog {
             id: EffectId::from_raw(1),
             key: HandlerKey::from("model"),
             kind: custom_kind(),
-            outcome: Ok(rig_core::effect::Outcome::Custom(
-                serde_json::json!({"n": 1}),
-            )),
+            outcome: Ok(rig_core::effect::Outcome::Custom {
+                payload: serde_json::json!({"n": 1}),
+            }),
             events: None,
         },
         EffectRecord {
@@ -202,9 +459,9 @@ fn two_records() -> EffectLog {
             id: EffectId::from_raw(2),
             key: HandlerKey::from("model"),
             kind: custom_kind(),
-            outcome: Ok(rig_core::effect::Outcome::Custom(
-                serde_json::json!({"n": 2}),
-            )),
+            outcome: Ok(rig_core::effect::Outcome::Custom {
+                payload: serde_json::json!({"n": 2}),
+            }),
             events: None,
         },
     ])

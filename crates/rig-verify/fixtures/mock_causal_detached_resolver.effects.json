@@ -199,8 +199,10 @@
       "outcome": {
         "Ok": {
           "outcome": "custom",
-          "accepted": true,
-          "at": "lookup"
+          "payload": {
+            "accepted": true,
+            "at": "lookup"
+          }
         }
       },
       "parent": 2

@@ -31,6 +31,23 @@ impl ContextValue for Secret {
     const KEY: &'static str = "test.secret";
 }
 
+#[derive(Resource, Default)]
+struct AtOutcome(Vec<Option<String>>);
+
+fn observe_publication(
+    added: On<Add, EffectOutcome>,
+    outputs: Query<&ToolOutputs>,
+    mut observed: ResMut<AtOutcome>,
+) {
+    observed.0.push(
+        outputs
+            .get(added.event().entity)
+            .ok()
+            .and_then(|output| output.0.result::<Artifact>().unwrap())
+            .map(|artifact| artifact.0),
+    );
+}
+
 struct Publish {
     fail: bool,
 }
@@ -88,6 +105,8 @@ fn dispatch(world: &mut World, secret: &str) -> Entity {
 fn serialized_replay_preserves_results_on_success_and_error_without_recording_credentials() {
     for fail in [false, true] {
         let mut live = app();
+        live.init_resource::<AtOutcome>()
+            .add_observer(observe_publication);
         EffectLogResource::install(live.world_mut(), rig_effect_log::EffectLogRecorder::new());
         register(&mut live, "tool:publish", Publish { fail });
         let effect = dispatch(live.world_mut(), "recording-secret-do-not-log");
@@ -109,6 +128,9 @@ fn serialized_replay_preserves_results_on_success_and_error_without_recording_cr
         assert!(!json.contains("test.secret"));
         let log = serde_json::from_str(&json).unwrap();
         let mut replay = app();
+        replay
+            .init_resource::<AtOutcome>()
+            .add_observer(observe_publication);
         Handlers::with(replay.world_mut(), |handlers| {
             Replay::default().register(handlers, &log)
         })
@@ -118,6 +140,14 @@ fn serialized_replay_preserves_results_on_success_and_error_without_recording_cr
         tick_until(&mut replay, "replayed publication", |w| {
             w.get::<EffectOutcome>(effect).is_some()
         });
+        assert_eq!(
+            live.world().resource::<AtOutcome>().0,
+            [Some("artifact-123".into())]
+        );
+        assert_eq!(
+            replay.world().resource::<AtOutcome>().0,
+            live.world().resource::<AtOutcome>().0
+        );
         assert_eq!(
             serde_json::to_value(&replay.world().get::<EffectOutcome>(effect).unwrap().0).unwrap(),
             serde_json::to_value(answer).unwrap()
@@ -396,7 +426,7 @@ fn world_native_published_output_is_recorded_and_mismatched_replay_does_not_publ
         .unwrap();
     live.world_mut().entity_mut(effect).insert((
         ToolOutputs(output),
-        EffectOutcome(Ok(Outcome::ToolResult {
+        rig_ecs::bus::WorldOutcome::new(Ok(Outcome::ToolResult {
             result: ToolResult::success(ToolOutput::text("world-answer")),
         })),
     ));

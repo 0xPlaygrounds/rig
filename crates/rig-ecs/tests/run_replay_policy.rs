@@ -87,6 +87,20 @@ fn scope_selection_never_searches_for_another_matching_policy() {
         .required
         .insert("tool:foreign".into(), rig_core::effect::EffectFamily::Tool);
     log.header.programs.insert("aaa/other".into(), other);
+    // The unrelated scope is internally valid, while its required row is
+    // deliberately different from this run's. Scope selection is the test.
+    log.header
+        .handlers
+        .push(rig_core::effect::HandlerDescriptor {
+            key: "tool:foreign".into(),
+            family: rig_core::effect::FamilyDescriptor::Tool {
+                name: "foreign".into(),
+                description: "other scope".into(),
+                parameters: serde_json::json!({"type": "object"}),
+                embedding: None,
+            },
+            layers: vec![],
+        });
     check_replayable(app.world_mut(), run, &log).unwrap();
     log.header.programs.remove(&scope);
     assert!(

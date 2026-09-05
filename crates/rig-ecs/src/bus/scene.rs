@@ -1,6 +1,7 @@
 //! A scene is a checkpoint: the effect entities as data, and the bound
-//! descriptors, so a world rebuilt from it re-issues exactly what was not
-//! answered.
+//! descriptors. Safe unanswered intents are re-issued under saved ids;
+//! completed answers and streams are restored. A partial unfinished stream
+//! cannot resume without a cursor and is refused before entities are spawned.
 
 use bevy_ecs::prelude::*;
 use rig_core::{
@@ -11,7 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     effect::{
-        EffectOutcome, Held, Issued, PendingEffect, Reserved, Scope, Seq, ToolInputs, ToolOutputs,
+        EffectOutcome, Held, Issued, PendingEffect, Reserved, Scope, Seq, Streamed, ToolInputs,
+        ToolOutputs,
     },
     handlers::Bound,
 };
@@ -21,7 +23,12 @@ use rig_core::tool::ToolContext;
 /// index of its parent in the scene), scope, and whether it was held.
 /// Never an `Entity`: a scene remaps them by position. In-flight state is
 /// not saved — an effect taken but not answered is saved as intent and
-/// re-issued under its saved id at load.
+/// re-issued under its saved id at load. Completed streams retain their
+/// collected state. Unfinished streams with observed progress cannot resume:
+/// no provider cursor exists to prevent their prefix reaching policy twice.
+/// Unanswered intents without stream progress restart under their saved id.
+/// Submitted `WorldOutcome` inboxes are transient: collect before saving to
+/// retain their results, just as for a ready handler task.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SceneEffect {
     /// The saved dispatch order.
@@ -36,6 +43,11 @@ pub struct SceneEffect {
     /// The answer, if it had one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<Result<Outcome, ErrorReport>>,
+    /// Collected stream state, including unfinished progress. Required on the
+    /// wire: `null` establishes that there was no stream state to preserve.
+    /// Omitting it cannot distinguish a safe restart from a lost prefix.
+    #[serde(deserialize_with = "Option::deserialize")]
+    pub streamed: Option<Streamed>,
     /// The index in [`Scene::effects`] of the effect it descends from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<usize>,
@@ -62,8 +74,9 @@ pub struct SceneEffect {
 }
 
 /// The bus half of a scene: what served each key, and every effect entity
-/// as data. The crate's own serde form; the `reflect` feature (later)
-/// carries a host's other components beside it.
+/// as data. This serde form owns only library effect components. Application
+/// components on effect entities remain the host's responsibility;
+/// `agent::scene::SceneExtensions` applies to the supported graph entities.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Scene {
     /// The bound descriptors, by key.
@@ -125,6 +138,7 @@ impl Scene {
                 outcome: entity_ref
                     .get::<EffectOutcome>()
                     .map(|outcome| outcome.0.clone()),
+                streamed: entity_ref.get::<Streamed>().cloned(),
                 parent,
                 parent_ref,
                 scope: entity_ref.get::<Scope>().map(|scope| scope.0.clone()),
@@ -147,7 +161,11 @@ impl Scene {
     /// say what each key needs. Returns the spawned entities, by scene
     /// index. A [`SceneEffect::parent_ref`] is not resolved here; see
     /// [`Scene::load_with`].
-    pub fn load(&self, world: &mut World) -> Vec<Entity> {
+    ///
+    /// Refuses unfinished streams with delivered progress before spawning
+    /// anything. Load invokes insertion observers and change detection;
+    /// install application observers afterward or guard rehydration explicitly.
+    pub fn load(&self, world: &mut World) -> Result<Vec<Entity>, ErrorReport> {
         self.load_with(world, |_| None)
     }
 
@@ -158,13 +176,21 @@ impl Scene {
         &self,
         world: &mut World,
         sibling: impl Fn(usize) -> Option<Entity>,
-    ) -> Vec<Entity> {
+    ) -> Result<Vec<Entity>, ErrorReport> {
+        self.validate_resume()?;
         let mut spawned: Vec<Entity> = Vec::with_capacity(self.effects.len());
         for effect in &self.effects {
             let mut entity = world.spawn(PendingEffect {
                 key: effect.key.clone(),
                 kind: effect.kind.clone(),
             });
+            // Restore stream data before the answer so answer observers can
+            // inspect the complete snapshot. Unanswered intents always restart.
+            if effect.outcome.is_some()
+                && let Some(streamed) = &effect.streamed
+            {
+                entity.insert(streamed.clone());
+            }
             if let Some(id) = effect.id {
                 match &effect.outcome {
                     Some(outcome) => {
@@ -205,7 +231,32 @@ impl Scene {
                 world.entity_mut(child).insert(ChildOf(parent));
             }
         }
-        spawned
+        Ok(spawned)
+    }
+
+    /// Validate the stream cut before spawning anything. A stream that has
+    /// delivered a prefix but has not closed needs a provider cursor or host
+    /// reconciliation, neither of which a generic scene can supply. Save
+    /// before stream progress or after completion for automatic restoration.
+    pub fn validate_resume(&self) -> Result<(), ErrorReport> {
+        for effect in &self.effects {
+            if effect.outcome.is_none()
+                && effect.streamed.as_ref().is_some_and(|streamed| {
+                    !streamed.events.is_empty()
+                        || !streamed.text.is_empty()
+                        || streamed.outcome.is_some()
+                })
+            {
+                return Err(ErrorReport::new(
+                    rig_core::error::ErrorKind::Request,
+                    format!(
+                        "scene resume refused: unfinished stream for `{}` ({:?}) already delivered progress; no restart cursor is recorded",
+                        effect.key, effect.id
+                    ),
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// The first key the scene needs that `handlers` does not describe, or

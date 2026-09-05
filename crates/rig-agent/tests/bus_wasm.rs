@@ -55,7 +55,7 @@ impl Serve for Echo {
         match kind {
             EffectKind::Custom { payload, .. } => {
                 self.served.set(self.served.get() + 1);
-                sink.resolve(Ok(Outcome::Custom(payload))).await;
+                sink.resolve(Ok(Outcome::Custom { payload })).await;
             }
             EffectKind::Completion { stream: true, .. } => {
                 let mut out = sink.writer();
@@ -132,7 +132,7 @@ async fn a_unary_dispatch_resolves_through_a_spawn_local_driver() {
         .dispatch(&HandlerKey::from("echo"), custom(7))
         .await
         .expect("served");
-    assert!(matches!(outcome, Outcome::Custom(ref v) if v["n"] == 7));
+    assert!(matches!(outcome, Outcome::Custom { payload: ref v } if v["n"] == 7));
     assert_eq!(served.get(), 1);
 
     // Polled once per yield with a no-op waker too: what a frame-ticked
@@ -212,5 +212,5 @@ async fn a_stream_dropped_mid_flight_is_observed_by_the_handler() {
         .dispatch(&HandlerKey::from("echo"), custom(1))
         .await
         .expect("served after the cancel");
-    assert!(matches!(outcome, Outcome::Custom(_)));
+    assert!(matches!(outcome, Outcome::Custom { payload: _ }));
 }

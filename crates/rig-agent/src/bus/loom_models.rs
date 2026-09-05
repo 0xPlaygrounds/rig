@@ -307,9 +307,9 @@ impl Serve for Counted {
             }
         })
         .await;
-        sink.resolve(Ok(rig_core::effect::Outcome::Custom(
-            serde_json::Value::Null,
-        )))
+        sink.resolve(Ok(rig_core::effect::Outcome::Custom {
+            payload: serde_json::Value::Null,
+        }))
         .await;
     }
 }
