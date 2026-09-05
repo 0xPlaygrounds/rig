@@ -930,13 +930,42 @@ pub enum DispatchAction {
     /// Dispatch as is.
     Proceed,
     /// Dispatch this effect instead. A patch must keep the family; the
-    /// engine rejects a family change as an internal error.
+    /// stack rejects a family change as an internal error before later hooks
+    /// observe it. Tool calls must also retain their target name; only their
+    /// arguments may be patched.
     Patch(EffectKind),
     /// Do not dispatch: the effect resolves failed with this report and
     /// never reaches a handler. For a tool call a report of kind
     /// `Cancelled` cancels the run; any other kind becomes the skipped
     /// result the model sees. For a completion any report fails the turn.
     Deny(ErrorReport),
+}
+
+/// Validate before a patch becomes visible to policy or execution.
+pub(crate) fn validate_dispatch_patch(
+    current: &EffectKind,
+    next: &EffectKind,
+) -> Result<(), ErrorReport> {
+    if current.family() != next.family() {
+        return Err(ErrorReport::new(
+            ErrorKind::Internal,
+            format!(
+                "a hook patched a {} dispatch into a `{}` effect",
+                current.name(),
+                next.name()
+            ),
+        ));
+    }
+    if let (EffectKind::ToolCall { name: current, .. }, EffectKind::ToolCall { name: next, .. }) =
+        (current, next)
+        && current != next
+    {
+        return Err(ErrorReport::new(
+            ErrorKind::Other,
+            "a dispatch patch cannot change the tool target",
+        ));
+    }
+    Ok(())
 }
 
 impl DispatchAction {
@@ -1778,7 +1807,15 @@ impl AgentHook for HookStack {
             };
             match hook.dispatch(ctx, current).await {
                 DispatchAction::Proceed => {}
-                DispatchAction::Patch(next) => patched = Some(next),
+                DispatchAction::Patch(next) => {
+                    if let Err(report) = validate_dispatch_patch(current.kind, &next) {
+                        if let Some(kind) = patched {
+                            ctx.salvage_patch(event.id, kind);
+                        }
+                        return DispatchAction::Deny(report);
+                    }
+                    patched = Some(next);
+                }
                 deny @ DispatchAction::Deny(_) => {
                     // The denial wins, but an earlier hook's patch is what
                     // the skipped result must report: keep it for the engine.
