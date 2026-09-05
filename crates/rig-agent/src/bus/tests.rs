@@ -1223,6 +1223,42 @@ fn register_refuses_a_family_change_under_a_live_key() {
 
 // ---- the registrar: descriptors now, handlers on the driver's next poll ----
 
+#[test]
+fn direct_registration_supersedes_an_earlier_mailbox_registration() {
+    let (dispatcher, registrar, mut driver) = Bus::channel();
+    let (earlier, earlier_served) = Echo::new();
+    let (latest, latest_served) = Echo::new();
+    registrar.register("echo", earlier).expect("queued");
+    driver.register("echo", latest).expect("installed");
+
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let mut pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!(1)));
+    assert!(pending.poll_unpin(&mut cx).is_pending());
+    let _ = driver.poll_unpin(&mut cx);
+    assert!(matches!(pending.poll_unpin(&mut cx), Poll::Ready(Ok(_))));
+    assert_eq!(earlier_served.load(Ordering::SeqCst), 0);
+    assert_eq!(latest_served.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn direct_deregistration_drops_an_earlier_mailbox_registration_immediately() {
+    let (_dispatcher, registrar, mut driver) = Bus::channel();
+    let dropped = Arc::new(AtomicUsize::new(0));
+    registrar
+        .register("flag", DropCounter(dropped.clone()))
+        .expect("queued");
+    let key = HandlerKey::from("flag");
+    assert!(driver.deregister(&key));
+    assert!(registrar.descriptor(&key).is_none());
+    assert_eq!(dropped.load(Ordering::SeqCst), 1);
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let _ = driver.poll_unpin(&mut cx);
+    assert!(
+        !driver.deregister(&key),
+        "removed handler cannot be resurrected"
+    );
+}
+
 #[tokio::test]
 async fn a_dispatch_right_after_a_runtime_registration_is_served_by_the_new_handler() {
     // No driver poll between the registration and the dispatch: the driver's

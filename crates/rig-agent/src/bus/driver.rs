@@ -180,10 +180,8 @@ impl BusDriver {
         key: impl Into<HandlerKey>,
         handler: ErasedHandler,
     ) -> Result<(), ErrorReport> {
-        let key = key.into();
-        self.shared
-            .publish_descriptor(key.clone(), handler.descriptor())?;
-        self.install(key, handler);
+        self.registrar().register_erased(key, handler)?;
+        self.apply(self.mailbox.take_pending());
         Ok(())
     }
 
@@ -210,8 +208,9 @@ impl BusDriver {
 
     /// Remove the handler serving `key`. Returns whether one was registered.
     pub fn deregister(&mut self, key: &HandlerKey) -> bool {
-        let published = self.shared.retract_descriptor(key);
-        self.handlers.remove(key).is_some() || published
+        let removed = self.registrar().deregister(key);
+        self.apply(self.mailbox.take_pending());
+        removed
     }
 
     /// A handle for registering on this bus once the driver is out of hand
@@ -240,7 +239,11 @@ impl BusDriver {
 
     /// Apply what the registrars posted since the last poll.
     fn apply_registrations(&mut self, cx: &Context<'_>) {
-        for registration in self.mailbox.drain(cx) {
+        self.apply(self.mailbox.drain(cx));
+    }
+
+    fn apply(&mut self, registrations: VecDeque<Registration>) {
+        for registration in registrations {
             match registration {
                 Registration::Install { key, handler } => self.install(key, handler),
                 Registration::Remove { key } => {

@@ -339,18 +339,14 @@ impl Shared {
     }
 
     /// Retract the descriptor under `key`: later dispatches answer
-    /// `HandlerUnavailable`. Returns whether one was published.
+    /// `HandlerUnavailable`. Returns whether one was published. The mailbox
+    /// wakes the driver after releasing the registration lock.
     pub(super) fn retract_descriptor(&self, key: &HandlerKey) -> bool {
-        let removed = self
-            .descriptors
+        self.descriptors
             .write()
             .unwrap_or_else(PoisonError::into_inner)
             .remove(key)
-            .is_some();
-        // Under serial serving the driver may hold commands queued for this
-        // key; it drains them with `HandlerUnavailable` on its next poll.
-        self.wake_driver();
-        removed
+            .is_some()
     }
 
     fn wake_driver(&self) {

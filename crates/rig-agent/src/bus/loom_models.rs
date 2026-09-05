@@ -134,6 +134,66 @@ impl Serve for Nothing {
     async fn serve(&self, _kind: EffectKind, _sink: rig_core::serve::OutcomeSink) {}
 }
 
+struct Tagged(&'static str);
+
+impl Serve for Tagged {
+    type Family = rig_core::effect::family::Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("k"),
+            family: FamilyDescriptor::Custom {
+                kind: self.0.into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _kind: EffectKind, sink: rig_core::serve::OutcomeSink) {
+        sink.resolve(Ok(rig_core::effect::Outcome::Custom {
+            payload: serde_json::json!(self.0),
+        }))
+        .await;
+    }
+}
+
+#[test]
+fn loom_concurrent_registrations_publish_and_serve_the_same_handler() {
+    use futures::FutureExt;
+
+    loom::model(|| {
+        let (dispatcher, registrar, mut driver) = Bus::channel();
+        let other = registrar.clone();
+        let first = thread::spawn(move || registrar.register("k", Tagged("first")));
+        let second = thread::spawn(move || other.register("k", Tagged("second")));
+        first.join().unwrap().expect("registered first");
+        second.join().unwrap().expect("registered second");
+
+        let key = HandlerKey::from("k");
+        let described = dispatcher.descriptor(&key).expect("published");
+        let FamilyDescriptor::Custom { kind } = described.family else {
+            panic!("custom handler");
+        };
+        let mut pending = dispatcher.dispatch(
+            &key,
+            EffectKind::Custom {
+                kind: kind.clone().into(),
+                payload: serde_json::Value::Null,
+            },
+        );
+        let (_flag, waker) = recording();
+        let mut cx = Context::from_waker(&waker);
+        assert!(pending.poll_unpin(&mut cx).is_pending());
+        let _ = driver.poll_unpin(&mut cx);
+        let std::task::Poll::Ready(Ok(rig_core::effect::Outcome::Custom { payload })) =
+            pending.poll_unpin(&mut cx)
+        else {
+            panic!("registered handler must answer");
+        };
+        assert_eq!(payload, serde_json::json!(kind));
+    });
+}
+
 /// A registration posted before a dispatch (program order on the
 /// registering thread) is installed before that dispatch is served: the
 /// driver takes the queue first and the mailbox second.
@@ -149,10 +209,9 @@ fn loom_a_registration_before_a_dispatch_is_installed_first() {
             let shared = Arc::clone(&shared);
             let mailbox = Arc::clone(&mailbox);
             thread::spawn(move || {
-                mailbox.post(Registration::Install {
-                    key: HandlerKey::from("k"),
-                    handler: ErasedHandler::new(Nothing),
-                });
+                mailbox
+                    .register(&shared, HandlerKey::from("k"), ErasedHandler::new(Nothing))
+                    .expect("register");
                 let (cmd, receiver) = command(1);
                 let (_flag, waker) = recording();
                 let cx = Context::from_waker(&waker);
