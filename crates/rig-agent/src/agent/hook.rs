@@ -411,8 +411,10 @@ impl HookContext {
     /// Bind a typed view to a key that carries its family (what the agent
     /// and its registries mint), on the run's bus. The view is scoped to
     /// this context by its lifetime: it routes through the run's driver and
-    /// cannot outlive the run — storing it in a field or moving it into a
-    /// spawned task does not compile. A dispatch a hook makes this way is
+    /// cannot outlive its borrow of the context — storing it in a `'static`
+    /// field or moving it into a spawned task does not compile. Request
+    /// futures returned by the view are owned; see [`RunHandle`] for their
+    /// driving and cancellation responsibilities. A dispatch a hook makes this way is
     /// served and recorded but does not re-enter the hook stack. Fails when
     /// the context was built outside a run.
     #[track_caller]
@@ -1853,15 +1855,25 @@ impl AgentHook for HookStack {
     }
 }
 
-/// A typed view a hook bound through its [`HookContext`], scoped to the
-/// run by its lifetime: it is `!'static`, so a hook cannot store it in a
-/// field or move it into a spawned task — the compiler refuses. It offers
+/// A typed view a hook bound through its [`HookContext`], borrowing that
+/// context: a hook cannot store it in a `'static` field or move it into a
+/// task requiring `'static` — the compiler refuses. It offers
 /// the family-generic API of [`Handle`](crate::bus::Handle) by
 /// delegation rather than `Deref` (a `Deref` to the `Clone` handle would
 /// hand back an owned `'static` view through `.clone()`, which is the one
 /// thing this type exists to prevent). A host that wants an owned handle
 /// takes it from a [`Dispatcher`](crate::bus::Dispatcher) it holds
 /// itself.
+///
+/// The lifetime constrains the view, not the request futures returned by
+/// [`dispatch`](Self::dispatch), [`complete`](Self::complete), or
+/// [`top_n`](Self::top_n). Those futures own a single dispatch and can outlive
+/// the view. They do not retain permission to create further dispatches and
+/// do not drive the bus themselves. Await them within the hook while the run's
+/// driver is serving, or arrange continued serving through a host-owned driver.
+/// Dropping an unfinished request future cancels that dispatch; dropping this
+/// view alone does not. A future retained beyond the run is not a promise that
+/// the run's driver will continue serving it.
 ///
 /// ```compile_fail
 /// use rig_agent::agent::{HookContext, RunHandle};
