@@ -316,3 +316,61 @@ fn a_provider_response_travels_with_the_report() {
     assert!(plain.provider_response.is_none());
     assert_eq!(plain.provider_response_body(), None);
 }
+
+#[test]
+fn embedding_and_rerank_reports_retain_structured_provider_metadata() {
+    let response = ProviderResponseError::new(StatusCode::TOO_MANY_REQUESTS, "retry later")
+        .with_provider_request_id(Some("req-retained".into()));
+    let embedding = EmbeddingError::ProviderResponse(response.clone());
+    let rerank = RerankError::ProviderResponse(response.clone());
+    let wrapped =
+        VectorStoreError::EmbeddingError(EmbeddingError::ProviderResponse(response.clone()));
+    for report in [
+        ErrorReport::from(&embedding),
+        ErrorReport::from(&rerank),
+        ErrorReport::from(&wrapped),
+    ] {
+        assert_eq!(report.request_id.as_deref(), Some("req-retained"));
+        assert_eq!(
+            serde_json::to_value(report.provider_response.as_deref()).unwrap(),
+            serde_json::to_value(Some(&response)).unwrap()
+        );
+        assert!(report.retryable);
+        let restored: ErrorReport =
+            serde_json::from_value(serde_json::to_value(&report).unwrap()).unwrap();
+        assert_eq!(restored.request_id, report.request_id);
+        assert!(restored.provider_response.is_some());
+    }
+}
+
+#[test]
+fn embedding_and_rerank_http_reports_retain_body_and_headers() {
+    let make_error = || {
+        let mut headers = http::HeaderMap::new();
+        headers.insert("retry-after", http::HeaderValue::from_static("7"));
+        http_client::Error::InvalidStatusCodeWithDetails {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            body: "temporary outage".into(),
+            headers: Box::new(headers),
+        }
+    };
+    for report in [
+        ErrorReport::from(EmbeddingError::HttpError(make_error())),
+        ErrorReport::from(RerankError::HttpError(make_error())),
+    ] {
+        let response = report.provider_response.expect("structured HTTP response");
+        assert_eq!(response.body, "temporary outage");
+        assert_eq!(
+            response
+                .headers
+                .as_ref()
+                .expect("retained headers")
+                .get("retry-after")
+                .expect("retry header"),
+            "7"
+        );
+        assert_eq!(response.status, Some(StatusCode::SERVICE_UNAVAILABLE));
+        assert!(report.retryable);
+        assert!(report.request_id.is_none());
+    }
+}
