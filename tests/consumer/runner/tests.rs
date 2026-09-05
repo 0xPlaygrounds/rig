@@ -32,7 +32,7 @@ async fn request_misses_and_unconsumed_interactions_fail_with_the_cassette_path(
     let digest = artifacts::digest(&original)?;
     let wire = artifacts::safe_cassette(&original)?;
     let candidate = assert_fs::TempDir::new().unwrap();
-    let path = candidate.join("provider.yaml");
+    let path = candidate.path().join("provider.yaml");
     let changed = wire.replacen("Fix the greeting typo", "A different required request", 1);
     assert_ne!(changed, wire);
     std::fs::write(&path, changed)?;
@@ -109,7 +109,7 @@ async fn candidate_replay_checks_observations_and_resume_checks_the_supplied_cut
     let candidate = assert_fs::TempDir::new().unwrap();
     artifacts::save_evidence(candidate.path(), &evidence)?;
     artifacts::compare_from(&case, &evidence, Some(candidate.path()))?;
-    artifacts::write(&candidate.join("observations.json"), &json!([]))?;
+    artifacts::write(&candidate.path().join("observations.json"), &json!([]))?;
     assert!(artifacts::compare_from(&case, &evidence, Some(candidate.path())).is_err());
     let invocation = parse([
         "verify".into(),
@@ -143,7 +143,7 @@ async fn derivation_refuses_unsafe_wire_bytes_and_stale_capture_attribution() ->
     let candidate = assert_fs::TempDir::new().unwrap();
     let wire = artifacts::safe_cassette(&artifacts::cassette(&case)?)?;
     std::fs::write(
-        candidate.join("provider.yaml"),
+        candidate.path().join("provider.yaml"),
         format!("{wire}\n# authorization: bearer controlled-test-token\n"),
     )?;
     let invocation = parse([
@@ -160,10 +160,10 @@ async fn derivation_refuses_unsafe_wire_bytes_and_stale_capture_attribution() ->
         0,
         "unsafe input must fail before replay begins"
     );
-    std::fs::write(candidate.join("provider.yaml"), wire)?;
+    std::fs::write(candidate.path().join("provider.yaml"), wire)?;
     artifacts::write(
-        &candidate.join("capture.json"),
-        &json!({"case":"a-different-case","provider_model":{"provider":"anthropic","model":"wrong-model"},"cassette_sha256":artifacts::digest(&candidate.join("provider.yaml"))?}),
+        &candidate.path().join("capture.json"),
+        &json!({"case":"a-different-case","provider_model":{"provider":"anthropic","model":"wrong-model"},"cassette_sha256":artifacts::digest(&candidate.path().join("provider.yaml"))?}),
     )?;
     let result = one(&case, &invocation, &budget).await;
     assert!(result.is_err_and(|error| error.to_string().contains("capture provenance")));
@@ -179,11 +179,11 @@ async fn failed_derivation_evidence_is_not_promotable() -> Result<(), Error> {
     let evidence = artifacts::canonical(execute(&case, Scripted).await?);
     let candidate = assert_fs::TempDir::new().unwrap();
     artifacts::save_evidence(candidate.path(), &evidence)?;
-    artifacts::write(&candidate.join("case.json"), &case)?;
+    artifacts::write(&candidate.path().join("case.json"), &case)?;
     assert!(artifacts::promote(&case, candidate.path(), &evidence).is_err());
-    artifacts::write(&candidate.join("observations.json"), &json!([]))?;
+    artifacts::write(&candidate.path().join("observations.json"), &json!([]))?;
     artifacts::write(
-        &candidate.join("provenance.json"),
+        &candidate.path().join("provenance.json"),
         &json!({"schema":1,"case":case.id,"source":"synthetic", "artifacts_sha256":artifacts::evidence_digests(candidate.path())?}),
     )?;
     assert!(artifacts::promote(&case, candidate.path(), &evidence).is_err());
@@ -242,7 +242,7 @@ async fn collapsed_batches_changed_descriptors_and_lost_stream_state_are_rejecte
         }
     }
     assert!(lost > 0, "fault must remove actual completed stream state");
-    artifacts::write(&candidate.join("checkpoints.json"), &cuts)?;
+    artifacts::write(&candidate.path().join("checkpoints.json"), &cuts)?;
     let invocation = parse([
         "resume".into(),
         "--case".into(),
