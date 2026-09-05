@@ -367,6 +367,8 @@ jobs:
         with:
           sccache: "true"
           nextest: "true"
+          # Repository-repair tests format proposed patches inside isolation.
+          components: rustfmt
 
       # `nextest` below runs with `--features bedrock`, which does not compile
       # the pure default-feature test graph. Check the root integration tests

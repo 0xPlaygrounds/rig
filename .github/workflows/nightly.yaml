@@ -149,6 +149,8 @@ jobs:
         with:
           nextest: "true"
           protoc: "true"
+          # Repository-repair tests format proposed patches inside isolation.
+          components: rustfmt
 
       # The workspace-wide sweep over every feature. This is the step that
       # was ci.yaml's `Test with latest nextest release` before the fast/full
