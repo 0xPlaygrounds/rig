@@ -169,27 +169,138 @@ fn a_turn_with_two_calls_is_a_batch_and_the_results_are_one_utterance() {
     assert_eq!(adder.peak.load(Ordering::SeqCst), 1, "serial by default");
 }
 
+/// Each call owns a gate, so the host decides when it may finish. An
+/// executor may poll the calls in either order without changing the proof.
+struct GatedAdder {
+    adder: Arc<Adder>,
+    gates:
+        std::sync::Mutex<std::collections::BTreeMap<i64, futures::channel::oneshot::Receiver<()>>>,
+    entered: std::sync::atomic::AtomicUsize,
+    outstanding: std::sync::atomic::AtomicUsize,
+    peak: std::sync::atomic::AtomicUsize,
+}
+
+impl rig_core::serve::Serve for GatedAdder {
+    type Family = rig_core::effect::family::Tool;
+
+    fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+        rig_core::serve::Serve::descriptor(&*self.adder)
+    }
+
+    async fn serve(&self, kind: EffectKind, sink: rig_core::serve::OutcomeSink) {
+        let EffectKind::ToolCall { args, .. } = &kind else {
+            panic!("the gated adder accepts tool calls");
+        };
+        let args: serde_json::Value = serde_json::from_str(args).unwrap();
+        let gate = self
+            .gates
+            .lock()
+            .unwrap()
+            .remove(&args["x"].as_i64().unwrap())
+            .unwrap();
+        let now = self.outstanding.fetch_add(1, Ordering::SeqCst) + 1;
+        self.peak.fetch_max(now, Ordering::SeqCst);
+        self.entered.fetch_add(1, Ordering::SeqCst);
+        gate.await
+            .expect("the host releases each call independently");
+        rig_core::serve::Serve::serve(&*self.adder, kind, sink).await;
+        self.outstanding.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+fn in_flight_tools(world: &mut World) -> usize {
+    world
+        .query::<&rig_ecs::bus::InFlight>()
+        .iter(world)
+        .filter(|flight| flight.key.as_str() == ADD)
+        .count()
+}
+
 #[test]
 fn tool_policy_sets_how_many_calls_are_in_flight() {
-    let (mut app, agent, adder, _) = tooling(two_calls_then_text());
-    app.world_mut()
-        .entity_mut(agent)
-        .insert(ToolPolicy { concurrency: 2 });
-    let run = spawn_run(app.world_mut(), agent, &[], "add twice", false, None);
-    ended(&mut app, run, "answered");
-    assert!(app.world().get::<Settled>(run).is_some());
-    assert_eq!(
-        adder.peak.load(Ordering::SeqCst),
-        2,
-        "both calls in flight at once"
-    );
-    let log = app.world().resource::<EffectLogResource>().log();
-    let keys: Vec<&str> = log.records.iter().map(|r| r.key.as_str()).collect();
-    assert_eq!(
-        keys,
-        [MODEL, ADD, ADD, MODEL],
-        "the trace does not change with the policy"
-    );
+    for concurrency in [1, 2] {
+        for capacity in [1, 16] {
+            for reverse in [false, true] {
+                let (mut app, agent, adder, requests) = tooling(two_calls_then_text());
+                let (first_release, first_gate) = futures::channel::oneshot::channel();
+                let (second_release, second_gate) = futures::channel::oneshot::channel();
+                let gated = Arc::new(GatedAdder {
+                    adder,
+                    gates: std::sync::Mutex::new([(1, first_gate), (3, second_gate)].into()),
+                    entered: 0.into(),
+                    outstanding: 0.into(),
+                    peak: 0.into(),
+                });
+                register(&mut app, ADD, gated.clone());
+                app.world_mut()
+                    .resource_mut::<rig_ecs::bus::Policy>()
+                    .0
+                    .command_capacity = capacity;
+                app.world_mut()
+                    .entity_mut(agent)
+                    .insert(ToolPolicy { concurrency });
+                let run = spawn_run(app.world_mut(), agent, &[], "add twice", false, None);
+                tick_until(&mut app, "requested calls entered their gates", |_| {
+                    gated.entered.load(Ordering::SeqCst) == concurrency
+                });
+                assert_eq!(in_flight_tools(app.world_mut()), concurrency);
+                assert_eq!(gated.outstanding.load(Ordering::SeqCst), concurrency);
+                assert!(app.world().get::<Settled>(run).is_none());
+                if concurrency == 1 {
+                    // The first cannot finish while held. The second is a
+                    // pending batch child, not a task merely polled late.
+                    let calls: Vec<_> = app
+                        .world_mut()
+                        .query::<(&PendingEffect, Option<&rig_ecs::bus::InFlight>)>()
+                        .iter(app.world())
+                        .filter(|(effect, _)| effect.key.as_str() == ADD)
+                        .map(|(_, flight)| flight.is_some())
+                        .collect();
+                    assert_eq!(calls.len(), 2);
+                    assert_eq!(calls.iter().filter(|flight| **flight).count(), 1);
+                    first_release.send(()).unwrap();
+                    tick_until(
+                        &mut app,
+                        "second call starts after the first lands",
+                        |world| {
+                            gated.entered.load(Ordering::SeqCst) == 2 && in_flight_tools(world) == 1
+                        },
+                    );
+                    assert_eq!(gated.outstanding.load(Ordering::SeqCst), 1);
+                    second_release.send(()).unwrap();
+                } else {
+                    let (early, late) = if reverse {
+                        (second_release, first_release)
+                    } else {
+                        (first_release, second_release)
+                    };
+                    early.send(()).unwrap();
+                    tick_until(
+                        &mut app,
+                        "one result landed while its peer stays held",
+                        |world| in_flight_tools(world) == 1,
+                    );
+                    assert_eq!(gated.outstanding.load(Ordering::SeqCst), 1);
+                    late.send(()).unwrap();
+                }
+                ended(&mut app, run, "answered");
+                assert!(app.world().get::<Settled>(run).is_some());
+                assert_eq!(gated.peak.load(Ordering::SeqCst), concurrency);
+                let log = app.world().resource::<EffectLogResource>().log();
+                let keys: Vec<&str> = log.records.iter().map(|r| r.key.as_str()).collect();
+                assert_eq!(
+                    keys,
+                    [MODEL, ADD, ADD, MODEL],
+                    "policy preserves dispatch trace"
+                );
+                let requests = requests.lock().unwrap();
+                assert_eq!(
+                    tool_results(&requests[1]),
+                    [("c1".into(), "3".into()), ("c2".into(), "7".into())]
+                );
+            }
+        }
+    }
 }
 
 fn replace_tool_results(
