@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "source": "synthetic",
+  "case": "cancelled-background-loser",
+  "cassette_sha256": null,
+  "provider_model": null,
+  "generation": {
+    "revision": "25e8225be8a7c6b2b8af0e5a4cb0dd9993ffb503",
+    "dirty": true
+  },
+  "capture": null,
+  "artifacts_sha256": {
+    "application": "2e37d15011d0a4243212a58c35fcb6cff9e6cead754ba011925998c9321c5ee9",
+    "checkpoints": "ebe6cfdf128a96ec51dfff0393e56cf7a9412535fb441a25fb4c89b942a304b6",
+    "effects": "84011bfa1def8723372f76d47da72260c42f22c599bfed55123f890f52a645af",
+    "observations": "9469051d0a88b30edf17923bd55a3820f0a78dcfc1212e8e4198fa02db182752"
+  }
+}

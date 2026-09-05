@@ -1,0 +1,686 @@
+[
+  {
+    "boundary": "collect.stream",
+    "effect": 0,
+    "data": {
+      "events": 1,
+      "text": ""
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 1,
+    "data": {
+      "events": 1,
+      "text": ""
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 0,
+    "data": {
+      "events": 2,
+      "text": "Checking the maintenance task. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 1,
+    "data": {
+      "events": 2,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 0,
+    "data": {
+      "events": 3,
+      "text": "Checking the maintenance task. Checking the maintenance task. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 1,
+    "data": {
+      "events": 3,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 0,
+    "data": {
+      "events": 4,
+      "text": "Checking the maintenance task. Checking the maintenance task. Checking the maintenance task. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 1,
+    "data": {
+      "events": 4,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 0,
+    "data": {
+      "events": 5,
+      "text": "Checking the maintenance task. Checking the maintenance task. Checking the maintenance task. Checking the maintenance task. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 1,
+    "data": {
+      "events": 5,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 0,
+    "data": {
+      "events": 6,
+      "text": "Checking the maintenance task. Checking the maintenance task. Checking the maintenance task. Checking the maintenance task. Checking the maintenance task. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 1,
+    "data": {
+      "events": 6,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 0,
+    "data": {
+      "events": 7,
+      "text": "Checking the maintenance task. Checking the maintenance task. Checking the maintenance task. Checking the maintenance task. Checking the maintenance task. Checking the maintenance task. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 1,
+    "data": {
+      "events": 7,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 0,
+    "data": {
+      "events": 8,
+      "text": "Checking the maintenance task. Checking the maintenance task. Checking the maintenance task. Checking the maintenance task. Checking the maintenance task. Checking the maintenance task. Checking the maintenance task. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 1,
+    "data": {
+      "events": 8,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 1,
+    "data": {
+      "key": "maintenance/model:default",
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Inspecting the project. "
+            },
+            {
+              "type": "toolcall",
+              "id": "tool-0",
+              "function": {
+                "name": "read_file",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            },
+            {
+              "type": "toolcall",
+              "id": "tool-1",
+              "function": {
+                "name": "search_file",
+                "arguments": {
+                  "needle": "Helo"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 2,
+    "data": {
+      "key": "maintenance/tool:read_file",
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "path": "greeting.txt",
+                  "content": "Helo, Rig!\n"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "preview.primary",
+    "effect": 2,
+    "data": {
+      "source": "maintenance/tool:read_file",
+      "preview": {
+        "path": "greeting.txt",
+        "content": "Helo, Rig!\n"
+      }
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 3,
+    "data": {
+      "key": "maintenance/tool:search_file",
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "matches": [
+                    {
+                      "line": 1,
+                      "text": "Helo, Rig!"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "policy.cancel-loser",
+    "effect": 0,
+    "data": {
+      "reason": "inspection is available"
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 4,
+    "data": {
+      "events": 1,
+      "text": ""
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 4,
+    "data": {
+      "events": 2,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 4,
+    "data": {
+      "events": 3,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 4,
+    "data": {
+      "events": 4,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 4,
+    "data": {
+      "events": 5,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 4,
+    "data": {
+      "events": 6,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 4,
+    "data": {
+      "key": "maintenance/model:default",
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Inspecting the project. "
+            },
+            {
+              "type": "toolcall",
+              "id": "tool-0",
+              "function": {
+                "name": "propose_edit",
+                "arguments": {
+                  "content": "Hello, Rig!\n"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 5,
+    "data": {
+      "key": "maintenance/tool:propose_edit",
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "proposed": "Hello, Rig!\n",
+                  "path": "greeting.txt"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 6,
+    "data": {
+      "events": 1,
+      "text": ""
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 6,
+    "data": {
+      "events": 2,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 6,
+    "data": {
+      "events": 3,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 6,
+    "data": {
+      "events": 4,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 6,
+    "data": {
+      "events": 5,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 6,
+    "data": {
+      "events": 6,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 6,
+    "data": {
+      "key": "maintenance/model:default",
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Inspecting the project. "
+            },
+            {
+              "type": "toolcall",
+              "id": "tool-0",
+              "function": {
+                "name": "apply_edit",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      }
+    }
+  },
+  {
+    "boundary": "approval",
+    "effect": null,
+    "data": {
+      "decision": "approve"
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 7,
+    "data": {
+      "key": "maintenance/tool:apply_edit",
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "applied": true,
+                  "path": "greeting.txt",
+                  "content": "Hello, Rig!\n",
+                  "operation": "greeting-fix-v1"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.publication",
+    "effect": 7,
+    "data": {
+      "operation": "greeting-fix-v1",
+      "applied": true
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 8,
+    "data": {
+      "events": 1,
+      "text": ""
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 8,
+    "data": {
+      "events": 2,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 8,
+    "data": {
+      "events": 3,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 8,
+    "data": {
+      "events": 4,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 8,
+    "data": {
+      "events": 5,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 8,
+    "data": {
+      "events": 6,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 8,
+    "data": {
+      "key": "maintenance/model:default",
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Inspecting the project. "
+            },
+            {
+              "type": "toolcall",
+              "id": "tool-0",
+              "function": {
+                "name": "validate_file",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 9,
+    "data": {
+      "key": "maintenance/tool:validate_file",
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "valid": true,
+                  "content": "Hello, Rig!\n"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 10,
+    "data": {
+      "events": 1,
+      "text": ""
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 10,
+    "data": {
+      "events": 2,
+      "text": "Maintenance finished; inspect the tool results."
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 10,
+    "data": {
+      "events": 3,
+      "text": "Maintenance finished; inspect the tool results."
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 10,
+    "data": {
+      "events": 4,
+      "text": "Maintenance finished; inspect the tool results."
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 10,
+    "data": {
+      "key": "maintenance/model:default",
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Maintenance finished; inspect the tool results."
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      }
+    }
+  },
+  {
+    "boundary": "run.terminal",
+    "effect": null,
+    "data": {
+      "settled": true
+    }
+  }
+]

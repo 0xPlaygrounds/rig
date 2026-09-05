@@ -1,5 +1,7 @@
 //! Safety checks for committed cassette fixtures.
 
+use crate::cassettes::consumer_registry;
+
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
@@ -438,7 +440,20 @@ fn collect_yaml_files_in_dir(dir: &Path, files: &mut BTreeSet<PathBuf>) {
 
 fn collect_expected_cassette_paths() -> (BTreeSet<PathBuf>, Vec<String>) {
     let mut expected = BTreeSet::new();
+    let mut consumer_ids = BTreeSet::new();
     let mut failures = Vec::new();
+
+    for case in consumer_registry::cases() {
+        if !consumer_ids.insert(case.id) {
+            failures.push(format!("duplicate ECS consumer case {}", case.id));
+        }
+        if let Some(provider) = case.provider.cassette_provider() {
+            expected.insert(crate::cassettes::cassette_path(
+                provider,
+                &format!("ecs_consumer/{}", case.id),
+            ));
+        }
+    }
 
     for suite in PROVIDER_CASSETTE_SUITES {
         let source_dir = repo_path(suite.source_dir);

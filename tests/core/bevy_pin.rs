@@ -16,6 +16,7 @@ fn workspace_root() -> PathBuf {
 fn bevy_is_pinned_to_one_crates_io_release() -> Result<(), Box<dyn std::error::Error>> {
     let manifest = std::fs::read_to_string(workspace_root().join("Cargo.toml"))?;
     let pins = bevy_pins(&manifest);
+    let workspace = workspace_bevy_pins(&manifest);
     if pins.is_empty() {
         return Err("the workspace manifest declares no bevy_* dependency".into());
     }
@@ -28,6 +29,14 @@ fn bevy_is_pinned_to_one_crates_io_release() -> Result<(), Box<dyn std::error::E
             BevyPin::Git => return Err(format!("{name} comes from git, not crates.io").into()),
             BevyPin::Path => return Err(format!("{name} comes from a path, not crates.io").into()),
             BevyPin::Unpinned => return Err(format!("{name} declares no version").into()),
+            BevyPin::Workspace => {
+                if !workspace
+                    .iter()
+                    .any(|(key, pin)| key == name && pin == &BevyPin::Version(BEVY_VERSION.into()))
+                {
+                    return Err(format!("{name} inherits no valid workspace Bevy pin").into());
+                }
+            }
         }
     }
     let lock = std::fs::read_to_string(workspace_root().join("Cargo.lock"))?;
@@ -69,6 +78,7 @@ enum BevyPin {
     Git,
     Path,
     Unpinned,
+    Workspace,
 }
 
 fn classify(text: &str) -> BevyPin {
@@ -85,6 +95,14 @@ fn classify(text: &str) -> BevyPin {
     if quoted_value(text, "path").is_some() {
         return BevyPin::Path;
     }
+    if text.split(',').any(|field| {
+        field
+            .trim_matches([' ', '{', '}'])
+            .split_once('=')
+            .is_some_and(|(key, value)| key.trim() == "workspace" && value.trim() == "true")
+    }) {
+        return BevyPin::Workspace;
+    }
     // `bevy_ecs = "0.19.1"` (a bare string) or `version = "0.19.1"`.
     let bare = text
         .trim()
@@ -95,6 +113,34 @@ fn classify(text: &str) -> BevyPin {
         Some(version) => BevyPin::Version(version),
         None => BevyPin::Unpinned,
     }
+}
+
+fn workspace_bevy_pins(manifest: &str) -> Vec<(String, BevyPin)> {
+    let mut in_workspace = false;
+    let mut declarations = String::new();
+    for line in manifest.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_workspace = line == "[workspace.dependencies]";
+        } else if in_workspace {
+            declarations.push_str(line);
+            declarations.push('\n');
+        }
+    }
+    bevy_pins(&declarations)
+}
+
+#[test]
+fn inherited_dev_dependencies_resolve_to_the_workspace_pin() {
+    let manifest = "[workspace.dependencies]\nbevy_app = { version = \"0.19.1\" }\n[dev-dependencies]\nbevy_app = { workspace = true }\nbevy_ecs = { workspace = false }\n";
+    assert_eq!(
+        workspace_bevy_pins(manifest),
+        vec![("bevy_app".into(), BevyPin::Version(BEVY_VERSION.into()))]
+    );
+    assert_eq!(
+        bevy_pins(manifest).last(),
+        Some(&("bevy_ecs".into(), BevyPin::Unpinned))
+    );
+    assert!(bevy_pins(manifest).contains(&("bevy_app".into(), BevyPin::Workspace)));
 }
 
 /// Every `bevy_*` dependency in a manifest with how it is pinned, whether

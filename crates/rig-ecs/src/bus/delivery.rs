@@ -36,6 +36,7 @@ pub struct ReplayDelivery {
     folded: BTreeSet<EffectId>,
     cancelled: BTreeSet<EffectId>,
     policy_visible: bool,
+    waiting_for: Option<(EffectId, u64)>,
     refusals: rig_effect_log::ReplayRefusals,
 }
 
@@ -203,6 +204,7 @@ impl ReplayDelivery {
                 .copied()
                 .collect(),
             policy_visible: required,
+            waiting_for: None,
             refusals: rig_effect_log::ReplayRefusals::default(),
         }))
     }
@@ -252,10 +254,11 @@ impl Buffered {
 /// policy system gets a pass between distinct batches, even if all handler
 /// futures completed together. Live handlers keep their ordinary collector.
 pub fn collect_replayed(world: &mut World) {
-    if !world.contains_resource::<ReplayDelivery>() || world.contains_resource::<ReplayFailure>() {
+    if !world.contains_resource::<ReplayDelivery>() {
         return;
     }
     world.resource_scope(|world, mut replay: Mut<ReplayDelivery>| {
+        replay.waiting_for = None;
         let entities: Vec<_> = world
             .query_filtered::<(Entity, &Issued), With<InFlight>>()
             .iter(world)
@@ -276,6 +279,12 @@ pub fn collect_replayed(world: &mut World) {
             if let Some(mut buffered) = entity.get_mut::<Buffered>() {
                 buffered.poll();
             }
+        }
+        // A refusal remains terminal for replay effects created by later
+        // policy sets. Buffer them before ordinary collection can expose data.
+        if let Some(failure) = world.get_resource::<ReplayFailure>().cloned() {
+            fail(world, failure.0);
+            return;
         }
         // A request mismatch can change unary/stream shape, so its diagnostic
         // cannot wait for deliveries that only the matching request produces.
@@ -368,13 +377,9 @@ pub fn collect_replayed(world: &mut World) {
                 if queued || world.resource::<Progress>().0 {
                     return;
                 }
-                fail(
-                    world,
-                    invalid(format!(
-                        "replay batch {batch} requires undispatched {}",
-                        step.id
-                    )),
-                );
+                // Continuations may run after Collect. Diagnose a missing
+                // request only after the entire schedule is quiescent.
+                replay.waiting_for = Some((step.id, batch));
                 return;
             };
             if world.get::<EffectOutcome>(entity).is_some() {
@@ -427,8 +432,33 @@ pub fn collect_replayed(world: &mut World) {
             }
         }
         replay.pending.drain(..steps.len());
+        replay.waiting_for = None;
         world.resource_mut::<Progress>().mark();
     });
+}
+
+/// Diagnose an absent replay request after every policy set has run. Called
+/// by the bus runner at quiescence, before it decides whether to stop ticking.
+pub fn diagnose_idle_replay(world: &mut World) {
+    if world.resource::<Progress>().0 || world.contains_resource::<ReplayFailure>() {
+        return;
+    }
+    let Some((id, batch)) = world
+        .get_resource::<ReplayDelivery>()
+        .and_then(|replay| replay.waiting_for)
+    else {
+        return;
+    };
+    // Late policy may have minted or queued the request during this pass.
+    if id.as_u64() < world.resource::<IdCounter>().0
+        || world.query_filtered::<Entity, (With<PendingEffect>, Without<Issued>, Without<EffectOutcome>)>().iter(world).next().is_some()
+    {
+        return;
+    }
+    fail(
+        world,
+        invalid(format!("replay batch {batch} requires undispatched {id}")),
+    );
 }
 
 fn fail(world: &mut World, report: ErrorReport) {
@@ -436,6 +466,7 @@ fn fail(world: &mut World, report: ErrorReport) {
         .query_filtered::<Entity, With<Buffered>>()
         .iter(world)
         .collect();
+    let changed = !entities.is_empty() || !world.contains_resource::<ReplayFailure>();
     for entity in entities {
         world
             .entity_mut(entity)
@@ -443,7 +474,9 @@ fn fail(world: &mut World, report: ErrorReport) {
             .insert(EffectOutcome(Err(report.clone())));
     }
     world.insert_resource(ReplayFailure(report));
-    world.resource_mut::<Progress>().mark();
+    if changed {
+        world.resource_mut::<Progress>().mark();
+    }
 }
 
 fn deliver_stream(world: &mut World, entity: Entity, id: EffectId, count: usize) {

@@ -18,7 +18,16 @@ autoexamples = false
 # the tarball to 3.33 MiB. They are replay fixtures the test binaries read at
 # runtime from `CARGO_MANIFEST_DIR`, never embedded with `include_*!`, so nothing
 # in the package needs them to compile.
-exclude = ["tests/cassettes/**"]
+# These repository-only targets depend on the unpublished ECS crate. Keep the
+# shared consumer registry available to the other packaged test support.
+exclude = ["tests/cassettes/**", "tests/consumer/cli.rs", "tests/ecs_consumer.rs"]
+
+# A test-support executable, deliberately compiled with the facade's existing
+# cassette dev-dependencies. It shares its consumer with the integration tests.
+[[example]]
+name = "ecs-consumer"
+path = "tests/consumer/cli.rs"
+required-features = ["reqwest", "rustls"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -300,6 +309,9 @@ rig-vertexai = { path = "crates/rig-vertexai", version = "0.42.0", optional = tr
 rig-tungstenite = { path = "crates/rig-tungstenite", version = "0.42.0", optional = true }
 
 [dev-dependencies]
+rig-ecs = { path = "crates/rig-ecs" }
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
 anyhow = { workspace = true }
 arrow-array = { workspace = true }
 assert_fs = { workspace = true }

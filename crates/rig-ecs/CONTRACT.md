@@ -254,6 +254,16 @@ to cancel the effect without inventing an outcome for it. Missing metadata
 cannot establish policy fidelity; inconsistent metadata or an unreproduced
 cancellation is a diagnostic. Batch identity is not elapsed time.
 
+A future effect missing at Collect is diagnosed only after the complete
+`RigSchedule` is quiescent. Later continuation systems can advance through
+multiple phases, marking `Progress`, before minting that effect. Queued intake
+and held requests can await another update or host input. A refusal installs
+`ReplayFailure`; subsequent recorded effects also fail instead of falling
+through to ordinary collection and exposing unpaced successful answers.
+Hosts driving `RigSchedule` directly must reset `Progress` before each pass
+and call `bus::delivery::diagnose_idle_replay` after a complete pass reports no
+progress; the standard `Update` runner does this automatically.
+
 Policy observers may use `On<Add, EffectOutcome>` or systems ordered after
 all of `BusSet::Collect`, preserving their relevant live/replay ordering.
 Intermediate collector state and handler inboxes are not policy replay

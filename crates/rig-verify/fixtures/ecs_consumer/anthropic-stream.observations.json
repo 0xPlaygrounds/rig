@@ -1,0 +1,510 @@
+[
+  {
+    "boundary": "collect.stream",
+    "effect": 0,
+    "data": {
+      "events": 16,
+      "text": "I'll help you fix the greeting typo. Let me start by reading the file and searching for the typo."
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 0,
+    "data": {
+      "key": "maintenance/model:default",
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "I'll help you fix the greeting typo. Let me start by reading the file and searching for the typo."
+            },
+            {
+              "type": "toolcall",
+              "id": "toolu_REDACTED_1",
+              "provider": {
+                "call_id": "toolu_REDACTED_1"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            },
+            {
+              "type": "toolcall",
+              "id": "toolu_REDACTED_2",
+              "provider": {
+                "call_id": "toolu_REDACTED_2"
+              },
+              "function": {
+                "name": "search_file",
+                "arguments": {
+                  "needle": "Helo"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 858,
+            "output_tokens": 99,
+            "total_tokens": 957,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": null,
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "anthropic",
+          "model": "claude-haiku-4-5-20251001",
+          "raw": {
+            "usage": {
+              "output_tokens": 99,
+              "input_tokens": 858,
+              "cache_creation_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "cache_read_input_tokens": 0
+            },
+            "stop_reason": "tool_use",
+            "message_id": "msg_REDACTED_1",
+            "model": "claude-haiku-4-5-20251001"
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 1,
+    "data": {
+      "key": "maintenance/tool:read_file",
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "path": "greeting.txt",
+                  "content": "Helo, Rig!\n"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "preview.primary",
+    "effect": 1,
+    "data": {
+      "source": "maintenance/tool:read_file",
+      "preview": {
+        "path": "greeting.txt",
+        "content": "Helo, Rig!\n"
+      }
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 2,
+    "data": {
+      "key": "maintenance/tool:search_file",
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "matches": [
+                    {
+                      "line": 1,
+                      "text": "Helo, Rig!"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 3,
+    "data": {
+      "events": 14,
+      "text": "Good! I found the typo \"Helo\" on line 1. Now I'll propose the correction to change \"Helo\" to \"Hello\":"
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 3,
+    "data": {
+      "key": "maintenance/model:default",
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Good! I found the typo \"Helo\" on line 1. Now I'll propose the correction to change \"Helo\" to \"Hello\":"
+            },
+            {
+              "type": "toolcall",
+              "id": "toolu_REDACTED_3",
+              "provider": {
+                "call_id": "toolu_REDACTED_3"
+              },
+              "function": {
+                "name": "propose_edit",
+                "arguments": {
+                  "content": "Hello, Rig!\n"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 1060,
+            "output_tokens": 94,
+            "total_tokens": 1154,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_2",
+          "response_id": null,
+          "provider_request_id": "req_REDACTED_2",
+          "finish_reason": "tool_calls",
+          "provider": "anthropic",
+          "model": "claude-haiku-4-5-20251001",
+          "raw": {
+            "usage": {
+              "output_tokens": 94,
+              "input_tokens": 1060,
+              "cache_creation_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "cache_read_input_tokens": 0
+            },
+            "stop_reason": "tool_use",
+            "message_id": "msg_REDACTED_2",
+            "model": "claude-haiku-4-5-20251001"
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 4,
+    "data": {
+      "key": "maintenance/tool:propose_edit",
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "proposed": "Hello, Rig!\n",
+                  "path": "greeting.txt"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 5,
+    "data": {
+      "events": 8,
+      "text": "The edit has been proposed. Now I'll apply it:"
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 5,
+    "data": {
+      "key": "maintenance/model:default",
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "The edit has been proposed. Now I'll apply it:"
+            },
+            {
+              "type": "toolcall",
+              "id": "toolu_REDACTED_4",
+              "provider": {
+                "call_id": "toolu_REDACTED_4"
+              },
+              "function": {
+                "name": "apply_edit",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 1183,
+            "output_tokens": 49,
+            "total_tokens": 1232,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_3",
+          "response_id": null,
+          "provider_request_id": "req_REDACTED_3",
+          "finish_reason": "tool_calls",
+          "provider": "anthropic",
+          "model": "claude-haiku-4-5-20251001",
+          "raw": {
+            "usage": {
+              "output_tokens": 49,
+              "input_tokens": 1183,
+              "cache_creation_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "cache_read_input_tokens": 0
+            },
+            "stop_reason": "tool_use",
+            "message_id": "msg_REDACTED_3",
+            "model": "claude-haiku-4-5-20251001"
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "approval",
+    "effect": null,
+    "data": {
+      "decision": "approve"
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 6,
+    "data": {
+      "key": "maintenance/tool:apply_edit",
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "applied": true,
+                  "path": "greeting.txt",
+                  "content": "Hello, Rig!\n",
+                  "operation": "greeting-fix-v1"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.publication",
+    "effect": 6,
+    "data": {
+      "operation": "greeting-fix-v1",
+      "applied": true
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 7,
+    "data": {
+      "events": 8,
+      "text": "Excellent! The edit was approved and applied. Now let me validate the file:"
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 7,
+    "data": {
+      "key": "maintenance/model:default",
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Excellent! The edit was approved and applied. Now let me validate the file:"
+            },
+            {
+              "type": "toolcall",
+              "id": "toolu_REDACTED_5",
+              "provider": {
+                "call_id": "toolu_REDACTED_5"
+              },
+              "function": {
+                "name": "validate_file",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 1274,
+            "output_tokens": 54,
+            "total_tokens": 1328,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_4",
+          "response_id": null,
+          "provider_request_id": "req_REDACTED_4",
+          "finish_reason": "tool_calls",
+          "provider": "anthropic",
+          "model": "claude-haiku-4-5-20251001",
+          "raw": {
+            "usage": {
+              "output_tokens": 54,
+              "input_tokens": 1274,
+              "cache_creation_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "cache_read_input_tokens": 0
+            },
+            "stop_reason": "tool_use",
+            "message_id": "msg_REDACTED_4",
+            "model": "claude-haiku-4-5-20251001"
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 8,
+    "data": {
+      "key": "maintenance/tool:validate_file",
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "valid": true,
+                  "content": "Hello, Rig!\n"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 9,
+    "data": {
+      "events": 7,
+      "text": "**Summary:**\n- ✅ Found typo: \"Helo, Rig!\" on line 1\n- ✅ Proposed correction: \"Hello, Rig!\"\n- ✅ Edit approved and applied\n- ✅ File validated successfully\n\nThe greeting typo has been fixed! The file now correctly reads \"Hello, Rig!\" with the proper spelling."
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 9,
+    "data": {
+      "key": "maintenance/model:default",
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "**Summary:**\n- ✅ Found typo: \"Helo, Rig!\" on line 1\n- ✅ Proposed correction: \"Hello, Rig!\"\n- ✅ Edit approved and applied\n- ✅ File validated successfully\n\nThe greeting typo has been fixed! The file now correctly reads \"Hello, Rig!\" with the proper spelling."
+            }
+          ],
+          "usage": {
+            "input_tokens": 1355,
+            "output_tokens": 91,
+            "total_tokens": 1446,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_5",
+          "response_id": null,
+          "provider_request_id": "req_REDACTED_5",
+          "finish_reason": "stop",
+          "provider": "anthropic",
+          "model": "claude-haiku-4-5-20251001",
+          "raw": {
+            "usage": {
+              "output_tokens": 91,
+              "input_tokens": 1355,
+              "cache_creation_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "cache_read_input_tokens": 0
+            },
+            "stop_reason": "end_turn",
+            "message_id": "msg_REDACTED_5",
+            "model": "claude-haiku-4-5-20251001"
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "run.terminal",
+    "effect": null,
+    "data": {
+      "settled": true
+    }
+  }
+]

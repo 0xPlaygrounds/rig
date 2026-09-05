@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "source": "synthetic",
+  "case": "stream-error-before-final",
+  "cassette_sha256": null,
+  "provider_model": null,
+  "generation": {
+    "revision": "25e8225be8a7c6b2b8af0e5a4cb0dd9993ffb503",
+    "dirty": true
+  },
+  "capture": null,
+  "artifacts_sha256": {
+    "application": "7c98e15f9596a1661f8eef563ae64988d63598fff5bc365be9b19ba09124e2ba",
+    "checkpoints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "effects": "f015d85309ec76b91e163c01f630cab815f973f9d4662d2ef7f25131b9a4dcbb",
+    "observations": "8be51455b12a3578a358c9202f14d18b766f5954ab437c88302be0b51821d9ee"
+  }
+}

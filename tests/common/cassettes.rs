@@ -5,6 +5,9 @@
 //! fixtures. Record mode overwrites existing cassette files.
 #![allow(dead_code)]
 
+#[path = "../consumer/registry.rs"]
+pub(crate) mod consumer_registry;
+
 use aws_smithy_eventstream::frame::{read_message_from, write_message_to};
 use aws_smithy_types::event_stream::Message as EventStreamMessage;
 use axum::body::{Body, Bytes};
@@ -328,10 +331,28 @@ impl ProviderCassette {
         real_base_url: &str,
     ) -> Self {
         let spec = spec.into();
+        Self::start_at(
+            provider,
+            spec,
+            real_base_url,
+            CassetteMode::current(),
+            cassette_path(provider, spec.scenario),
+        )
+        .await
+    }
+
+    /// Explicit mode and destination for consumers that stage candidates.
+    /// Verification callers pass Replay even if the ambient environment asks
+    /// for recording; a candidate is never implicitly promoted to a fixture.
+    pub(crate) async fn start_at(
+        provider: &'static str,
+        spec: CassetteSpec,
+        real_base_url: &str,
+        mode: CassetteMode,
+        cassette_path: PathBuf,
+    ) -> Self {
         let scenario = spec.scenario;
-        let mode = CassetteMode::current();
         let policy = CassettePolicy::for_scenario(provider, scenario, spec.replay_matching);
-        let cassette_path = cassette_path(provider, scenario);
         let upstream = UpstreamBase::parse(real_base_url);
         let (server, recording_id) = if mode.records() {
             let server = MockServer::start_async().await;
@@ -1762,24 +1783,45 @@ fn cassette_safety_failures_with_policy(
         ));
     }
 
+    let decoded = decoded_base64_body_texts(contents);
+    let with_decoded = format!("{}\n{}", contents, decoded.join("\n"));
+    failures.extend(artifact_safety_failures_with_policy(
+        policy,
+        cassette_path,
+        &with_decoded,
+    ));
+    failures
+}
+
+/// The cassette engine's secret/provider-token checks for JSON sidecars and
+/// failure reports. Unlike the cassette validator this does not parse YAML.
+pub(crate) fn artifact_safety_failures(path: &Path, contents: &str) -> Vec<String> {
+    artifact_safety_failures_with_policy(CassettePolicy::default(), path, contents)
+}
+
+/// Scrub live diagnostics with the same ID remapping and credential rules as
+/// provider traffic. This is separate evidence, never a canonical effect log.
+pub(crate) fn scrub_artifact(value: &Value) -> Value {
+    let mut value = value.clone();
+    CassetteScrubber::new(CassettePolicy::default()).scrub_json_value(None, &mut value);
+    value
+}
+
+fn artifact_safety_failures_with_policy(
+    policy: CassettePolicy,
+    cassette_path: &Path,
+    contents: &str,
+) -> Vec<String> {
+    let mut failures = Vec::new();
+
     let lower = contents.to_ascii_lowercase();
-    let decoded_base64_body_texts = decoded_base64_body_texts(contents);
     for pattern in policy.forbidden_patterns {
-        if lower.contains(pattern)
-            || decoded_base64_body_texts
-                .iter()
-                .any(|body| body.to_ascii_lowercase().contains(pattern))
-        {
+        if lower.contains(pattern) {
             failures.push(format!("{} contains {pattern:?}", cassette_path.display()));
         }
     }
-    let contents_with_decoded_base64 = if decoded_base64_body_texts.is_empty() {
-        contents.to_string()
-    } else {
-        format!("{}\n{}", contents, decoded_base64_body_texts.join("\n"))
-    };
 
-    let generated_tokens = generated_tokens(policy, &contents_with_decoded_base64);
+    let generated_tokens = generated_tokens(policy, contents);
     if !generated_tokens.is_empty() {
         failures.push(format!(
             "{} contains {} unsanitized provider artifact(s)",
@@ -1788,7 +1830,7 @@ fn cassette_safety_failures_with_policy(
         ));
     }
 
-    let openai_api_key_tokens = openai_api_key_tokens(&contents_with_decoded_base64);
+    let openai_api_key_tokens = openai_api_key_tokens(contents);
     if !openai_api_key_tokens.is_empty() {
         failures.push(format!(
             "{} contains {} OpenAI API key-shaped token(s)",
@@ -1797,7 +1839,7 @@ fn cassette_safety_failures_with_policy(
         ));
     }
 
-    let anthropic_api_key_tokens = anthropic_api_key_tokens(&contents_with_decoded_base64);
+    let anthropic_api_key_tokens = anthropic_api_key_tokens(contents);
     if !anthropic_api_key_tokens.is_empty() {
         failures.push(format!(
             "{} contains {} Anthropic API key-shaped token(s)",
@@ -1806,7 +1848,7 @@ fn cassette_safety_failures_with_policy(
         ));
     }
 
-    let google_api_key_tokens = google_api_key_tokens(&contents_with_decoded_base64);
+    let google_api_key_tokens = google_api_key_tokens(contents);
     if !google_api_key_tokens.is_empty() {
         failures.push(format!(
             "{} contains {} Google API key-shaped token(s)",
@@ -1815,7 +1857,7 @@ fn cassette_safety_failures_with_policy(
         ));
     }
 
-    let aws_access_key_tokens = aws_access_key_tokens(&contents_with_decoded_base64);
+    let aws_access_key_tokens = aws_access_key_tokens(contents);
     if !aws_access_key_tokens.is_empty() {
         failures.push(format!(
             "{} contains {} AWS access key-shaped token(s)",

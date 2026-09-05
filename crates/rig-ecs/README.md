@@ -1,5 +1,11 @@
 # rig-ecs
 
+For a headless application that records genuine provider traffic, checks actual
+workspace edits, replays policy observations and resumes a supported checkpoint,
+see the [ECS consumer harness](../../tests/consumer/README.md). Its owning
+producer runs through this runtime; the existing cross-runtime corpus remains
+separate evidence with its own applicability limits.
+
 rig inside a Bevy `World`. Two layers: `rig_ecs::bus`, the effect bus as a plugin in the native shape — effects are entities, handlers are entities, the driver is a system, an outcome is a component, causality is `ChildOf`, a scene is a checkpoint — and the agent runtime over it (`agent`, `policy`, `systems`, `replay`): the run as a graph, the request as its fold. Nothing awaits, nothing blocks, nothing is probed; rig-agent is not in the graph; nothing is copied from rig-agent.
 
 ## The run as a graph

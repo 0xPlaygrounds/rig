@@ -168,6 +168,8 @@ pub fn run_to_quiescence(world: &mut World) {
     for pass in 0..QUIESCENCE_CAP {
         world.resource_mut::<Progress>().0 = false;
         world.run_schedule(RigSchedule);
+        #[cfg(feature = "replay")]
+        super::delivery::diagnose_idle_replay(world);
         if !world.resource::<Progress>().0 {
             return;
         }

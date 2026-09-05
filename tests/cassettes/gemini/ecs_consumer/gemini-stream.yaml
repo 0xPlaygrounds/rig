@@ -1,0 +1,125 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Fix the greeting typo in greeting.txt, using the approval-controlled tools.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":512,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Read greeting.txt","name":"read_file"},{"description":"Find matching lines in greeting.txt","name":"search_file","parameters":{"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"}},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","parameters":{"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"}},{"description":"Apply the proposed edit after host approval","name":"apply_edit"},{"description":"Validate the greeting file after an approved write","name":"validate_file"}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"name\":\"read_file\"}}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":10,\"promptTokenCount\":278,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":278}],\"serviceTier\":\"standard\",\"totalTokenCount\":288}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Fix the greeting typo in greeting.txt, using the approval-controlled tools.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"name":"read_file"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"read_file","response":{"result":{"content":"Helo, Rig!\n","path":"greeting.txt"}}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":512,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Read greeting.txt","name":"read_file"},{"description":"Find matching lines in greeting.txt","name":"search_file","parameters":{"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"}},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","parameters":{"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"}},{"description":"Apply the proposed edit after host approval","name":"apply_edit"},{"description":"Validate the greeting file after an approved write","name":"validate_file"}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"needle\":\"Helo\"},\"name\":\"search_file\"}}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":16,\"promptTokenCount\":320,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":320}],\"serviceTier\":\"standard\",\"totalTokenCount\":336}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Fix the greeting typo in greeting.txt, using the approval-controlled tools.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"name":"read_file"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"read_file","response":{"result":{"content":"Helo, Rig!\n","path":"greeting.txt"}}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"needle":"Helo"},"name":"search_file"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"search_file","response":{"result":{"matches":[{"line":1,"text":"Helo, Rig!"}]}}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":512,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Read greeting.txt","name":"read_file"},{"description":"Find matching lines in greeting.txt","name":"search_file","parameters":{"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"}},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","parameters":{"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"}},{"description":"Apply the proposed edit after host approval","name":"apply_edit"},{"description":"Validate the greeting file after an approved write","name":"validate_file"}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"content\":\"Hello, Rig!\\n\"},\"name\":\"propose_edit\"}}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_3\",\"usageMetadata\":{\"candidatesTokenCount\":20,\"promptTokenCount\":368,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":368}],\"serviceTier\":\"standard\",\"totalTokenCount\":388}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Fix the greeting typo in greeting.txt, using the approval-controlled tools.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"name":"read_file"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"read_file","response":{"result":{"content":"Helo, Rig!\n","path":"greeting.txt"}}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"needle":"Helo"},"name":"search_file"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"search_file","response":{"result":{"matches":[{"line":1,"text":"Helo, Rig!"}]}}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"content":"Hello, Rig!\n"},"name":"propose_edit"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"propose_edit","response":{"result":{"path":"greeting.txt","proposed":"Hello, Rig!\n"}}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":512,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Read greeting.txt","name":"read_file"},{"description":"Find matching lines in greeting.txt","name":"search_file","parameters":{"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"}},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","parameters":{"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"}},{"description":"Apply the proposed edit after host approval","name":"apply_edit"},{"description":"Validate the greeting file after an approved write","name":"validate_file"}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"name\":\"apply_edit\"}}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_4\",\"usageMetadata\":{\"candidatesTokenCount\":10,\"promptTokenCount\":420,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":420}],\"serviceTier\":\"standard\",\"totalTokenCount\":430}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Fix the greeting typo in greeting.txt, using the approval-controlled tools.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"name":"read_file"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"read_file","response":{"result":{"content":"Helo, Rig!\n","path":"greeting.txt"}}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"needle":"Helo"},"name":"search_file"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"search_file","response":{"result":{"matches":[{"line":1,"text":"Helo, Rig!"}]}}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"content":"Hello, Rig!\n"},"name":"propose_edit"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"propose_edit","response":{"result":{"path":"greeting.txt","proposed":"Hello, Rig!\n"}}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"name":"apply_edit"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"apply_edit","response":{"result":{"applied":true,"content":"Hello, Rig!\n","operation":"greeting-fix-v1","path":"greeting.txt"}}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":512,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Read greeting.txt","name":"read_file"},{"description":"Find matching lines in greeting.txt","name":"search_file","parameters":{"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"}},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","parameters":{"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"}},{"description":"Apply the proposed edit after host approval","name":"apply_edit"},{"description":"Validate the greeting file after an approved write","name":"validate_file"}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"name\":\"validate_file\"}}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_5\",\"usageMetadata\":{\"candidatesTokenCount\":10,\"promptTokenCount\":477,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":477}],\"serviceTier\":\"standard\",\"totalTokenCount\":487}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Fix the greeting typo in greeting.txt, using the approval-controlled tools.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"name":"read_file"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"read_file","response":{"result":{"content":"Helo, Rig!\n","path":"greeting.txt"}}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"needle":"Helo"},"name":"search_file"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"search_file","response":{"result":{"matches":[{"line":1,"text":"Helo, Rig!"}]}}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"content":"Hello, Rig!\n"},"name":"propose_edit"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"propose_edit","response":{"result":{"path":"greeting.txt","proposed":"Hello, Rig!\n"}}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"name":"apply_edit"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"apply_edit","response":{"result":{"applied":true,"content":"Hello, Rig!\n","operation":"greeting-fix-v1","path":"greeting.txt"}}},"thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"name":"validate_file"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"validate_file","response":{"result":{"content":"Hello, Rig!\n","valid":true}}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":512,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Read greeting.txt","name":"read_file"},{"description":"Find matching lines in greeting.txt","name":"search_file","parameters":{"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"}},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","parameters":{"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"}},{"description":"Apply the proposed edit after host approval","name":"apply_edit"},{"description":"Validate the greeting file after an approved write","name":"validate_file"}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The typo in\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_6\",\"usageMetadata\":{\"candidatesTokenCount\":3,\"promptTokenCount\":514,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":514}],\"serviceTier\":\"standard\",\"totalTokenCount\":517}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" greeting.txt was fixed. The file now says \\\"Hello, Rig!\\\".\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_6\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":514,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":514}],\"serviceTier\":\"standard\",\"totalTokenCount\":532}}\r\n\r\n"

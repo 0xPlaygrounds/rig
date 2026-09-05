@@ -34,6 +34,97 @@ use std::{
 #[derive(Resource, Default)]
 struct First(Option<String>);
 
+#[derive(Resource, Default)]
+struct ContinuationStarted(u8);
+
+fn continue_after_collect(
+    mut started: ResMut<ContinuationStarted>,
+    mut commands: Commands,
+    mut progress: ResMut<rig_ecs::bus::Progress>,
+) {
+    if started.0 == 2 {
+        return;
+    }
+    started.0 += 1;
+    progress.mark();
+    if started.0 == 1 {
+        return;
+    }
+    for key in ["a", "b"] {
+        commands.spawn(PendingEffect::new(
+            key,
+            EffectKind::Custom {
+                kind: "ordering".into(),
+                payload: serde_json::json!({}),
+            },
+        ));
+    }
+    progress.mark();
+}
+
+#[test]
+fn replay_allows_a_continuation_after_collect_to_mint_its_first_effect() {
+    let (log, _) = ordered_live(false);
+    let mut app = bus_support::app();
+    app.init_resource::<ContinuationStarted>();
+    Handlers::with(app.world_mut(), |handlers| {
+        Replay::policy_visible().register(handlers, &log)
+    })
+    .unwrap()
+    .unwrap();
+    app.world_mut()
+        .resource_mut::<Schedules>()
+        .add_systems(RigSchedule, continue_after_collect.in_set(BusSet::Judge));
+    bus_support::tick_until(&mut app, "continued replay", |world| {
+        assert!(
+            world
+                .get_resource::<rig_ecs::bus::ReplayFailure>()
+                .is_none(),
+            "later policy sets must run before diagnosing an absent future effect"
+        );
+        world.query::<&EffectOutcome>().iter(world).count() == 2
+    });
+}
+
+#[test]
+fn replay_failure_stays_terminal_for_effects_created_after_the_refusal() {
+    let (log, _) = ordered_live(false);
+    let mut app = bus_support::app();
+    Handlers::with(app.world_mut(), |handlers| {
+        Replay::policy_visible().register(handlers, &log)
+    })
+    .unwrap()
+    .unwrap();
+    app.update();
+    assert!(
+        app.world()
+            .get_resource::<rig_ecs::bus::ReplayFailure>()
+            .is_some(),
+        "a missing program must fail finitely"
+    );
+    for key in ["a", "b"] {
+        app.world_mut().spawn(PendingEffect::new(
+            key,
+            EffectKind::Custom {
+                kind: "ordering".into(),
+                payload: serde_json::json!({}),
+            },
+        ));
+    }
+    bus_support::tick_until(&mut app, "failed replay remains failed", |world| {
+        world.query::<&EffectOutcome>().iter(world).count() == 2
+    });
+    for outcome in app.world_mut().query::<&EffectOutcome>().iter(app.world()) {
+        assert!(
+            outcome
+                .0
+                .as_ref()
+                .is_err_and(|error| error.kind == rig_core::error::ErrorKind::Divergence),
+            "a refused replay must not fall back to successful ordinary collection"
+        );
+    }
+}
+
 fn first_answer(
     event: On<Add, EffectOutcome>,
     effects: Query<&PendingEffect>,
