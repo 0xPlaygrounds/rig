@@ -14,7 +14,7 @@ use super::{
 mod tests;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) struct Patch {
+pub(crate) struct Patch {
     pub operation: String,
     pub path: String,
     pub content: String,
@@ -72,13 +72,13 @@ impl Patch {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) struct Receipt {
+pub(crate) struct Receipt {
     pub patch: Patch,
     pub after: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct Snapshot {
+pub(crate) struct Snapshot {
     pub image: Image,
     pub writes: usize,
     pub initial: Option<Report>,
@@ -89,7 +89,7 @@ pub(super) struct Snapshot {
     pub ledger: Vec<Receipt>,
 }
 
-pub(super) struct State {
+pub(crate) struct State {
     pub project: Project,
     pub initial: Option<Report>,
     pub regression: Option<Report>,
@@ -118,14 +118,20 @@ impl State {
             Phase::Regression => {
                 self.initial.as_ref().is_some_and(|report| report.accepted)
                     && self.ledger.len() == 1
-                    && self.ledger[0].patch.path == "tests/regression.rs"
+                    && self
+                        .ledger
+                        .first()
+                        .is_some_and(|receipt| receipt.patch.path == "tests/regression.rs")
             }
             Phase::Final => {
                 self.regression
                     .as_ref()
                     .is_some_and(|report| report.accepted)
                     && self.ledger.len() == 2
-                    && self.ledger[1].patch.path == "src/lib.rs"
+                    && self
+                        .ledger
+                        .get(1)
+                        .is_some_and(|receipt| receipt.patch.path == "src/lib.rs")
             }
         };
         if !ready {
@@ -138,8 +144,16 @@ impl State {
 
     /// Invoked by the live tool. Reports become policy state only at Collect.
     pub fn validate(&self, phase: Phase) -> Result<Report, Error> {
+        self.validate_until(phase, None)
+    }
+
+    pub fn validate_until(
+        &self,
+        phase: Phase,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<Report, Error> {
         self.phase_ready(phase)?;
-        super::validation::validate(&self.project, phase)
+        super::validation::validate_until(&self.project, phase, deadline)
     }
 
     pub fn observe_report(&mut self, report: Report) -> Result<(), Error> {
@@ -159,6 +173,9 @@ impl State {
     }
 
     pub fn propose(&self, path: &str, content: &str, justification: &str) -> Result<Patch, Error> {
+        if !matches!(path, "tests/regression.rs" | "src/lib.rs") {
+            return Err(Error::Invariant("immutable or undeclared patch path; add the regression in tests/regression.rs, then repair src/lib.rs after its behavioral failure".into()));
+        }
         let image = self.project.image()?;
         let digest = project::digest(&image)?;
         let proof = match path {
@@ -247,6 +264,17 @@ impl State {
     /// Live execution already wrote; replay projects the recorded edit into its
     /// own workspace using the same approval/digest checks, without a subprocess.
     pub fn observe_receipt(&mut self, receipt: &Receipt, replay: bool) -> Result<(), Error> {
+        if replay
+            && self
+                .ledger
+                .iter()
+                .any(|saved| saved.patch.operation == receipt.patch.operation)
+        {
+            return Err(Error::Invariant(
+                "duplicate operation: external edit already happened; reconcile its saved outcome"
+                    .into(),
+            ));
+        }
         if replay {
             let mut image = self.project.image()?;
             if self.pending.as_ref() != Some(&receipt.patch)

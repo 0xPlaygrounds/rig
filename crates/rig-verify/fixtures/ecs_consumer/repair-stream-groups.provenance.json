@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "source": "synthetic",
+  "case": "repair-stream-groups",
+  "cassette_sha256": null,
+  "provider_model": null,
+  "generation": {
+    "revision": "f7a224dc383a98a83588216da0f0c6de5d37cb71",
+    "dirty": true
+  },
+  "capture": null,
+  "artifacts_sha256": {
+    "application": "a8c026616918533d632b3269e7e0be27045b8d4f1b99d7723dfd0438d3f30160",
+    "checkpoints": "5c53cdee7f52fd9daa8a6ae7f46a836ea3bad855d1a97515043b135ea9c14128",
+    "effects": "dddf5a250bf0f5776595897981c7cf58ff34e8db8b06f5cc399ac8add4ac00fa",
+    "observations": "b6bb13d8779b080551e8f9384d3c3158d498f8241bbf21f88101719fbef80617"
+  }
+}

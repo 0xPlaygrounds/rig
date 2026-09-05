@@ -29,7 +29,7 @@ pub(super) enum Mode {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct Output {
+pub(crate) struct Output {
     pub code: Option<i32>,
     pub timed_out: bool,
     pub output_limit: bool,
@@ -43,10 +43,15 @@ pub(super) struct Sandbox {
     pub toolchain: PathBuf,
     pub compile: assert_fs::TempDir,
     runtime: assert_fs::TempDir,
+    deadline: Option<Instant>,
 }
 
 impl Sandbox {
     pub fn new() -> Result<Self, Error> {
+        Self::new_until(None)
+    }
+
+    pub fn new_until(deadline: Option<Instant>) -> Result<Self, Error> {
         // Trusted toolchain discovery runs from the harness repository, before
         // model code exists, with bounded output/time and only toolchain env.
         let mut discovery = Command::new("rustc");
@@ -73,7 +78,7 @@ impl Sandbox {
             use std::os::unix::process::CommandExt;
             discovery.process_group(0);
         }
-        let output = execute(discovery, Duration::from_secs(10))?;
+        let output = execute(discovery, remaining(Duration::from_secs(10), deadline))?;
         if output.code != Some(0) || output.timed_out || output.output_limit {
             return Err(Error::Invariant(
                 "cannot locate the repository Rust toolchain".into(),
@@ -88,6 +93,7 @@ impl Sandbox {
             toolchain,
             compile: temporary()?,
             runtime: temporary()?,
+            deadline,
         };
         for directory in [&sandbox.compile, &sandbox.runtime] {
             for name in ["home", "cargo", "tmp", "target"] {
@@ -169,7 +175,7 @@ impl Sandbox {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        execute(command, timeout)
+        execute(command, remaining(timeout, self.deadline))
     }
 
     #[cfg(target_os = "macos")]
@@ -275,7 +281,22 @@ impl Sandbox {
     }
 }
 
+fn remaining(timeout: Duration, deadline: Option<Instant>) -> Duration {
+    deadline.map_or(timeout, |deadline| {
+        timeout.min(deadline.saturating_duration_since(Instant::now()))
+    })
+}
+
 fn execute(mut command: Command, timeout: Duration) -> Result<Output, Error> {
+    if timeout.is_zero() {
+        return Ok(Output {
+            code: None,
+            timed_out: true,
+            output_limit: false,
+            stdout: String::new(),
+            stderr: "validation execution deadline exhausted before launch".into(),
+        });
+    }
     let mut child = Running(Some(command.spawn()?));
     let exceeded = Arc::new(AtomicBool::new(false));
     let read = |pipe: Option<_>| -> Result<_, Error> {
@@ -342,7 +363,7 @@ fn capture(
                     break;
                 }
                 let available = OUTPUT_LIMIT.saturating_sub(output.len());
-                output.extend_from_slice(&buffer[..count.min(available)]);
+                output.extend(buffer.iter().take(count.min(available)).copied());
                 if count > available {
                     exceeded.store(true, Ordering::SeqCst);
                 }

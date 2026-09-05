@@ -134,6 +134,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Prepare repository-repair process isolation
+        run: bash .github/scripts/setup-consumer-sandbox.sh
+
       # protoc: required because this all-features lane enables rig-lancedb
       # and the facade's feature-gated raw lancedb test dependency.
       #

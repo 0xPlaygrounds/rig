@@ -355,6 +355,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Prepare repository-repair process isolation
+        run: bash .github/scripts/setup-consumer-sandbox.sh
+
       # The raw lancedb dependency used by the facade's integration tests is
       # feature-gated with those tests. Neither graph below enables it, so a
       # cold PR run avoids the Lance/Arrow/DataFusion graph and needs no

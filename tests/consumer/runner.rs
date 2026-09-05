@@ -113,21 +113,46 @@ async fn one(
             let candidate = artifacts::candidate(case)?;
             let requests_before = budget.used();
             let revision = artifacts::revision()?;
-            let evidence = providers::run(
+            let recorded = AssertUnwindSafe(providers::run(
                 case,
                 CassetteMode::Record,
                 &candidate.join("provider.yaml"),
                 budget,
-            )
-            .await?;
+            ))
+            .catch_unwind()
+            .await;
+            let evidence = match recorded {
+                Ok(Ok(evidence)) => evidence,
+                result => {
+                    let error = match result {
+                        Ok(Err(error)) => error,
+                        _ => Error::Invariant(
+                            "provider capture panicked before returning evidence".into(),
+                        ),
+                    };
+                    let metadata = artifacts::write(
+                        &candidate.join("capture-failure.json"),
+                        &scrub_artifact(
+                            &json!({"case":case,"source":"unaccepted-live-candidate","execution_succeeded":false,"error":error.to_string(),"limits":budget.limits,"requests":budget.used()-requests_before,"capture":revision,"completed_traffic":candidate.join("provider.yaml").is_file(),"partial_traffic":candidate.join("provider.partial.yaml").is_file()}),
+                        ),
+                    );
+                    let diagnostic = metadata.err().map_or_else(String::new, |failure| {
+                        format!("; failed to save capture diagnostics: {failure}")
+                    });
+                    return Err(Error::Invariant(format!(
+                        "{error}; unaccepted live candidate {}{diagnostic}",
+                        candidate.display()
+                    )));
+                }
+            };
             artifacts::write(
                 &candidate.join("live-evidence.json"),
                 &scrub_artifact(&serde_json::to_value(&evidence)?),
             )?;
             artifacts::write(
                 &candidate.join("capture.json"),
-                &json!({"case":case.id,"source":"live-provider",
-                "provider_model":providers::identity(case.provider).ok().map(|(provider,_,_,model)|json!({"provider":provider,"model":model})),
+                &json!({"case":case.id,"source":"live-provider","execution_succeeded":true,
+                "provider_model":providers::identity(case).ok().map(|(provider,_,_,model)|json!({"provider":provider,"model":model})),
                 "cassette_sha256":artifacts::digest(&candidate.join("provider.yaml"))?,"limits":budget.limits,"requests":budget.used()-requests_before,"capture":revision}),
             )?;
             Ok(
@@ -242,7 +267,7 @@ async fn one(
                     &candidate.join("provenance.json"),
                     &json!({"schema":1,"source":if case.provider==Provider::Synthetic {"synthetic"} else {"scrubbed-cassette-replay"},"case":case.id,
                     "cassette_sha256":if case.provider==Provider::Synthetic { None } else { Some(artifacts::digest(&input_cassette)?) },
-                    "provider_model":providers::identity(case.provider).ok().map(|(provider,_,_,model)|json!({"provider":provider,"model":model})),
+                    "provider_model":providers::identity(case).ok().map(|(provider,_,_,model)|json!({"provider":provider,"model":model})),
                     "generation":artifacts::revision()?,"capture":capture,"artifacts_sha256":artifacts::evidence_digests(&candidate)?}),
                 )?;
                 Ok(
@@ -337,17 +362,33 @@ fn compare_resume(
     Ok(())
 }
 
+fn case_budget(command: &str, case: &Case, shared: &Budget) -> Budget {
+    if command == "record" {
+        shared.clone()
+    } else {
+        Budget::new(Limits::for_case(case))
+    }
+}
+
 pub(crate) async fn run(args: impl IntoIterator<Item = String>) -> Result<(), Error> {
     let invocation = parse(args)?;
     let selected = select(&invocation)?;
-    let limits = Limits::default();
+    let limits = Limits {
+        output_tokens: selected
+            .iter()
+            .map(Case::output_tokens)
+            .max()
+            .unwrap_or(512),
+        ..Limits::default()
+    };
     let plan: Vec<_> = selected.iter().map(|case| {
         let mut fixtures: Vec<_> = ["effects", "observations", "application", "checkpoints", "provenance"].into_iter()
             .map(|name| artifacts::golden(case, name)).collect();
         if case.provider != Provider::Synthetic { fixtures.push(artifacts::cassette(case)?); }
         Ok(json!({"case":case,
-            "provider_model":providers::identity(case.provider).ok().map(|(provider,_,_,model)|json!({"provider":provider,"model":model})),
-            "maximum_live_requests":if case.provider == Provider::Synthetic {0} else {8},
+            "provider_model":providers::identity(case).ok().map(|(provider,_,_,model)|json!({"provider":provider,"model":model})),
+            "output_tokens_per_request":case.output_tokens(),
+            "maximum_live_requests":if case.provider == Provider::Synthetic {0} else if case.repair {24} else {8},
             "required_fixtures":fixtures.iter().map(|path|json!({"path":path.strip_prefix(artifacts::root()).unwrap_or(path),"present":path.is_file()})).collect::<Vec<_>>(),
             "execution_paths":{
                 "live_capture":if case.provider == Provider::Synthetic {json!({"status":"inapplicable","reason":"synthetic policy stimulus"})} else {json!({"status":"applicable"})},
@@ -360,7 +401,7 @@ pub(crate) async fn run(args: impl IntoIterator<Item = String>) -> Result<(), Er
     println!(
         "{}",
         serde_json::to_string_pretty(
-            &json!({"command":invocation.command,"plan":plan,"limits":limits,"live":invocation.command=="record"})
+            &json!({"command":invocation.command,"plan":plan,"limits":limits,"budget_scope":if invocation.command=="record" {"shared-live-invocation"} else {"per-offline-case"},"live":invocation.command=="record","recording_finalize_reserve_seconds":if invocation.command=="record" {10} else {0}})
         )?
     );
     if matches!(invocation.command.as_str(), "list" | "plan") {
@@ -373,14 +414,26 @@ pub(crate) async fn run(args: impl IntoIterator<Item = String>) -> Result<(), Er
     }
     let budget = Budget::new(limits);
     let mut results = Vec::new();
+    let mut total_requests = 0;
     let mut failed = false;
     for case in &selected {
+        let case_budget = case_budget(&invocation.command, case, &budget);
+        let requests_before = case_budget.used();
         let bounded = async {
-            tokio::time::timeout_at(budget.deadline.into(), one(case, &invocation, &budget))
-                .await
-                .map_err(|_| Error::Invariant("matrix elapsed-time budget exhausted".into()))?
+            // Live execution reserves time and finalizes inside providers::run;
+            // cancelling this outer future would discard its retained traffic.
+            if invocation.command == "record" {
+                return one(case, &invocation, &case_budget).await;
+            }
+            tokio::time::timeout_at(
+                case_budget.deadline.into(),
+                one(case, &invocation, &case_budget),
+            )
+            .await
+            .map_err(|_| Error::Invariant("matrix elapsed-time budget exhausted".into()))?
         };
         let result = AssertUnwindSafe(bounded).catch_unwind().await;
+        total_requests += case_budget.used() - requests_before;
         let mut row = match result {
             Ok(Ok(evidence)) => json!({"case":case.id,"status":"passed","evidence":evidence}),
             Ok(Err(error)) => {
@@ -471,7 +524,7 @@ pub(crate) async fn run(args: impl IntoIterator<Item = String>) -> Result<(), Er
             }
         }
     }
-    let report = json!({"schema":1,"command":invocation.command,"plan":plan,"cases":results,"axis_coverage":coverage,"counts":{"passed":passed,"failed":selected.len()-passed,"selected":selected.len()},"requests":budget.used(),"limits":budget.limits});
+    let report = json!({"schema":1,"command":invocation.command,"plan":plan,"cases":results,"axis_coverage":coverage,"counts":{"passed":passed,"failed":selected.len()-passed,"selected":selected.len()},"requests":total_requests,"limits":budget.limits,"budget_scope":if invocation.command=="record" {"shared-live-invocation"} else {"per-offline-case"}});
     artifacts::write(
         &artifacts::root().join(".ecs-consumer/report.json"),
         &report,
@@ -481,7 +534,7 @@ pub(crate) async fn run(args: impl IntoIterator<Item = String>) -> Result<(), Er
         invocation.command,
         selected.len(),
         selected.len() - passed,
-        budget.used()
+        total_requests
     );
     if failed {
         return Err(Error::Invariant(

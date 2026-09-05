@@ -13,7 +13,7 @@ use super::super::{Error, workspace::Workspace};
 #[cfg(test)]
 mod tests;
 
-pub(super) type Image = BTreeMap<String, String>;
+pub(crate) type Image = BTreeMap<String, String>;
 
 pub(super) fn initial() -> Image {
     [
@@ -51,7 +51,7 @@ pub(super) fn content_digest(content: &str) -> String {
     format!("{:x}", Sha256::digest(content.as_bytes()))
 }
 
-pub(super) struct Project {
+pub(crate) struct Project {
     workspace: Workspace,
 }
 

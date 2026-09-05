@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "source": "synthetic",
+  "case": "repair-timeout",
+  "cassette_sha256": null,
+  "provider_model": null,
+  "generation": {
+    "revision": "f7a224dc383a98a83588216da0f0c6de5d37cb71",
+    "dirty": true
+  },
+  "capture": null,
+  "artifacts_sha256": {
+    "application": "d3399a5e221f0d8d956448c0f88bcf8cd61c8fc33c3ecc86b7c1ec70e05e40a7",
+    "checkpoints": "da4afbdc0dc0c3f41c8ff919097d3a779b755a2d5c064b64199a78ecb2ae1736",
+    "effects": "21e626f964790e4830fdef379a2151bb6ee164e3e5f804348a9c9463a84f56fc",
+    "observations": "fba5d4466b8940124b4c5f48e1bdac0db82f2066fb89472726d774f07c39f752"
+  }
+}

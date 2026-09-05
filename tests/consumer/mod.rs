@@ -90,7 +90,9 @@ pub(crate) struct Observation {
 #[derive(Resource)]
 struct Host {
     case: Case,
+    deadline: Instant,
     workspace: Workspace,
+    repair: Option<repair::State>,
     replay: bool,
     observations: Vec<Observation>,
     seen: BTreeMap<u64, (usize, bool)>,
@@ -180,6 +182,9 @@ impl<S: Serve + 'static> Serve for TokioHandler<S> {
 }
 
 fn tool_family(name: &str) -> FamilyDescriptor {
+    if repair::TOOLS.contains(&name) {
+        return repair::tool_family(name);
+    }
     let (description, parameters) = match name {
         "read_file" => (
             "Read greeting.txt",
@@ -217,6 +222,10 @@ const TOOLS: [&str; 5] = [
     "apply_edit",
     "validate_file",
 ];
+fn tool_names(case: &Case) -> &[&str] {
+    if case.repair { repair::TOOLS } else { &TOOLS }
+}
+
 fn tool_key(name: &str) -> String {
     format!("maintenance/tool:{name}")
 }
@@ -262,7 +271,13 @@ fn build_with_replay(case: &Case, replay: Option<&EffectLog>, mode: Replay) -> R
     }
     app.insert_resource(Host {
         case: case.clone(),
+        deadline: Instant::now() + Duration::from_secs(if case.repair { 300 } else { 120 }),
         workspace: Workspace::new()?,
+        repair: if case.repair {
+            Some(repair::State::new()?)
+        } else {
+            None
+        },
         replay: replay.is_some(),
         observations: Vec::new(),
         seen: BTreeMap::new(),
@@ -277,7 +292,7 @@ fn build_with_replay(case: &Case, replay: Option<&EffectLog>, mode: Replay) -> R
         Handlers::with(app.world_mut(), |h| mode.register(h, log))??;
     } else {
         custom::install(app.world_mut(), case)?;
-        for name in TOOLS {
+        for name in tool_names(case) {
             Handlers::with(app.world_mut(), |h| {
                 h.register_open(tool_key(name), tool_family(name))
             })??;
@@ -315,26 +330,42 @@ fn program(app: &mut App, case: &Case) -> Result<Entity, Error> {
         .world_mut()
         .spawn((
             Owner("maintenance".into()),
-            Preamble(Some(PREAMBLE.into())),
+            Preamble(Some(
+                if case.repair {
+                    repair::PREAMBLE
+                } else {
+                    PREAMBLE
+                }
+                .into(),
+            )),
             Temperature(None),
-            MaxTokens(Some(512)),
-            AdditionalParams(
+            MaxTokens(Some(case.output_tokens())),
+            AdditionalParams(if case.repair && case.provider == Provider::Synthetic {
+                Some(json!({"repair_fault":case.fault}))
+            } else {
                 (case.provider == Provider::Gemini)
-                    .then(|| json!({"generationConfig":{"thinkingConfig":{"thinkingBudget":0}}})),
-            ),
+                    .then(|| json!({"generationConfig":{"thinkingConfig":{"thinkingBudget":0}}}))
+            }),
             ToolChoiceSpec(None),
             Output::default(),
             DefaultMaxTurns(None),
-            MaxTurns(8),
+            MaxTurns(if case.repair { 24 } else { 8 }),
             InvalidCalls::default(),
             UsesModel(model),
             ToolPolicy {
                 concurrency: case.concurrency,
             },
-            PolicyVersion("maintenance/v1/collect-observation".into()),
+            PolicyVersion(
+                if case.repair {
+                    "repository-repair/v1/collect-observation"
+                } else {
+                    "maintenance/v1/collect-observation"
+                }
+                .into(),
+            ),
         ))
         .id();
-    for (order, name) in TOOLS.iter().enumerate() {
+    for (order, name) in tool_names(case).iter().enumerate() {
         let tool = bound(app.world_mut(), &tool_key(name))?;
         app.world_mut()
             .spawn((Grant(tool), Order(order as u64), ChildOf(agent)));
@@ -344,11 +375,23 @@ fn program(app: &mut App, case: &Case) -> Result<Entity, Error> {
         app.world_mut()
             .spawn((Grant(tool), Order(TOOLS.len() as u64), ChildOf(agent)));
     }
-    let run = spawn_run(app.world_mut(), agent, &[], PROMPT, case.stream, None);
+    let run = spawn_run(
+        app.world_mut(),
+        agent,
+        &[],
+        if case.repair { repair::PROMPT } else { PROMPT },
+        case.stream,
+        None,
+    );
     app.world_mut()
         .entity_mut(run)
         .insert(persistence::MaintenanceRun {
-            operation: "greeting-fix-v1".into(),
+            operation: if case.repair {
+                "repository-repair-v1"
+            } else {
+                "greeting-fix-v1"
+            }
+            .into(),
         });
     let recorder = app.world().resource::<EffectLogResource>().0.clone();
     rig_ecs::replay::stamp_run(app.world_mut(), run, &recorder);
@@ -384,6 +427,51 @@ fn program(app: &mut App, case: &Case) -> Result<Entity, Error> {
 
 fn tool_answer(host: &mut Host, name: &str, args: &str) -> Result<Value, Error> {
     let args: Value = serde_json::from_str(args)?;
+    if let Some(state) = &mut host.repair {
+        if name == "repo_validate"
+            && matches!(
+                args.get("phase").and_then(Value::as_str),
+                Some("regression" | "final")
+            )
+        {
+            let required_writes = if args.get("phase").and_then(Value::as_str) == Some("regression")
+            {
+                1
+            } else {
+                2
+            };
+            if state.ledger.len() < required_writes {
+                let path = if required_writes == 1 {
+                    "tests/regression.rs"
+                } else {
+                    "src/lib.rs"
+                };
+                let pending = state.pending.as_ref().filter(|patch| {
+                    patch.path == path
+                        && !state
+                            .ledger
+                            .iter()
+                            .any(|receipt| receipt.patch.operation == patch.operation)
+                });
+                return Err(Error::Invariant(pending.map_or_else(
+                    ||format!("validation needs an approved applied {path} patch; observe the preceding behavioral failure, then use repo_propose_patch for {path}"),
+                    |patch|format!("proposal has not been applied; call repo_apply_patch with operation {} to request host approval, then validate after its applied result",patch.operation)
+                )));
+            }
+            let observed = state.ledger.last().is_some_and(|receipt| {
+                host.observations.iter().any(|observation| {
+                    observation.boundary == "collect.publication"
+                        && observation.data.get("applied").and_then(Value::as_bool) == Some(true)
+                        && observation.data.get("operation").and_then(Value::as_str)
+                            == Some(receipt.patch.operation.as_str())
+                })
+            });
+            if !observed {
+                return Err(Error::Invariant("validation must wait for the preceding edit result at Collect; call validation in the next model turn".into()));
+            }
+        }
+        return repair::tool_answer(state, name, &args, host.deadline);
+    }
     match name {
         "read_file" => Ok(json!({"path":"greeting.txt", "content":host.workspace.read()?})),
         "search_file" => {
@@ -471,6 +559,10 @@ fn cancel_consumer(world: &mut World, boundary: &str) {
 }
 
 fn approval_policy(world: &mut World) {
+    if world.resource::<Host>().case.repair {
+        repair_approval(world);
+        return;
+    }
     if world.resource::<Host>().approval.is_some() {
         return;
     }
@@ -496,6 +588,92 @@ fn approval_policy(world: &mut World) {
                     .entity_mut(run)
                     .insert(Cancelled("host cancelled while awaiting approval".into()));
             }
+        }
+    }
+}
+
+fn repair_approval(world: &mut World) {
+    let arguments: Vec<_> = world
+        .query_filtered::<&PendingEffect, Without<Issued>>()
+        .iter(world)
+        .filter_map(|effect| {
+            if effect.key.as_str() == tool_key("repo_apply_patch")
+                && let EffectKind::ToolCall { args, .. } = &effect.kind
+            {
+                return Some(args.clone());
+            }
+            None
+        })
+        .collect();
+    for args in arguments {
+        let result =
+            (|| -> Result<Option<(repair::Patch, Approval, Option<repair::Patch>)>, Error> {
+                let args: Value = serde_json::from_str(&args)?;
+                let operation = args
+                    .get("operation")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| Error::Invariant("apply needs operation identity".into()))?;
+                let mut host = world.resource_mut::<Host>();
+                let production = host.case.approval;
+                let stale = host.case.fault == Fault::RepairStaleApproval;
+                let state = host
+                    .repair
+                    .as_mut()
+                    .ok_or_else(|| Error::Invariant("repair state missing".into()))?;
+                if state.approvals.contains_key(operation) {
+                    return Ok(None);
+                }
+                let decision = if state
+                    .pending
+                    .as_ref()
+                    .is_some_and(|patch| patch.path == "tests/regression.rs")
+                {
+                    Approval::Approve
+                } else {
+                    production
+                };
+                let patch = state.approve(operation, decision)?;
+                let changed =
+                    if stale && patch.path == "src/lib.rs" && decision == Approval::Approve {
+                        let changed = state.propose(
+                            &patch.path,
+                            &format!(
+                                "// Controlled changed diff after approval.\n{}",
+                                patch.content
+                            ),
+                            &patch.justification,
+                        )?;
+                        state.observe_proposal(changed.clone())?;
+                        Some(changed)
+                    } else {
+                        None
+                    };
+                Ok(Some((patch, decision, changed)))
+            })();
+        match result {
+            Ok(Some((patch, decision, changed))) => {
+                world.resource_mut::<Host>().observe(
+                    "repair.approval",
+                    None,
+                    json!({"decision":decision,"patch":patch}),
+                );
+                if let Some(changed) = changed {
+                    world.resource_mut::<Host>().observe(
+                        "repair.changed-proposal",
+                        None,
+                        json!({"proposal":changed,"source":"declared synthetic host input"}),
+                    );
+                }
+                if decision == Approval::Cancel {
+                    cancel_consumer(world, "host cancelled production patch before apply");
+                }
+            }
+            Ok(None) => (),
+            Err(error) => world.resource_mut::<Host>().observe(
+                "repair.approval-refused",
+                None,
+                json!({"error":error.to_string()}),
+            ),
         }
     }
 }
@@ -534,6 +712,24 @@ fn serve_tools(world: &mut World) {
                 result: ToolResult::success(ToolOutput::json(answer)),
             })
             .map_err(|error| ErrorReport::new(ErrorKind::Request, error.to_string()));
+        if name == "repo_apply_patch"
+            && let Ok(Outcome::ToolResult { result: answer }) = &result
+        {
+            let publication = (|| -> Result<_, Error> {
+                let value: Value = serde_json::from_str(&answer.output().render())?;
+                let mut output = ToolContext::new();
+                output
+                    .insert_result(repair::Publication::from_answer(&value)?)
+                    .map_err(|error| Error::Invariant(error.to_string()))?;
+                Ok(output)
+            })();
+            match publication {
+                Ok(output) => {
+                    world.entity_mut(entity).insert(bus::ToolOutputs(output));
+                }
+                Err(error) => world.resource_mut::<Host>().failure = Some(error.to_string()),
+            }
+        }
         if name == "apply_edit" && result.is_ok() {
             let mut output = ToolContext::new();
             let applied = world.resource::<Host>().workspace.writes == 1;
@@ -563,6 +759,10 @@ fn observe(world: &mut World) {
             (
                 id.0.as_u64(),
                 effect.key.clone(),
+                match &effect.kind {
+                    EffectKind::ToolCall { args, .. } => Some(args.clone()),
+                    _ => None,
+                },
                 stream.cloned(),
                 outcome.cloned(),
                 published.cloned(),
@@ -572,7 +772,7 @@ fn observe(world: &mut World) {
     visible.sort_by_key(|(id, ..)| *id);
     let cancel_partial = {
         let mut host = world.resource_mut::<Host>();
-        for (id, key, stream, outcome, published) in visible {
+        for (id, key, arguments, stream, outcome, published) in visible {
             let prior = host.seen.get(&id).copied().unwrap_or_default();
             let events = stream.as_ref().map_or(0, |s| s.events.len());
             if events != prior.0 {
@@ -611,6 +811,76 @@ fn observe(world: &mut World) {
                     let parsed = serde_json::from_str::<Value>(&result.output().render());
                     match parsed {
                         Ok(value) => {
+                            if host.case.repair
+                                && let Some(name) = key.as_str().strip_prefix("maintenance/tool:")
+                            {
+                                let replay = host.replay;
+                                let observed =
+                                    (|| -> Result<(bool, Option<repair::Publication>), Error> {
+                                        let publication = if name == "repo_apply_patch" {
+                                            let expected =
+                                                repair::Publication::from_answer(&value)?;
+                                            let args: Value = serde_json::from_str(
+                                                arguments.as_deref().ok_or_else(|| {
+                                                    Error::Invariant(
+                                                        "write lacks issued arguments".into(),
+                                                    )
+                                                })?,
+                                            )?;
+                                            if args.get("operation").and_then(Value::as_str)
+                                                != Some(expected.operation.as_str())
+                                            {
+                                                return Err(Error::Invariant(
+                                                    "write result differs from issued operation"
+                                                        .into(),
+                                                ));
+                                            }
+                                            let actual=published.as_ref().ok_or_else(||Error::Invariant("repair write publication missing at Collect".into()))?
+                                            .0.result::<repair::Publication>().map_err(|error|Error::Invariant(error.to_string()))?
+                                            .ok_or_else(||Error::Invariant("repair write receipt missing at Collect".into()))?;
+                                            if actual != expected {
+                                                return Err(Error::Invariant(
+                                                    "repair write publication differs from outcome"
+                                                        .into(),
+                                                ));
+                                            }
+                                            Some(actual)
+                                        } else {
+                                            None
+                                        };
+                                        let state = host.repair.as_mut().ok_or_else(|| {
+                                            Error::Invariant(
+                                                "repair state missing at Collect".into(),
+                                            )
+                                        })?;
+                                        let args: Value = serde_json::from_str(
+                                            arguments.as_deref().ok_or_else(|| {
+                                                Error::Invariant(
+                                                    "repair result lacks issued tool arguments"
+                                                        .into(),
+                                                )
+                                            })?,
+                                        )?;
+                                        repair::observe(state, name, &args, &value, replay)?;
+                                        Ok((state.validated(), publication))
+                                    })();
+                                match observed {
+                                    Ok((validated, publication)) => {
+                                        host.validated = validated;
+                                        if let Some(publication) = publication {
+                                            host.observe(
+                                                "collect.publication",
+                                                Some(id),
+                                                json!(publication),
+                                            );
+                                        }
+                                    }
+                                    Err(error) => host.failure = Some(error.to_string()),
+                                }
+                                if name == "repo_validate" {
+                                    host.observe("repair.validation",Some(id),json!({"phase":value.pointer("/validation/phase"),"accepted":value.pointer("/validation/accepted"),"project_digest":value.pointer("/validation/project_digest")}));
+                                }
+                            }
                             if host.primary.is_none()
                                 && matches!(
                                     key.as_str(),
@@ -698,7 +968,16 @@ async fn drive(mut app: App, run: Entity) -> Result<Evidence, Error> {
         let bundle = artifacts::candidate(&host.case)?;
         let effects = app.world().resource::<EffectLogResource>().log();
         let observations = host.observations.clone();
-        let writes = host.workspace.writes;
+        let writes = host
+            .repair
+            .as_ref()
+            .map_or(host.workspace.writes, |state| state.project.writes());
+        let repair = host.repair.as_ref().map(|state| {
+            state
+                .snapshot()
+                .map(|snapshot| json!(snapshot))
+                .unwrap_or_else(|error| json!({"snapshot_error":error.to_string()}))
+        });
         let pending: Vec<_> = app
             .world_mut()
             .query::<(&Issued, &PendingEffect, Option<&EffectOutcome>)>()
@@ -710,7 +989,7 @@ async fn drive(mut app: App, run: Entity) -> Result<Evidence, Error> {
             &bundle.join("runtime-failure.json"),
             &crate::cassettes::scrub_artifact(&json!({
                 "error":error.to_string(),"boundary":observations.last().map(|item|&item.boundary),
-                "observations":observations,"effects":effects,"pending":pending,"writes":writes
+                "observations":observations,"effects":effects,"pending":pending,"writes":writes,"repair":repair
             })),
         )?;
         return Err(Error::Invariant(format!(
@@ -722,7 +1001,12 @@ async fn drive(mut app: App, run: Entity) -> Result<Evidence, Error> {
 }
 
 async fn drive_world(app: &mut App, run: Entity) -> Result<Evidence, Error> {
-    let deadline = Instant::now() + Duration::from_secs(120);
+    let seconds = if app.world().resource::<Host>().case.repair {
+        300
+    } else {
+        120
+    };
+    let deadline = app.world().resource::<Host>().deadline;
     let control = app.world().resource::<scheduled::DeliveryControl>().clone();
     loop {
         control.release();
@@ -767,7 +1051,9 @@ async fn drive_world(app: &mut App, run: Entity) -> Result<Evidence, Error> {
             break;
         }
         if Instant::now() >= deadline {
-            return Err(Error::Invariant("120s consumer deadline exceeded".into()));
+            return Err(Error::Invariant(format!(
+                "{seconds}s consumer deadline exceeded"
+            )));
         }
         tokio::task::yield_now().await;
     }
@@ -782,6 +1068,35 @@ async fn drive_world(app: &mut App, run: Entity) -> Result<Evidence, Error> {
     let host = app.world().resource::<Host>();
     if let Some(error) = &host.failure {
         return Err(Error::Invariant(error.clone()));
+    }
+    if let Some(state) = &host.repair {
+        let terminal = repair::acceptance(
+            state,
+            &host.case,
+            &host.observations,
+            !app.world()
+                .resource::<persistence::Checkpoints>()
+                .0
+                .is_empty(),
+        )?;
+        let mut observations = host.observations.clone();
+        observations.push(Observation {
+            boundary: "repair.terminal".into(),
+            effect: None,
+            data: terminal,
+        });
+        return Ok(Evidence {
+            effects: app.world().resource::<EffectLogResource>().log(),
+            observations,
+            files: state.project.image()?,
+            writes: state.project.writes(),
+            result: app
+                .world()
+                .get::<RunResult>(run)
+                .map(|result| result.0.clone())
+                .unwrap_or_default(),
+            checkpoints: app.world().resource::<persistence::Checkpoints>().0.clone(),
+        });
     }
     let contents = host.workspace.read()?;
     if matches!(
@@ -941,7 +1256,19 @@ async fn drive_world(app: &mut App, run: Entity) -> Result<Evidence, Error> {
 }
 
 pub(crate) async fn execute(case: &Case, model: impl Serve + 'static) -> Result<Evidence, Error> {
+    execute_with_deadline(case, model, None).await
+}
+
+pub(crate) async fn execute_with_deadline(
+    case: &Case,
+    model: impl Serve + 'static,
+    deadline: Option<Instant>,
+) -> Result<Evidence, Error> {
     let mut app = build(case, None)?;
+    if let Some(deadline) = deadline {
+        let mut host = app.world_mut().resource_mut::<Host>();
+        host.deadline = host.deadline.min(deadline);
+    }
     let model = TokioHandler {
         handler: Arc::new(scheduled::Scheduled {
             handler: Arc::new(model),
@@ -995,7 +1322,13 @@ impl Serve for Scripted {
             })
             .collect();
         let call = |id, name, args| AssistantContent::tool_call(id, name, args);
-        let choice = if request.tools.is_empty() {
+        let choice = if request
+            .tools
+            .iter()
+            .any(|tool| tool.name == "repo_list_files")
+        {
+            repair::scripted_choice(&request)
+        } else if request.tools.is_empty() {
             vec![AssistantContent::text(
                 "The workspace tools inspect, propose, approve, edit and validate.",
             )]

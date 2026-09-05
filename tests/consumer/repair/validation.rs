@@ -15,20 +15,20 @@ mod tests;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(super) enum Phase {
+pub(crate) enum Phase {
     Initial,
     Regression,
     Final,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct Step {
+pub(crate) struct Step {
     pub command: Vec<String>,
     pub output: Output,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct Report {
+pub(crate) struct Report {
     pub phase: Phase,
     pub project_digest: String,
     /// For diagnostic phases, acceptance means an executed behavioral failure.
@@ -332,9 +332,65 @@ fn run_test(
     Ok(accepted)
 }
 
+/// Format only a scratch proposal before constructing its approved diff. Replay
+/// observes the returned data; it never invokes this external process.
+pub(super) fn format_patch(
+    project: &Project,
+    contents: &str,
+    deadline: std::time::Instant,
+) -> Result<Step, Error> {
+    let sandbox = Sandbox::new_until(Some(deadline))?;
+    let input = sandbox.compile.path().join("proposal.rs");
+    std::fs::write(&input, contents)?;
+    let input = input.canonicalize()?;
+    let mut output = sandbox.run(
+        project.root(),
+        &sandbox.binary("rustfmt"),
+        &[
+            "--edition=2024".into(),
+            "--emit=stdout".into(),
+            input.display().to_string(),
+        ],
+        Mode::Compile,
+        Duration::from_secs(10),
+    )?;
+    output.stderr = normalize(&output.stderr, project, &sandbox);
+    if !successful(&output) {
+        return Err(Error::Invariant(format!(
+            "proposal formatting failed (code {:?}, timed_out {}, output_limit {}): {}",
+            output.code, output.timed_out, output.output_limit, output.stderr
+        )));
+    }
+    // Remove rustfmt's filename header, retaining the formatted Rust verbatim.
+    output.stdout = output
+        .stdout
+        .strip_prefix(&format!("{}:\n\n", input.display()))
+        .ok_or_else(|| {
+            Error::Invariant("proposal formatter omitted its expected filename header".into())
+        })?
+        .to_owned();
+    Ok(Step {
+        command: vec![
+            "rustfmt".into(),
+            "--edition=2024".into(),
+            "--emit=stdout".into(),
+            "<proposal>".into(),
+        ],
+        output,
+    })
+}
+
 pub(super) fn validate(project: &Project, phase: Phase) -> Result<Report, Error> {
+    validate_until(project, phase, None)
+}
+
+pub(super) fn validate_until(
+    project: &Project,
+    phase: Phase,
+    deadline: Option<std::time::Instant>,
+) -> Result<Report, Error> {
     let image = project.image()?;
-    if phase != Phase::Final && image["src/lib.rs"] != project::initial()["src/lib.rs"] {
+    if phase != Phase::Final && image.get("src/lib.rs") != project::initial().get("src/lib.rs") {
         return Err(Error::Invariant(
             "reproduction requires unchanged buggy production source".into(),
         ));
@@ -350,7 +406,7 @@ pub(super) fn validate(project: &Project, phase: Phase) -> Result<Report, Error>
         report.reason = "a regression file is required".into();
         return Ok(report);
     }
-    let sandbox = Sandbox::new()?;
+    let sandbox = Sandbox::new_until(deadline)?;
     let mut arguments: Vec<String> = [
         "test",
         "--offline",
@@ -392,11 +448,20 @@ pub(super) fn validate(project: &Project, phase: Phase) -> Result<Report, Error>
                 continue;
             }
         };
-        match value["reason"].as_str() {
+        match value.get("reason").and_then(serde_json::Value::as_str) {
             Some("compiler-artifact") => {
-                if value["target"]["name"] == "page_window" && value["profile"]["test"] == false {
-                    for path in value["filenames"]
-                        .as_array()
+                if value
+                    .pointer("/target/name")
+                    .and_then(serde_json::Value::as_str)
+                    == Some("page_window")
+                    && value
+                        .pointer("/profile/test")
+                        .and_then(serde_json::Value::as_bool)
+                        == Some(false)
+                {
+                    for path in value
+                        .get("filenames")
+                        .and_then(serde_json::Value::as_array)
                         .into_iter()
                         .flatten()
                         .filter_map(serde_json::Value::as_str)
@@ -410,8 +475,10 @@ pub(super) fn validate(project: &Project, phase: Phase) -> Result<Report, Error>
                     }
                 }
                 if let (Some(name), Some(path)) = (
-                    value["target"]["name"].as_str(),
-                    value["executable"].as_str(),
+                    value
+                        .pointer("/target/name")
+                        .and_then(serde_json::Value::as_str),
+                    value.get("executable").and_then(serde_json::Value::as_str),
                 ) && artifacts.insert(name.into(), path.into()).is_some()
                 {
                     return Err(Error::Invariant(
@@ -420,13 +487,21 @@ pub(super) fn validate(project: &Project, phase: Phase) -> Result<Report, Error>
                 }
             }
             Some("compiler-message") => {
-                diagnostics.push_str(value["message"]["rendered"].as_str().unwrap_or(line));
+                diagnostics.push_str(
+                    value
+                        .pointer("/message/rendered")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or(line),
+                );
                 if !diagnostics.ends_with('\n') {
                     diagnostics.push('\n');
                 }
             }
             Some("build-finished") => {
-                diagnostics.push_str(&format!("build-finished success={}\n", value["success"]));
+                diagnostics.push_str(&format!(
+                    "build-finished success={}\n",
+                    value.get("success").unwrap_or(&serde_json::Value::Null)
+                ));
             }
             _ => {
                 diagnostics.push_str(line);

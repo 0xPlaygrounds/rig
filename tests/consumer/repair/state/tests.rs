@@ -29,6 +29,21 @@ fn regression_ready() -> State {
 }
 
 #[test]
+fn immutable_test_proposal_explains_the_allowed_regression_path() {
+    let mut state = State::new().unwrap();
+    observe_phase(&mut state, Phase::Initial);
+    let error = state
+        .propose("tests/pagination.rs", REGRESSION, "Add regression")
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("immutable") && error.contains("tests/regression.rs"),
+        "{error}"
+    );
+    assert_eq!(state.project.writes(), 0);
+}
+
+#[test]
 fn only_observed_failure_unlocks_each_approved_edit() {
     let mut state = State::new().unwrap();
     assert!(

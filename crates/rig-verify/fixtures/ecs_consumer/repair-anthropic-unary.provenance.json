@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "source": "scrubbed-cassette-replay",
+  "case": "repair-anthropic-unary",
+  "cassette_sha256": "9536db54d5c957fab8124a3520b93f9fe04a4e3cbaf665f9ac00e3cafc1d4a05",
+  "provider_model": {
+    "provider": "anthropic",
+    "model": "claude-opus-5"
+  },
+  "generation": {
+    "revision": "f7a224dc383a98a83588216da0f0c6de5d37cb71",
+    "dirty": true
+  },
+  "capture": {
+    "case": "repair-anthropic-unary",
+    "source": "live-provider",
+    "execution_succeeded": true,
+    "provider_model": {
+      "provider": "anthropic",
+      "model": "claude-opus-5"
+    },
+    "cassette_sha256": "9536db54d5c957fab8124a3520b93f9fe04a4e3cbaf665f9ac00e3cafc1d4a05",
+    "limits": {
+      "requests": 32,
+      "output_tokens": 8192,
+      "seconds": 300,
+      "retries": 0
+    },
+    "requests": 9,
+    "capture": {
+      "revision": "f7a224dc383a98a83588216da0f0c6de5d37cb71",
+      "dirty": true
+    }
+  },
+  "artifacts_sha256": {
+    "application": "2be5e3a981bfc154e600b938f149398df447dd6434d135536b995a04212c3c9f",
+    "checkpoints": "2b3ec2d6e17de024c282e8c5a1d494effaa77bb541161234a0d03c14a2021297",
+    "effects": "175435fbfe62f113fa93090325d1935828afecf9ce4193841ed025407a6324c7",
+    "observations": "c7056409e03679cfd01cf2f20a46c8db70df0adfec2be89fc5833a966eddfd06"
+  }
+}
