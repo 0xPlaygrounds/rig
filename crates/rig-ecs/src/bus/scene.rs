@@ -256,12 +256,33 @@ impl Scene {
         Ok(spawned)
     }
 
-    /// Validate the allocator and stream cut before spawning anything. A stream that has
+    /// Validate identities, parent ancestry, the allocator and stream cut before spawning anything. A stream that has
     /// delivered a prefix but has not closed needs a provider cursor or host
     /// reconciliation, neither of which a generic scene can supply. Save
     /// before stream progress or after completion for automatic restoration.
     pub fn validate_resume(&self) -> Result<(), ErrorReport> {
         self.id_floor()?;
+        let invalid = |message| ErrorReport::new(rig_core::error::ErrorKind::Request, message);
+        let mut ids = std::collections::HashSet::new();
+        for effect in &self.effects {
+            if let Some(id) = effect.id
+                && !ids.insert(id)
+            {
+                return Err(invalid(format!(
+                    "scene contains duplicate effect ID {id:?}"
+                )));
+            }
+            if effect
+                .parent
+                .is_some_and(|parent| parent >= self.effects.len())
+            {
+                return Err(invalid("scene parent index is out of range".into()));
+            }
+            if effect.parent.is_some() && effect.parent_ref.is_some() {
+                return Err(invalid("scene effect has two parent references".into()));
+            }
+        }
+        validate_parent_indices(self.effects.iter().map(|effect| effect.parent))?;
         for effect in &self.effects {
             if effect.outcome.is_none()
                 && effect.streamed.as_ref().is_some_and(|streamed| {
@@ -316,4 +337,43 @@ impl Scene {
             })
         })
     }
+}
+
+/// Validate a scene's single-parent forest without recursion or world mutation.
+pub(crate) fn validate_parent_indices(
+    parents: impl IntoIterator<Item = Option<usize>>,
+) -> Result<(), ErrorReport> {
+    let parents: Vec<_> = parents.into_iter().collect();
+    let invalid = |message| ErrorReport::new(rig_core::error::ErrorKind::Request, message);
+    let mut visited = vec![0_u8; parents.len()];
+    for start in 0..parents.len() {
+        let mut cursor = Some(start);
+        while let Some(index) = cursor {
+            let state = visited
+                .get_mut(index)
+                .ok_or_else(|| invalid("scene parent index is out of range"))?;
+            match *state {
+                1 => return Err(invalid("scene ancestry contains a cycle")),
+                2 => break,
+                _ => *state = 1,
+            }
+            cursor = *parents
+                .get(index)
+                .ok_or_else(|| invalid("scene parent index is out of range"))?;
+        }
+        let mut cursor = Some(start);
+        while let Some(index) = cursor {
+            let state = visited
+                .get_mut(index)
+                .ok_or_else(|| invalid("scene parent index is out of range"))?;
+            if *state != 1 {
+                break;
+            }
+            *state = 2;
+            cursor = *parents
+                .get(index)
+                .ok_or_else(|| invalid("scene parent index is out of range"))?;
+        }
+    }
+    Ok(())
 }

@@ -938,3 +938,55 @@ fn an_exhausted_scene_can_resume_an_existing_reservation_but_cannot_mint() {
         );
     }
 }
+
+#[test]
+fn malformed_scene_identity_and_ancestry_are_refused_before_world_mutation() {
+    let mut live = app();
+    for id in [7, 8] {
+        live.world_mut().spawn((
+            PendingEffect::new("model", completion()),
+            Reserved(rig_core::effect::EffectId::from_raw(id)),
+        ));
+    }
+    let original = Scene::save(live.world_mut());
+    for fault in [
+        "duplicate-id",
+        "cycle",
+        "self-parent",
+        "missing-parent",
+        "ambiguous-parent",
+    ] {
+        let mut bad = original.clone();
+        match fault {
+            "duplicate-id" => bad.effects[1].id = bad.effects[0].id,
+            "cycle" => {
+                bad.effects[0].parent = Some(1);
+                bad.effects[1].parent = Some(0);
+            }
+            "self-parent" => bad.effects[0].parent = Some(0),
+            "missing-parent" => bad.effects[0].parent = Some(2),
+            "ambiguous-parent" => {
+                bad.effects[1].parent = Some(0);
+                bad.effects[1].parent_ref = Some(0);
+            }
+            _ => panic!("unknown malformed-scene case: {fault}"),
+        }
+        let bad: Scene = serde_json::from_value(serde_json::to_value(bad).unwrap()).unwrap();
+        let mut restored = app();
+        restored
+            .world_mut()
+            .resource_mut::<rig_ecs::bus::IdCounter>()
+            .0 = 5;
+        let count = restored.world().entities().len();
+        assert!(
+            bad.load(restored.world_mut()).is_err(),
+            "must refuse {fault}"
+        );
+        assert_eq!(
+            restored.world().entities().len(),
+            count,
+            "no spawn on {fault}"
+        );
+        assert_eq!(restored.world().resource::<rig_ecs::bus::IdCounter>().0, 5);
+    }
+}
