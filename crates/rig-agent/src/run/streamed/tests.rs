@@ -1278,13 +1278,28 @@ fn an_ignored_name_delta_swallows_the_rest_of_its_block() {
     );
 }
 
-#[test]
-fn ignored_name_keeps_the_late_durable_id_out_of_the_final_snapshot() {
-    use rig_core::streaming::MintKind;
-    for block in [
-        BlockId::minted(MintKind::Tool, 0),
-        BlockId::wire("output-item-0"),
-    ] {
+#[tokio::test]
+async fn ignored_name_keeps_the_late_durable_id_out_of_the_final_snapshot() {
+    use futures::StreamExt;
+    use rig_core::{effect::EffectId, serve::OutcomeSink};
+    let (events, mut receiver) = futures::channel::mpsc::channel(8);
+    let mut writer = OutcomeSink::stream(EffectId::from_raw(1), events).writer();
+    writer
+        .tool_call("multiply", json!({}))
+        .await
+        .expect("generated tool call");
+    let generated = loop {
+        match receiver
+            .next()
+            .await
+            .expect("generated tool event")
+            .expect("valid event")
+        {
+            StreamEvent::BlockStart { id, .. } => break id,
+            _ => continue,
+        }
+    };
+    for block in [generated, BlockId::wire("output-item-0")] {
         let mut asm = assembler();
         let surfaced = asm
             .ingest(&StreamEvent::BlockDelta {

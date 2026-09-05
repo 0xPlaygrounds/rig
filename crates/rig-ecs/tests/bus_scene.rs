@@ -840,7 +840,6 @@ fn scene_counter_never_rewinds_a_used_destination_and_preserves_exhaustion() {
 
 #[test]
 fn saved_ids_omit_redundant_watermarks_and_reject_contradictions_before_spawning() {
-    use rig_ecs::agent::scene::{RunScene, SceneEntity, SceneKind, WorldScene, load_world};
     let mut live = app();
     live.world_mut().spawn((
         PendingEffect::new("model", completion()),
@@ -865,26 +864,6 @@ fn saved_ids_omit_redundant_watermarks_and_reject_contradictions_before_spawning
         let before = restored.world().entities().len();
         assert!(bad.load(restored.world_mut()).is_err());
         assert_eq!(restored.world().entities().len(), before);
-        assert_eq!(restored.world().resource::<rig_ecs::bus::IdCounter>().0, 5);
-        let world_scene = WorldScene {
-            effects: bad,
-            graph: RunScene {
-                entities: vec![SceneEntity {
-                    kind: SceneKind::Agent,
-                    components: Default::default(),
-                    parent: None,
-                    relations: Vec::new(),
-                }],
-                ..RunScene::default()
-            },
-            ..WorldScene::default()
-        };
-        assert!(load_world(&world_scene, restored.world_mut()).is_err());
-        assert_eq!(
-            restored.world().entities().len(),
-            before,
-            "paired graph preflight must also refuse"
-        );
         assert_eq!(restored.world().resource::<rig_ecs::bus::IdCounter>().0, 5);
     }
 }

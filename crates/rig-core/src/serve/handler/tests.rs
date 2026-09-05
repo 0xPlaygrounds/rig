@@ -171,13 +171,12 @@ struct FullStream {
 impl FullStream {
     fn new() -> Self {
         let (mut events, receiver) = mpsc::channel(0);
+        let (prefix_events, mut prefix_receiver) = mpsc::channel(4);
+        let mut writer = OutcomeSink::stream(EffectId::from_raw(1), prefix_events).writer();
+        block_on(writer.text("prefix")).expect("writer creates the prefix");
+        let prefix = block_on(prefix_receiver.next()).expect("text block start");
         events
-            .try_send(Ok(StreamEvent::BlockStart {
-                id: crate::streaming::BlockId::minted(crate::streaming::MintKind::Text, 0),
-                kind: crate::streaming::BlockKind::Text {
-                    additional_params: None,
-                },
-            }))
+            .try_send(prefix)
             .expect("fill the sender's reserved slot");
         let marker = Arc::new(AtomicBool::new(false));
         let seen = Arc::new(Mutex::new(Seen::default()));
