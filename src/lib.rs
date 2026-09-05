@@ -204,16 +204,22 @@ pub mod streaming {
 
 /// Tools: contextual authoring, the erased tool set, and the live registry.
 ///
-/// `Tool`, `ToolContext`, `DynamicTool`, `ToolSet`, and `ToolCatalog` are
-/// rig-core types, available with or without the `agent` feature, so
+/// `Tool`, `ToolContext`, `ContextValue`, and `DynamicTool` are rig-core
+/// types, available with or without the `agent` feature, so
 /// `use rig::tool::{Tool, ToolContext};` keeps working everywhere. The
 /// runtime-independent portable contracts are exposed explicitly as
 /// [`crate::tool::PortableTool`], [`crate::tool::PortableToolEmbedding`], and
 /// [`crate::tool::PortableDynamicTool`] (and in full under
 /// [`crate::tool::portable`]). The live registry (`server`) is the agent
-/// runtime's and needs the `agent` feature; the same surface also lives at
+/// runtime's and needs the `agent` feature, as do `ToolSet` and `ToolCatalog`;
+/// the same registry surface also lives at
 /// [`crate::agent::tool`] for code that prefers the explicit runtime path.
 pub mod tool {
+    /// Derive a stable serialized key for a tool-context value.
+    #[cfg(feature = "derive")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
+    pub use rig_derive::ContextValue;
+
     // Canonical execution values — portable, always available.
     pub use rig_core::tool::{
         IntoToolOutput, ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult,
@@ -224,7 +230,7 @@ pub mod tool {
     };
     // Contextual authoring and the erased tool — rig-core, always available.
     pub use rig_core::tool::{
-        DynamicTool, ErasedTool, Tool, ToolContext, ToolContextError, ToolEmbedding,
+        ContextValue, DynamicTool, ErasedTool, Tool, ToolContext, ToolContextError, ToolEmbedding,
         tool_definition,
     };
     // The registry — a registration, the ordered set, the per-turn catalog,

@@ -78,10 +78,11 @@ More information about this crate can be found in the [official](https://rig.rs/
 
 Rig separates portable provider/backend contracts from agent orchestration:
 
-- `rig-core` contains provider-neutral messages, completion models, portable tools,
-  memory and vector-store contracts, and built-in provider mappings.
+- `rig-core` contains provider-neutral messages, completion models, portable and
+  contextual tool contracts, memory and vector-store contracts, and built-in
+  provider mappings.
 - `rig-agent` contains the classic builder, prompt/streaming traits, typed hooks,
-  contextual tools, extraction, and the serializable `AgentRun` state machine. It
+  the live tool registry, extraction, and the serializable `AgentRun` state machine. It
   remains enabled by default.
 
 The root `rig` facade re-exports both at their familiar paths, so most code

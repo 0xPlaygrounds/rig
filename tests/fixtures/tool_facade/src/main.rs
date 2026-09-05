@@ -38,6 +38,10 @@ struct StableContext {
     label: String,
 }
 
+impl rig::tool::ContextValue for StableContext {
+    const KEY: &'static str = "fixture.stable-context.v1";
+}
+
 impl PortableToolEmbedding for StablePortableTool {
     type InitError = Infallible;
     type Context = StableContext;
@@ -65,7 +69,29 @@ fn assert_core_portable<T: rig::core::tool::PortableTool>() {}
 fn assert_namespaced_portable<T: rig::tool::portable::PortableTool>() {}
 fn assert_prelude_portable<T: rig::prelude::PortableTool>() {}
 
+#[cfg(feature = "derive")]
+use rig::tool::ContextValue;
+
+#[cfg(feature = "derive")]
+#[derive(Serialize, Deserialize, ContextValue)]
+#[context(key = "fixture.derived-context.v1")]
+struct DerivedContext(String);
+
 fn main() {
+    #[cfg(feature = "derive")]
+    {
+        let mut derived = rig::tool::ToolContext::new();
+        derived.insert(DerivedContext("derived".into())).unwrap();
+        assert_eq!(derived.require::<DerivedContext>().unwrap().0, "derived");
+    }
+
+    let mut context = rig::tool::ToolContext::new();
+    context
+        .insert(StableContext {
+            label: "facade".into(),
+        })
+        .unwrap();
+    assert_eq!(context.require::<StableContext>().unwrap().label, "facade");
     assert_root_portable::<StablePortableTool>();
     assert_core_portable::<StablePortableTool>();
     assert_namespaced_portable::<StablePortableTool>();
