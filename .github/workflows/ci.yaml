@@ -145,6 +145,12 @@ jobs:
       - name: Run cargo check wasm target
         run: cargo check --package ${{ matrix.package }} --target wasm32-unknown-unknown
 
+      - name: Check ECS without replay
+        if: matrix.package == 'rig-ecs'
+        run: |
+          cargo check -p rig-ecs --no-default-features --lib
+          cargo check -p rig-ecs --no-default-features --lib --target wasm32-unknown-unknown
+
       # rig-core's features and rig-ecs's `reflect` and `assets` are off by
       # default; the wasm build of each is proven here, not only natively.
       - name: Run all-features wasm check
