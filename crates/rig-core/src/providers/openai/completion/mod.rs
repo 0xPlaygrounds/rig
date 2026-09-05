@@ -1105,6 +1105,7 @@ impl TryFrom<Message> for message::Message {
                         .collect::<Result<Vec<_>, _>>()?,
                 );
 
+                crate::message::normalize_missing_tool_call_ids(&mut assistant_content);
                 message::Message::Assistant {
                     id: None,
                     content: crate::message::require_non_empty(assistant_content, || {

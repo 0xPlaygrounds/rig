@@ -174,7 +174,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
         let (content, _, tool_calls) = response.message()?;
 
-        let model_response = if !tool_calls.is_empty() {
+        let mut model_response = if !tool_calls.is_empty() {
             crate::message::require_non_empty(
                 tool_calls
                     .into_iter()
@@ -209,6 +209,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
                     .collect::<Vec<_>>(),
             )?
         };
+
+        crate::message::normalize_missing_tool_call_ids(&mut model_response);
 
         let usage = response
             .usage
@@ -545,6 +547,7 @@ impl TryFrom<Message> for message::Message {
                     ))
                 }));
 
+                crate::message::normalize_missing_tool_call_ids(&mut content);
                 let content = crate::message::require_non_empty(content, || {
                     message::MessageError::ConversionError(
                         "Expected either text content or tool calls".to_string(),

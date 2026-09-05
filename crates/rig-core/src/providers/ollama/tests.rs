@@ -1629,3 +1629,57 @@ mod raw_capture {
         assert_eq!(response.usage.total_tokens, 31);
     }
 }
+
+/// Synthetic wire values test absent-ID and explicit-ID collisions deterministically;
+/// recordings cannot reliably force a provider to emit these boundary combinations.
+#[test]
+fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses_and_messages() {
+    let wire = json!({
+        "model": "test", "created_at": "2024-01-01T00:00:00Z", "done": true,
+        "message": {"role":"assistant", "content":"", "tool_calls":[
+            {"function":{"name":"same","arguments":{"value":1}}},
+            {"id":"tool-0","function":{"name":"same","arguments":{"value":2}}},
+            {"function":{"name":"same","arguments":{"value":3}}}
+        ]}
+    });
+    let normalize = || {
+        completion::CompletionResponse::try_from(
+            serde_json::from_value::<CompletionResponse>(wire.clone()).unwrap(),
+        )
+        .unwrap()
+    };
+    let first = normalize();
+    assert_eq!(
+        serde_json::to_value(&first.choice).unwrap(),
+        serde_json::to_value(normalize().choice).unwrap()
+    );
+    let normalized_message: crate::message::Message =
+        serde_json::from_value::<Message>(wire["message"].clone())
+            .unwrap()
+            .into();
+    let crate::message::Message::Assistant { content, .. } = normalized_message else {
+        panic!("assistant");
+    };
+    assert_eq!(
+        serde_json::to_value(&first.choice).unwrap(),
+        serde_json::to_value(&content).unwrap()
+    );
+    let calls: Vec<_> = content
+        .iter()
+        .filter_map(|item| match item {
+            crate::message::AssistantContent::ToolCall(call) => Some(call),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| &call.id)
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        3
+    );
+    assert!(calls[0].provider.is_none());
+    assert_eq!(calls[1].id.as_str(), "tool-0");
+    assert!(calls[2].provider.is_none());
+}

@@ -332,10 +332,12 @@ pub enum SystemContent {
 impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
     fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
         let mut response = self;
-        let content = std::mem::take(&mut response.content)
+        let mut content = std::mem::take(&mut response.content)
             .into_iter()
             .map(TryInto::try_into)
             .collect::<Result<Vec<_>, _>>()?;
+
+        crate::message::normalize_missing_tool_call_ids(&mut content);
 
         // Anthropic has two ways to end a turn that genuinely carried no
         // content, and an empty list says exactly that:
@@ -1504,14 +1506,15 @@ impl TryFrom<Message> for message::Message {
                     })
                     .collect::<Result<Vec<_>, _>>()?,
             },
-            Role::Assistant => message::Message::Assistant {
-                id: None,
-                content: message
+            Role::Assistant => {
+                let mut content = message
                     .content
                     .into_iter()
                     .map(std::convert::TryInto::try_into)
-                    .collect::<Result<Vec<_>, _>>()?,
-            },
+                    .collect::<Result<Vec<_>, _>>()?;
+                crate::message::normalize_missing_tool_call_ids(&mut content);
+                message::Message::Assistant { id: None, content }
+            }
             Role::System => {
                 let content =
                     message

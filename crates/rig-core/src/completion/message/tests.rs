@@ -326,3 +326,44 @@ fn tool_result_content_decodes_structured_and_legacy_json() {
         );
     }
 }
+
+/// Synthetic boundary coverage reserves future explicit handles without changing metadata.
+#[test]
+fn missing_call_id_normalization_reserves_explicit_handles_and_preserves_metadata() {
+    use super::{AssistantContent, ToolCall, ToolFunction, normalize_missing_tool_call_ids};
+    use serde_json::json;
+    let mut content = vec![
+        AssistantContent::text("not a call position"),
+        AssistantContent::ToolCall(
+            ToolCall::from_wire("", ToolFunction::new("same".into(), json!({"n":1})))
+                .with_signature(Some("signed".into()))
+                .with_additional_params(Some(json!({"opaque":true}))),
+        ),
+        AssistantContent::tool_call("tool-0", "same", json!({"n":2})),
+        AssistantContent::tool_call("tool-1", "same", json!({"n":3})),
+        AssistantContent::tool_call("", "same", json!({"n":4})),
+        AssistantContent::tool_call("tool-0", "same", json!({"n":5})),
+    ];
+    normalize_missing_tool_call_ids(&mut content);
+    let calls: Vec<_> = content
+        .iter()
+        .filter_map(|item| match item {
+            AssistantContent::ToolCall(call) => Some(call),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| call.id.as_str())
+            .collect::<Vec<_>>(),
+        ["tool-2", "tool-0", "tool-1", "tool-3", "tool-0"]
+    );
+    assert!(calls[0].provider.is_none());
+    assert_eq!(calls[0].signature.as_deref(), Some("signed"));
+    assert_eq!(calls[0].additional_params, Some(json!({"opaque":true})));
+    assert_eq!(calls[1].provider.as_ref().unwrap().call_id, "tool-0");
+    let first = content.clone();
+    normalize_missing_tool_call_ids(&mut content);
+    assert_eq!(content, first, "normalization is stable when repeated");
+}

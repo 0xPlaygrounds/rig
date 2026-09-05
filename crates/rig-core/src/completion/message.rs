@@ -610,6 +610,48 @@ pub struct ToolCall {
     pub additional_params: Option<serde_json::Value>,
 }
 
+/// Assign deterministic handles to id-less calls at an inbound provider boundary.
+///
+/// Pass the complete response or assistant-message content, before exposing it
+/// to a caller. Explicit provider handles are reserved first, including handles
+/// appearing later in the response. Missing handles use the call's position,
+/// advancing to the next unused `tool-N` on collision. Provider metadata and
+/// explicit duplicate handles are preserved; generated handles acquire no
+/// provider provenance.
+///
+/// This is not for arbitrary application messages: locally chosen handles from
+/// [`ToolCall::new`] must not be renumbered, and streaming has its own block IDs.
+pub fn normalize_missing_tool_call_ids(content: &mut [AssistantContent]) {
+    let mut used: std::collections::HashSet<ToolCallId> = content
+        .iter()
+        .filter_map(|item| match item {
+            AssistantContent::ToolCall(call) if call.provider.is_some() => Some(call.id.clone()),
+            _ => None,
+        })
+        .collect();
+    for (position, call) in content
+        .iter_mut()
+        .filter_map(|item| match item {
+            AssistantContent::ToolCall(call) => Some(call),
+            _ => None,
+        })
+        .enumerate()
+    {
+        if call.provider.is_some() {
+            continue;
+        }
+        let mut index = position as u64;
+        loop {
+            let id = ToolCallId::minted(index);
+            if used.insert(id.clone()) {
+                call.id = id;
+                break;
+            }
+            index += 1;
+        }
+    }
+}
+
 impl ToolCall {
     fn assemble(provider: Option<ProviderCallId>, index: u64, function: ToolFunction) -> Self {
         Self {

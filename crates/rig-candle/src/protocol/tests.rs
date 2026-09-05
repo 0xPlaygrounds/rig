@@ -383,3 +383,47 @@ fn qwen_protocol_rejects_wrong_delimiters_definitions_and_native_schema() {
         Err(CandleError::MalformedToolCall(reason)) if reason.contains("no correlated")
     ));
 }
+
+/// Synthetic parser input isolates identity normalization without loading a model.
+#[test]
+fn qwen_missing_ids_are_deterministic_distinct_and_not_provider_issued() {
+    let raw = r#"<tool_call>{"name":"calculate","arguments":{"value":1}}</tool_call><tool_call>{"id":"tool-0","name":"calculate","arguments":{"value":2}}</tool_call><tool_call>{"name":"calculate","arguments":{"value":3}}</tool_call>"#;
+    let request = request(vec![Message::user("calculate")]);
+    let parse = || {
+        parse_assistant(raw, &request, ConversationProtocol::Qwen3)
+            .expect("valid tool-call envelope")
+            .items
+    };
+    let first = parse();
+    assert_eq!(
+        serde_json::to_value(&first).expect("valid tool-call envelope"),
+        serde_json::to_value(parse()).expect("valid tool-call envelope")
+    );
+    let calls: Vec<_> = first
+        .iter()
+        .filter_map(|item| match item {
+            AssistantContent::ToolCall(call) => Some(call),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(calls.len(), 3);
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| &call.id)
+            .collect::<HashSet<_>>()
+            .len(),
+        3
+    );
+    assert!(calls[0].provider.is_none());
+    assert_eq!(calls[1].id.as_str(), "tool-0");
+    assert_eq!(
+        calls[1]
+            .provider
+            .as_ref()
+            .expect("valid tool-call envelope")
+            .call_id,
+        "tool-0"
+    );
+    assert!(calls[2].provider.is_none());
+}

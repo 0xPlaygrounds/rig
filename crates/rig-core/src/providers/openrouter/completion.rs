@@ -822,6 +822,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 
                 normalized_content.extend(images.iter().map(response_image_to_assistant_content));
 
+                crate::message::normalize_missing_tool_call_ids(&mut normalized_content);
                 Ok(normalized_content)
             }
             _ => Err(CompletionError::ResponseError(

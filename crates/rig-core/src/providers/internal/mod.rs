@@ -150,3 +150,6 @@ pub(crate) fn completion_usage(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod tool_call_id_tests;

@@ -2652,7 +2652,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             .output
             .iter()
             .any(|item| matches!(item, Output::Reasoning { .. }));
-        let content = response
+        let mut content = response
             .provider_reasoning
             .as_ref()
             .filter(|reasoning| !has_structured_reasoning && !reasoning.is_empty())
@@ -2665,6 +2665,8 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                 content
             })
             .unwrap_or(output_content);
+
+        crate::message::normalize_missing_tool_call_ids(&mut content);
 
         let finish_reason =
             map_finish_reason(&response.status, response.incomplete_details.as_ref());

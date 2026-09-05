@@ -755,14 +755,15 @@ fn parse_qwen3_assistant(
                 "tool arguments must be a JSON object".to_string(),
             ));
         }
-        let id = envelope.id.unwrap_or_else(rig_core::id::generate);
-        if id.is_empty() || !seen_ids.insert(id.clone()) {
+        if let Some(id) = &envelope.id
+            && (id.is_empty() || !seen_ids.insert(id.clone()))
+        {
             return Err(CandleError::MalformedToolCall(format!(
                 "duplicate or empty tool-call ID `{id}`"
             )));
         }
         items.push(AssistantContent::ToolCall(ToolCall::from_wire(
-            id,
+            envelope.id.unwrap_or_default(),
             ToolFunction::new(envelope.name, envelope.arguments),
         )));
         tool_calls += 1;
@@ -784,6 +785,7 @@ fn parse_qwen3_assistant(
     // A turn that produced nothing is left empty. This used to push a
     // fabricated empty-text part, purely because the assistant content type
     // could not be empty; the part was never something the model emitted.
+    rig_core::message::normalize_missing_tool_call_ids(&mut items);
     let visible_text = canonicalize_visible_text(&mut items);
     Ok(ParsedAssistant {
         items,

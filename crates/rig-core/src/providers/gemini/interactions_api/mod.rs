@@ -448,7 +448,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse {
             return Err(CompletionError::ResponseError(message));
         }
 
-        let content = output_contents
+        let mut content = output_contents
             .into_iter()
             .filter_map(|output| match assistant_content_from_output(output) {
                 Ok(Some(content)) => Some(Ok(content)),
@@ -457,6 +457,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
+        crate::message::normalize_missing_tool_call_ids(&mut content);
         let choice = crate::message::require_non_empty_response(content)?;
 
         let usage = response
