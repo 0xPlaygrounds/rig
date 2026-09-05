@@ -69,6 +69,9 @@ impl<R: Recorder + Send + Sync> Observe for Recorded<R> {
     fn event(&mut self, event: &StreamEvent) {
         self.recorder.event(self.id, event);
     }
+    fn stream_error(&mut self, error: &ErrorReport) {
+        self.recorder.stream_error(self.id, error);
+    }
 
     fn discard(&mut self) {
         self.recorder.discard(self.id);

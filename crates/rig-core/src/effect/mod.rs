@@ -580,15 +580,17 @@ pub mod family {
 
         fn unwrap(outcome: Outcome) -> Result<E::Answer, ErrorReport> {
             match outcome {
-                Outcome::Custom(value) => serde_json::from_value(value).map_err(|error| {
-                    ErrorReport::new(
-                        ErrorKind::Internal,
-                        format!(
-                            "the answer to the `{}` effect did not deserialize: {error}",
-                            E::KIND
-                        ),
-                    )
-                }),
+                Outcome::Custom { payload: value } => {
+                    serde_json::from_value(value).map_err(|error| {
+                        ErrorReport::new(
+                            ErrorKind::Internal,
+                            format!(
+                                "the answer to the `{}` effect did not deserialize: {error}",
+                                E::KIND
+                            ),
+                        )
+                    })
+                }
                 other => Err(Self::mismatch(&other)),
             }
         }
@@ -887,7 +889,10 @@ pub enum Outcome {
     /// Retrieved documents.
     Documents(RetrievedDocuments),
     /// An out-of-tree answer.
-    Custom(serde_json::Value),
+    Custom {
+        /// The answer, nested so every JSON shape is representable.
+        payload: serde_json::Value,
+    },
 }
 
 impl Outcome {
@@ -900,7 +905,7 @@ impl Outcome {
             Self::Reranked(_) => EffectFamily::Rerank,
             Self::Memory(_) => EffectFamily::Memory,
             Self::Documents(_) => EffectFamily::Retrieve,
-            Self::Custom(_) => EffectFamily::Custom,
+            Self::Custom { .. } => EffectFamily::Custom,
         }
     }
 }
@@ -938,6 +943,33 @@ pub enum RetrievedDocuments {
     Scored(Vec<(f64, String, serde_json::Value)>),
     /// Scored ids: `(score, id)`.
     Ids(Vec<(f64, String)>),
+}
+
+/// One delivery observed by a scheduled consumer. Entries are ordered by
+/// visibility, independently of dispatch ids and handler completion order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Delivery {
+    /// The schedule pass in which the consumer observed this delivery.
+    /// Pass numbers group deliveries; they are not wall-clock timestamps.
+    pub batch: u64,
+    /// The effect whose state became visible.
+    pub id: EffectId,
+    /// The visible transition.
+    pub kind: DeliveryKind,
+}
+
+/// What a scheduled consumer collected at one observation boundary.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "delivery", rename_all = "snake_case")]
+pub enum DeliveryKind {
+    /// The effect's outcome became visible.
+    Outcome,
+    /// A batch of stream items became visible together. Includes error items;
+    /// successful event bytes remain in the effect record's event sequence.
+    Stream {
+        /// Items collected since the preceding delivery for this effect.
+        items: usize,
+    },
 }
 
 /// One recorded exchange: the effect, who served it, and the answer.

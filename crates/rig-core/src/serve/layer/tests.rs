@@ -41,7 +41,7 @@ impl Serve for Echo {
     async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
         self.served.fetch_add(1, Ordering::SeqCst);
         let outcome = match kind {
-            EffectKind::Custom { payload, .. } => Ok(Outcome::Custom(payload)),
+            EffectKind::Custom { payload, .. } => Ok(Outcome::Custom { payload }),
             other => Err(ErrorReport::new(
                 ErrorKind::Internal,
                 format!("echo received {}", other.name()),
@@ -200,7 +200,7 @@ async fn layers_nest_outermost_first() {
     assert_eq!(layered.descriptor().layers, ["b", "a"], "outermost first");
     assert_eq!(layered.descriptor().key.as_str(), "echo", "the inner's key");
     let (outcome, tap) = unary(&layered, custom(json!(1))).await;
-    assert!(matches!(outcome, Ok(Outcome::Custom(payload)) if payload == json!(1)));
+    assert!(matches!(outcome, Ok(Outcome::Custom { payload }) if payload == json!(1)));
     assert_eq!(served.load(Ordering::SeqCst), 1);
     assert_eq!(
         *seen.lock().expect("seen"),
@@ -210,7 +210,7 @@ async fn layers_nest_outermost_first() {
     // The record is the handler's answer, once.
     let outcomes = tap.outcomes.lock().expect("outcomes");
     assert_eq!(outcomes.len(), 1);
-    assert!(matches!(&outcomes[0], Ok(Outcome::Custom(payload)) if *payload == json!(1)));
+    assert!(matches!(&outcomes[0], Ok(Outcome::Custom { payload }) if *payload == json!(1)));
     assert_eq!(tap.discarded.load(Ordering::SeqCst), 0);
 }
 
@@ -222,10 +222,10 @@ async fn a_patch_of_the_same_family_is_what_the_handler_serves() {
     policy.before = Box::new(|_| Decision::Patch(custom(json!("patched"))));
     let layered = handler.layered(policy);
     let (outcome, tap) = unary(&layered, custom(json!("original"))).await;
-    assert!(matches!(outcome, Ok(Outcome::Custom(payload)) if payload == json!("patched")));
+    assert!(matches!(outcome, Ok(Outcome::Custom { payload }) if payload == json!("patched")));
     let outcomes = tap.outcomes.lock().expect("outcomes");
     assert!(
-        matches!(&outcomes[0], Ok(Outcome::Custom(payload)) if *payload == json!("patched")),
+        matches!(&outcomes[0], Ok(Outcome::Custom { payload }) if *payload == json!("patched")),
         "the record holds what was served"
     );
     let patched = tap.patched.lock().expect("patched");
@@ -310,17 +310,21 @@ async fn a_replacement_on_the_way_out_leaves_the_handlers_answer_in_the_record()
     let seen = Arc::new(Mutex::new(Vec::new()));
     let (handler, _) = echo();
     let mut policy = Policy::observing("replacer", &seen);
-    policy.after = Box::new(|_| Verdict::Replace(Ok(Outcome::Custom(json!("replaced")))));
+    policy.after = Box::new(|_| {
+        Verdict::Replace(Ok(Outcome::Custom {
+            payload: json!("replaced"),
+        }))
+    });
     let layered = handler.layered(policy);
     let (outcome, tap) = unary(&layered, custom(json!("real"))).await;
     assert!(
-        matches!(&outcome, Ok(Outcome::Custom(payload)) if *payload == json!("replaced")),
+        matches!(&outcome, Ok(Outcome::Custom { payload }) if *payload == json!("replaced")),
         "the consumer receives the replacement"
     );
     let outcomes = tap.outcomes.lock().expect("outcomes");
     assert_eq!(outcomes.len(), 1, "one record");
     assert!(
-        matches!(&outcomes[0], Ok(Outcome::Custom(payload)) if *payload == json!("real")),
+        matches!(&outcomes[0], Ok(Outcome::Custom { payload }) if *payload == json!("real")),
         "the record holds the handler's answer"
     );
 }
@@ -392,7 +396,11 @@ async fn an_error_replacing_a_streamed_answer_follows_its_events() {
     }
     // A replacement answer cannot follow events already delivered.
     let mut policy = Policy::observing("swap", &seen);
-    policy.after = Box::new(|_| Verdict::Replace(Ok(Outcome::Custom(json!("late")))));
+    policy.after = Box::new(|_| {
+        Verdict::Replace(Ok(Outcome::Custom {
+            payload: json!("late"),
+        }))
+    });
     let layered = ErasedHandler::new(Streamer).layered(policy);
     let (events, receiver) = mpsc::channel(8);
     layered

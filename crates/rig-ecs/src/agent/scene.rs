@@ -122,7 +122,9 @@ macro_rules! give {
 /// bus module's effects, saved together so an effect `ChildOf` a turn is
 /// `ChildOf` it again after a load — which is what lets a run saved with
 /// its model call in flight resume: the effect is re-issued under its saved
-/// id, answered, and read by the turn it belongs to.
+/// id, answered, and read by the turn it belongs to. Completed streams retain
+/// their collected state. An unfinished stream that already delivered progress
+/// is refused before graph restoration; generic scenes have no restart cursor.
 ///
 /// Only the library's listed components and components explicitly registered
 /// with [`SceneExtensions`] are captured. Resources, arbitrary entities,
@@ -285,6 +287,7 @@ pub fn load_world(
     scene: &WorldScene,
     world: &mut World,
 ) -> Result<Loaded, rig_core::error::ErrorReport> {
+    scene.effects.validate_resume()?;
     let registry = world
         .get_resource::<SceneExtensions>()
         .cloned()
@@ -305,7 +308,7 @@ pub fn load_world(
     let graph = scene.graph.load(world)?;
     let effects = scene
         .effects
-        .load_with(world, |index| graph.get(index).copied());
+        .load_with(world, |index| graph.get(index).copied())?;
     for (index, slot) in &scene.slots {
         if let Some(effect) = effects.get(*index).copied() {
             world.entity_mut(effect).insert(slot.clone());

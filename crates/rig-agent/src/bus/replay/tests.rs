@@ -35,6 +35,128 @@ use rig_core::{
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 
+#[tokio::test]
+async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
+    struct Items(Vec<Result<StreamEvent, ErrorReport>>);
+    impl Serve for Items {
+        type Family = rig_core::effect::family::Completion;
+        fn descriptor(&self) -> HandlerDescriptor {
+            HandlerDescriptor {
+                key: "model".into(),
+                family: FamilyDescriptor::Completion {
+                    model: rig_core::completion::ModelRef::new("errors"),
+                    capabilities: rig_core::completion::ProviderCapabilities::default(),
+                },
+                layers: vec![],
+            }
+        }
+        async fn serve(&self, _: EffectKind, mut sink: OutcomeSink) {
+            for item in &self.0 {
+                sink.send(item.clone()).await.unwrap();
+            }
+        }
+    }
+    for error_first in [false, true] {
+        let error = Err(ErrorReport::new(ErrorKind::Response, "first error"));
+        let terminal = Ok(StreamEvent::Final(rig_core::streaming::StreamFinal::new(
+            "test",
+            rig_core::completion::Usage::new(),
+        )));
+        let mut items = if error_first {
+            vec![error, terminal]
+        } else {
+            vec![terminal, error]
+        };
+        items.push(Err(ErrorReport::new(ErrorKind::Provider, "late error")));
+        let key = HandlerKey::from("model");
+        let (dispatcher, _, mut driver) = Bus::channel();
+        let recorder = EffectLogRecorder::keeping_stream_events();
+        driver.register(key.clone(), Items(items)).unwrap();
+        driver.record_to(recorder.clone());
+        let _live = spawn(driver);
+        let live = within(
+            dispatcher
+                .dispatch_stream(&key, completion_kind(true))
+                .collect::<Vec<_>>(),
+        )
+        .await;
+        let log: EffectLog =
+            serde_json::from_str(&serde_json::to_string(&recorder.log()).unwrap()).unwrap();
+        assert_eq!(log.header.stream_errors.values().next().unwrap().len(), 2);
+        let (dispatcher, _, mut driver) = Bus::channel();
+        super::register_all(&log, &mut driver).unwrap();
+        let _replay = spawn(driver);
+        let replay = within(
+            dispatcher
+                .dispatch_stream(&key, completion_kind(true))
+                .collect::<Vec<_>>(),
+        )
+        .await;
+        assert_eq!(
+            serde_json::to_value(replay).unwrap(),
+            serde_json::to_value(live).unwrap()
+        );
+    }
+}
+
+#[tokio::test]
+async fn replayed_model_handle_retains_live_capabilities_and_model_identity() {
+    struct Composing;
+    impl Serve for Composing {
+        type Family = rig_core::effect::family::Completion;
+        fn descriptor(&self) -> HandlerDescriptor {
+            HandlerDescriptor {
+                key: HandlerKey::from("model"),
+                family: FamilyDescriptor::Completion {
+                    model: rig_core::completion::ModelRef::new("composing"),
+                    capabilities: rig_core::completion::ProviderCapabilities::new()
+                        .with_native_output_tool_composition(true),
+                },
+                layers: vec![],
+            }
+        }
+        async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+            sink.resolve(Ok(Outcome::Completion(
+                rig_core::completion::CompletionResponse::new(
+                    vec![AssistantContent::text("ok")],
+                    rig_core::completion::Usage::new(),
+                    "composing",
+                ),
+            )))
+            .await;
+        }
+    }
+    let (dispatcher, _, mut driver) = Bus::channel();
+    driver.register("model", Composing).unwrap();
+    let recorder = EffectLogRecorder::new();
+    driver.record_to(recorder.clone());
+    let live_model: crate::bus::ModelHandle =
+        dispatcher.handle(&HandlerKey::from("model")).unwrap();
+    let _live = spawn(driver);
+    within(dispatcher.dispatch(&HandlerKey::from("model"), completion_kind(false)))
+        .await
+        .unwrap();
+    let log: EffectLog =
+        serde_json::from_str(&serde_json::to_string(&recorder.log()).unwrap()).unwrap();
+    let (dispatcher, _, mut driver) = Bus::channel();
+    super::register_all(&log, &mut driver).unwrap();
+    let replay_model: crate::bus::ModelHandle =
+        dispatcher.handle(&HandlerKey::from("model")).unwrap();
+    assert_eq!(replay_model.capabilities(), live_model.capabilities());
+    assert_eq!(replay_model.model_ref(), live_model.model_ref());
+    assert!(
+        replay_model
+            .capabilities()
+            .composes_native_output_with_tools
+    );
+    let _replay = spawn(driver);
+    assert!(
+        within(dispatcher.dispatch(&HandlerKey::from("model"), completion_kind(false)))
+            .await
+            .is_ok()
+    );
+}
+
 /// Raw tool dispatches also get a publication slot; recording must not
 /// consume it before the pending caller can read it.
 #[tokio::test]
@@ -192,7 +314,7 @@ impl Serve for Echo {
             }
             self.served.fetch_add(1, Ordering::SeqCst);
             let outcome = match kind {
-                EffectKind::Custom { payload, .. } => Ok(Outcome::Custom(payload)),
+                EffectKind::Custom { payload, .. } => Ok(Outcome::Custom { payload }),
                 other => Err(ErrorReport::new(
                     ErrorKind::Internal,
                     format!("echo received {}", other.name()),
@@ -232,7 +354,10 @@ impl Serve for Ordered {
         };
         tokio::time::sleep(Duration::from_millis(delay)).await;
         self.served.lock().expect("order lock").push(index);
-        sink.resolve(Ok(Outcome::Custom(json!(index)))).await;
+        sink.resolve(Ok(Outcome::Custom {
+            payload: json!(index),
+        }))
+        .await;
     }
 }
 
@@ -305,8 +430,10 @@ impl Serve for WrongFamilyAnswer {
     }
 
     async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-        sink.resolve(Ok(Outcome::Custom(json!("not a completion"))))
-            .await;
+        sink.resolve(Ok(Outcome::Custom {
+            payload: json!("not a completion"),
+        }))
+        .await;
     }
 }
 
@@ -434,8 +561,8 @@ async fn concurrent_dispatches_to_one_key_record_and_replay_in_dispatch_order() 
     let slow = dispatcher.dispatch(&key, custom(json!({"index": 1, "delay_ms": 60})));
     let fast = dispatcher.dispatch(&key, custom(json!({"index": 2, "delay_ms": 0})));
     let (slow, fast) = within(futures::future::join(slow, fast)).await;
-    assert!(matches!(slow, Ok(Outcome::Custom(ref v)) if *v == json!(1)));
-    assert!(matches!(fast, Ok(Outcome::Custom(ref v)) if *v == json!(2)));
+    assert!(matches!(slow, Ok(Outcome::Custom { payload: ref v }) if *v == json!(1)));
+    assert!(matches!(fast, Ok(Outcome::Custom { payload: ref v }) if *v == json!(2)));
     let log = recorder.take();
     let indexes: Vec<u64> = log
         .iter()
@@ -464,11 +591,11 @@ async fn concurrent_dispatches_to_one_key_record_and_replay_in_dispatch_order() 
             .await
             .expect("replayed");
     assert!(
-        matches!(first, Outcome::Custom(ref v) if *v == json!(1)),
+        matches!(first, Outcome::Custom { payload: ref v } if *v == json!(1)),
         "{first:?}"
     );
     assert!(
-        matches!(second, Outcome::Custom(ref v) if *v == json!(2)),
+        matches!(second, Outcome::Custom { payload: ref v } if *v == json!(2)),
         "{second:?}"
     );
 }
@@ -607,7 +734,7 @@ async fn a_log_carries_its_header_and_a_replay_checks_it() {
     assert!(
         report
             .message
-            .contains("signature says `echo` serves completion"),
+            .contains("conflicting families for `echo`: completion and custom"),
         "{}",
         report.message
     );
@@ -685,7 +812,7 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
 }
 
 /// Holds its dispatch open until dropped.
-struct Held;
+struct Held(FamilyDescriptor);
 
 impl Serve for Held {
     type Family = rig_core::effect::family::Dynamic;
@@ -693,9 +820,7 @@ impl Serve for Held {
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
             key: HandlerKey::from("held"),
-            family: FamilyDescriptor::Custom {
-                kind: "test:held".into(),
-            },
+            family: self.0.clone(),
             layers: Vec::new(),
         }
     }
@@ -711,7 +836,23 @@ async fn a_dispatch_cancelled_in_flight_is_recorded_as_cancelled_and_replays_as_
     use futures::FutureExt;
     let recorder = EffectLogRecorder::new();
     let (dispatcher, _registrar, mut driver) = Bus::channel();
-    driver.register("held", Held).expect("register");
+    driver
+        .register(
+            "held",
+            Held(FamilyDescriptor::Custom {
+                kind: "test:held".into(),
+            }),
+        )
+        .expect("register");
+    driver
+        .register(
+            "held-stream",
+            Held(FamilyDescriptor::Completion {
+                model: rig_core::completion::ModelRef::new("held"),
+                capabilities: rig_core::completion::ProviderCapabilities::default(),
+            }),
+        )
+        .expect("register stream");
     driver.record_to(recorder.clone());
     let waker = futures::task::noop_waker_ref();
     let mut cx = std::task::Context::from_waker(waker);
@@ -727,8 +868,9 @@ async fn a_dispatch_cancelled_in_flight_is_recorded_as_cancelled_and_replays_as_
     drop(pending);
     let _ = driver.poll_unpin(&mut cx);
     assert_eq!(driver.in_flight(), 0);
-    // Stream: the same, through an `EffectStream`.
-    let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("held"), completion_kind(true));
+    // Stream: the same, through a key described as a completion handler.
+    let mut stream =
+        dispatcher.dispatch_stream(&HandlerKey::from("held-stream"), completion_kind(true));
     assert!(stream.poll_next_unpin(&mut cx).is_pending());
     let _ = driver.poll_unpin(&mut cx);
     assert_eq!(driver.in_flight(), 1);
@@ -756,6 +898,13 @@ async fn a_dispatch_cancelled_in_flight_is_recorded_as_cancelled_and_replays_as_
         .await
         .expect_err("replayed as the recorded failure");
     assert_eq!(report.kind, ErrorKind::Cancelled, "{report:?}");
+    let mut stream =
+        dispatcher.dispatch_stream(&HandlerKey::from("held-stream"), completion_kind(true));
+    let report = within(stream.next())
+        .await
+        .expect("terminal item")
+        .expect_err("recorded stream cancellation");
+    assert_eq!(report.kind, ErrorKind::Cancelled);
 }
 
 /// A tool call's dispatch context is not part of the effect (format 5: it
@@ -949,7 +1098,7 @@ async fn a_record_names_the_dispatch_it_was_made_from() {
     let outer = dispatcher.dispatch(&HandlerKey::from("nesting"), custom(json!("outer")));
     let outer_id = outer.id();
     let outcome = within(outer).await.expect("served");
-    assert!(matches!(&outcome, Outcome::Custom(payload) if *payload == json!({"who": "child"})));
+    assert!(matches!(&outcome, Outcome::Custom { payload } if *payload == json!({"who": "child"})));
     // A consumer's own dispatch, for the contrast.
     within(dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!({"who": "own"}))))
         .await

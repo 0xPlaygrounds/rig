@@ -38,6 +38,7 @@ impl Recording {
     /// far to it first, as a bus driver's `record_to` does.
     pub fn install(world: &mut World, recorder: impl Recorder + Send + Sync) {
         let recording = Self::new(recorder);
+        recording.0.begin_delivery_tracking();
         let mut bound: Vec<HandlerDescriptor> = world
             .query::<&Bound>()
             .iter(world)
@@ -68,6 +69,17 @@ impl Recording {
         self.0.event(id, event);
     }
 
+    /// An error item at its original position in a kept stream.
+    pub fn stream_error(&self, id: EffectId, error: &ErrorReport) {
+        self.0.stream_error(id, error);
+    }
+
+    /// A consumer-visible transition in the current schedule pass.
+    pub fn delivery(&self, batch: u64, id: EffectId, kind: rig_core::effect::DeliveryKind) {
+        self.0
+            .delivery(rig_core::effect::Delivery { batch, id, kind });
+    }
+
     /// The outcome of `id`.
     pub fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>) {
         self.0.resolve(id, outcome);
@@ -86,6 +98,34 @@ impl Recording {
     /// A layer served `kind` in place of what began: the record's request.
     pub fn patch(&self, id: EffectId, kind: EffectKind) {
         self.0.patch(id, kind);
+    }
+}
+
+/// The current delivery batch. Advances once per schedule pass, including
+/// passes run directly by a host rather than through the Update runner.
+#[derive(Resource, Default)]
+pub struct DeliveryBatch(pub u64);
+
+/// Begin the next pass's observation group.
+pub fn begin_delivery_pass(mut batch: ResMut<DeliveryBatch>) {
+    batch.0 += 1;
+}
+
+/// Record visibility when the outcome is inserted, not later when a query
+/// happens to visit it. This also captures answers from world-served handlers.
+pub fn record_outcome(
+    added: On<Add, EffectOutcome>,
+    issued: Query<(&Issued, Has<super::collect::CollectedOutcome>), With<InFlight>>,
+    recording: Option<Res<Recording>>,
+    batch: Res<DeliveryBatch>,
+) {
+    if let Some(recording) = recording
+        && let Ok((Issued(id), collected)) = issued.get(added.event().entity)
+    {
+        if !collected {
+            recording.0.unsupported_delivery("an in-flight EffectOutcome bypassed Collect; submit world answers with WorldOutcome or typed Answer instead");
+        }
+        recording.delivery(batch.0, *id, rig_core::effect::DeliveryKind::Outcome);
     }
 }
 
@@ -162,6 +202,12 @@ impl rig_core::serve::Observe for WorldObserver {
     fn event(&mut self, event: &StreamEvent) {
         if let Some(recording) = &self.recording {
             recording.event(self.id, event);
+        }
+    }
+
+    fn stream_error(&mut self, error: &ErrorReport) {
+        if let Some(recording) = &self.recording {
+            recording.stream_error(self.id, error);
         }
     }
 

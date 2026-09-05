@@ -200,8 +200,10 @@
       "outcome": {
         "Ok": {
           "outcome": "custom",
-          "accepted": true,
-          "at": "relay<lookup"
+          "payload": {
+            "accepted": true,
+            "at": "relay<lookup"
+          }
         }
       },
       "parent": 2
@@ -220,8 +222,10 @@
       "outcome": {
         "Ok": {
           "outcome": "custom",
-          "accepted": true,
-          "at": "relay<lookup"
+          "payload": {
+            "accepted": true,
+            "at": "relay<lookup"
+          }
         }
       },
       "parent": 3

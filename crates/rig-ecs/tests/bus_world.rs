@@ -515,7 +515,9 @@ fn despawning_a_parent_cancels_its_children_in_flight_and_never_serves_the_queue
         "both begun dispatches record Cancelled"
     );
     assert_eq!(log.records.len(), 2, "the queued child has no record");
-    let _ = Outcome::Custom(serde_json::Value::Null);
+    let _ = Outcome::Custom {
+        payload: serde_json::Value::Null,
+    };
 }
 
 /// A tool key the world serves: the system spawns a completion `ChildOf`
@@ -547,7 +549,7 @@ fn finish_lookup(
         if let Ok(outcome) = answered.get(*child) {
             commands
                 .entity(entity)
-                .insert(EffectOutcome(Ok(Outcome::ToolResult {
+                .insert(rig_ecs::bus::WorldOutcome::new(Ok(Outcome::ToolResult {
                     result: ToolResult::success(ToolOutput::text(format!(
                         "looked up: {}",
                         text_of(&outcome.0)

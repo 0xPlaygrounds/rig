@@ -118,7 +118,7 @@ impl Serve for Echo {
             }
             self.served.fetch_add(1, Ordering::SeqCst);
             let outcome = match kind {
-                EffectKind::Custom { payload, .. } => Ok(Outcome::Custom(payload)),
+                EffectKind::Custom { payload, .. } => Ok(Outcome::Custom { payload }),
                 other => Err(ErrorReport::new(
                     ErrorKind::Internal,
                     format!("echo received {}", other.name()),
@@ -158,7 +158,10 @@ impl Serve for Ordered {
         };
         tokio::time::sleep(Duration::from_millis(delay)).await;
         self.served.lock().expect("order lock").push(index);
-        sink.resolve(Ok(Outcome::Custom(json!(index)))).await;
+        sink.resolve(Ok(Outcome::Custom {
+            payload: json!(index),
+        }))
+        .await;
     }
 }
 
@@ -203,7 +206,7 @@ async fn unary_dispatch_round_trips_through_a_spawned_driver() {
     let pending = dispatcher.dispatch(&HandlerKey::from("echo"), custom(json!({"n": 1})));
     let id = pending.id();
     let outcome = within(pending).await.expect("served");
-    assert!(matches!(outcome, Outcome::Custom(ref payload) if *payload == json!({"n": 1})));
+    assert!(matches!(outcome, Outcome::Custom { ref payload } if *payload == json!({"n": 1})));
     assert_eq!(served.load(Ordering::SeqCst), 1);
     assert_eq!(
         id.as_u64(),
@@ -399,7 +402,7 @@ async fn concurrent_serving_across_keys_is_the_default() {
     let free_outcome = within(dispatcher.dispatch(&HandlerKey::from("free"), custom(json!(2))))
         .await
         .expect("free key is served while another is gated");
-    assert!(matches!(free_outcome, Outcome::Custom(ref payload) if *payload == json!(2)));
+    assert!(matches!(free_outcome, Outcome::Custom { ref payload } if *payload == json!(2)));
     assert_eq!(served.load(Ordering::SeqCst), 1);
     let _ = open.send(());
     within(blocked_pending)
@@ -605,7 +608,10 @@ impl Serve for SelfCaller {
 
     async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
         if self.nested.swap(true, Ordering::SeqCst) {
-            sink.resolve(Ok(Outcome::Custom(json!("plain")))).await;
+            sink.resolve(Ok(Outcome::Custom {
+                payload: json!("plain"),
+            }))
+            .await;
             return;
         }
         // The way back onto the bus is the sink's dispatcher: its dispatches
@@ -626,10 +632,12 @@ impl Serve for SelfCaller {
             // handler's poll: the bus must answer it, not queue it.
             let first = poll_fn(|cx| Poll::Ready(nested.poll_unpin(cx))).await;
             let outcome = match first {
-                Poll::Ready(Err(report)) => Ok(Outcome::Custom(json!({
-                    "kind": format!("{:?}", report.kind),
-                    "message": report.message,
-                }))),
+                Poll::Ready(Err(report)) => Ok(Outcome::Custom {
+                    payload: json!({
+                        "kind": format!("{:?}", report.kind),
+                        "message": report.message,
+                    }),
+                }),
                 other => Err(ErrorReport::new(
                     ErrorKind::Internal,
                     format!("the nested dispatch was not refused: {other:?}"),
@@ -664,7 +672,7 @@ fn a_reentrant_dispatch_to_the_in_flight_key_under_serial_serving_is_refused() {
     let outcome = outcome
         .expect("resolved, never queued behind itself")
         .expect("served");
-    let Outcome::Custom(payload) = outcome else {
+    let Outcome::Custom { payload } = outcome else {
         panic!("custom outcome expected, got {outcome:?}");
     };
     assert_eq!(payload["kind"], json!("Request"));
@@ -724,7 +732,7 @@ fn pending_and_stream_poll_cleanly_without_any_runtime() {
     let outcome = outcome
         .expect("resolved by manual polling")
         .expect("served");
-    assert!(matches!(outcome, Outcome::Custom(ref payload) if *payload == json!("manual")));
+    assert!(matches!(outcome, Outcome::Custom { ref payload } if *payload == json!("manual")));
 }
 
 #[tokio::test]
@@ -1301,7 +1309,10 @@ impl Serve for RegistersOnDrop {
     }
 
     async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-        sink.resolve(Ok(Outcome::Custom(json!("never")))).await;
+        sink.resolve(Ok(Outcome::Custom {
+            payload: json!("never"),
+        }))
+        .await;
     }
 }
 
@@ -1360,7 +1371,10 @@ impl Serve for DropCounter {
     }
 
     async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-        sink.resolve(Ok(Outcome::Custom(json!(null)))).await;
+        sink.resolve(Ok(Outcome::Custom {
+            payload: json!(null),
+        }))
+        .await;
     }
 }
 
@@ -1447,7 +1461,7 @@ impl Serve for AskUserHandler {
                 let ask: AskUser = serde_json::from_value(payload).expect("an AskUser");
                 json!({"text": format!("you asked: {}", ask.prompt)})
             };
-            sink.resolve(Ok(Outcome::Custom(answer))).await;
+            sink.resolve(Ok(Outcome::Custom { payload: answer })).await;
         }
     }
 }
@@ -1988,7 +2002,7 @@ fn a_probe_resolves_a_dispatch_without_an_executor() {
     assert_eq!(dispatcher.buffered(), 1);
     let _ = driver.poll_unpin(&mut cx);
     let outcome = probe(&mut pending).expect("served").expect("ok");
-    assert!(matches!(outcome, Outcome::Custom(ref payload) if *payload == json!(7)));
+    assert!(matches!(outcome, Outcome::Custom { ref payload } if *payload == json!(7)));
     assert_eq!(served.load(Ordering::SeqCst), 1);
 
     let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
@@ -2135,10 +2149,12 @@ fn a_detached_sink_keeps_its_serial_slot_until_answered() {
 
     let sink = mailbox.lock().expect("mailbox").remove(0);
     assert!(!sink.is_closed());
-    let mut resolving = sink.resolve(Ok(Outcome::Custom(json!("answered"))));
+    let mut resolving = sink.resolve(Ok(Outcome::Custom {
+        payload: json!("answered"),
+    }));
     assert!(resolving.poll_unpin(&mut cx).is_ready());
     let outcome = probe(&mut first).expect("answered").expect("ok");
-    assert!(matches!(outcome, Outcome::Custom(ref v) if *v == json!("answered")));
+    assert!(matches!(outcome, Outcome::Custom { payload: ref v } if *v == json!("answered")));
     for _ in 0..4 {
         let _ = driver.poll_unpin(&mut cx);
     }
@@ -2146,7 +2162,9 @@ fn a_detached_sink_keeps_its_serial_slot_until_answered() {
     assert_eq!(mailbox.lock().expect("mailbox").len(), 1);
     assert_eq!(driver.in_flight(), 1);
     let sink = mailbox.lock().expect("mailbox").remove(0);
-    let mut resolving = sink.resolve(Ok(Outcome::Custom(json!("second"))));
+    let mut resolving = sink.resolve(Ok(Outcome::Custom {
+        payload: json!("second"),
+    }));
     assert!(resolving.poll_unpin(&mut cx).is_ready());
     assert!(probe(&mut second).is_some());
     for _ in 0..4 {
@@ -2333,21 +2351,27 @@ impl Serve for Parent {
             };
             let outcome = match outcome {
                 Ok(outcome) => Ok(outcome),
-                Err(report) => Ok(Outcome::Custom(json!({
-                    "kind": format!("{:?}", report.kind),
-                    "message": report.message,
-                }))),
+                Err(report) => Ok(Outcome::Custom {
+                    payload: json!({
+                        "kind": format!("{:?}", report.kind),
+                        "message": report.message,
+                    }),
+                }),
             };
             sink.resolve(outcome).await;
             return;
         }
         let outcome = match first {
-            Poll::Ready(Err(report)) => Ok(Outcome::Custom(json!({
-                "kind": format!("{:?}", report.kind),
-                "message": report.message,
-            }))),
+            Poll::Ready(Err(report)) => Ok(Outcome::Custom {
+                payload: json!({
+                    "kind": format!("{:?}", report.kind),
+                    "message": report.message,
+                }),
+            }),
             Poll::Ready(Ok(outcome)) => Ok(outcome),
-            Poll::Pending => Ok(Outcome::Custom(json!("accepted"))),
+            Poll::Pending => Ok(Outcome::Custom {
+                payload: json!("accepted"),
+            }),
         };
         sink.resolve(outcome).await;
     }
@@ -2407,7 +2431,7 @@ fn a_dispatch_made_through_the_sinks_dispatcher_carries_its_parent() {
         .expect("resolved")
         .expect("served");
     assert!(
-        matches!(&outcome, Outcome::Custom(payload) if *payload == json!("nested")),
+        matches!(&outcome, Outcome::Custom { payload } if *payload == json!("nested")),
         "{outcome:?}"
     );
     assert_eq!(served.load(Ordering::SeqCst), 1);
@@ -2444,7 +2468,7 @@ fn a_nested_serial_dispatch_from_another_thread_is_refused_by_its_chain() {
     let outcome = drive_to_outcome(&mut driver, &mut outer)
         .expect("resolved, never hung")
         .expect("served");
-    let Outcome::Custom(payload) = outcome else {
+    let Outcome::Custom { payload } = outcome else {
         panic!("custom outcome expected, got {outcome:?}");
     };
     assert_eq!(payload["kind"], json!("Request"), "{payload}");
@@ -2495,7 +2519,7 @@ fn a_grandchild_on_the_ancestors_serial_key_is_refused_too() {
         .expect("resolved, never hung")
         .expect("served");
     // The middle's answer is the parent's answer: the grandchild's refusal.
-    let Outcome::Custom(payload) = outcome else {
+    let Outcome::Custom { payload } = outcome else {
         panic!("custom outcome expected, got {outcome:?}");
     };
     assert_eq!(payload["kind"], json!("Request"), "{payload}");
@@ -2511,7 +2535,7 @@ fn a_grandchild_on_the_ancestors_serial_key_is_refused_too() {
     let outcome = drive_to_outcome(&mut driver, &mut middle)
         .expect("resolved, never hung")
         .expect("served");
-    let Outcome::Custom(payload) = outcome else {
+    let Outcome::Custom { payload } = outcome else {
         panic!("custom outcome expected, got {outcome:?}");
     };
     assert_eq!(payload["kind"], json!("Request"), "{payload}");
@@ -2623,7 +2647,7 @@ fn a_parent_cancel_reaches_a_child_still_queued() {
         .expect("resolved")
         .expect("the busy one is served");
     assert!(
-        matches!(&served, Outcome::Custom(payload) if *payload == json!("busy")),
+        matches!(&served, Outcome::Custom { payload } if *payload == json!("busy")),
         "{served:?}"
     );
     let report = child
@@ -2732,7 +2756,7 @@ fn a_suspending_layer_keeps_its_serial_slot_and_observes_cancellation() {
     let outcome = drive_to_outcome(&mut driver, &mut second)
         .expect("resolved")
         .expect("served");
-    assert!(matches!(&outcome, Outcome::Custom(payload) if *payload == json!(2)));
+    assert!(matches!(&outcome, Outcome::Custom { payload } if *payload == json!(2)));
     assert_eq!(served.load(Ordering::SeqCst), 1);
     assert_eq!(driver.in_flight(), 0);
 }

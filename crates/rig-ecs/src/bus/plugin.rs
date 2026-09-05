@@ -11,9 +11,9 @@ use rig_core::serve::ServingPolicy;
 use super::{
     collect::{collect_streams, collect_tasks, settle},
     dispatch::dispatch,
-    effect::{IdCounter, SeqCounter},
+    effect::{IdCounter, SeqCounter, WorldOutcomeCounter},
     handlers::{HandlerTable, unbound},
-    record::{record_bound, record_cancelled},
+    record::{DeliveryBatch, begin_delivery_pass, record_bound, record_cancelled, record_outcome},
 };
 
 /// The schedule the bus runs in, to quiescence, once per `Update`. Users add
@@ -117,8 +117,11 @@ impl Plugin for BusPlugin {
             .init_resource::<IdCounter>()
             .init_resource::<Progress>()
             .init_resource::<Intake>()
+            .init_resource::<DeliveryBatch>()
+            .init_resource::<WorldOutcomeCounter>()
             .init_non_send::<HandlerTable>();
         app.add_observer(unbound)
+            .add_observer(record_outcome)
             .add_observer(record_cancelled)
             .add_observer(record_bound);
         let mut schedule = Schedule::new(RigSchedule);
@@ -136,8 +139,20 @@ impl Plugin for BusPlugin {
                 .chain(),
         );
         schedule.add_systems(dispatch.in_set(BusSet::Dispatch));
+        schedule.add_systems(begin_delivery_pass.before(BusSet::Gate));
+        #[cfg(feature = "replay")]
         schedule.add_systems(
-            (collect_tasks, collect_streams, settle)
+            super::delivery::collect_replayed
+                .in_set(BusSet::Collect)
+                .before(collect_tasks),
+        );
+        schedule.add_systems(
+            (
+                collect_tasks,
+                collect_streams,
+                super::collect::collect_world,
+                settle,
+            )
                 .chain()
                 .in_set(BusSet::Collect),
         );

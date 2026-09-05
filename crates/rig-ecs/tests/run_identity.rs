@@ -155,7 +155,9 @@ fn check_replayable_refuses_a_foreign_log_by_name() {
     unserved.header.handlers.clear();
     let refused = check_replayable(app.world_mut(), run, &unserved).expect_err("unserved");
     assert!(
-        refused.message.contains("do not serve the row"),
+        refused.kind == rig_core::error::ErrorKind::HandlerUnavailable
+            && refused.message.contains("golden/model:default")
+            && refused.message.contains("descriptor is missing"),
         "{}",
         refused.message
     );

@@ -144,17 +144,15 @@ impl EffectLogRecorder {
     /// takes its place (ahead of everything served after it) when it
     /// resolves.
     pub fn log(&self) -> EffectLog {
-        let records = self
-            .slots
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .iter()
-            .filter_map(RecordSlot::record)
-            .collect();
-        EffectLog {
+        let slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        let records = slots.iter().filter_map(RecordSlot::record).collect();
+        let mut log = EffectLog {
             header: self.header(),
             records,
-        }
+        };
+        drop(slots);
+        log.retain_recorded_deliveries();
+        log
     }
 
     /// Take the resolved dispatches, leaving the recorder holding only the
@@ -169,11 +167,22 @@ impl EffectLogRecorder {
             }
             None => true,
         });
-        drop(slots);
-        EffectLog {
-            header: self.header(),
-            records: taken,
+        let taken_ids: std::collections::BTreeSet<_> =
+            taken.iter().map(|record| record.id).collect();
+        let mut header = self.header.lock().unwrap_or_else(PoisonError::into_inner);
+        let taken_header = header.clone();
+        header.stream_errors.retain(|id, _| !taken_ids.contains(id));
+        if let Some(deliveries) = &mut header.deliveries {
+            deliveries.retain(|delivery| !taken_ids.contains(&delivery.id));
         }
+        drop(header);
+        drop(slots);
+        let mut log = EffectLog {
+            header: taken_header,
+            records: taken,
+        };
+        log.retain_recorded_deliveries();
+        log
     }
 
     /// Dispatches recorded and not yet resolved.
@@ -235,6 +244,19 @@ impl EffectLogRecorder {
             return;
         };
         let key = slots.remove(position).key;
+        self.header
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .stream_errors
+            .remove(&id);
+        if let Some(deliveries) = &mut self
+            .header
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .deliveries
+        {
+            deliveries.retain(|delivery| delivery.id != id);
+        }
         drop(slots);
         // The signature is the trace's row: a key with no record left —
         // none taken, none in flight — is not in it.
@@ -281,6 +303,60 @@ impl fmt::Debug for EffectLogRecorder {
 }
 
 impl Recorder for EffectLogRecorder {
+    fn unsupported_delivery(&self, reason: &str) {
+        let mut header = self.header.lock().unwrap_or_else(PoisonError::into_inner);
+        if !header
+            .delivery_limitations
+            .iter()
+            .any(|known| known == reason)
+        {
+            header.delivery_limitations.push(reason.to_owned());
+        }
+    }
+
+    fn stream_error(&self, id: EffectId, error: &ErrorReport) {
+        let slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        let Some(events) = slots
+            .iter()
+            .rev()
+            .find(|slot| slot.id == id)
+            .and_then(|slot| slot.events.as_ref())
+        else {
+            return;
+        };
+        let mut header = self.header.lock().unwrap_or_else(PoisonError::into_inner);
+        let errors = header.stream_errors.entry(id).or_default();
+        errors.push(super::RecordedStreamError {
+            item: events.len() + errors.len(),
+            error: error.clone(),
+        });
+    }
+
+    fn begin_delivery_tracking(&self) {
+        self.header
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .deliveries
+            .get_or_insert_with(Vec::new);
+    }
+
+    fn delivery(&self, delivery: rig_core::effect::Delivery) {
+        // A layer can discard before the world's outcome observer fires.
+        // Keep only deliveries belonging to a retained record; hold the
+        // slot lock through insertion so discard cannot race this check.
+        let slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
+        if !slots.iter().any(|slot| slot.id == delivery.id) {
+            return;
+        }
+        self.header
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .deliveries
+            .get_or_insert_with(Vec::new)
+            .push(delivery);
+        drop(slots);
+    }
+
     fn tool_output(&self, id: EffectId, output: rig_core::tool::ToolResultContext) {
         let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(slot) = slots

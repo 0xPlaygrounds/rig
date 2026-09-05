@@ -21,7 +21,7 @@ use rig_core::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::effect::{Answer, Asked, EffectOutcome, WorldEffect};
+use super::effect::{Answer, Asked, WorldEffect};
 
 /// What a handler entity is bound to: its key and its descriptor. The serde
 /// twin of the handler; what a scene saves and what a typed key is checked
@@ -51,7 +51,7 @@ pub enum Served {
     Task(ErasedHandler),
     /// By a system: the dispatch stays on its entity, `InFlight`, and a
     /// user system answers it — through [`Asked<E>`] and [`Answer<E>`] for
-    /// a [`WorldHandler`], or by inserting the [`EffectOutcome`] itself
+    /// a [`WorldHandler`], or by submitting a [`super::WorldOutcome`]
     /// for a key bound with [`Handlers::register_open`].
     World(WorldServe),
 }
@@ -81,8 +81,8 @@ fn open(_entity: &mut EntityCommands<'_>, _kind: &EffectKind) -> Result<(), Erro
 /// A handler that is a system, for a [`WorldEffect`] `E`: bound with
 /// [`Handlers::register_world`]. A dispatch to its key lands on the effect
 /// entity as [`Asked<E>`]; a user system with any `World` access reads it
-/// and inserts [`Answer<E>`]; the plugin turns the answer into the
-/// [`EffectOutcome`]. Serial serving keeps the key busy until the answer
+/// and inserts [`Answer<E>`]; the plugin queues a [`super::WorldOutcome`] and
+/// publishes the [`super::EffectOutcome`] in `Collect`. Serial serving keeps the key busy until the answer
 /// lands. Unary only: a system answers once.
 pub struct WorldHandler<E: WorldEffect>(PhantomData<fn() -> E>);
 
@@ -162,7 +162,7 @@ pub fn answered<E: WorldEffect>(
         return;
     };
     let outcome = serde_json::to_value(&answer.0)
-        .map(Outcome::Custom)
+        .map(|payload| Outcome::Custom { payload })
         .map_err(|error| {
             ErrorReport::new(
                 ErrorKind::Response,
@@ -172,7 +172,7 @@ pub fn answered<E: WorldEffect>(
     commands
         .entity(entity)
         .remove::<(Asked<E>, Answer<E>)>()
-        .insert(EffectOutcome(outcome));
+        .insert(super::effect::WorldOutcome::new(outcome));
 }
 
 /// The world's erased handlers, keyed by their [`Bound`] entity. `NonSend`
@@ -230,6 +230,22 @@ pub struct Handlers<'w, 's> {
 }
 
 impl Handlers<'_, '_> {
+    #[cfg(feature = "replay")]
+    /// Install or clear the world's validated replay delivery plan.
+    pub fn replay_delivery(&mut self, delivery: Option<super::delivery::ReplayDelivery>) {
+        self.commands
+            .remove_resource::<super::delivery::ReplayFailure>();
+        match delivery {
+            Some(delivery) => {
+                self.commands.insert_resource(delivery);
+            }
+            None => {
+                self.commands
+                    .remove_resource::<super::delivery::ReplayDelivery>();
+            }
+        }
+    }
+
     /// Run `f` with a `Handlers` over `world` and apply what it did: for a
     /// host that registers from outside a system (a test, a scene load).
     pub fn with<T>(
@@ -320,7 +336,7 @@ impl Handlers<'_, '_> {
     /// Bind `key` to the world itself, as `family`: a dispatch to it is
     /// taken (`Issued`, `InFlight`, the record opened) and left on its
     /// entity for a user system with any `World` access to answer by
-    /// inserting the [`EffectOutcome`] — of any family, `family` being what
+    /// submitting a [`super::WorldOutcome`] — of any family, `family` being what
     /// the key is advertised as (a tool's definition, a model's
     /// capabilities). What the system dispatches on the way is a
     /// `PendingEffect` it spawns `ChildOf` the effect it serves. Serial

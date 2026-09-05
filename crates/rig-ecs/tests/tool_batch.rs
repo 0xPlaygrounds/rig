@@ -305,7 +305,7 @@ fn a_system_repairs_an_invalid_call_to_a_granted_tool() {
         vec![call("c1", "multiply", serde_json::json!({"x": 2, "y": 3}))],
         vec![AssistantContent::text("5")],
     ]);
-    add_system(&mut app, repair_to_add.before(RigSet::Materialise));
+    add_system(&mut app, repair_to_add.in_set(RigSet::Judge));
     let run = spawn_run(app.world_mut(), agent, &[], "multiply", false, None);
     ended(&mut app, run, "answered");
     assert_eq!(
@@ -353,7 +353,7 @@ fn a_system_retries_an_invalid_call_with_feedback() {
         retries: 1,
         unhandled: rig_ecs::agent::Unhandled::Fail,
     });
-    add_system(&mut app, retry_with_feedback.before(RigSet::Materialise));
+    add_system(&mut app, retry_with_feedback.in_set(RigSet::Judge));
     let run = spawn_run(app.world_mut(), agent, &[], "multiply", false, None);
     ended(&mut app, run, "answered");
     assert_eq!(

@@ -848,13 +848,13 @@ impl rig::serve::Serve for NoteTaker {
         let outcome = match kind {
             rig::effect::EffectKind::Custom { payload, .. } => {
                 match serde_json::from_value::<Note>(payload) {
-                    Ok(note) => Ok(rig::effect::Outcome::Custom(
-                        serde_json::to_value(NoteAck {
+                    Ok(note) => Ok(rig::effect::Outcome::Custom {
+                        payload: serde_json::to_value(NoteAck {
                             accepted: true,
                             at: note.at,
                         })
                         .expect("an ack serializes"),
-                    )),
+                    }),
                     Err(error) => Err(rig::error::ErrorReport::new(
                         rig::error::ErrorKind::Request,
                         format!("not a note: {error}"),
@@ -1721,13 +1721,13 @@ impl rig::serve::Serve for Relay {
             })
             .await
             .expect("acknowledged");
-        sink.resolve(Ok(rig::effect::Outcome::Custom(
-            serde_json::to_value(NoteAck {
+        sink.resolve(Ok(rig::effect::Outcome::Custom {
+            payload: serde_json::to_value(NoteAck {
                 accepted: ack.accepted,
                 at: ack.at,
             })
             .expect("an ack serializes"),
-        )))
+        }))
         .await;
     }
 }
@@ -2248,13 +2248,13 @@ impl rig::serve::Serve for NeverAsked {
     async fn serve(&self, _kind: rig::effect::EffectKind, sink: rig::serve::OutcomeSink) {
         self.reached
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        sink.resolve(Ok(rig::effect::Outcome::Custom(
-            serde_json::to_value(NoteAck {
+        sink.resolve(Ok(rig::effect::Outcome::Custom {
+            payload: serde_json::to_value(NoteAck {
                 accepted: true,
                 at: "never".to_owned(),
             })
             .expect("an ack serializes"),
-        )))
+        }))
         .await;
     }
 }

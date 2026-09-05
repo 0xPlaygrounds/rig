@@ -266,9 +266,9 @@ const _: fn(&Registrar) = |registrar| {
             sink: rig_core::serve::OutcomeSink,
         ) {
             self.0.set(self.0.get() + 1);
-            sink.resolve(Ok(rig_core::effect::Outcome::Custom(
-                serde_json::Value::Null,
-            )))
+            sink.resolve(Ok(rig_core::effect::Outcome::Custom {
+                payload: serde_json::Value::Null,
+            }))
             .await;
         }
     }

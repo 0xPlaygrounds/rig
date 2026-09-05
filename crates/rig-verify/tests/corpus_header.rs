@@ -138,9 +138,7 @@ async fn the_agent_names_a_required_key_served_as_another_family() {
     .await;
     assert_eq!(
         refusal,
-        format!(
-            "replay refused: this agent needs `{ADD}` (tool_call), which the log never served: `{ADD}` is needed as tool_call but served as memory"
-        )
+        format!("replay refused: conflicting families for `{ADD}`: tool_call and memory")
     );
 }
 
@@ -176,8 +174,11 @@ async fn the_agent_names_a_required_family_that_differs_between_the_rows() {
     })
     .await;
     assert!(
-        refusal.ends_with(&format!(": `{ADD}` is completion here and tool_call there")),
-        "the diff names both families, the log's first: {refusal}"
+        refusal
+            == format!(
+                "replay refused: conflicting families for `{ADD}`: tool_call and completion"
+            ),
+        "the inconsistent log is refused before comparing it with the agent: {refusal}"
     );
 }
 
@@ -208,9 +209,7 @@ async fn the_agent_names_a_signature_family_the_bus_serves_otherwise() {
     // compares the signature with its bus.
     assert_eq!(
         refusal,
-        format!(
-            "replay refused: the signature says `{MODEL}` serves tool_call, its records are completion"
-        )
+        format!("replay refused: conflicting families for `{MODEL}`: tool_call and completion")
     );
 }
 

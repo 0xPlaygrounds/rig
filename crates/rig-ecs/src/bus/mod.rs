@@ -43,18 +43,24 @@
 //! - **A handler that is a system** answers by component write:
 //!   [`Handlers::register_world`] binds a `CustomEffect` type to a key; a
 //!   dispatch to it lands as an [`Asked<E>`] component on the effect
-//!   entity, and a user system inserts [`Answer<E>`]. No sink, no mailbox,
-//!   no task.
+//!   entity, and a user system inserts [`Answer<E>`]. Open keys accept
+//!   [`WorldOutcome`]. `Collect` publishes both in submission order as
+//!   [`EffectOutcome`]; later submissions become visible next pass.
 //! - **The log is a fold over entities.** With a [`Recording`] resource
 //!   installed ([`Recording::install`]), `Dispatch` opens a record as it
 //!   takes an effect and `Collect` closes it as the outcome lands; a
 //!   despawn before that closes it as cancelled. Under the `replay` feature
 //!   a [`Replay`] loads a log's records as effect entities with their
-//!   recorded ids and registers a replayer that answers each by id.
+//!   recorded ids and registers a replayer that answers each by id. An ECS
+//!   recording also keeps consumer delivery batches. Policy-visible replay
+//!   requires these boundaries and, for streams, kept events and error items;
+//!   it does not reconstruct arbitrary resources or elapsed time.
 //! - **A scene is a checkpoint.** [`Scene::save`] takes the effect entities
-//!   (intent, ids, outcomes, causality, scope) and the bound descriptors as
+//!   (intent, ids, outcomes, stream state, causality, scope) and the bound descriptors as
 //!   serde; [`Scene::load`] spawns them back, ids reserved, outcomes kept,
-//!   so `Dispatch` re-issues exactly what had not been answered.
+//!   so `Dispatch` re-issues safe unanswered intents. Load refuses unfinished
+//!   streams with delivered progress: no provider cursor prevents a repeated
+//!   prefix. Completed streams restore without re-executing their handlers.
 //!
 //! # The schedule
 //!
@@ -65,8 +71,8 @@
 //! schedule runs again (capped at [`QUIESCENCE_CAP`] passes, a `warn!`
 //! when reached). Users add their systems to `RigSchedule`, ordered
 //! against the sets, never to `Update`: a system in `Update` sees one pass,
-//! a system in `RigSchedule` sees every pass. Only a handler's real IO
-//! costs a tick.
+//! a system in `RigSchedule` sees every pass. Intake bounds can defer a
+//! dispatch to the next Update; async readiness can require later updates.
 //!
 //! # What it deliberately does not have
 //!
@@ -74,11 +80,13 @@
 //! vocabulary: those are the crate's later modules, and nothing here may
 //! anticipate them. A handler served as a task cannot reach the world; a
 //! handler that needs the world is a [`WorldHandler`], or a key bound open
-//! ([`Handlers::register_open`]) that a system answers by inserting the
-//! outcome, whatever the family. Streaming answers from a system are not
+//! ([`Handlers::register_open`]) that a system answers by submitting a
+//! [`WorldOutcome`], whatever the family. Streaming answers from a system are not
 //! offered (a system answers unary effects).
 
 pub mod collect;
+#[cfg(feature = "replay")]
+pub mod delivery;
 pub mod dispatch;
 pub mod effect;
 pub mod handlers;
@@ -96,7 +104,7 @@ pub use dispatch::{Candidate, CandidateView, dispatch, handler_unavailable, reen
 pub use effect::{
     Answer, Asked, EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing,
     Reserved, Scope, Seq, SeqCounter, Serving, Streamed, Streaming, ToolInputs, ToolOutputs, Typed,
-    WorldEffect,
+    WorldEffect, WorldOutcome,
 };
 pub use handlers::{
     Bound, HandlerTable, Handlers, Served, WorldHandler, WorldServe, answered, unbound,
@@ -109,6 +117,8 @@ pub use record::{
 };
 pub use scene::{Scene, SceneEffect};
 
+#[cfg(feature = "replay")]
+pub use delivery::ReplayFailure;
 #[cfg(feature = "replay")]
 pub use replay::{EffectLogResource, Replay};
 

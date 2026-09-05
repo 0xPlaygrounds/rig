@@ -24,6 +24,23 @@ reported as unverified. This declaration is not an automatic code fingerprint
 or a check of ambient credentials and external state. The builder-only
 `stamp_header` remains a corpus header, not an effective compatibility check.
 
+`check_replayable` can run in a fresh world bound to the log's replayers.
+Recorded model identity and capabilities stay authoritative, including native
+output composition with tools. Reapply the same middleware before checking:
+a replayer supplies the inner handler's recorded exchanges, and does not
+execute a descriptor's named layers by itself. Changed semantic models,
+capabilities, effective settings and application versions still change the
+identity. Replayer registration includes every scoped required row, so an
+advertised but unused tool remains available for scene reconstruction; an
+unexpected call to it fails with divergence.
+
+If a selected model is removed before dispatch or between turns, assembly
+terminates the run with `Failed(Failure::Provider(report))`. A missing
+relationship or descriptor reports `HandlerUnavailable`; a non-completion
+binding reports its key and wrong family. An outstanding tool can finish
+before the next assembly detects the missing model. This differs from
+cancelling an in-flight operation.
+
 The request the model sees is derived, never authored: a run entity, utterances `ChildOf` it in `Order`, documents as their own entities attached to a turn by link entities, tools as the handler entities the bus already has (granted by link entities), the model as a relationship, every setting a component — and one function, `policy::fold_request`, that walks the graph at `RigSet::Assemble` and writes the wire `CompletionRequest` into the turn's `PendingEffect`. `CONTRACT.md` names the walk field by field with the golden that pins each; the corpus's third interpreter (`crates/rig-verify/tests/corpus/world.rs`) replays every completion-only golden through it.
 
 | design (§3.1) | here |
@@ -99,7 +116,7 @@ Every hook cell of the corpus is written against the public sets and components 
 | dispatch order | `Seq`, stamped on add from `SeqCounter` (global, reserved) |
 | the effect's id | `Issued` after `Dispatch`; `Reserved` before it, for a scene's or a log's id |
 | taken, in flight | `InFlight { key }` plus `Serving(Task)` (unary) or `Streaming { task, events, fold }` (stream) |
-| a handler that is a system was asked | `Asked<E>`; the system answers with `Answer<E>` — or, for a key bound open (`Handlers::register_open`, any family), the effect entity itself, answered by inserting `EffectOutcome` |
+| a handler that is a system was asked | `Asked<E>`; the system answers with `Answer<E>` — or, for a key bound open (`Handlers::register_open`, any family), the effect entity itself, answered by submitting `WorldOutcome` |
 | the answer | `EffectOutcome(Result<Outcome, ErrorReport>)`; a stream's per-tick fold in `Streamed { events, text, outcome }` |
 | held by a decision | `Held` |
 | a program's scope | `Scope(String)` on an ancestor; read into the record |
@@ -133,7 +150,7 @@ Under `ServingPolicy::serial_per_handler`, `Dispatch` takes a key only when noth
 
 ## Handlers that are systems
 
-`Handlers::register_world::<E>(key)` binds a `WorldEffect` (a `CustomEffect` whose payload and answer are `Send + Sync`). A dispatch to the key lands as `Asked<E>` on the effect entity; a user system with any `World` access inserts `Answer<E>`; the plugin turns it into the `EffectOutcome`. `Handlers::register_open(key, family)` binds a key of any family to the world itself: the dispatch is taken and left on its entity, `InFlight`, for a system to answer by inserting the `EffectOutcome` — a tool a system serves, nesting what it needs as effects `ChildOf` the call (`bus_world::a_system_serves_an_open_tool_key_and_nests_a_completion_under_it`). No sink, no mailbox, no task. Unary only: a system answers once. A handler that must reach the world is one of these; a handler served as a task cannot.
+`Handlers::register_world::<E>(key)` binds a `WorldEffect` (a `CustomEffect` whose payload and answer are `Send + Sync`). A dispatch to the key lands as `Asked<E>` on the effect entity; a user system with any `World` access inserts `Answer<E>`; the plugin queues it for publication as `EffectOutcome` in `Collect`. `Handlers::register_open(key, family)` binds a key of any family to the world itself: the dispatch is taken and left on its entity, `InFlight`, for a system to answer by submitting `WorldOutcome::new(outcome)` — a tool a system serves, nesting what it needs as effects `ChildOf` the call (`bus_world::a_system_serves_an_open_tool_key_and_nests_a_completion_under_it`). The collector publishes answers in submission order; submissions after `Collect` become visible in the next pass. No task is required. Unary only: a system answers once. A handler that must reach the world is one of these; a handler served as a task cannot.
 
 ## The proofs
 
@@ -171,6 +188,73 @@ The Bevy host fixture's fourteen proofs and the eight unproven behaviours of `ri
 ## What it deliberately does not have
 
 No hook trait, no history vector, no step enum, no run struct copied from anywhere, no batch machine (the batch is the turn's children and a query): steering is a system between sets. Program identity is data: `replay::stamp_run` writes the run's scope into `LogHeader::programs` and `replay::check_replayable` refuses a foreign log by policy or by row (`tests/run_identity.rs`). Memory is the graph and retrieval attaches (`tests/memory_graph.rs`); two runs on one agent are two `spawn_run`s; resume is a scene load (`agent::scene::{save_world, load_world}`, every resume and checkpoint row of the corpus as a world cell, CONTRACT §13). The `bus` module still has no agent-shaped item and its suite is agent-free (the guard checks). No streaming answers from a system yet (a later PR). `Scene` is the crate's own serde form and stores what this module owns; a host's other components are its own to save. No `Now`, no `Random`: nondeterminism is an effect a host registers, and the guard refuses a clock or a random draw in this crate.
+
+## Replay delivery and streaming
+
+Records remain in dispatch order. When `EffectLogResource::install` installs
+an ECS recorder, the log also records `header.deliveries`: an ordered trace
+of outcome insertions and stream item counts grouped by schedule pass.
+Handler completion and collector delivery are separate boundaries. Replay
+buffers ready handler data and exposes each recorded batch together, allowing
+policy systems to run between batches. Concurrent live serving stays
+concurrent. Coincident agent turns materialise and land tool batches in
+`RunSeq` order, independent of irrelevant entity archetypes.
+
+Use `Replay::policy_visible()` for policies that choose the first visible
+answer or inspect partial `Streamed` state. Install an
+`EffectLogRecorder::keeping_stream_events()` when recording streams for this
+mode. It refuses missing delivery metadata or omitted stream bytes and
+reports an inconsistent trace as `ReplayFailure`. The same policy must
+reproduce recorded cancellations; cancelled losers are not given invented
+outcome insertions. A replay that does not reproduce a required cancellation
+fails explicitly.
+
+Supported policy observation points are `On<Add, EffectOutcome>` and systems
+ordered after the **entire** `BusSet::Collect`, with the same relevant ordering
+live and on replay. Systems interleaved between individual collectors or
+reading handler readiness/inboxes are outside this guarantee. Submit world
+answers with `WorldOutcome` or typed `Answer<E>`; direct insertion of an
+in-flight `EffectOutcome` records a `header.delivery_limitations` diagnostic
+and causes policy replay to refuse the log. Gate denials and Judge replacements
+retain their existing roles. A world answer submitted after Collect is
+published in the following pass. `WorldOutcome` is transient like a ready
+task; collect it before saving a scene to retain the answer.
+
+`Replay::default()` supports exchange consumers: it honors available delivery
+batches, but a folded stream supplies only its final answer and recorded
+cancellations are returned as errors. Older logs without delivery metadata
+replay exchanges without a policy-order guarantee. Keeping event bytes
+preserves the event sequence; keeping delivery batches additionally preserves
+which events partial-state policy sees together. `header.stream_errors`
+retains error items at their original positions, including errors before or
+after `Final`; a folded outcome cannot recover those positions. One event per pass is not
+an exact replacement for a live multi-event batch. Kept events and the trace
+increase log size in proportion to recorded events and delivery batches.
+
+These guarantees require the same declared program and relevant schedule
+ordering. They do not reproduce wall-clock gaps, arbitrary resources,
+system-local state, ambient inputs or external writes. Saved IDs permit
+subset replay; a program that creates new effects must still reproduce its
+causal dispatches. Generic custom and world-served streaming remain
+unsupported: `StreamWriter` does not change which effect families stream.
+Rig already had a sans-IO serializable state machine before this ECS runtime;
+these tests establish the specified ECS behavior, not an architectural verdict.
+
+## Stream and custom-answer snapshots
+
+`SceneEffect.streamed` preserves completed events, text and terminal fold.
+A completed stream is restored before its answer is inserted and its handler
+is never executed again. The nullable field is required on the wire:
+`null` establishes no saved stream state; omission could conceal a lost prefix.
+`Scene::load` and `load_with` return a result, as does the paired `WorldScene`
+loader. They reject unfinished streams with already-delivered progress before
+spawning entities. There is no generic provider cursor: save before progress
+or after completion. Safe unanswered intents restart under their saved IDs.
+
+Custom outcomes store the user's JSON value in `Outcome::Custom { payload }`.
+Typed strings, scalars, arrays and objects round-trip without changing the
+answer type, including objects with an `outcome` field of their own. The wire
+shape differs from the previous flattened custom variant.
 
 ## Memory finalization across snapshots
 

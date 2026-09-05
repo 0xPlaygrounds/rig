@@ -207,7 +207,15 @@ pub struct Streaming {
 /// is the delta signal), the text so far, and the folded outcome once the
 /// terminal record — or an error — arrived. The [`EffectOutcome`] lands
 /// when the handler's channel closes, so a serial key stays busy until the
-/// handler is done, as it does on rig-bus.
+/// handler is done, as it does on rig-agent's bus.
+///
+/// A collection pass can deliver several events. With the `replay` feature,
+/// `Replay::policy_visible()` preserves recorded delivery batches when the
+/// recorder kept event bytes. Keeping bytes alone in a driver without batch
+/// tracking promises event order only; folded recordings supply a final
+/// answer, not these partial states. Completed scenes restore all three
+/// fields. Loading an unfinished stream with delivered progress is refused
+/// because the scene has no cursor with which to resume after that prefix.
 #[derive(Component, Debug, Default, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Streamed {
@@ -232,6 +240,48 @@ pub struct EffectOutcome(
     pub  Result<Outcome, ErrorReport>,
 );
 
+/// An open world's submitted answer. Insert with [`WorldOutcome::new`];
+/// `Collect` publishes it as [`EffectOutcome`] in submission order. Typed
+/// [`Answer<E>`] uses the same path. Submission after Collect is visible next
+/// pass, so policy observes the same boundaries live and during replay.
+/// Like a ready task, this inbox is transient; save after collection to retain
+/// its answer in a scene. Applications observe `EffectOutcome`, not this inbox.
+#[derive(Component, Debug)]
+#[component(on_add = stamp_world_outcome)]
+pub struct WorldOutcome {
+    /// The submitted answer, published unchanged by the collector.
+    pub outcome: Result<Outcome, ErrorReport>,
+    order: u64,
+}
+
+impl WorldOutcome {
+    /// Submit one answer for an in-flight world-served effect.
+    pub fn new(outcome: Result<Outcome, ErrorReport>) -> Self {
+        Self { outcome, order: 0 }
+    }
+
+    /// Submission order within this world, stamped on component insertion.
+    pub fn order(&self) -> u64 {
+        self.order
+    }
+}
+
+/// Monotonic submission order for the world's answer inbox.
+#[derive(Resource, Default)]
+pub struct WorldOutcomeCounter(pub u64);
+
+fn stamp_world_outcome(mut world: DeferredWorld<'_>, context: HookContext) {
+    let order = {
+        let mut counter = world.resource_mut::<WorldOutcomeCounter>();
+        let order = counter.0;
+        counter.0 += 1;
+        order
+    };
+    if let Some(mut outcome) = world.get_mut::<WorldOutcome>(context.entity) {
+        outcome.order = order;
+    }
+}
+
 impl EffectOutcome {
     /// The answer as the family's typed answer.
     pub fn typed<F: Family>(&self) -> Result<F::Answer, ErrorReport> {
@@ -241,7 +291,7 @@ impl EffectOutcome {
     /// A custom answer, as `E::Answer`.
     pub fn custom<E: CustomEffect>(&self) -> Result<E::Answer, ErrorReport> {
         match self.0.clone()? {
-            Outcome::Custom(value) => serde_json::from_value(value).map_err(|error| {
+            Outcome::Custom { payload: value } => serde_json::from_value(value).map_err(|error| {
                 ErrorReport::new(
                     rig_core::error::ErrorKind::Response,
                     format!("the answer to `{}` did not deserialize: {error}", E::KIND),
