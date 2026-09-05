@@ -324,6 +324,131 @@ fn register_twice_in_one_system(mut handlers: Handlers, mut runtime: ResMut<Runt
 }
 
 #[test]
+fn deregister_then_register_in_one_borrow_serves_the_replacement() {
+    let counters = Arc::new(Counters::default());
+    let mut app = app();
+    let key = HandlerKey::from("runtime/model");
+    let previous = Handlers::with(app.world_mut(), |handlers| {
+        handlers.register(key.clone(), MockModel::saying(&counters, "first"))
+    })
+    .expect("bus")
+    .expect("registered");
+    let replacement = Handlers::with(app.world_mut(), |handlers| {
+        assert!(handlers.deregister(&key));
+        handlers.register(key.clone(), MockModel::saying(&counters, "second"))
+    })
+    .expect("bus")
+    .expect("registered replacement");
+    assert_ne!(
+        previous, replacement,
+        "deregistration despawns the old entity"
+    );
+    assert!(app.world().get_entity(previous).is_err());
+    assert!(app.world().get::<Bound>(replacement).is_some());
+    let effect = app
+        .world_mut()
+        .spawn(PendingEffect::new(key, completion()))
+        .id();
+    tick_until(&mut app, "served by replacement", |world| {
+        world.get::<EffectOutcome>(effect).is_some()
+    });
+    assert_eq!(
+        text_of(
+            &app.world()
+                .get::<EffectOutcome>(effect)
+                .expect("answered")
+                .0
+        ),
+        "second"
+    );
+}
+
+#[test]
+fn deregister_then_register_in_one_borrow_can_change_family() {
+    let counters = Arc::new(Counters::default());
+    let mut app = app();
+    let key = HandlerKey::from("runtime/handler");
+    Handlers::with(app.world_mut(), |handlers| {
+        handlers.register(key.clone(), MockModel::new(&counters))
+    })
+    .expect("bus")
+    .expect("registered");
+    let replacement = Handlers::with(app.world_mut(), |handlers| {
+        assert!(handlers.deregister(&key));
+        handlers.register(key.clone(), Echo)
+    })
+    .expect("bus")
+    .expect("deregistered first, so changing family is allowed");
+    assert_eq!(
+        app.world()
+            .get::<Bound>(replacement)
+            .expect("bound")
+            .family(),
+        EffectFamily::Tool
+    );
+}
+
+#[test]
+fn deregister_twice_in_one_borrow_removes_only_once() {
+    let counters = Arc::new(Counters::default());
+    let mut app = app();
+    let key = HandlerKey::from("runtime/model");
+    Handlers::with(app.world_mut(), |handlers| {
+        handlers.register(key.clone(), MockModel::new(&counters))
+    })
+    .expect("bus")
+    .expect("registered");
+    Handlers::with(app.world_mut(), |handlers| {
+        assert!(handlers.deregister(&key));
+        assert!(!handlers.deregister(&key));
+    })
+    .expect("bus");
+}
+
+#[test]
+fn deregistration_observer_can_register_a_replacement() {
+    let counters = Arc::new(Counters::default());
+    let mut app = app();
+    let key = HandlerKey::from("runtime/model");
+    let previous = Handlers::with(app.world_mut(), |handlers| {
+        handlers.register(key.clone(), MockModel::saying(&counters, "first"))
+    })
+    .expect("bus")
+    .expect("registered");
+    let replacement_key = key.clone();
+    app.world_mut().entity_mut(previous).observe(
+        move |_: On<Remove, Bound>, mut handlers: Handlers| {
+            handlers
+                .register(
+                    replacement_key.clone(),
+                    MockModel::saying(&counters, "second"),
+                )
+                .expect("replacement from observer");
+        },
+    );
+    Handlers::with(app.world_mut(), |handlers| {
+        assert!(handlers.deregister(&key))
+    })
+    .expect("bus");
+    let effect = app
+        .world_mut()
+        .spawn(PendingEffect::new(key, completion()))
+        .id();
+    tick_until(&mut app, "served by observer replacement", |world| {
+        world.get::<EffectOutcome>(effect).is_some()
+    });
+    assert_eq!(
+        text_of(
+            &app.world()
+                .get::<EffectOutcome>(effect)
+                .expect("answered")
+                .0
+        ),
+        "second"
+    );
+}
+
+#[test]
 fn two_registrations_of_one_key_in_one_system_bind_one_entity() {
     let counters = Arc::new(Counters::default());
     let mut app = app();
