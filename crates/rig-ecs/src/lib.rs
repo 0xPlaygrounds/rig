@@ -38,8 +38,9 @@
 //! The `bus` module is written as if it were already its own crate (every
 //! item `pub` or private to its file, no import from a sibling module, no
 //! agent-shaped item, its tests in `tests/bus_*.rs`): the agent modules
-//! consume it through its public items only, and it becomes `rig-bevy` by
-//! a `git mv` when a second consumer exists.
+//! consume it through its public items only. Additional consumers supply
+//! evidence for a later crate-boundary decision; they do not require an
+//! automatic extraction into a separate `rig-bevy` crate.
 
 pub mod agent;
 #[cfg(feature = "assets")]

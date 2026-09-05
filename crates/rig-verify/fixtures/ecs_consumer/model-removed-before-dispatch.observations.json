@@ -1,0 +1,25 @@
+[
+  {
+    "boundary": "input.remove-model",
+    "effect": null,
+    "data": {
+      "key": "maintenance/model:default"
+    }
+  },
+  {
+    "boundary": "run.terminal",
+    "effect": null,
+    "data": {
+      "failed": {
+        "failure": "provider",
+        "kind": "handler_unavailable",
+        "retryable": false,
+        "message": "the run has no bound completion model; its selected model or its agent's binding was removed",
+        "code": null,
+        "http_status": null,
+        "refusal": false,
+        "source_chain": []
+      }
+    }
+  }
+]

@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "source": "scrubbed-cassette-replay",
+  "case": "openai-stream",
+  "cassette_sha256": "64348b8f9fcf70ce589819b0fdd41f6532b12504680a02ccea3ea8a8019781ee",
+  "provider_model": {
+    "provider": "openai",
+    "model": "gpt-4.1-mini"
+  },
+  "generation": {
+    "revision": "25e8225be8a7c6b2b8af0e5a4cb0dd9993ffb503",
+    "dirty": true
+  },
+  "capture": {
+    "case": "openai-stream",
+    "source": "live-provider",
+    "provider_model": {
+      "provider": "openai",
+      "model": "gpt-4.1-mini"
+    },
+    "cassette_sha256": "64348b8f9fcf70ce589819b0fdd41f6532b12504680a02ccea3ea8a8019781ee",
+    "limits": {
+      "requests": 32,
+      "output_tokens": 512,
+      "seconds": 300,
+      "retries": 0
+    }
+  },
+  "artifacts_sha256": {
+    "application": "cd9610590fb518cd33a5d6b5413b70a17a48bd1ee2fa63252102971f1f0cd128",
+    "checkpoints": "1bff7ed9ede4149d750647e36f4fcdf43f9a8dcef45b766db72ab5d58dd615c0",
+    "effects": "d15e7250131e3f413ad1e6122f900e9d1499ad7ac9d87c5d21f8d41cf44ff2a7",
+    "observations": "4bd5d02423922fe88dd50fc360438dba779cabe8c23145680030881e3f582111"
+  }
+}

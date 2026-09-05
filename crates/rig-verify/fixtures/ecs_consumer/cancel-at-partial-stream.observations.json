@@ -1,0 +1,41 @@
+[
+  {
+    "boundary": "collect.stream",
+    "effect": 0,
+    "data": {
+      "events": 1,
+      "text": ""
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 0,
+    "data": {
+      "events": 2,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "input.cancel",
+    "effect": null,
+    "data": {
+      "boundary": "partial-progress"
+    }
+  },
+  {
+    "boundary": "run.terminal",
+    "effect": null,
+    "data": {
+      "failed": {
+        "failure": "cancelled",
+        "kind": "cancelled",
+        "retryable": false,
+        "message": "partial-progress",
+        "code": null,
+        "http_status": null,
+        "refusal": false,
+        "source_chain": []
+      }
+    }
+  }
+]

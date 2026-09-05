@@ -1,0 +1,104 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":512,"messages":[{"content":[{"text":"Fix the greeting typo in greeting.txt, using the approval-controlled tools.","type":"text"}],"role":"user"}],"model":"claude-haiku-4-5","system":[{"text":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","type":"text"}],"tools":[{"description":"Read greeting.txt","input_schema":{"properties":{},"type":"object"},"name":"read_file"},{"description":"Find matching lines in greeting.txt","input_schema":{"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"name":"search_file"},{"description":"Propose replacement contents for greeting.txt without writing","input_schema":{"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"name":"propose_edit"},{"description":"Apply the proposed edit after host approval","input_schema":{"properties":{},"type":"object"},"name":"apply_edit"},{"description":"Validate the greeting file after an approved write","input_schema":{"properties":{},"type":"object"},"name":"validate_file"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_REDACTED_1
+  body: '{"content":[{"text":"I''ll help you fix the greeting typo. Let me start by reading the file and searching for the typo.","type":"text"},{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{},"name":"read_file","type":"tool_use"},{"caller":{"type":"direct"},"id":"toolu_REDACTED_2","input":{"needle":"Helo"},"name":"search_file","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":858,"output_tokens":99,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":512,"messages":[{"content":[{"text":"Fix the greeting typo in greeting.txt, using the approval-controlled tools.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll help you fix the greeting typo. Let me start by reading the file and searching for the typo.","type":"text"},{"id":"toolu_REDACTED_1","input":{},"name":"read_file","type":"tool_use"},{"id":"toolu_REDACTED_2","input":{"needle":"Helo"},"name":"search_file","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"path\":\"greeting.txt\",\"content\":\"Helo, Rig!\\n\"}","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"},{"content":[{"text":"{\"matches\":[{\"line\":1,\"text\":\"Helo, Rig!\"}]}","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"}],"model":"claude-haiku-4-5","system":[{"text":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","type":"text"}],"tools":[{"description":"Read greeting.txt","input_schema":{"properties":{},"type":"object"},"name":"read_file"},{"description":"Find matching lines in greeting.txt","input_schema":{"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"name":"search_file"},{"description":"Propose replacement contents for greeting.txt without writing","input_schema":{"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"name":"propose_edit"},{"description":"Apply the proposed edit after host approval","input_schema":{"properties":{},"type":"object"},"name":"apply_edit"},{"description":"Validate the greeting file after an approved write","input_schema":{"properties":{},"type":"object"},"name":"validate_file"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_REDACTED_2
+  body: '{"content":[{"text":"Good! I found the typo \"Helo\" on line 1. Now I''ll propose the corrected version with \"Hello\":","type":"text"},{"caller":{"type":"direct"},"id":"toolu_REDACTED_3","input":{"content":"Hello, Rig!\n"},"name":"propose_edit","type":"tool_use"}],"id":"msg_REDACTED_2","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":1060,"output_tokens":89,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":512,"messages":[{"content":[{"text":"Fix the greeting typo in greeting.txt, using the approval-controlled tools.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll help you fix the greeting typo. Let me start by reading the file and searching for the typo.","type":"text"},{"id":"toolu_REDACTED_1","input":{},"name":"read_file","type":"tool_use"},{"id":"toolu_REDACTED_2","input":{"needle":"Helo"},"name":"search_file","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"path\":\"greeting.txt\",\"content\":\"Helo, Rig!\\n\"}","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"},{"content":[{"text":"{\"matches\":[{\"line\":1,\"text\":\"Helo, Rig!\"}]}","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"},{"content":[{"text":"Good! I found the typo \"Helo\" on line 1. Now I''ll propose the corrected version with \"Hello\":","type":"text"},{"id":"toolu_REDACTED_3","input":{"content":"Hello, Rig!\n"},"name":"propose_edit","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"proposed\":\"Hello, Rig!\\n\",\"path\":\"greeting.txt\"}","type":"text"}],"tool_use_id":"toolu_REDACTED_3","type":"tool_result"}],"role":"user"}],"model":"claude-haiku-4-5","system":[{"text":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","type":"text"}],"tools":[{"description":"Read greeting.txt","input_schema":{"properties":{},"type":"object"},"name":"read_file"},{"description":"Find matching lines in greeting.txt","input_schema":{"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"name":"search_file"},{"description":"Propose replacement contents for greeting.txt without writing","input_schema":{"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"name":"propose_edit"},{"description":"Apply the proposed edit after host approval","input_schema":{"properties":{},"type":"object"},"name":"apply_edit"},{"description":"Validate the greeting file after an approved write","input_schema":{"properties":{},"type":"object"},"name":"validate_file"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_REDACTED_3
+  body: '{"content":[{"text":"Perfect! The edit has been proposed, changing \"Helo, Rig!\" to \"Hello, Rig!\". Now I''ll apply the edit:","type":"text"},{"caller":{"type":"direct"},"id":"toolu_REDACTED_4","input":{},"name":"apply_edit","type":"tool_use"}],"id":"msg_REDACTED_3","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":1178,"output_tokens":71,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":512,"messages":[{"content":[{"text":"Fix the greeting typo in greeting.txt, using the approval-controlled tools.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll help you fix the greeting typo. Let me start by reading the file and searching for the typo.","type":"text"},{"id":"toolu_REDACTED_1","input":{},"name":"read_file","type":"tool_use"},{"id":"toolu_REDACTED_2","input":{"needle":"Helo"},"name":"search_file","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"path\":\"greeting.txt\",\"content\":\"Helo, Rig!\\n\"}","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"},{"content":[{"text":"{\"matches\":[{\"line\":1,\"text\":\"Helo, Rig!\"}]}","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"},{"content":[{"text":"Good! I found the typo \"Helo\" on line 1. Now I''ll propose the corrected version with \"Hello\":","type":"text"},{"id":"toolu_REDACTED_3","input":{"content":"Hello, Rig!\n"},"name":"propose_edit","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"proposed\":\"Hello, Rig!\\n\",\"path\":\"greeting.txt\"}","type":"text"}],"tool_use_id":"toolu_REDACTED_3","type":"tool_result"}],"role":"user"},{"content":[{"text":"Perfect! The edit has been proposed, changing \"Helo, Rig!\" to \"Hello, Rig!\". Now I''ll apply the edit:","type":"text"},{"id":"toolu_REDACTED_4","input":{},"name":"apply_edit","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"applied\":true,\"path\":\"greeting.txt\",\"content\":\"Hello, Rig!\\n\",\"operation\":\"greeting-fix-v1\"}","type":"text"}],"tool_use_id":"toolu_REDACTED_4","type":"tool_result"}],"role":"user"}],"model":"claude-haiku-4-5","system":[{"text":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","type":"text"}],"tools":[{"description":"Read greeting.txt","input_schema":{"properties":{},"type":"object"},"name":"read_file"},{"description":"Find matching lines in greeting.txt","input_schema":{"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"name":"search_file"},{"description":"Propose replacement contents for greeting.txt without writing","input_schema":{"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"name":"propose_edit"},{"description":"Apply the proposed edit after host approval","input_schema":{"properties":{},"type":"object"},"name":"apply_edit"},{"description":"Validate the greeting file after an approved write","input_schema":{"properties":{},"type":"object"},"name":"validate_file"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_REDACTED_4
+  body: '{"content":[{"text":"Excellent! The edit was approved and applied. Now let me validate the file:","type":"text"},{"caller":{"type":"direct"},"id":"toolu_REDACTED_5","input":{},"name":"validate_file","type":"tool_use"}],"id":"msg_REDACTED_4","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":1291,"output_tokens":54,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":512,"messages":[{"content":[{"text":"Fix the greeting typo in greeting.txt, using the approval-controlled tools.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll help you fix the greeting typo. Let me start by reading the file and searching for the typo.","type":"text"},{"id":"toolu_REDACTED_1","input":{},"name":"read_file","type":"tool_use"},{"id":"toolu_REDACTED_2","input":{"needle":"Helo"},"name":"search_file","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"path\":\"greeting.txt\",\"content\":\"Helo, Rig!\\n\"}","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"},{"content":[{"text":"{\"matches\":[{\"line\":1,\"text\":\"Helo, Rig!\"}]}","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"},{"content":[{"text":"Good! I found the typo \"Helo\" on line 1. Now I''ll propose the corrected version with \"Hello\":","type":"text"},{"id":"toolu_REDACTED_3","input":{"content":"Hello, Rig!\n"},"name":"propose_edit","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"proposed\":\"Hello, Rig!\\n\",\"path\":\"greeting.txt\"}","type":"text"}],"tool_use_id":"toolu_REDACTED_3","type":"tool_result"}],"role":"user"},{"content":[{"text":"Perfect! The edit has been proposed, changing \"Helo, Rig!\" to \"Hello, Rig!\". Now I''ll apply the edit:","type":"text"},{"id":"toolu_REDACTED_4","input":{},"name":"apply_edit","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"applied\":true,\"path\":\"greeting.txt\",\"content\":\"Hello, Rig!\\n\",\"operation\":\"greeting-fix-v1\"}","type":"text"}],"tool_use_id":"toolu_REDACTED_4","type":"tool_result"}],"role":"user"},{"content":[{"text":"Excellent! The edit was approved and applied. Now let me validate the file:","type":"text"},{"id":"toolu_REDACTED_5","input":{},"name":"validate_file","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"valid\":true,\"content\":\"Hello, Rig!\\n\"}","type":"text"}],"tool_use_id":"toolu_REDACTED_5","type":"tool_result"}],"role":"user"}],"model":"claude-haiku-4-5","system":[{"text":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","type":"text"}],"tools":[{"description":"Read greeting.txt","input_schema":{"properties":{},"type":"object"},"name":"read_file"},{"description":"Find matching lines in greeting.txt","input_schema":{"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"name":"search_file"},{"description":"Propose replacement contents for greeting.txt without writing","input_schema":{"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"name":"propose_edit"},{"description":"Apply the proposed edit after host approval","input_schema":{"properties":{},"type":"object"},"name":"apply_edit"},{"description":"Validate the greeting file after an approved write","input_schema":{"properties":{},"type":"object"},"name":"validate_file"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_REDACTED_5
+  body: '{"content":[{"text":"**Summary:**\n- ✓ Found typo: \"Helo, Rig!\" \n- ✓ Proposed correction: \"Hello, Rig!\"\n- ✓ Edit applied successfully\n- ✓ File validated: Content is now correct with \"Hello, Rig!\"\n\nThe greeting typo has been fixed!","type":"text"}],"id":"msg_REDACTED_5","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":1372,"output_tokens":82,"service_tier":"standard"}}'

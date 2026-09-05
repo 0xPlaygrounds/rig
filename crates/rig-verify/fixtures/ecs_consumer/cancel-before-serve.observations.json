@@ -1,0 +1,25 @@
+[
+  {
+    "boundary": "input.cancel",
+    "effect": null,
+    "data": {
+      "boundary": "before-serve"
+    }
+  },
+  {
+    "boundary": "run.terminal",
+    "effect": null,
+    "data": {
+      "failed": {
+        "failure": "cancelled",
+        "kind": "cancelled",
+        "retryable": false,
+        "message": "before-serve",
+        "code": null,
+        "http_status": null,
+        "refusal": false,
+        "source_chain": []
+      }
+    }
+  }
+]

@@ -1,0 +1,7 @@
+{
+  "files": {
+    "greeting.txt": "Hello, Rig!\n"
+  },
+  "writes": 1,
+  "result": "Maintenance finished; inspect the tool results."
+}

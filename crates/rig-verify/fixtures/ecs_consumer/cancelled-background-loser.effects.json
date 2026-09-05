@@ -1,0 +1,2194 @@
+{
+  "header": {
+    "deliveries": [
+      {
+        "batch": 0,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 0,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 1,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 1,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 2,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 2,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 3,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 3,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 4,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 4,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 5,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 5,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 6,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 6,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 7,
+        "id": 1,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 7,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 8,
+        "id": 2,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 8,
+        "id": 3,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 9,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 10,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 11,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 12,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 13,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 14,
+        "id": 4,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 14,
+        "id": 4,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 15,
+        "id": 5,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 16,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 17,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 18,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 19,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 20,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 21,
+        "id": 6,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 21,
+        "id": 6,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 22,
+        "id": 7,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 23,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 24,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 25,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 26,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 27,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 28,
+        "id": 8,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 28,
+        "id": 8,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 29,
+        "id": 9,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 30,
+        "id": 10,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 31,
+        "id": 10,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 32,
+        "id": 10,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 33,
+        "id": 10,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 33,
+        "id": 10,
+        "kind": {
+          "delivery": "outcome"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "key": "maintenance/model:default",
+        "family": {
+          "family": "completion",
+          "model": "synthetic/maintenance",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "maintenance/tool:apply_edit",
+        "family": {
+          "family": "tool",
+          "name": "apply_edit",
+          "description": "Apply the proposed edit after host approval",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      },
+      {
+        "key": "maintenance/tool:propose_edit",
+        "family": {
+          "family": "tool",
+          "name": "propose_edit",
+          "description": "Propose replacement contents for greeting.txt without writing",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "content"
+            ]
+          }
+        }
+      },
+      {
+        "key": "maintenance/tool:read_file",
+        "family": {
+          "family": "tool",
+          "name": "read_file",
+          "description": "Read greeting.txt",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      },
+      {
+        "key": "maintenance/tool:search_file",
+        "family": {
+          "family": "tool",
+          "name": "search_file",
+          "description": "Find matching lines in greeting.txt",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "needle": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "needle"
+            ]
+          }
+        }
+      },
+      {
+        "key": "maintenance/tool:validate_file",
+        "family": {
+          "family": "tool",
+          "name": "validate_file",
+          "description": "Validate the greeting file after an approved write",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ],
+    "signature": {
+      "maintenance/model:default": "completion",
+      "maintenance/tool:apply_edit": "tool",
+      "maintenance/tool:propose_edit": "tool",
+      "maintenance/tool:read_file": "tool",
+      "maintenance/tool:search_file": "tool",
+      "maintenance/tool:validate_file": "tool"
+    },
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "maintenance/run#0": {
+        "required": {
+          "maintenance/model:default": "completion",
+          "maintenance/tool:apply_edit": "tool",
+          "maintenance/tool:propose_edit": "tool",
+          "maintenance/tool:read_file": "tool",
+          "maintenance/tool:search_file": "tool",
+          "maintenance/tool:validate_file": "tool"
+        },
+        "policy": 15727901772065939435
+      }
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 0,
+      "key": "maintenance/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Explain the maintenance task while its tools run."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 512,
+          "tool_choice": null,
+          "additional_params": {
+            "synthetic_background_chunks": 64
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Err": {
+          "kind": "cancelled",
+          "retryable": false,
+          "message": "the consumer cancelled the dispatch before it was answered",
+          "code": null,
+          "http_status": null,
+          "refusal": false,
+          "source_chain": []
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Checking the maintenance task. "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Checking the maintenance task. "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Checking the maintenance task. "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Checking the maintenance task. "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Checking the maintenance task. "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Checking the maintenance task. "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Checking the maintenance task. "
+          }
+        }
+      ],
+      "scope": "maintenance/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "maintenance/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Fix the greeting typo in greeting.txt, using the approval-controlled tools."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "read_file",
+              "description": "Read greeting.txt",
+              "parameters": {
+                "type": "object",
+                "properties": {}
+              }
+            },
+            {
+              "name": "search_file",
+              "description": "Find matching lines in greeting.txt",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "needle": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "needle"
+                ]
+              }
+            },
+            {
+              "name": "propose_edit",
+              "description": "Propose replacement contents for greeting.txt without writing",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "content"
+                ]
+              }
+            },
+            {
+              "name": "apply_edit",
+              "description": "Apply the proposed edit after host approval",
+              "parameters": {
+                "type": "object",
+                "properties": {}
+              }
+            },
+            {
+              "name": "validate_file",
+              "description": "Validate the greeting file after an approved write",
+              "parameters": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": 512,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Inspecting the project. "
+            },
+            {
+              "type": "toolcall",
+              "id": "tool-0",
+              "function": {
+                "name": "read_file",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            },
+            {
+              "type": "toolcall",
+              "id": "tool-1",
+              "function": {
+                "name": "search_file",
+                "arguments": {
+                  "needle": "Helo"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Inspecting the project. "
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "minted:tool:0",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:tool:0",
+          "end": {
+            "close": "tool_call",
+            "name": "read_file",
+            "arguments": {},
+            "on_unparseable": "error"
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "minted:tool:1",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:tool:1",
+          "end": {
+            "close": "tool_call",
+            "name": "search_file",
+            "arguments": {
+              "needle": "Helo"
+            },
+            "on_unparseable": "error"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": null,
+          "message_id": null,
+          "response_id": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      ],
+      "scope": "maintenance/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "maintenance/tool:read_file",
+      "kind": {
+        "effect": "tool_call",
+        "name": "read_file",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "path": "greeting.txt",
+                  "content": "Helo, Rig!\n"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "scope": "maintenance/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 3,
+      "key": "maintenance/tool:search_file",
+      "kind": {
+        "effect": "tool_call",
+        "name": "search_file",
+        "args": "{\"needle\":\"Helo\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "matches": [
+                    {
+                      "line": 1,
+                      "text": "Helo, Rig!"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "scope": "maintenance/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 4,
+      "key": "maintenance/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Fix the greeting typo in greeting.txt, using the approval-controlled tools."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Inspecting the project. "
+                },
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                },
+                {
+                  "type": "toolcall",
+                  "id": "tool-1",
+                  "function": {
+                    "name": "search_file",
+                    "arguments": {
+                      "needle": "Helo"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "path": "greeting.txt",
+                        "content": "Helo, Rig!\n"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "toolresult",
+                  "call": "tool-1",
+                  "name": "search_file",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "matches": [
+                          {
+                            "line": 1,
+                            "text": "Helo, Rig!"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "read_file",
+              "description": "Read greeting.txt",
+              "parameters": {
+                "type": "object",
+                "properties": {}
+              }
+            },
+            {
+              "name": "search_file",
+              "description": "Find matching lines in greeting.txt",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "needle": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "needle"
+                ]
+              }
+            },
+            {
+              "name": "propose_edit",
+              "description": "Propose replacement contents for greeting.txt without writing",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "content"
+                ]
+              }
+            },
+            {
+              "name": "apply_edit",
+              "description": "Apply the proposed edit after host approval",
+              "parameters": {
+                "type": "object",
+                "properties": {}
+              }
+            },
+            {
+              "name": "validate_file",
+              "description": "Validate the greeting file after an approved write",
+              "parameters": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": 512,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Inspecting the project. "
+            },
+            {
+              "type": "toolcall",
+              "id": "tool-0",
+              "function": {
+                "name": "propose_edit",
+                "arguments": {
+                  "content": "Hello, Rig!\n"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Inspecting the project. "
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "minted:tool:0",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:tool:0",
+          "end": {
+            "close": "tool_call",
+            "name": "propose_edit",
+            "arguments": {
+              "content": "Hello, Rig!\n"
+            },
+            "on_unparseable": "error"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": null,
+          "message_id": null,
+          "response_id": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      ],
+      "scope": "maintenance/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 5,
+      "key": "maintenance/tool:propose_edit",
+      "kind": {
+        "effect": "tool_call",
+        "name": "propose_edit",
+        "args": "{\"content\":\"Hello, Rig!\\n\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "proposed": "Hello, Rig!\n",
+                  "path": "greeting.txt"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "scope": "maintenance/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 6,
+      "key": "maintenance/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Fix the greeting typo in greeting.txt, using the approval-controlled tools."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Inspecting the project. "
+                },
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                },
+                {
+                  "type": "toolcall",
+                  "id": "tool-1",
+                  "function": {
+                    "name": "search_file",
+                    "arguments": {
+                      "needle": "Helo"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "path": "greeting.txt",
+                        "content": "Helo, Rig!\n"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "toolresult",
+                  "call": "tool-1",
+                  "name": "search_file",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "matches": [
+                          {
+                            "line": 1,
+                            "text": "Helo, Rig!"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Inspecting the project. "
+                },
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "propose_edit",
+                    "arguments": {
+                      "content": "Hello, Rig!\n"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "propose_edit",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "proposed": "Hello, Rig!\n",
+                        "path": "greeting.txt"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "read_file",
+              "description": "Read greeting.txt",
+              "parameters": {
+                "type": "object",
+                "properties": {}
+              }
+            },
+            {
+              "name": "search_file",
+              "description": "Find matching lines in greeting.txt",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "needle": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "needle"
+                ]
+              }
+            },
+            {
+              "name": "propose_edit",
+              "description": "Propose replacement contents for greeting.txt without writing",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "content"
+                ]
+              }
+            },
+            {
+              "name": "apply_edit",
+              "description": "Apply the proposed edit after host approval",
+              "parameters": {
+                "type": "object",
+                "properties": {}
+              }
+            },
+            {
+              "name": "validate_file",
+              "description": "Validate the greeting file after an approved write",
+              "parameters": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": 512,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Inspecting the project. "
+            },
+            {
+              "type": "toolcall",
+              "id": "tool-0",
+              "function": {
+                "name": "apply_edit",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Inspecting the project. "
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "minted:tool:0",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:tool:0",
+          "end": {
+            "close": "tool_call",
+            "name": "apply_edit",
+            "arguments": {},
+            "on_unparseable": "error"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": null,
+          "message_id": null,
+          "response_id": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      ],
+      "scope": "maintenance/run#0"
+    },
+    {
+      "tool_output": {
+        "maintenance.write-receipt.v1": {
+          "operation": "greeting-fix-v1",
+          "applied": true
+        }
+      },
+      "id": 7,
+      "key": "maintenance/tool:apply_edit",
+      "kind": {
+        "effect": "tool_call",
+        "name": "apply_edit",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "applied": true,
+                  "path": "greeting.txt",
+                  "content": "Hello, Rig!\n",
+                  "operation": "greeting-fix-v1"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "scope": "maintenance/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 8,
+      "key": "maintenance/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Fix the greeting typo in greeting.txt, using the approval-controlled tools."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Inspecting the project. "
+                },
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                },
+                {
+                  "type": "toolcall",
+                  "id": "tool-1",
+                  "function": {
+                    "name": "search_file",
+                    "arguments": {
+                      "needle": "Helo"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "path": "greeting.txt",
+                        "content": "Helo, Rig!\n"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "toolresult",
+                  "call": "tool-1",
+                  "name": "search_file",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "matches": [
+                          {
+                            "line": 1,
+                            "text": "Helo, Rig!"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Inspecting the project. "
+                },
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "propose_edit",
+                    "arguments": {
+                      "content": "Hello, Rig!\n"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "propose_edit",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "proposed": "Hello, Rig!\n",
+                        "path": "greeting.txt"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Inspecting the project. "
+                },
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "apply_edit",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "apply_edit",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "applied": true,
+                        "path": "greeting.txt",
+                        "content": "Hello, Rig!\n",
+                        "operation": "greeting-fix-v1"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "read_file",
+              "description": "Read greeting.txt",
+              "parameters": {
+                "type": "object",
+                "properties": {}
+              }
+            },
+            {
+              "name": "search_file",
+              "description": "Find matching lines in greeting.txt",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "needle": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "needle"
+                ]
+              }
+            },
+            {
+              "name": "propose_edit",
+              "description": "Propose replacement contents for greeting.txt without writing",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "content"
+                ]
+              }
+            },
+            {
+              "name": "apply_edit",
+              "description": "Apply the proposed edit after host approval",
+              "parameters": {
+                "type": "object",
+                "properties": {}
+              }
+            },
+            {
+              "name": "validate_file",
+              "description": "Validate the greeting file after an approved write",
+              "parameters": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": 512,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Inspecting the project. "
+            },
+            {
+              "type": "toolcall",
+              "id": "tool-0",
+              "function": {
+                "name": "validate_file",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Inspecting the project. "
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "minted:tool:0",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:tool:0",
+          "end": {
+            "close": "tool_call",
+            "name": "validate_file",
+            "arguments": {},
+            "on_unparseable": "error"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": null,
+          "message_id": null,
+          "response_id": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      ],
+      "scope": "maintenance/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 9,
+      "key": "maintenance/tool:validate_file",
+      "kind": {
+        "effect": "tool_call",
+        "name": "validate_file",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "valid": true,
+                  "content": "Hello, Rig!\n"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "scope": "maintenance/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 10,
+      "key": "maintenance/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Fix the greeting typo in greeting.txt, using the approval-controlled tools."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Inspecting the project. "
+                },
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                },
+                {
+                  "type": "toolcall",
+                  "id": "tool-1",
+                  "function": {
+                    "name": "search_file",
+                    "arguments": {
+                      "needle": "Helo"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "path": "greeting.txt",
+                        "content": "Helo, Rig!\n"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "toolresult",
+                  "call": "tool-1",
+                  "name": "search_file",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "matches": [
+                          {
+                            "line": 1,
+                            "text": "Helo, Rig!"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Inspecting the project. "
+                },
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "propose_edit",
+                    "arguments": {
+                      "content": "Hello, Rig!\n"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "propose_edit",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "proposed": "Hello, Rig!\n",
+                        "path": "greeting.txt"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Inspecting the project. "
+                },
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "apply_edit",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "apply_edit",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "applied": true,
+                        "path": "greeting.txt",
+                        "content": "Hello, Rig!\n",
+                        "operation": "greeting-fix-v1"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Inspecting the project. "
+                },
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "validate_file",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "validate_file",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "valid": true,
+                        "content": "Hello, Rig!\n"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "read_file",
+              "description": "Read greeting.txt",
+              "parameters": {
+                "type": "object",
+                "properties": {}
+              }
+            },
+            {
+              "name": "search_file",
+              "description": "Find matching lines in greeting.txt",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "needle": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "needle"
+                ]
+              }
+            },
+            {
+              "name": "propose_edit",
+              "description": "Propose replacement contents for greeting.txt without writing",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "content": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "content"
+                ]
+              }
+            },
+            {
+              "name": "apply_edit",
+              "description": "Apply the proposed edit after host approval",
+              "parameters": {
+                "type": "object",
+                "properties": {}
+              }
+            },
+            {
+              "name": "validate_file",
+              "description": "Validate the greeting file after an approved write",
+              "parameters": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": 512,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Maintenance finished; inspect the tool results."
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Maintenance finished; inspect the tool results."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:text:0",
+          "end": {
+            "close": "text"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": null,
+          "message_id": null,
+          "response_id": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      ],
+      "scope": "maintenance/run#0"
+    }
+  ]
+}

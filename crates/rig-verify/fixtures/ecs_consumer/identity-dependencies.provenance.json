@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "source": "synthetic",
+  "case": "identity-dependencies",
+  "cassette_sha256": null,
+  "provider_model": null,
+  "generation": {
+    "revision": "25e8225be8a7c6b2b8af0e5a4cb0dd9993ffb503",
+    "dirty": true
+  },
+  "capture": null,
+  "artifacts_sha256": {
+    "application": "2e37d15011d0a4243212a58c35fcb6cff9e6cead754ba011925998c9321c5ee9",
+    "checkpoints": "7c61e68c1a3fa26b369390dd56d5d031bd976647e4f4bfadf31cf0ffa004204c",
+    "effects": "fbe2e8a4a2ca74d807457cf53d014ada0eee43371d14bdc180e7c99efc329533",
+    "observations": "526c4f8b343df6cc425d2e76b6aaf95f35dd35538c517286fbf5948a5b74348b"
+  }
+}

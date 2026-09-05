@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "source": "synthetic",
+  "case": "concurrent-search-first",
+  "cassette_sha256": null,
+  "provider_model": null,
+  "generation": {
+    "revision": "25e8225be8a7c6b2b8af0e5a4cb0dd9993ffb503",
+    "dirty": true
+  },
+  "capture": null,
+  "artifacts_sha256": {
+    "application": "2e37d15011d0a4243212a58c35fcb6cff9e6cead754ba011925998c9321c5ee9",
+    "checkpoints": "c79f0555fbc7caa3d63154cbd4237077a2af4b086379acd89826202ee1838984",
+    "effects": "ce23fb9aa23c40dcb768d0777d1b701fdd1d0e52702e68e447eaf4f615ca4be2",
+    "observations": "e1ad5fdef716587551b15818502c582b8520ab75a6d50fcf42fe942cb7183a0e"
+  }
+}
