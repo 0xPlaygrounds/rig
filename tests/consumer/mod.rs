@@ -11,6 +11,7 @@ mod custom;
 mod identity;
 pub(crate) mod persistence;
 mod providers;
+mod repair;
 use crate::cassettes::consumer_registry as registry;
 pub(crate) mod runner;
 mod scheduled;
