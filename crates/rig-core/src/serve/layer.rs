@@ -33,8 +33,9 @@ use super::{ErasedHandler, HandlerFuture, OutcomeSink, Serve, StreamTap, stream_
 pub enum Decision {
     /// Serve it as it is.
     Proceed,
-    /// Serve this instead. A patch never changes the family: one that does
-    /// is an `Internal` report on the consumer's outcome, and no dispatch.
+    /// Serve this instead. A patch never changes the family or a tool call's
+    /// target name: either change returns an `Internal` report without reaching
+    /// the next layer or dispatching. Tool argument patches remain supported.
     Patch(EffectKind),
     /// Do not serve it: the consumer's outcome is this report, and the
     /// record holds nothing. [`Decision::deny`] builds the usual one
@@ -271,6 +272,23 @@ impl<I: Intercept> Serve for Layer<I> {
                         "patched a {} effect into a {} effect; a layer never changes the family",
                         kind.family(),
                         patched.family()
+                    ))))
+                    .await;
+                    return;
+                }
+                if let (
+                    EffectKind::ToolCall { name: original, .. },
+                    EffectKind::ToolCall {
+                        name: replacement, ..
+                    },
+                ) = (&kind, &patched)
+                    && original != replacement
+                {
+                    // The bound adapter still executes the original tool. Do not
+                    // let inner policy authorize a different name for that work.
+                    sink.discard();
+                    sink.resolve(Err(self.internal(format!(
+                        "patched tool target `{original}` into `{replacement}`; a layer never changes the bound tool"
                     ))))
                     .await;
                     return;
