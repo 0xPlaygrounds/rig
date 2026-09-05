@@ -1,0 +1,439 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Fix the greeting typo in greeting.txt, using the approval-controlled tools.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"model":"gpt-4.1-mini","stream":true,"tools":[{"description":"Read greeting.txt","name":"read_file","parameters":{"properties":{},"type":"object"},"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","parameters":{"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","parameters":{"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","parameters":{"properties":{},"type":"object"},"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","parameters":{"properties":{},"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read greeting.txt","name":"read_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"strict":true,"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"strict":true,"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read greeting.txt","name":"read_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"strict":true,"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"strict":true,"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"read_file","status":"in_progress","type":"function_call"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{}","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_1","output_index":0,"sequence_number":3,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{}","item_id":"fc_REDACTED_1","output_index":0,"sequence_number":4,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"read_file","status":"completed","type":"function_call"},"output_index":0,"sequence_number":5,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"search_file","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":6,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{\"needle\":\"Helo\"}","item_id":"fc_REDACTED_2","obfuscation":"obfuscation_REDACTED_2","output_index":1,"sequence_number":7,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{\"needle\":\"Helo\"}","item_id":"fc_REDACTED_2","output_index":1,"sequence_number":8,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{\"needle\":\"Helo\"}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"search_file","status":"completed","type":"function_call"},"output_index":1,"sequence_number":9,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"arguments":"{}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"read_file","status":"completed","type":"function_call"},{"arguments":"{\"needle\":\"Helo\"}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"search_file","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read greeting.txt","name":"read_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"strict":true,"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"strict":true,"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":217,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":43,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":260},"user":null},"sequence_number":10,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Fix the greeting typo in greeting.txt, using the approval-controlled tools.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"read_file","status":"completed","type":"function_call"},{"arguments":"{\"needle\":\"Helo\"}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"search_file","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"{\"path\":\"greeting.txt\",\"content\":\"Helo, Rig!\\n\"}","status":"completed","type":"function_call_output"},{"call_id":"call_REDACTED_2","output":"{\"matches\":[{\"line\":1,\"text\":\"Helo, Rig!\"}]}","status":"completed","type":"function_call_output"}],"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"model":"gpt-4.1-mini","stream":true,"tools":[{"description":"Read greeting.txt","name":"read_file","parameters":{"properties":{},"type":"object"},"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","parameters":{"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","parameters":{"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","parameters":{"properties":{},"type":"object"},"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","parameters":{"properties":{},"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: x-request-id
+    value: req_REDACTED_2
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read greeting.txt","name":"read_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"strict":true,"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"strict":true,"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read greeting.txt","name":"read_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"strict":true,"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"strict":true,"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"propose_edit","status":"in_progress","type":"function_call"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{\"","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_3","output_index":0,"sequence_number":3,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"content","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_4","output_index":0,"sequence_number":4,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\":\"","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_5","output_index":0,"sequence_number":5,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"Hello","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_6","output_index":0,"sequence_number":6,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_7","output_index":0,"sequence_number":7,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rig","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_8","output_index":0,"sequence_number":8,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"!\\","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_9","output_index":0,"sequence_number":9,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"n","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_10","output_index":0,"sequence_number":10,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\"}","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_11","output_index":0,"sequence_number":11,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{\"content\":\"Hello, Rig!\\n\"}","item_id":"fc_REDACTED_3","output_index":0,"sequence_number":12,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{\"content\":\"Hello, Rig!\\n\"}","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"propose_edit","status":"completed","type":"function_call"},"output_index":0,"sequence_number":13,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"arguments":"{\"content\":\"Hello, Rig!\\n\"}","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"propose_edit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read greeting.txt","name":"read_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"strict":true,"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"strict":true,"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":287,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":20,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":307},"user":null},"sequence_number":14,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Fix the greeting typo in greeting.txt, using the approval-controlled tools.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"read_file","status":"completed","type":"function_call"},{"arguments":"{\"needle\":\"Helo\"}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"search_file","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"{\"path\":\"greeting.txt\",\"content\":\"Helo, Rig!\\n\"}","status":"completed","type":"function_call_output"},{"call_id":"call_REDACTED_2","output":"{\"matches\":[{\"line\":1,\"text\":\"Helo, Rig!\"}]}","status":"completed","type":"function_call_output"},{"arguments":"{\"content\":\"Hello, Rig!\\n\"}","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"propose_edit","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_3","output":"{\"proposed\":\"Hello, Rig!\\n\",\"path\":\"greeting.txt\"}","status":"completed","type":"function_call_output"}],"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"model":"gpt-4.1-mini","stream":true,"tools":[{"description":"Read greeting.txt","name":"read_file","parameters":{"properties":{},"type":"object"},"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","parameters":{"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","parameters":{"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","parameters":{"properties":{},"type":"object"},"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","parameters":{"properties":{},"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: x-request-id
+    value: req_REDACTED_3
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_3","incomplete_details":null,"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read greeting.txt","name":"read_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"strict":true,"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"strict":true,"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_3","incomplete_details":null,"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read greeting.txt","name":"read_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"strict":true,"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"strict":true,"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call_REDACTED_4","id":"fc_REDACTED_4","name":"apply_edit","status":"in_progress","type":"function_call"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{}","item_id":"fc_REDACTED_4","obfuscation":"obfuscation_REDACTED_12","output_index":0,"sequence_number":3,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{}","item_id":"fc_REDACTED_4","output_index":0,"sequence_number":4,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{}","call_id":"call_REDACTED_4","id":"fc_REDACTED_4","name":"apply_edit","status":"completed","type":"function_call"},"output_index":0,"sequence_number":5,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_3","incomplete_details":null,"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"arguments":"{}","call_id":"call_REDACTED_4","id":"fc_REDACTED_4","name":"apply_edit","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read greeting.txt","name":"read_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"strict":true,"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"strict":true,"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":332,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":11,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":343},"user":null},"sequence_number":6,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Fix the greeting typo in greeting.txt, using the approval-controlled tools.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"read_file","status":"completed","type":"function_call"},{"arguments":"{\"needle\":\"Helo\"}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"search_file","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"{\"path\":\"greeting.txt\",\"content\":\"Helo, Rig!\\n\"}","status":"completed","type":"function_call_output"},{"call_id":"call_REDACTED_2","output":"{\"matches\":[{\"line\":1,\"text\":\"Helo, Rig!\"}]}","status":"completed","type":"function_call_output"},{"arguments":"{\"content\":\"Hello, Rig!\\n\"}","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"propose_edit","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_3","output":"{\"proposed\":\"Hello, Rig!\\n\",\"path\":\"greeting.txt\"}","status":"completed","type":"function_call_output"},{"arguments":"{}","call_id":"call_REDACTED_4","id":"fc_REDACTED_4","name":"apply_edit","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_4","output":"{\"applied\":true,\"path\":\"greeting.txt\",\"content\":\"Hello, Rig!\\n\",\"operation\":\"greeting-fix-v1\"}","status":"completed","type":"function_call_output"}],"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"model":"gpt-4.1-mini","stream":true,"tools":[{"description":"Read greeting.txt","name":"read_file","parameters":{"properties":{},"type":"object"},"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","parameters":{"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","parameters":{"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","parameters":{"properties":{},"type":"object"},"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","parameters":{"properties":{},"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: x-request-id
+    value: req_REDACTED_4
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_4","incomplete_details":null,"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read greeting.txt","name":"read_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"strict":true,"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"strict":true,"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_4","incomplete_details":null,"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read greeting.txt","name":"read_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"strict":true,"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"strict":true,"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call_REDACTED_5","id":"fc_REDACTED_5","name":"validate_file","status":"in_progress","type":"function_call"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{}","item_id":"fc_REDACTED_5","obfuscation":"obfuscation_REDACTED_13","output_index":0,"sequence_number":3,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{}","item_id":"fc_REDACTED_5","output_index":0,"sequence_number":4,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{}","call_id":"call_REDACTED_5","id":"fc_REDACTED_5","name":"validate_file","status":"completed","type":"function_call"},"output_index":0,"sequence_number":5,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_4","incomplete_details":null,"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"arguments":"{}","call_id":"call_REDACTED_5","id":"fc_REDACTED_5","name":"validate_file","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read greeting.txt","name":"read_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"strict":true,"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"strict":true,"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":380,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":11,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":391},"user":null},"sequence_number":6,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Fix the greeting typo in greeting.txt, using the approval-controlled tools.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"read_file","status":"completed","type":"function_call"},{"arguments":"{\"needle\":\"Helo\"}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"search_file","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"{\"path\":\"greeting.txt\",\"content\":\"Helo, Rig!\\n\"}","status":"completed","type":"function_call_output"},{"call_id":"call_REDACTED_2","output":"{\"matches\":[{\"line\":1,\"text\":\"Helo, Rig!\"}]}","status":"completed","type":"function_call_output"},{"arguments":"{\"content\":\"Hello, Rig!\\n\"}","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"propose_edit","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_3","output":"{\"proposed\":\"Hello, Rig!\\n\",\"path\":\"greeting.txt\"}","status":"completed","type":"function_call_output"},{"arguments":"{}","call_id":"call_REDACTED_4","id":"fc_REDACTED_4","name":"apply_edit","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_4","output":"{\"applied\":true,\"path\":\"greeting.txt\",\"content\":\"Hello, Rig!\\n\",\"operation\":\"greeting-fix-v1\"}","status":"completed","type":"function_call_output"},{"arguments":"{}","call_id":"call_REDACTED_5","id":"fc_REDACTED_5","name":"validate_file","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_5","output":"{\"valid\":true,\"content\":\"Hello, Rig!\\n\"}","status":"completed","type":"function_call_output"}],"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"model":"gpt-4.1-mini","stream":true,"tools":[{"description":"Read greeting.txt","name":"read_file","parameters":{"properties":{},"type":"object"},"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","parameters":{"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","parameters":{"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","parameters":{"properties":{},"type":"object"},"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","parameters":{"properties":{},"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: x-request-id
+    value: req_REDACTED_5
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_5","incomplete_details":null,"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read greeting.txt","name":"read_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"strict":true,"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"strict":true,"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_5","incomplete_details":null,"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read greeting.txt","name":"read_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"strict":true,"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"strict":true,"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_REDACTED_1","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"I","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_14","output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" read","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_15","output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_16","output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" original","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_17","output_index":0,"sequence_number":7,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" greeting","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_18","output_index":0,"sequence_number":8,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".txt","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_19","output_index":0,"sequence_number":9,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" and","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_20","output_index":0,"sequence_number":10,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" found","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_21","output_index":0,"sequence_number":11,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_22","output_index":0,"sequence_number":12,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" typo","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_23","output_index":0,"sequence_number":13,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" \"","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_24","output_index":0,"sequence_number":14,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"H","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_25","output_index":0,"sequence_number":15,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"elo","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_26","output_index":0,"sequence_number":16,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_27","output_index":0,"sequence_number":17,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" Rig","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_28","output_index":0,"sequence_number":18,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"!\".","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_29","output_index":0,"sequence_number":19,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" I","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_30","output_index":0,"sequence_number":20,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" proposed","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_31","output_index":0,"sequence_number":21,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_32","output_index":0,"sequence_number":22,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" corrected","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_33","output_index":0,"sequence_number":23,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" content","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_34","output_index":0,"sequence_number":24,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" \"","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_35","output_index":0,"sequence_number":25,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"Hello","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_36","output_index":0,"sequence_number":26,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_37","output_index":0,"sequence_number":27,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" Rig","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_38","output_index":0,"sequence_number":28,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"!\\","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_39","output_index":0,"sequence_number":29,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"n","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_40","output_index":0,"sequence_number":30,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"\"","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_41","output_index":0,"sequence_number":31,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" and","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_42","output_index":0,"sequence_number":32,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_43","output_index":0,"sequence_number":33,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" edit","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_44","output_index":0,"sequence_number":34,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" was","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_45","output_index":0,"sequence_number":35,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" approved","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_46","output_index":0,"sequence_number":36,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" and","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_47","output_index":0,"sequence_number":37,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" applied","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_48","output_index":0,"sequence_number":38,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_49","output_index":0,"sequence_number":39,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" After","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_50","output_index":0,"sequence_number":40,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" applying","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_51","output_index":0,"sequence_number":41,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_52","output_index":0,"sequence_number":42,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" I","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_53","output_index":0,"sequence_number":43,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" validated","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_54","output_index":0,"sequence_number":44,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_55","output_index":0,"sequence_number":45,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" file","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_56","output_index":0,"sequence_number":46,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" and","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_57","output_index":0,"sequence_number":47,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" it","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_58","output_index":0,"sequence_number":48,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" is","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_59","output_index":0,"sequence_number":49,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" now","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_60","output_index":0,"sequence_number":50,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" correct","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_61","output_index":0,"sequence_number":51,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" with","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_62","output_index":0,"sequence_number":52,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_63","output_index":0,"sequence_number":53,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" content","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_64","output_index":0,"sequence_number":54,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" \"","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_65","output_index":0,"sequence_number":55,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"Hello","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_66","output_index":0,"sequence_number":56,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_67","output_index":0,"sequence_number":57,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" Rig","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_68","output_index":0,"sequence_number":58,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"!\\","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_69","output_index":0,"sequence_number":59,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"n","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_70","output_index":0,"sequence_number":60,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"\".","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_71","output_index":0,"sequence_number":61,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" The","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_72","output_index":0,"sequence_number":62,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" greeting","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_73","output_index":0,"sequence_number":63,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".txt","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_74","output_index":0,"sequence_number":64,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" typo","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_75","output_index":0,"sequence_number":65,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" has","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_76","output_index":0,"sequence_number":66,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" been","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_77","output_index":0,"sequence_number":67,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" fixed","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_78","output_index":0,"sequence_number":68,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" successfully","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_79","output_index":0,"sequence_number":69,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_80","output_index":0,"sequence_number":70,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","logprobs":[],"output_index":0,"sequence_number":71,"text":"I read the original greeting.txt and found the typo \"Helo, Rig!\". I proposed the corrected content \"Hello, Rig!\\n\" and the edit was approved and applied. After applying, I validated the file and it is now correct with the content \"Hello, Rig!\\n\". The greeting.txt typo has been fixed successfully.","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"I read the original greeting.txt and found the typo \"Helo, Rig!\". I proposed the corrected content \"Hello, Rig!\\n\" and the edit was approved and applied. After applying, I validated the file and it is now correct with the content \"Hello, Rig!\\n\". The greeting.txt typo has been fixed successfully.","type":"output_text"},"sequence_number":72,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"I read the original greeting.txt and found the typo \"Helo, Rig!\". I proposed the corrected content \"Hello, Rig!\\n\" and the edit was approved and applied. After applying, I validated the file and it is now correct with the content \"Hello, Rig!\\n\". The greeting.txt typo has been fixed successfully.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":73,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_5","incomplete_details":null,"instructions":"You maintain a disposable project. First call read_file and search_file (needle: Helo). Next call propose_edit with content exactly Hello, Rig! followed by a newline. Next call apply_edit with an empty object. If approved, call validate_file. Finally report the tool results briefly. Do not claim an edit or validation happened without calling its tool. A denied edit ends the task. Use only the supplied tools, and do not repeat a completed operation.","max_output_tokens":512,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"I read the original greeting.txt and found the typo \"Helo, Rig!\". I proposed the corrected content \"Hello, Rig!\\n\" and the edit was approved and applied. After applying, I validated the file and it is now correct with the content \"Hello, Rig!\\n\". The greeting.txt typo has been fixed successfully.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read greeting.txt","name":"read_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Find matching lines in greeting.txt","name":"search_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"needle":{"type":"string"}},"required":["needle"],"type":"object"},"strict":true,"type":"function"},{"description":"Propose replacement contents for greeting.txt without writing","name":"propose_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"content":{"type":"string"}},"required":["content"],"type":"object"},"strict":true,"type":"function"},{"description":"Apply the proposed edit after host approval","name":"apply_edit","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"},{"description":"Validate the greeting file after an approved write","name":"validate_file","output_schema":null,"parameters":{"additionalProperties":false,"properties":{},"required":[],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":412,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":69,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":481},"user":null},"sequence_number":74,"type":"response.completed"}
+

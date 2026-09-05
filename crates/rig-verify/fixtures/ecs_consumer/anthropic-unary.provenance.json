@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "source": "scrubbed-cassette-replay",
+  "case": "anthropic-unary",
+  "cassette_sha256": "cb6f26b98f3c2a38f97f235d63c03d9792ddac9eff1d4d015e2a1c70d5e26385",
+  "provider_model": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5"
+  },
+  "generation": {
+    "revision": "25e8225be8a7c6b2b8af0e5a4cb0dd9993ffb503",
+    "dirty": true
+  },
+  "capture": null,
+  "artifacts_sha256": {
+    "application": "13ecad599be76cbe1714f58871372fbd669317d6e357594952b8288b3e274978",
+    "checkpoints": "e62d11bd63fb3119026f6e3e6eb649e618419e646a4a70f6671aeedae4d4ec06",
+    "effects": "eae17507b57b377905be47c8759235a5fcec8b17d7f8c2f0280cae707f958d65",
+    "observations": "f462053a757396631949082d7b664f40b79ed75ba6179c0cc3cfdea8b5393cba"
+  }
+}

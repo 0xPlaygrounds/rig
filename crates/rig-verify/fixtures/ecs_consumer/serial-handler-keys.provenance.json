@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "source": "synthetic",
+  "case": "serial-handler-keys",
+  "cassette_sha256": null,
+  "provider_model": null,
+  "generation": {
+    "revision": "25e8225be8a7c6b2b8af0e5a4cb0dd9993ffb503",
+    "dirty": true
+  },
+  "capture": null,
+  "artifacts_sha256": {
+    "application": "2e37d15011d0a4243212a58c35fcb6cff9e6cead754ba011925998c9321c5ee9",
+    "checkpoints": "f742e1bd037aae0d3837305caf8cf49fb0412f1974e6168eb5d2374e27ac48cf",
+    "effects": "ab2a57d7d30d7b43925f1b0cfa47326317e4a3444a040f95b9849719358b1c55",
+    "observations": "6ebd8ded1b9db6f248ad07186ee159e82c0e1573a96f1bf7df71ac3119067256"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "source": "synthetic",
+  "case": "synthetic-approve",
+  "cassette_sha256": null,
+  "provider_model": null,
+  "generation": {
+    "revision": "25e8225be8a7c6b2b8af0e5a4cb0dd9993ffb503",
+    "dirty": true
+  },
+  "capture": null,
+  "artifacts_sha256": {
+    "application": "2e37d15011d0a4243212a58c35fcb6cff9e6cead754ba011925998c9321c5ee9",
+    "checkpoints": "8af845c3c516bb7fb1fccb200ffb86839ac8cee776c3eaaa05e912bf26094ffc",
+    "effects": "6e66e859754a7c7b0bf1816f849082ccd2252a4237a264e8b97aa77772c2f575",
+    "observations": "0902bfa82df25cc3396781ddf292585f31574ecac272fd61c09a18c4dc15001b"
+  }
+}

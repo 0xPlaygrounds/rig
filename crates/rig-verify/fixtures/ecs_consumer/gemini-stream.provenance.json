@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "source": "scrubbed-cassette-replay",
+  "case": "gemini-stream",
+  "cassette_sha256": "d6b305470cb3d747afecc8fe2e55793f7f704b7e8dc814f68ffa7a3d17b98723",
+  "provider_model": {
+    "provider": "gemini",
+    "model": "gemini-2.5-flash"
+  },
+  "generation": {
+    "revision": "25e8225be8a7c6b2b8af0e5a4cb0dd9993ffb503",
+    "dirty": true
+  },
+  "capture": {
+    "case": "gemini-stream",
+    "source": "live-provider",
+    "provider_model": {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash"
+    },
+    "cassette_sha256": "d6b305470cb3d747afecc8fe2e55793f7f704b7e8dc814f68ffa7a3d17b98723",
+    "limits": {
+      "requests": 32,
+      "output_tokens": 512,
+      "seconds": 300,
+      "retries": 0
+    }
+  },
+  "artifacts_sha256": {
+    "application": "92756a9e0e15b3d0183dc00a99698c80c3a03d7e353a471a1f228de2a8509411",
+    "checkpoints": "6164667d97450de33893f426c913845621ef85114ef1fcf92aba7b2a528eb780",
+    "effects": "1357c28d4f76b66a64748e06811e5e7a8931af3440e77304210087af8e615c5f",
+    "observations": "350c641b17a74f0c9a15e658e78d6c0d83fbd2f428b311ee8c89f7ecc62638fb"
+  }
+}

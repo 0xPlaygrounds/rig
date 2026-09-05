@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "source": "synthetic",
+  "case": "interleaved-streams",
+  "cassette_sha256": null,
+  "provider_model": null,
+  "generation": {
+    "revision": "25e8225be8a7c6b2b8af0e5a4cb0dd9993ffb503",
+    "dirty": true
+  },
+  "capture": null,
+  "artifacts_sha256": {
+    "application": "2e37d15011d0a4243212a58c35fcb6cff9e6cead754ba011925998c9321c5ee9",
+    "checkpoints": "87d81dc4885d566eaa0ad9253d53ef9bbb6c9a7a8170d5c49a2165425f6c38f2",
+    "effects": "5b2b529bffc544fef436befe04d69c37f5804ce1b334a2f1effffee7c8bf562b",
+    "observations": "59d90e88f12c91d306dc44f3ecbcc1a46e444172e1966192baad3e28c486ee21"
+  }
+}
