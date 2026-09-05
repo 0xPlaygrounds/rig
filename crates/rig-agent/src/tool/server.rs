@@ -1,50 +1,212 @@
-use std::sync::Arc;
+//! The runtime tool registry an agent advertises from and dispatches
+//! through.
+//!
+//! A [`ToolServerHandle`] is the definition/advertisement surface: it owns
+//! the [`ToolSet`] (descriptors plus staged handlers) and publishes every
+//! registration onto the buses attached to it — each agent built with the
+//! handle attaches its bus at build time, and later additions, removals and
+//! MCP reconciles are pushed to every attached bus as they happen. A
+//! request's snapshot ([`ToolCatalog`]) pins the *generation* of each tool:
+//! registrations are served under owner- and generation-qualified keys
+//! (`<owner>/tool:<name>#<n>`, the owner being the registry's label —
+//! `tools#<m>` by default, [`ToolServer::owner`] to name it), a replacement
+//! registers a new generation, and a generation is deregistered from the
+//! buses when the last snapshot referencing it drops (or, failing that, on
+//! the next registry read). A registration that carries its own key (a
+//! replayer's recorded key, a host's own) is served under that key as
+//! given. Execution during a run goes through the bus; the inline
+//! `execute` here serves the standalone use (no agent, no bus).
 
 use std::collections::HashMap;
+use std::sync::{
+    Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak,
+    atomic::{AtomicU64, Ordering},
+};
 
+use crate::bus::Registrar;
 use indexmap::IndexMap;
-use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
-
-use crate::tool::ErasedTool;
+use rig_core::serve::adapters::RetrieveAdapter;
+use rig_core::{
+    effect::Key,
+    effect::{HandlerKey, family},
+    vector_store::{VectorStoreIndex, request::DynamicSearchFilter},
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
+};
 
 use crate::{
     completion::{CompletionError, ToolDefinition},
     tool::{
         DynamicTool, PortableDynamicTool, RegisteredTool, Tool, ToolCatalog, ToolContext,
-        ToolDispatch, ToolResult, ToolSet, dispatch_tool,
+        ToolDispatch, ToolLease, ToolResult, ToolSet, dispatch_tool,
     },
 };
-use rig_core::vector_store::{
-    VectorSearchRequest, VectorStoreError, VectorStoreIndexDyn, request::Filter,
-};
 
-/// A pinned view of the tool registry: provider definitions plus the exact
-/// implementations behind them — [`rig_core::tool::ToolCatalog`] under the
-/// name the agent runtime has always used.
-///
-/// The agent loop takes one per turn ([`ToolServerHandle::snapshot`] for the
-/// registry as it stands, the retrieval-aware `snapshot_tool_defs` for a
-/// prompt), so registration changes after a snapshot is built take effect on
-/// the next turn and calls from the current turn dispatch through these
-/// pinned handles.
+/// The per-process counter behind a registry's default owner label.
+static NEXT_REGISTRY: AtomicU64 = AtomicU64::new(0);
+
+/// The per-request snapshot of the registry: a [`ToolCatalog`].
 pub type ToolRegistrySnapshot = ToolCatalog;
 
-/// Shared state behind a `ToolServerHandle`.
+/// A retrieval index registered for tool retrieval: its bus key and how
+/// many tools to sample.
+#[derive(Clone)]
+struct RetrievalIndex {
+    samples: usize,
+    key: HandlerKey,
+    handler: rig_core::serve::ErasedHandler,
+}
+
+/// A retrieval index added to a [`ToolServer`], keyed once the registry
+/// knows its owner label.
+struct PendingRetrievalIndex {
+    samples: usize,
+    index: usize,
+    handler: rig_core::serve::ErasedHandler,
+}
+
+/// The lease a live registration hands to every snapshot that pins it.
+/// Dropping the last clone after the generation was retired sweeps the
+/// registry, so the retired key leaves the buses when the last request
+/// that could dispatch to it is gone — not on the next registry read.
+struct LeaseToken {
+    registry: Weak<RwLock<ToolServerState>>,
+}
+
+impl Drop for LeaseToken {
+    fn drop(&mut self) {
+        let Some(registry) = self.registry.upgrade() else {
+            return;
+        };
+        // A writer holding the lock (a `register` retiring this very
+        // generation) sweeps before it releases; a reader holding it makes
+        // the next read sweep. Either way the key leaves the buses.
+        if let Ok(mut state) = registry.try_write() {
+            state.sweep_retired();
+        }
+    }
+}
+
+/// A retired generation waiting for its last snapshot to drop.
+struct RetiredGeneration {
+    key: HandlerKey,
+    lease: Weak<LeaseToken>,
+}
+
 struct ToolServerState {
-    /// Vector indexes used to select retrieval-only tools for each prompt.
-    retrieval_indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn>)>,
-    /// The authoritative ordered registry for execution and exposure.
+    /// The registry's label, the owner segment of every key it mints.
+    owner: String,
+    /// The registry itself, for the leases it mints.
+    registry: Weak<RwLock<ToolServerState>>,
+    retrieval_indexes: Vec<RetrievalIndex>,
     toolset: ToolSet,
-    /// Generation tokens for registrations owned by external tool sources.
-    /// A normal registration clears the token, preventing a stale handler
-    /// refresh from replacing or removing the newer tool.
+    /// The lease each live registration hands to snapshots.
+    leases: HashMap<String, Arc<LeaseToken>>,
+    retired: Vec<RetiredGeneration>,
     managed_generations: HashMap<String, ManagedToolToken>,
+    /// The buses this registry publishes onto, by their registrars.
+    buses: Vec<Registrar>,
+    next_generation: u64,
 }
 
 impl ToolServerState {
-    /// Remove remote registrations whose transport can no longer accept calls.
-    /// In-process tools use the default live state, while both handler-managed
-    /// and directly registered MCP tools report their transport state.
+    fn generation_key(&mut self, name: &str) -> Key<family::Tool> {
+        let n = self.next_generation;
+        self.next_generation += 1;
+        Key::new_unchecked(HandlerKey::from(format!("{}/tool:{name}#{n}", self.owner)))
+    }
+
+    fn lease(&self) -> Arc<LeaseToken> {
+        Arc::new(LeaseToken {
+            registry: self.registry.clone(),
+        })
+    }
+
+    fn publish(&self, tool: &RegisteredTool) {
+        for bus in &self.buses {
+            crate::agent::drive::register_generated(
+                bus.register_erased(tool.key().raw().clone(), tool.handler().clone()),
+            );
+        }
+    }
+
+    fn unpublish(&self, key: &HandlerKey) {
+        for bus in &self.buses {
+            bus.deregister(key);
+        }
+    }
+
+    /// Retire the current generation of `name`: the key stays served until
+    /// every snapshot holding it has dropped.
+    fn retire(&mut self, name: &str) {
+        if let (Some(tool), Some(lease)) = (self.toolset.get(name), self.leases.remove(name)) {
+            self.retired.push(RetiredGeneration {
+                key: tool.key().raw().clone(),
+                lease: Arc::downgrade(&lease),
+            });
+            // The lease's own drop cannot take the lock this thread holds;
+            // `sweep_retired` below is what serves it.
+            drop(lease);
+        }
+    }
+
+    fn sweep_retired(&mut self) {
+        let retired = std::mem::take(&mut self.retired);
+        let mut kept = Vec::with_capacity(retired.len());
+        for retired in retired {
+            if retired.lease.strong_count() == 0 {
+                self.unpublish(&retired.key);
+            } else {
+                kept.push(retired);
+            }
+        }
+        self.retired = kept;
+        self.buses.retain(|bus| !bus.is_closed());
+    }
+
+    /// Insert a registration under a fresh generation, publishing it.
+    fn register(&mut self, tool: RegisteredTool, always_exposed: bool) -> String {
+        let name = tool.name();
+        // A registration under the default `tool:<name>` key gets a fresh
+        // generation; an explicit key (a replayer's recorded key, a host's
+        // own) is served as given.
+        let tool = if tool.has_default_key() {
+            let key = self.generation_key(&name);
+            tool.with_key(key)
+        } else {
+            tool
+        };
+        // An explicit key that is the live key replaces the handler in
+        // place: the live registration is not retired, so the key is never
+        // deregistered under the new handler.
+        let same_key = self
+            .toolset
+            .get(&name)
+            .is_some_and(|live| live.key() == tool.key());
+        if !same_key {
+            self.retire(&name);
+        }
+        self.publish(&tool);
+        if !same_key {
+            self.leases.insert(name.clone(), self.lease());
+        }
+        if always_exposed {
+            self.toolset.add_registered(tool);
+        } else {
+            let mut set = ToolSet::default();
+            set.add_registered(tool);
+            self.toolset.add_retrievable_tools(set);
+        }
+        self.sweep_retired();
+        name
+    }
+
+    fn remove(&mut self, name: &str) {
+        self.retire(name);
+        self.toolset.delete_tool(name);
+        self.managed_generations.remove(name);
+        self.sweep_retired();
+    }
+
     fn retire_disconnected_tools(&mut self) {
         let disconnected = self
             .toolset
@@ -54,22 +216,36 @@ impl ToolServerState {
             .collect::<Vec<_>>();
 
         for name in disconnected {
-            self.toolset.delete_tool(&name);
-            self.managed_generations.remove(&name);
+            self.remove(&name);
             tracing::debug!(tool_name = %name, "retired disconnected tool registration");
         }
+        self.sweep_retired();
+    }
+
+    fn attach(&mut self, bus: &Registrar) {
+        for (_, tool) in self.toolset.iter() {
+            crate::agent::drive::register_generated(
+                bus.register_erased(tool.key().raw().clone(), tool.handler().clone()),
+            );
+        }
+        for index in &self.retrieval_indexes {
+            crate::agent::drive::register_generated(
+                bus.register_erased(index.key.clone(), index.handler.clone()),
+            );
+        }
+        self.buses.push(bus.clone());
     }
 }
 
 pub use rig_core::tool::{ManagedToolSink, ManagedToolToken};
 
-/// Builder for constructing a [`ToolServerHandle`].
-///
-/// Accumulates tools and configuration, then produces a shared handle via
-/// [`run()`](ToolServer::run).
+/// A tool registry under construction; [`ToolServer::run`] turns it into
+/// the shareable [`ToolServerHandle`].
 pub struct ToolServer {
-    retrieval_indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn>)>,
+    owner: Option<String>,
+    retrieval_indexes: Vec<PendingRetrievalIndex>,
     toolset: ToolSet,
+    next_index: usize,
 }
 
 impl Default for ToolServer {
@@ -79,132 +255,196 @@ impl Default for ToolServer {
 }
 
 impl ToolServer {
+    /// An empty registry.
     pub fn new() -> Self {
         Self {
+            owner: None,
             retrieval_indexes: Vec::new(),
             toolset: ToolSet::default(),
+            next_index: 0,
         }
     }
 
-    /// Add a static tool to the agent. Re-registering an existing name
-    /// replaces the implementation (last wins) and keeps its position.
+    /// Name the registry: the owner segment of every key it mints
+    /// (`<owner>/tool:<name>#<n>`, `<owner>/retrieve:tools#<n>`). The
+    /// default is `tools#<m>` from a per-process counter, distinct per
+    /// registry; name it when a host shares one bus between registries and
+    /// wants to read the keys.
+    pub fn owner(mut self, label: impl Into<String>) -> Self {
+        self.owner = Some(label.into());
+        self
+    }
+
+    /// Add a typed tool.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
         self.toolset.add_tool(tool);
         self
     }
 
-    /// Add a runtime-defined tool. Re-registering an existing name replaces
-    /// the implementation and keeps its position.
+    /// Add a runtime-defined tool.
     pub fn dynamic_tool(mut self, tool: DynamicTool) -> Self {
         self.toolset.add_dynamic_tool(tool);
         self
     }
 
-    /// Add several runtime-defined tools in order.
+    /// Add runtime-defined tools.
     pub fn dynamic_tools(self, tools: Vec<DynamicTool>) -> Self {
         tools.into_iter().fold(self, Self::dynamic_tool)
     }
 
-    /// Add a context-free dynamic tool through the classic registry adapter.
+    /// Add a portable tool.
     pub fn portable_dynamic_tool(mut self, tool: PortableDynamicTool) -> Self {
         self.toolset.add_portable_dynamic_tool(tool);
         self
     }
 
-    /// Register a pre-erased tool — the extension point for adapters that
-    /// implement [`ErasedTool`] directly (remote tool protocols such as MCP,
-    /// provided by companion crates).
-    pub fn erased_tool(mut self, tool: Arc<dyn ErasedTool>) -> Self {
-        self.toolset.add_erased(tool);
+    /// Add a registration built elsewhere.
+    pub fn registered_tool(mut self, tool: RegisteredTool) -> Self {
+        self.toolset.add_registered(tool);
         self
     }
 
-    /// Configure tools retrieved from a vector index for each prompt.
-    pub fn retrieved_tools(
-        mut self,
-        sample: usize,
-        index: impl VectorStoreIndexDyn + 'static,
-        toolset: ToolSet,
-    ) -> Self {
-        self.retrieval_indexes.push((sample, Arc::new(index)));
+    /// Add retrievable tools: `sample` of them are advertised per request,
+    /// chosen by `index`.
+    pub fn retrieved_tools<I, F>(mut self, sample: usize, index: I, toolset: ToolSet) -> Self
+    where
+        I: VectorStoreIndex<Filter = F> + 'static,
+        F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        let n = self.next_index;
+        self.next_index += 1;
+        self.retrieval_indexes.push(PendingRetrievalIndex {
+            samples: sample,
+            index: n,
+            handler: rig_core::serve::ErasedHandler::new(RetrieveAdapter::new(index)),
+        });
         self.toolset.add_retrievable_tools(toolset);
         self
     }
 
-    /// Consume the builder and return a shared [`ToolServerHandle`].
+    /// Add retrievable tools chosen per request by `handler` — any
+    /// retrieval-family handler answering `TopNIds`, such as a replayer
+    /// answering a recorded index from an effect log — under the same key
+    /// [`retrieved_tools`](Self::retrieved_tools) would give an index.
+    pub fn retrieved_tools_handler(
+        mut self,
+        sample: usize,
+        handler: impl rig_core::serve::Serve + 'static,
+        toolset: ToolSet,
+    ) -> Self {
+        let n = self.next_index;
+        self.next_index += 1;
+        self.retrieval_indexes.push(PendingRetrievalIndex {
+            samples: sample,
+            index: n,
+            handler: rig_core::serve::ErasedHandler::new(handler),
+        });
+        self.toolset.add_retrievable_tools(toolset);
+        self
+    }
+
+    /// Start the registry.
     pub fn run(self) -> ToolServerHandle {
-        ToolServerHandle(Arc::new(RwLock::new(ToolServerState {
-            retrieval_indexes: self.retrieval_indexes,
-            toolset: self.toolset,
-            managed_generations: HashMap::new(),
-        })))
+        let owner = self
+            .owner
+            .unwrap_or_else(|| format!("tools#{}", NEXT_REGISTRY.fetch_add(1, Ordering::Relaxed)));
+        let retrieval_indexes = self
+            .retrieval_indexes
+            .into_iter()
+            .map(|pending| RetrievalIndex {
+                samples: pending.samples,
+                key: HandlerKey::from(format!("{owner}/retrieve:tools#{}", pending.index)),
+                handler: pending.handler,
+            })
+            .collect();
+        let registry = Arc::new_cyclic(|registry| {
+            RwLock::new(ToolServerState {
+                owner,
+                registry: registry.clone(),
+                retrieval_indexes,
+                toolset: ToolSet::default(),
+                leases: HashMap::new(),
+                retired: Vec::new(),
+                managed_generations: HashMap::new(),
+                buses: Vec::new(),
+                next_generation: 0,
+            })
+        });
+        let handle = ToolServerHandle(registry);
+        let exposed: Vec<String> = self
+            .toolset
+            .always_exposed_names()
+            .map(str::to_owned)
+            .collect();
+        {
+            let mut state = handle.state_mut();
+            for (name, tool) in self.toolset.iter() {
+                state.register(tool.clone(), exposed.iter().any(|exposed| exposed == name));
+            }
+        }
+        handle
     }
 }
 
-/// A cheaply-cloneable handle to the shared tool server state.
-///
-/// All operations acquire locks directly on the underlying state.
-/// Multiple handles (e.g. across agents) can share the same state
-/// without channel-based message routing.
+/// The shareable, runtime-mutable tool registry.
 #[derive(Clone)]
 pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 
 impl ToolServerHandle {
-    /// Shared registry state under the single poisoning policy: a panic
-    /// inside one of the short sync critical sections cannot leave the
-    /// registry logically torn, so a poisoned lock is recovered rather than
-    /// propagated.
     fn state(&self) -> RwLockReadGuard<'_, ToolServerState> {
         self.0.read().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Exclusive registry state; same poisoning policy as [`Self::state`].
     fn state_mut(&self) -> RwLockWriteGuard<'_, ToolServerState> {
         self.0.write().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Register through `add`, then drop any stale managed-generation
-    /// entry so the (re)registered name follows last-registration-wins.
-    fn register(&self, add: impl FnOnce(&mut ToolSet) -> String) {
-        let mut state = self.state_mut();
-        let _name = add(&mut state.toolset);
-        state.managed_generations.remove(&_name);
+    /// Publish every registration onto `bus`, now and as they change.
+    pub fn attach(&self, bus: &Registrar) {
+        self.state_mut().attach(bus);
     }
 
-    /// Register a new static tool. Re-registering an existing name replaces
-    /// the implementation (last wins) and keeps its position.
+    /// The registry's label: the owner segment of the keys it mints.
+    pub fn owner(&self) -> String {
+        self.state().owner.clone()
+    }
+
+    fn register(&self, tool: RegisteredTool) {
+        let mut state = self.state_mut();
+        let name = state.register(tool, true);
+        state.managed_generations.remove(&name);
+    }
+
+    /// Add a typed tool.
     pub fn add_tool<T>(&self, tool: T)
     where
         T: Tool + 'static,
     {
-        self.register(|toolset| toolset.add_tool(tool));
+        self.register(RegisteredTool::from_tool(tool));
     }
 
-    /// Register a runtime-defined static tool.
+    /// Add a runtime-defined tool.
     pub fn add_dynamic_tool(&self, tool: DynamicTool) {
-        self.register(|toolset| toolset.add_dynamic_tool(tool));
+        self.register(RegisteredTool::from_dynamic(tool));
     }
 
-    /// Register a context-free dynamic tool through the classic adapter.
+    /// Add a portable tool.
     pub fn add_portable_dynamic_tool(&self, tool: PortableDynamicTool) {
-        self.register(|toolset| toolset.add_portable_dynamic_tool(tool));
+        self.register(RegisteredTool::from_dynamic(DynamicTool::from_portable(
+            tool,
+        )));
     }
 
-    /// Atomically install the initial tools owned by one external tool source
-    /// (an MCP client handler, for example). Last-registration-wins: an existing
-    /// name is replaced. Tools that report `!is_live()` are skipped. Returns the
-    /// generation token per installed name, to hand back to
-    /// [`Self::reconcile_managed_erased_tools`] on refresh.
-    pub fn add_managed_erased_tools(
-        &self,
-        tools: Vec<Arc<dyn ErasedTool>>,
-    ) -> HashMap<String, ManagedToolToken> {
+    /// Add a registration built elsewhere.
+    pub fn add_registered_tool(&self, tool: RegisteredTool) {
+        self.register(tool);
+    }
+
+    fn add_managed(&self, tools: Vec<RegisteredTool>) -> HashMap<String, ManagedToolToken> {
         let mut state = self.state_mut();
         let mut managed = HashMap::with_capacity(tools.len());
 
         for tool in tools {
-            // The initial list fetch can complete just before the transport
-            // closes. Avoid installing a registration that can never execute.
             if !tool.is_live() {
                 tracing::debug!(
                     tool_name = %tool.name(),
@@ -213,7 +453,7 @@ impl ToolServerHandle {
                 continue;
             }
 
-            let name = state.toolset.add_erased(tool);
+            let name = state.register(tool, true);
             let token = ManagedToolToken::new();
             state
                 .managed_generations
@@ -224,32 +464,19 @@ impl ToolServerHandle {
         managed
     }
 
-    /// Atomically reconcile one external source's registrations with a
-    /// refreshed tool list. Existing names are changed only when their expected
-    /// generation remains current; newer local or peer-source registrations
-    /// win. Names missing from the new list (and owned by this source) are
-    /// removed. Returns the new generation tokens.
-    pub fn reconcile_managed_erased_tools(
+    fn reconcile_managed(
         &self,
         mut expected: HashMap<String, ManagedToolToken>,
-        tools: Vec<Arc<dyn ErasedTool>>,
+        tools: Vec<RegisteredTool>,
     ) -> HashMap<String, ManagedToolToken> {
         let mut state = self.state_mut();
         let mut refreshed = HashMap::with_capacity(tools.len());
         let mut managed_order = Vec::with_capacity(tools.len());
         let mut seen = std::collections::HashSet::with_capacity(tools.len());
 
-        // A generation only protects a live owner. MCP service shutdown closes
-        // the sink held by its registered tools, so retire those generations
-        // before deciding whether another handler may reclaim a name. Local
-        // in-process registrations stay live; directly registered MCP tools are
-        // also retired when their sink closes.
         state.retire_disconnected_tools();
 
         for tool in tools {
-            // A refresh that raced with service shutdown may already have
-            // fetched definitions before the transport closed. Do not let
-            // that stale refresh recreate an owner we just retired.
             if !tool.is_live() {
                 tracing::debug!(
                     tool_name = %tool.name(),
@@ -266,15 +493,12 @@ impl ToolServerHandle {
             let present = state.toolset.contains(&name);
             let may_register = match expected.remove(&name) {
                 Some(token) if present => state.managed_generations.get(&name) == Some(&token),
-                // A stale expected token protects a live newer registration,
-                // not an empty slot. Once the competitor disappears, this full
-                // server snapshot must converge in one reconciliation.
                 Some(_) => true,
                 None => !present,
             };
 
             if may_register {
-                state.toolset.add_erased(tool);
+                state.register(tool, true);
                 let token = ManagedToolToken::new();
                 state
                     .managed_generations
@@ -291,14 +515,10 @@ impl ToolServerHandle {
 
         for (name, token) in expected {
             if state.managed_generations.get(&name) == Some(&token) {
-                state.toolset.delete_tool(&name);
-                state.managed_generations.remove(&name);
+                state.remove(&name);
             }
         }
 
-        // A full MCP list is ordered. Move only entries this handler actually
-        // owns to the end in that order, matching remove/re-register semantics;
-        // live local or peer-handler competitors retain their relative slots.
         for name in managed_order {
             state.toolset.move_to_end(&name);
         }
@@ -306,31 +526,26 @@ impl ToolServerHandle {
         refreshed
     }
 
-    /// Merge an entire toolset into the server in registration order.
-    /// Existing names are replaced (last wins) and keep their position.
+    /// Merge a tool set's registrations.
     pub fn append_toolset(&self, toolset: ToolSet) {
         let mut state = self.state_mut();
-        let names = toolset.names().map(str::to_owned).collect::<Vec<_>>();
-        state.toolset.add_tools(toolset);
-        for name in names {
+        let exposed: Vec<String> = toolset.always_exposed_names().map(str::to_owned).collect();
+        for (name, tool) in toolset.iter() {
+            let always_exposed = exposed.iter().any(|exposed| exposed == name);
+            let name = state.register(tool.clone(), always_exposed);
             state.managed_generations.remove(&name);
         }
     }
 
-    /// Remove a tool by name.
+    /// Remove the tool named `tool_name`.
     pub fn remove_tool(&self, tool_name: &str) {
         let mut state = self.state_mut();
-        state.toolset.delete_tool(tool_name);
-        state.managed_generations.remove(tool_name);
+        state.remove(tool_name);
+        state.sweep_retired();
     }
 
-    /// Look up and execute a tool through the canonical structured path.
-    ///
-    /// The implementation handle is cloned under a brief read lock, so a long
-    /// execution never blocks registration changes. The tool receives one
-    /// snapshot of the supplied inbound values. Its result metadata is
-    /// published back to `context`, while mutations to its inbound snapshot are
-    /// discarded.
+    /// Run `tool_name` inline, publishing its result metadata into
+    /// `context`.
     pub async fn execute(
         &self,
         tool_name: &str,
@@ -342,15 +557,12 @@ impl ToolServerHandle {
         dispatch.publish_to(context)
     }
 
-    /// Run `f` against the registry state, first retiring disconnected MCP
-    /// tools (which needs a write lock) when that feature is compiled in.
     fn with_registry<R>(&self, f: impl FnOnce(&ToolServerState) -> R) -> R {
         let mut state = self.state_mut();
         state.retire_disconnected_tools();
         f(&state)
     }
 
-    /// Run one isolated dispatch and retain its full context for agent hooks.
     pub(crate) async fn dispatch(
         &self,
         tool_name: &str,
@@ -361,44 +573,24 @@ impl ToolServerHandle {
         dispatch_tool(tool_name, args.to_string(), tool, context).await
     }
 
-    /// The registry as it stands, synchronously: every always-exposed
-    /// registration in registration order, after retiring tools whose remote
-    /// backing disconnected — the same path [`execute`](Self::execute) and
-    /// the agent loop resolve through. No retrieval, no executor, no `.await`,
-    /// so a tick-driven host can call it every frame.
-    ///
-    /// For the retrieval-aware view that also selects dynamic tools for a
-    /// prompt, use the async [`tool_defs`](Self::tool_defs).
+    /// The always-exposed registrations, pinned.
     pub fn snapshot(&self) -> ToolRegistrySnapshot {
-        let tools = self.with_registry(|state| snapshot_registered_tools(state, &[]));
-        ToolCatalog::from_registered(tools)
+        let (tools, leases) = self.with_registry(|state| snapshot_registered_tools(state, &[]));
+        ToolCatalog::from_registered(tools).with_leases(leases)
     }
 
-    /// Provider definitions of the registry as it stands — the definitions of
-    /// [`snapshot`](Self::snapshot), synchronously. Equivalent to
-    /// `tool_defs(None)` without the future.
+    /// The always-exposed definitions.
     pub fn static_tool_defs(&self) -> Vec<ToolDefinition> {
         let mut snapshot = self.snapshot();
         snapshot.take_definitions()
     }
 
-    /// A clone of the current registry as a [`ToolSet`]: shares the tool
-    /// implementations (they are `Arc`s) and copies names, ordering, and
-    /// exposure flags. Use it to fork the registry — build a second server
-    /// with the same tools — or inspect it outside the lock. Disconnected
-    /// tools are retired first.
+    /// A fork of the registry's tool set.
     pub fn toolset(&self) -> ToolSet {
         self.with_registry(|state| state.toolset.clone())
     }
 
-    /// Retrieve tool definitions, optionally using a prompt to select
-    /// dynamic tools from configured vector stores.
-    ///
-    /// This is the retrieval-aware, async read: with a prompt it runs the
-    /// configured vector-store lookups to pick dynamic tools. If you only need
-    /// the registry as it stands, [`static_tool_defs`](Self::static_tool_defs)
-    /// / [`snapshot`](Self::snapshot) give the same always-exposed definitions
-    /// synchronously.
+    /// The definitions a request with `prompt` advertises.
     pub async fn tool_defs(
         &self,
         prompt: Option<String>,
@@ -406,12 +598,62 @@ impl ToolServerHandle {
         Ok(self.snapshot_tool_defs(prompt).await?.take_definitions())
     }
 
-    /// Resolve one ordered provider/dispatch snapshot for an agent turn.
-    ///
-    /// Retrieval runs without holding the registry lock. Once the selected IDs
-    /// are known, one read lock resolves every dynamic and always-exposed name
-    /// to an exact implementation. That single instant is the turn boundary:
-    /// later replacements are visible only to the next snapshot.
+    /// The `Retrieve` effects a request with `prompt` needs answered before
+    /// its dynamic tools can be advertised: one `TopNIds` query per
+    /// retrieval index, under the key the index is registered on every
+    /// attached bus. The engine dispatches them at the boundary and hands
+    /// the ids back to [`ToolServerHandle::snapshot_with_dynamic`].
+    /// The keys of every retrieval index this registry serves.
+    pub fn retrieval_keys(&self) -> Vec<HandlerKey> {
+        self.state()
+            .retrieval_indexes
+            .iter()
+            .map(|index| index.key.clone())
+            .collect()
+    }
+
+    pub fn retrieval_effects(
+        &self,
+        prompt: Option<String>,
+    ) -> Vec<(HandlerKey, rig_core::effect::EffectKind)> {
+        let Some(text) = prompt else {
+            return Vec::new();
+        };
+        let retrieval_indexes = {
+            let state = self.state();
+            state.retrieval_indexes.clone()
+        };
+        retrieval_indexes
+            .into_iter()
+            .map(|index| {
+                let req = rig_core::vector_store::request::VectorSearchRequest::builder()
+                    .query(text.clone())
+                    .samples(index.samples as u64)
+                    .build();
+                (
+                    index.key,
+                    rig_core::effect::EffectKind::Retrieve {
+                        query: rig_core::effect::RetrieveQuery::TopNIds {
+                            req: req.map_filter(rig_core::vector_store::request::Filter::interpret),
+                        },
+                    },
+                )
+            })
+            .collect()
+    }
+
+    /// The registrations a request advertises: the always-exposed ones plus
+    /// the retrieved tools named by `dynamic_tool_ids`.
+    pub fn snapshot_with_dynamic(&self, dynamic_tool_ids: &[String]) -> ToolRegistrySnapshot {
+        let (tools, leases) =
+            self.with_registry(|state| snapshot_registered_tools(state, dynamic_tool_ids));
+        ToolCatalog::from_registered(tools).with_leases(leases)
+    }
+
+    /// The registrations a request with `prompt` advertises, answering the
+    /// retrieval queries inline on the registry's own handlers. This is the
+    /// standalone registry read ([`ToolServerHandle::tool_defs`]); the
+    /// engine dispatches the same queries on the bus instead.
     pub(crate) async fn snapshot_tool_defs(
         &self,
         prompt: Option<String>,
@@ -422,31 +664,52 @@ impl ToolServerHandle {
         };
 
         let dynamic_tool_ids = if let Some(ref text) = prompt {
-            // Create a future for each dynamic tool index
-            let search_futures = retrieval_indexes.iter().map(|(num_sample, index)| {
+            let search_futures = retrieval_indexes.iter().map(|index| {
                 let text = text.clone();
-                let num_sample = *num_sample;
-                let index = index.clone();
+                let samples = index.samples;
+                let handler = index.handler.clone();
 
                 async move {
-                    let req = VectorSearchRequest::builder()
+                    let req = rig_core::vector_store::request::VectorSearchRequest::builder()
                         .query(text)
-                        .samples(num_sample as u64)
+                        .samples(samples as u64)
                         .build();
+                    // Retrieval for advertisement runs inline on the registry's
+                    // own handler: it is a registry read, not a run effect.
+                    let outcome = rig_core::serve::serve_inline(
+                        &handler,
+                        rig_core::effect::EffectKind::Retrieve {
+                            query: rig_core::effect::RetrieveQuery::TopNIds {
+                                req: req
+                                    .map_filter(rig_core::vector_store::request::Filter::interpret),
+                            },
+                        },
+                    )
+                    .await
+                    .map_err(|report| {
+                        rig_core::vector_store::VectorStoreError::DatastoreError(Box::new(report))
+                    })?;
+                    let ids = match outcome {
+                        rig_core::effect::Outcome::Documents(
+                            rig_core::effect::RetrievedDocuments::Ids(ids),
+                        ) => ids.into_iter().map(|(_, id)| id).collect::<Vec<String>>(),
+                        other => {
+                            return Err(rig_core::vector_store::VectorStoreError::DatastoreError(
+                                Box::new(rig_core::error::ErrorReport::new(
+                                    rig_core::error::ErrorKind::Internal,
+                                    format!(
+                                        "tool retrieval answered with a {} outcome",
+                                        other.family()
+                                    ),
+                                )),
+                            ));
+                        }
+                    };
 
-                    let ids = index
-                        .as_ref()
-                        .top_n_ids(req.map_filter(Filter::interpret))
-                        .await?
-                        .into_iter()
-                        .map(|(_, id)| id)
-                        .collect::<Vec<String>>();
-
-                    Ok::<_, VectorStoreError>(ids)
+                    Ok::<_, rig_core::vector_store::VectorStoreError>(ids)
                 }
             });
 
-            // Execute searches concurrently and collect/flatten the IDs
             futures::future::try_join_all(search_futures)
                 .await
                 .map_err(|e| {
@@ -459,18 +722,20 @@ impl ToolServerHandle {
             Vec::new()
         };
 
-        let tools = self.with_registry(|state| snapshot_registered_tools(state, &dynamic_tool_ids));
+        let (tools, leases) =
+            self.with_registry(|state| snapshot_registered_tools(state, &dynamic_tool_ids));
 
-        Ok(ToolCatalog::from_registered(tools))
+        Ok(ToolCatalog::from_registered(tools).with_leases(leases))
     }
 }
 
 fn snapshot_registered_tools(
     state: &ToolServerState,
     dynamic_tool_ids: &[String],
-) -> IndexMap<String, RegisteredTool> {
+) -> (IndexMap<String, RegisteredTool>, Vec<ToolLease>) {
     let mut tools = IndexMap::new();
-    let insert = |tools: &mut IndexMap<String, RegisteredTool>, name: &str, warn_missing| {
+    let mut leases = Vec::new();
+    let mut insert = |tools: &mut IndexMap<String, RegisteredTool>, name: &str, warn_missing| {
         if tools.contains_key(name) {
             tracing::debug!(
                 tool_name = %name,
@@ -480,10 +745,11 @@ fn snapshot_registered_tools(
         }
         match state.toolset.get(name).cloned() {
             Some(tool) => {
+                if let Some(lease) = state.leases.get(name) {
+                    leases.push(lease.clone() as ToolLease);
+                }
                 tools.insert(name.to_string(), tool);
             }
-            // A dynamic ID the model asked for but the toolset lacks is worth
-            // an operator warning; a retired always-exposed tool is not.
             None if warn_missing => {
                 tracing::warn!("Tool implementation not found in toolset: {name}");
             }
@@ -491,42 +757,40 @@ fn snapshot_registered_tools(
         }
     };
 
-    // Retrieved tools remain first, in index/result order. Duplicate IDs and
-    // dynamic/static overlap retain the first provider declaration.
     for name in dynamic_tool_ids {
         insert(&mut tools, name, true);
     }
     for name in state.toolset.always_exposed_names() {
         insert(&mut tools, name, false);
     }
-    tools
+    (tools, leases)
 }
 
-// Compile-time thread-safety contract: a registry snapshot or a forked
-// `ToolSet` is held in shared host state on native targets.
 #[cfg(not(target_family = "wasm"))]
-const _: fn() = || {
-    fn assert_send_sync_static<T: Send + Sync + 'static>() {}
+const _: () = {
+    const fn assert_send_sync_static<T: Send + Sync + 'static>() {}
     assert_send_sync_static::<ToolSet>();
     assert_send_sync_static::<ToolRegistrySnapshot>();
+    assert_send_sync_static::<ToolServerHandle>();
 };
 
+/// Errors from reading the registry.
 #[derive(Debug, thiserror::Error)]
 pub enum ToolServerError {
+    /// The advertised definitions could not be computed.
     #[error("Failed to retrieve tool definitions: {0}")]
     DefinitionError(CompletionError),
 }
-/// The registry contract external tool sources (e.g. `rig-rmcp`'s MCP client
-/// handler) program against: portable tools in, generation tokens out.
+
 impl ManagedToolSink for ToolServerHandle {
     fn add_managed_tools(
         &self,
         tools: Vec<PortableDynamicTool>,
     ) -> HashMap<String, ManagedToolToken> {
-        self.add_managed_erased_tools(
+        self.add_managed(
             tools
                 .into_iter()
-                .map(|tool| Arc::new(DynamicTool::from(tool)) as Arc<dyn ErasedTool>)
+                .map(|tool| RegisteredTool::from_dynamic(DynamicTool::from_portable(tool)))
                 .collect(),
         )
     }
@@ -536,11 +800,11 @@ impl ManagedToolSink for ToolServerHandle {
         expected: HashMap<String, ManagedToolToken>,
         tools: Vec<PortableDynamicTool>,
     ) -> HashMap<String, ManagedToolToken> {
-        self.reconcile_managed_erased_tools(
+        self.reconcile_managed(
             expected,
             tools
                 .into_iter()
-                .map(|tool| Arc::new(DynamicTool::from(tool)) as Arc<dyn ErasedTool>)
+                .map(|tool| RegisteredTool::from_dynamic(DynamicTool::from_portable(tool)))
                 .collect(),
         )
     }

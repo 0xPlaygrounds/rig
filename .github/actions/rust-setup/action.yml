@@ -53,7 +53,6 @@ inputs:
   protoc:
     description: Install the system protoc (required whenever the lance chain builds)
     default: "false"
-
 runs:
   using: composite
   steps:
@@ -165,3 +164,4 @@ runs:
       if: inputs.protoc == 'true'
       shell: bash
       run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+

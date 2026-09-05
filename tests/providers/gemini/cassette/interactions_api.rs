@@ -7,7 +7,7 @@ use rig::message::{
 };
 use rig::prelude::*;
 use rig::providers::gemini::interactions_api::{AdditionalParameters, Tool};
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 
 use crate::support::assert_nonempty_response;
 
@@ -242,8 +242,11 @@ async fn streaming_interaction() {
             let mut saw_usage = false;
             while let Some(chunk) = stream.next().await {
                 match chunk.expect("stream chunk should succeed") {
-                    StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
-                    StreamedAssistantContent::Final(response) => {
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text: delta },
+                        ..
+                    } => text.push_str(&delta),
+                    StreamEvent::Final(response) => {
                         saw_usage = response.usage.has_values();
                     }
                     _ => {}
@@ -278,8 +281,11 @@ async fn streaming_final_metadata_exposes_model_version() {
             let mut saw_usage = false;
             while let Some(chunk) = stream.next().await {
                 match chunk.expect("stream chunk should succeed") {
-                    StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
-                    StreamedAssistantContent::Final(response) => {
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text: delta },
+                        ..
+                    } => text.push_str(&delta),
+                    StreamEvent::Final(response) => {
                         final_response_count += 1;
                         saw_usage = response.usage.has_values();
                         final_model_version = response.model.clone();

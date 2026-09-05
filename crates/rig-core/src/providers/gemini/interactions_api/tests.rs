@@ -170,7 +170,7 @@ fn test_tool_result_without_provider_id_sends_minted_call_id() {
     // A call id is always available now: the wire gets the
     // provider-issued id when one exists, else rig's minted handle —
     // the old "Tool results require call_id" error is unrepresentable.
-    let call = message::ToolCallId::mint();
+    let call = message::ToolCallId::minted(0);
     let content = message::UserContent::ToolResult(message::ToolResult {
         call: call.clone(),
         provider: None,
@@ -189,7 +189,7 @@ fn test_tool_result_without_provider_id_sends_minted_call_id() {
 #[test]
 fn test_tool_result_preserves_text_and_json_types() {
     let content = message::UserContent::ToolResult(message::ToolResult {
-        call: message::ToolCallId::new_or_mint("call-123"),
+        call: message::ToolCallId::new_or_minted("call-123", 0),
         provider: message::ProviderCallId::new("call-123"),
         name: "get_weather".to_string(),
         content: vec![
@@ -240,11 +240,21 @@ fn test_tool_result_text_and_json_singletons_remain_scalar() {
             message::ToolResultContent::json(json!("structured string")),
             json!("structured string"),
         ),
+        // A scalar is wrapped as the generate wire wraps it: as a text
+        // block it would be a multimodal response, which the models refuse.
+        (
+            message::ToolResultContent::json(json!(42)),
+            json!({ "result": 42 }),
+        ),
+        (
+            message::ToolResultContent::json(json!([1, 2])),
+            json!({ "result": [1, 2] }),
+        ),
     ];
 
     for (tool_content, expected) in cases {
         let content = message::UserContent::ToolResult(message::ToolResult {
-            call: message::ToolCallId::new_or_mint("call-123"),
+            call: message::ToolCallId::new_or_minted("call-123", 0),
             provider: message::ProviderCallId::new("call-123"),
             name: "get_weather".to_string(),
             content: vec![tool_content],
@@ -261,31 +271,22 @@ fn test_tool_result_text_and_json_singletons_remain_scalar() {
 
 #[test]
 fn test_tool_result_rich_singletons_use_tagged_content() {
-    let cases = [
-        (
-            message::ToolResultContent::json(json!(["sunny", 72])),
-            json!([{
-                "type": "text",
-                "text": "[\"sunny\",72]"
-            }]),
+    let cases = [(
+        message::ToolResultContent::image_base64(
+            "image-data",
+            Some(message::ImageMediaType::PNG),
+            None,
         ),
-        (
-            message::ToolResultContent::image_base64(
-                "image-data",
-                Some(message::ImageMediaType::PNG),
-                None,
-            ),
-            json!([{
-                "type": "image",
-                "data": "image-data",
-                "mime_type": "image/png"
-            }]),
-        ),
-    ];
+        json!([{
+            "type": "image",
+            "data": "image-data",
+            "mime_type": "image/png"
+        }]),
+    )];
 
     for (tool_content, expected) in cases {
         let content = message::UserContent::ToolResult(message::ToolResult {
-            call: message::ToolCallId::new_or_mint("call-123"),
+            call: message::ToolCallId::new_or_minted("call-123", 0),
             provider: message::ProviderCallId::new("call-123"),
             name: "get_weather".to_string(),
             content: vec![tool_content],
@@ -303,7 +304,7 @@ fn test_tool_result_rich_singletons_use_tagged_content() {
 #[test]
 fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
     let tool_result = message::UserContent::ToolResult(message::ToolResult {
-        call: message::ToolCallId::new_or_mint("call-image"),
+        call: message::ToolCallId::new_or_minted("call-image", 0),
         provider: message::ProviderCallId::new("call-image"),
         name: "render".to_string(),
         content: vec![
@@ -342,8 +343,10 @@ fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
         .expect("request should build");
     let serialized = serde_json::to_value(request).expect("request should serialize");
 
+    // The result is a step of its own on the wire (not nested in a
+    // `user_input` step, which the API refuses on a round trip).
     assert_eq!(
-        serialized.pointer("/input/0/content/0"),
+        serialized.pointer("/input/0"),
         Some(&json!({
             "type": "function_result",
             "name": "render",
@@ -1025,5 +1028,120 @@ fn test_inline_citations_from_annotations() {
     assert_eq!(
         cited_text.as_deref(),
         Some("Hello[1](https://hello.example) world[2](https://example.com)")
+    );
+}
+
+/// A thought sent back to the wire carries its summary items tagged by
+/// `type`, as every content item on this wire is; untagged items are
+/// refused by the API on the round trip of a model's own reasoning.
+#[test]
+fn a_thought_summary_round_trips_with_its_type() {
+    let reasoning = message::AssistantContent::Reasoning(message::Reasoning::new_with_signature(
+        "add them",
+        Some("sig".to_owned()),
+    ));
+    let content = Content::try_from(reasoning).expect("reasoning converts");
+    let wire = serde_json::to_value(&content).expect("serializes");
+    assert_eq!(
+        wire,
+        json!({
+            "type": "thought",
+            "signature": "sig",
+            "summary": [{ "type": "text", "text": "add them" }]
+        })
+    );
+    let back: Content = serde_json::from_value(wire).expect("decodes");
+    assert!(matches!(back, Content::Thought(_)));
+}
+
+/// A signature-only thought — the wire's `thought_signature` with no
+/// summary text, which is what a streamed function-call turn carries —
+/// goes back as signature-only; an empty summary item is refused by the
+/// API ("Request contains an invalid argument").
+#[test]
+fn a_signature_only_thought_round_trips_without_a_summary() {
+    let reasoning = message::AssistantContent::Reasoning(message::Reasoning::new_with_signature(
+        "",
+        Some("sig".to_owned()),
+    ));
+    let content = Content::try_from(reasoning).expect("reasoning converts");
+    let wire = serde_json::to_value(&content).expect("serializes");
+    assert_eq!(wire, json!({ "type": "thought", "signature": "sig" }));
+}
+
+/// A tool round trip in client-managed history: the thought, the call and
+/// the result are steps of their own, in the message's order, as the API
+/// emits them and as it accepts them back; text stays in a grouped step.
+#[test]
+fn a_tool_round_trip_is_top_level_steps() {
+    let call = message::ToolCall::from_wire(
+        "fc_1",
+        message::ToolFunction::new("add".to_owned(), json!({"x": 17, "y": 25})),
+    );
+    let assistant = Message::Assistant {
+        id: None,
+        content: vec![
+            message::AssistantContent::Reasoning(message::Reasoning::new_with_signature(
+                "",
+                Some("sig".to_owned()),
+            )),
+            message::AssistantContent::text("Adding."),
+            message::AssistantContent::ToolCall(call.clone()),
+        ],
+    };
+    let result = Message::from(message::UserContent::tool_result_for(
+        call.id.clone(),
+        call.provider.clone(),
+        "add",
+        vec![message::ToolResultContent::json(json!({"sum": 42}))],
+    ));
+    let body = create_request_body(
+        "gemini-2.5-flash".to_owned(),
+        CompletionRequest {
+            record_telemetry_content: false,
+            model: None,
+            chat_history: vec![Message::user("Add 17 and 25."), assistant, result],
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        },
+        None,
+    )
+    .expect("the request builds");
+    let InteractionInput::Steps(steps) = body.input else {
+        panic!("steps");
+    };
+    let kinds: Vec<&str> = steps
+        .iter()
+        .map(|step| match step {
+            Step::UserInput { .. } => "user_input",
+            Step::ModelOutput { .. } => "model_output",
+            Step::Thought(_) => "thought",
+            Step::FunctionCall(_) => "function_call",
+            Step::FunctionResult(_) => "function_result",
+            Step::CodeExecutionCall(_)
+            | Step::CodeExecutionResult(_)
+            | Step::UrlContextCall(_)
+            | Step::UrlContextResult(_)
+            | Step::GoogleSearchCall(_)
+            | Step::GoogleSearchResult(_)
+            | Step::McpServerToolCall(_)
+            | Step::McpServerToolResult(_)
+            | Step::FileSearchResult(_) => "other",
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            "user_input",
+            "thought",
+            "model_output",
+            "function_call",
+            "function_result"
+        ]
     );
 }

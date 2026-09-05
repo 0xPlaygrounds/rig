@@ -14,7 +14,7 @@ use crate::providers::internal::wire;
 use crate::providers::openai::completion::{
     CompletionModelOptions, GenericCompletionModel, OpenAICompatibleProvider, Usage,
 };
-use crate::streaming::{self, RawStreamingResult, StreamFinal};
+use crate::streaming::{self, StreamFinal};
 
 // ================================================================
 // OpenAI Completion Streaming API
@@ -189,8 +189,8 @@ struct StreamingCompletionChunk<U = Usage> {
     usage: Option<U>,
     /// Provider-specific top-level chunk fields. Chat-completions-compatible
     /// services add fields independently (`service_tier`, `provider`, and
-    /// similar metadata), and `raw_stream` must not erase them merely because
-    /// the shared wire shape does not know their names yet.
+    /// similar metadata), and the terminal record must not erase them merely
+    /// because the shared wire shape does not know their names yet.
     #[serde(flatten)]
     additional_params: serde_json::Map<String, serde_json::Value>,
 }
@@ -200,10 +200,8 @@ struct StreamingCompletionChunk<U = Usage> {
 /// Mistral and DeepSeek, substitute their own via
 /// [`OpenAICompatibleProvider::StreamingUsage`]).
 ///
-/// This is the provider-native terminal record yielded by
-/// [`GenericCompletionModel::raw_stream`]. The normalized path maps it into a
-/// [`StreamFinal`] exactly once, through
-/// [`normalize_stream`](crate::streaming::normalize_stream).
+/// This is the provider-native terminal record the adapter maps into a
+/// [`StreamFinal`] exactly once (and serializes onto [`StreamFinal::raw`]).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse<U = Usage> {
     /// Usage reported on the stream's terminal event.
@@ -213,8 +211,8 @@ pub struct StreamingCompletionResponse<U = Usage> {
     /// Normalized out of the OpenAI-compatible `finish_reason` vocabulary, with
     /// unrecognized values preserved verbatim. The `Stop` -> `ToolCalls`
     /// upgrade is deliberately *not* applied here: it belongs to
-    /// [`normalize_stream`](crate::streaming::normalize_stream), the only place
-    /// that sees which tool calls the stream actually emitted.
+    /// [`StreamingCompletionResponse`](crate::streaming::StreamingCompletionResponse),
+    /// the only place that sees which tool calls the stream actually emitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<crate::completion::FinishReason>,
     /// Provider-assigned response identifier, when the stream emitted one.
@@ -230,8 +228,8 @@ pub struct StreamingCompletionResponse<U = Usage> {
     pub provider_request_id: Option<String>,
     /// Token log probabilities accumulated from all primary-choice chunks.
     ///
-    /// This stays provider-native on [`GenericCompletionModel::raw_stream`]:
-    /// normalized completions do not currently model log probabilities, just
+    /// This stays provider-native (on [`StreamFinal::raw`]): normalized
+    /// completions do not currently model log probabilities, just
     /// as the blocking normalized path omits `Choice::logprobs` while its raw
     /// response retains them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -279,22 +277,24 @@ impl<U> StreamingCompletionResponse<U> {
     }
 }
 
-/// Normalize an OpenAI-compatible streaming terminal record.
-///
-/// As on the unary path, the provider descriptor name is an *input* rather than
-/// a constant: this terminal record is shared by every OpenAI-compatible
-/// provider, so baking in `"openai"` here would mislabel Groq, Together,
-/// DeepSeek and the rest.
-impl<U> From<(&str, StreamingCompletionResponse<U>)> for StreamFinal
+impl<U> StreamingCompletionResponse<U>
 where
     U: Into<crate::completion::Usage>,
 {
-    fn from((provider, response): (&str, StreamingCompletionResponse<U>)) -> Self {
-        StreamFinal::new(provider, response.usage.into())
-            .with_optional_finish_reason(response.finish_reason)
-            .with_optional_response_id(response.response_id)
-            .with_optional_provider_request_id(response.provider_request_id)
-            .with_optional_model(response.model)
+    /// Normalize this OpenAI-compatible streaming terminal record — the
+    /// adapter's own terminal mapping, like every other provider's, rather
+    /// than a conversion on the record type.
+    ///
+    /// As on the unary path, the provider descriptor name is an *input*
+    /// rather than a constant: this terminal record is shared by every
+    /// OpenAI-compatible provider, so baking in `"openai"` here would
+    /// mislabel Groq, Together, DeepSeek and the rest.
+    pub fn into_stream_final(self, provider: &str) -> StreamFinal {
+        StreamFinal::new(provider, self.usage.into())
+            .with_optional_finish_reason(self.finish_reason)
+            .with_optional_response_id(self.response_id)
+            .with_optional_provider_request_id(self.provider_request_id)
+            .with_optional_model(self.model)
     }
 }
 
@@ -307,20 +307,11 @@ where
         + crate::wasm_compat::WasmCompatSend
         + 'static,
 {
-    /// Open a chat-completions stream whose terminal record stays
-    /// provider-native.
-    ///
-    /// This is the escape hatch for provider-specific terminal fields rig does
-    /// not normalize. It shares the request builder, transport, telemetry, and
-    /// error handling with
-    /// [`CompletionModel::stream`](crate::completion::CompletionModel::stream),
-    /// which calls it and normalizes the terminal record — one network request
-    /// either way.
-    pub async fn raw_stream(
+    /// Open a chat-completions stream.
+    pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<RawStreamingResult<StreamingCompletionResponse<Ext::StreamingUsage>>, CompletionError>
-    {
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let preamble = completion_request.system_instructions().map(str::to_owned);
         let record_telemetry_content = completion_request.record_telemetry_content;
         let options = CompletionModelOptions {
@@ -391,11 +382,12 @@ where
 
         let client = self.client.clone();
 
-        tracing::Instrument::instrument(
+        let stream = tracing::Instrument::instrument(
             openai_chat_completions_compatible::send_compatible_raw_streaming_request(
                 client,
                 req,
                 Ext::REQUEST_ID_HEADER,
+                Ext::PROVIDER_NAME.to_owned(),
                 OpenAICompatibleProfile::<Ext, Ext::StreamingUsage> {
                     provider: self.client.provider().clone(),
                     emits_complete_single_chunk_tool_calls:
@@ -405,24 +397,11 @@ where
             ),
             span,
         )
-        .await
-    }
-
-    /// Open a chat-completions stream with a normalized terminal record.
-    ///
-    /// Delegates to [`raw_stream`](Self::raw_stream) and maps only its terminal
-    /// record; every incremental event passes through untouched.
-    pub(crate) async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let stream = self.raw_stream(completion_request).await?;
+        .await?;
 
         Ok(streaming::StreamingCompletionResponse::stream(
             Ext::PROVIDER_NAME,
-            streaming::normalize_stream(stream, |response| {
-                Ok((Ext::PROVIDER_NAME, response).into())
-            }),
+            stream,
         ))
     }
 }
@@ -440,17 +419,13 @@ where
     U: Clone
         + Default
         + Into<crate::completion::Usage>
+        + serde::Serialize
         + serde::de::DeserializeOwned
         + crate::wasm_compat::WasmCompatSend
         + 'static,
 {
     type Usage = U;
     type Detail = serde_json::Value;
-    type FinalResponse = StreamingCompletionResponse<Self::Usage>;
-
-    fn stamp_request_id(response: &mut Self::FinalResponse, request_id: String) {
-        response.provider_request_id = Some(request_id);
-    }
 
     fn classify_chunk(
         &self,
@@ -505,19 +480,24 @@ where
         })
     }
 
-    fn build_final_response(
+    fn final_record(
         &self,
+        provider: &str,
         terminal: CompatibleTerminal<Self::Usage>,
-    ) -> Self::FinalResponse {
-        StreamingCompletionResponse::from_terminal(terminal)
+    ) -> Result<StreamFinal, CompletionError> {
+        let native = StreamingCompletionResponse::from_terminal(terminal);
+        // The provider's own terminal record rides along serialized — the
+        // same capture every unary `completion` performs before `normalize`.
+        let raw = serde_json::to_value(&native)?;
+        Ok(native.into_stream_final(provider).with_raw(raw))
     }
 
     fn detail_reasoning(
         &self,
         detail: &Self::Detail,
     ) -> Option<(
-        crate::streaming::StreamPartId,
-        Option<crate::streaming::WireId>,
+        crate::streaming::BlockId,
+        Option<String>,
         crate::message::ReasoningContent,
     )> {
         self.provider.streaming_detail_reasoning(detail)
@@ -543,12 +523,13 @@ where
     }
 }
 
-/// Send an OpenAI chat-completions streaming request, keeping the terminal
-/// record provider-native.
+/// Send an OpenAI chat-completions streaming request under the OpenAI
+/// profile, attributed to `provider`.
 pub(crate) async fn send_compatible_raw_streaming_request<T>(
     http_client: T,
     req: Request<Vec<u8>>,
-) -> Result<RawStreamingResult<StreamingCompletionResponse<Usage>>, CompletionError>
+    provider: String,
+) -> Result<streaming::StreamingResult, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
 {
@@ -556,6 +537,7 @@ where
         http_client,
         req,
         <crate::providers::openai::OpenAICompletions as OpenAICompatibleProvider>::REQUEST_ID_HEADER,
+        provider,
         OpenAICompatibleProfile::<crate::providers::openai::OpenAICompletions, Usage>::default(),
     )
     .await
@@ -577,14 +559,9 @@ where
     T: HttpClientExt + Clone + 'static,
 {
     let provider = provider.into();
-    let stream = send_compatible_raw_streaming_request(http_client, req).await?;
-
-    let mapper_provider = provider.clone();
+    let stream = send_compatible_raw_streaming_request(http_client, req, provider.clone()).await?;
     Ok(streaming::StreamingCompletionResponse::stream(
-        provider,
-        streaming::normalize_stream(stream, move |response| {
-            Ok((mapper_provider.as_str(), response).into())
-        }),
+        provider, stream,
     ))
 }
 

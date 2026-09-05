@@ -226,7 +226,8 @@ use candle_transformers::models::quantized_llama::ModelWeights as QuantizedLlama
 use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3;
 use candle_transformers::utils::apply_repeat_penalty;
 use rig_core::completion::{AssistantContent, CompletionResponse};
-use rig_core::streaming::{RawStreamingChoice, RawStreamingToolCall};
+use rig_core::message::ReasoningContent;
+use rig_core::streaming::{BlockId, MintKind, ToolCallEnd, non_empty_id};
 use tokenizers::tokenizer::DecodeStream;
 use tokenizers::{
     DecoderWrapper, ModelWrapper, NormalizerWrapper, PostProcessorWrapper, PreTokenizerWrapper,
@@ -595,15 +596,47 @@ impl InferredCompletion {
     }
 }
 
+/// One event of a local generation, as the generator hands it to the
+/// streaming adapter.
+///
+/// The in-process wire's typed frame: the generator sends these over the
+/// streaming channel and [`crate::stream_from_events`] drives them through
+/// the shared driver, which maps each onto the canonical stream vocabulary.
+#[derive(Debug, Clone, PartialEq)]
+pub enum GenerationEvent {
+    /// A fragment of visible text.
+    Text(String),
+    /// A whole tool call parsed out of the buffered turn, keyed by its
+    /// wire-issued id; arguments never stream.
+    ToolCall {
+        /// The call's block identity for the life of the stream.
+        id: BlockId,
+        /// The authoritative call: name, parsed arguments, and decorations.
+        end: ToolCallEnd,
+    },
+    /// A whole reasoning block parsed out of the buffered turn.
+    Reasoning {
+        /// The block identity: the wire id when the parse carried one, else
+        /// a per-stream constant minted identity.
+        id: BlockId,
+        /// The provider-issued reasoning id, when the parse carried one.
+        provider_id: Option<String>,
+        /// The block's content.
+        content: ReasoningContent,
+    },
+    /// The terminal record: generation finished.
+    Final(CandleCompletionResponse),
+}
+
 pub(crate) fn stream_generate(
     loaded: &LoadedModel,
     request: &CompletionRequest,
     cancellation: &CancellationSignal,
-    mut emit: impl FnMut(RawStreamingChoice<CandleCompletionResponse>) -> Result<(), CandleError>,
+    mut emit: impl FnMut(GenerationEvent) -> Result<(), CandleError>,
 ) -> Result<CandleCompletionResponse, CandleError> {
     if loaded.profile.definition.protocol != ConversationProtocol::Qwen3 {
         return generate(loaded, request, cancellation, |fragment| {
-            emit(RawStreamingChoice::Message(fragment))
+            emit(GenerationEvent::Text(fragment))
         });
     }
 
@@ -619,40 +652,35 @@ pub(crate) fn stream_generate(
     response.text = parsed.visible_text;
     for item in parsed.items {
         match item {
-            AssistantContent::Text(text) => emit(RawStreamingChoice::Message(text.text))?,
+            AssistantContent::Text(text) => emit(GenerationEvent::Text(text.text))?,
             AssistantContent::ToolCall(call) => {
                 // The envelope-parsed call always carries a wire-issued id
-                // (`from_wire` adopted it), so key the stream by it.
-                let mut raw = RawStreamingToolCall::new(
-                    call.id.as_str().to_owned(),
-                    call.function.name,
-                    call.function.arguments,
-                );
-                raw.call_id = None;
-                raw.signature = call.signature;
-                raw.additional_params = call.additional_params;
-                emit(RawStreamingChoice::ToolCall(raw))?;
+                // (`from_wire` adopted it), so key the stream by it; the
+                // same id is the durable tool id. `call_id` stays unset:
+                // local generation is a single-identifier wire.
+                let end = ToolCallEnd::whole(call.function.name, call.function.arguments)
+                    .with_tool_id(call.id.as_str())
+                    .with_signature(call.signature)
+                    .with_additional_params(call.additional_params);
+                emit(GenerationEvent::ToolCall {
+                    id: BlockId::wire(call.id),
+                    end,
+                })?;
             }
             AssistantContent::Reasoning(reasoning) => {
                 // Same constant-id full-block shape as the gemini adapter's
                 // signed-thinking chunk (#2258 F1), but benign here: candle
-                // never emits `ReasoningDelta`, so a full block under the
+                // never emits reasoning deltas, so a full block under the
                 // shared id has no delta buffer to replace-and-discard.
                 for content in reasoning.content {
-                    emit(RawStreamingChoice::Reasoning {
+                    emit(GenerationEvent::Reasoning {
                         // Local generation has no wire id; fall back to a
                         // per-stream constant minted identity.
-                        id: reasoning.id.clone().map_or(
-                            rig_core::streaming::StreamPartId::minted(
-                                rig_core::streaming::MintKind::Reasoning,
-                                0,
-                            ),
-                            rig_core::streaming::StreamPartId::wire,
-                        ),
-                        provider_id: reasoning
+                        id: reasoning
                             .id
                             .clone()
-                            .and_then(rig_core::streaming::WireId::new),
+                            .map_or(BlockId::minted(MintKind::Reasoning, 0), BlockId::wire),
+                        provider_id: reasoning.id.clone().and_then(non_empty_id),
                         content,
                     })?;
                 }

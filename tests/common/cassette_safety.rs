@@ -1,5 +1,7 @@
 //! Safety checks for committed cassette fixtures.
 
+use crate::cassettes::consumer_registry;
+
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
@@ -22,6 +24,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/openai/cassette",
         wrapper_names: &[
             "with_openai_cassette",
+            "with_openai_corpus_retrieval_cassette",
+            "with_openai_corpus_output_cassette",
+            "with_openai_corpus_host_cassette",
+            "with_openai_corpus_delta_cassette",
+            "with_openai_corpus_breadth_cassette",
             "with_openai_lifecycle_cassette",
             "with_openai_prompt_caching_cassette",
             "with_openai_completions_prompt_caching_cassette",
@@ -78,6 +85,18 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_anthropic_stop_sequence_cassette",
             "with_anthropic_empty_stop_cassette",
             "with_anthropic_reasoning_usage_cassette",
+            "with_anthropic_corpus_request_shape_cassette",
+            "with_anthropic_corpus_hooks_cassette",
+            "with_anthropic_corpus_serving_cassette",
+            "with_anthropic_corpus_outcome_cassette",
+            "with_anthropic_corpus_endings_cassette",
+            "with_anthropic_corpus_output_cassette",
+            "with_anthropic_corpus_host_cassette",
+            "with_anthropic_corpus_memory_cassette",
+            "with_anthropic_corpus_shaping_cassette",
+            "with_anthropic_corpus_oracle_cassette",
+            "with_anthropic_corpus_causal_cassette",
+            "with_anthropic_corpus_layers_cassette",
         ],
     },
     ProviderCassetteSuite {
@@ -120,6 +139,9 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &[
             "with_gemini_prompt_caching_cassette",
             "with_gemini_cassette",
+            "with_gemini_corpus_retrieval_cassette",
+            "with_gemini_corpus_delta_cassette",
+            "with_gemini_corpus_breadth_cassette",
             "with_gemini_lifecycle_cassette",
             "with_gemini_turn_metadata_cassette",
             "with_gemini_cassette_bogus_key",
@@ -418,7 +440,20 @@ fn collect_yaml_files_in_dir(dir: &Path, files: &mut BTreeSet<PathBuf>) {
 
 fn collect_expected_cassette_paths() -> (BTreeSet<PathBuf>, Vec<String>) {
     let mut expected = BTreeSet::new();
+    let mut consumer_ids = BTreeSet::new();
     let mut failures = Vec::new();
+
+    for case in consumer_registry::cases() {
+        if !consumer_ids.insert(case.id) {
+            failures.push(format!("duplicate ECS consumer case {}", case.id));
+        }
+        if let Some(provider) = case.provider.cassette_provider() {
+            expected.insert(crate::cassettes::cassette_path(
+                provider,
+                &format!("ecs_consumer/{}", case.id),
+            ));
+        }
+    }
 
     for suite in PROVIDER_CASSETTE_SUITES {
         let source_dir = repo_path(suite.source_dir);

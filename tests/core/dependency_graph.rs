@@ -55,6 +55,74 @@ fn rig_core_is_runtime_and_transport_free() {
     assert_absent("rig-core", &["--all-features"], &["tokio", "reqwest"]);
 }
 
+/// The frozen runtime's default graph carries no runtime or transport
+/// either (tokio is optional, under `test-utils`), and the dependency runs
+/// one way: rig-core knows nothing of the crates that drive its handlers.
+#[test]
+fn rig_agent_default_graph_is_runtime_free() {
+    assert_absent("rig-agent", &[], &["tokio", "reqwest"]);
+    assert_absent("rig-effect-log", &[], &["tokio", "reqwest"]);
+    assert_absent(
+        "rig-core",
+        &["--all-features"],
+        &["rig-agent", "rig-effect-log", "rig-ecs"],
+    );
+}
+
+/// The recorder is a handler-side seam (`rig_core::serve::Recorder`) and
+/// the serving policy a serve-side type (`rig_core::serve::ServingPolicy`),
+/// so the log crate needs no runtime at all: registering a log's replayers
+/// on a driver is each runtime's own (`rig_agent::bus::replay`, rig-ecs's
+/// `Replay`). rig-effect-log depends on rig-core alone, under every
+/// feature.
+#[test]
+fn rig_effect_log_depends_on_rig_core_only() {
+    let forbidden = ["rig-agent", "rig-ecs", "tokio", "reqwest", "bevy_ecs"];
+    assert_absent("rig-effect-log", &[], &forbidden);
+    assert_absent("rig-effect-log", &["--all-features"], &forbidden);
+    let names = normal_dependency_names("rig-effect-log", &[]);
+    assert!(
+        names.iter().any(|name| name == "rig-core"),
+        "rig-effect-log depends on rig-core"
+    );
+}
+
+/// rig-ecs is the bus in a Bevy `World`: on the rig side exactly rig-core
+/// and rig-effect-log (the `replay` feature), never rig-agent — its driver
+/// is a system, not a client of rig-agent's bus, and the agent half is a
+/// rewrite held to rig-agent's bytes by the corpus alone — never the `bevy` facade, no
+/// runtime, no transport, no MCP. Reflection and assets are features:
+/// `bevy_reflect` and `bevy_asset` are absent by default and present with
+/// every feature on (programme stage 6), and nothing else joins either way.
+#[test]
+fn rig_ecs_is_rig_core_and_bevy_only() {
+    let forbidden = ["rig-agent", "rig-rmcp", "rmcp", "bevy", "tokio", "reqwest"];
+    assert_absent("rig-ecs", &[], &forbidden);
+    assert_absent("rig-ecs", &[], &["bevy_reflect", "bevy_asset"]);
+    assert_absent("rig-ecs", &["--all-features"], &forbidden);
+    assert_absent("rig-ecs", &["--no-default-features"], &["rig-effect-log"]);
+    let names = normal_dependency_names("rig-ecs", &[]);
+    for required in [
+        "rig-core",
+        "rig-effect-log",
+        "bevy_ecs",
+        "bevy_tasks",
+        "bevy_app",
+    ] {
+        assert!(
+            names.iter().any(|name| name == required),
+            "`rig-ecs` must depend on `{required}`"
+        );
+    }
+    let with_features = normal_dependency_names("rig-ecs", &["--all-features"]);
+    for feature_dependency in ["bevy_reflect", "bevy_asset"] {
+        assert!(
+            with_features.iter().any(|name| name == feature_dependency),
+            "`rig-ecs` (--all-features) must depend on `{feature_dependency}`"
+        );
+    }
+}
+
 /// With default features on, and — the shape a host that steps `AgentRun`
 /// itself depends on — with them off: rig-agent is a runtime-free crate.
 #[test]

@@ -1,7 +1,8 @@
 use super::*;
 use crate::{
+    error::ErrorKind,
     message::Message,
-    streaming::{StreamFinal, StreamedAssistantContent, ToolCallDeltaContent},
+    streaming::{Delta, StreamEvent, StreamFinal},
 };
 use futures::StreamExt;
 
@@ -83,9 +84,9 @@ async fn completion_attaches_scripted_raw_and_reports_null_when_unscripted() {
     assert_eq!(model.requests().len(), 2);
 }
 
-/// The streaming half of the same contract: the scripted terminal goes
-/// through `normalize_stream`, so the terminal's `raw` is the scripted
-/// terminal record serialized (the mock's own terminal type is
+/// The streaming half of the same contract: the mock's adapter maps the
+/// scripted terminal onto the `Final` record, so the terminal's `raw` is
+/// the scripted terminal record serialized (the mock's own terminal type is
 /// `StreamFinal`).
 #[tokio::test]
 async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
@@ -162,22 +163,32 @@ async fn stream_yields_scripted_events_and_records_requests() {
 
     while let Some(item) = stream.next().await {
         match item.expect("stream event should succeed") {
-            StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
-            StreamedAssistantContent::ToolCallDelta { content, .. } => match content {
-                ToolCallDeltaContent::Name(name) => {
-                    saw_name_delta = name == "calculator";
-                }
-                ToolCallDeltaContent::Delta(arguments) => {
-                    saw_arguments_delta = arguments == "{\"x\":1}";
-                }
-            },
-            StreamedAssistantContent::ToolCall { tool_call, .. } => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: chunk },
+                ..
+            } => text.push_str(&chunk),
+            StreamEvent::BlockDelta {
+                delta: Delta::ToolName { name },
+                ..
+            } => {
+                saw_name_delta = name == "calculator";
+            }
+            StreamEvent::BlockDelta {
+                delta: Delta::ToolArguments { arguments },
+                ..
+            } => {
+                saw_arguments_delta = arguments == "{\"x\":1}";
+            }
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            } => {
                 saw_tool_call = tool_call
                     .provider
                     .as_ref()
                     .is_some_and(|provider| provider.call_id == "call_1");
             }
-            StreamedAssistantContent::Final(response) => {
+            StreamEvent::Final(response) => {
                 saw_final = matches!(
                     response.usage,
                     Usage {
@@ -213,8 +224,34 @@ async fn stream_error_event_is_returned() {
         .expect("stream should yield one event")
         .expect_err("scripted event should error");
 
-    assert!(matches!(
-        err,
-        CompletionError::ProviderError(message) if message == "boom"
-    ));
+    assert_eq!(err.kind, ErrorKind::Provider);
+    assert_eq!(err.message, "ProviderError: boom");
+}
+
+#[test]
+fn a_script_is_serde_in_and_serde_out() {
+    let turns = vec![
+        MockTurn::text("hello"),
+        MockTurn::tool_call("tc1", "add", serde_json::json!({"x": 1})),
+        MockTurn::error("boom"),
+    ];
+    let json = serde_json::to_string(&turns).expect("turns serialize");
+    let restored: Vec<MockTurn> = serde_json::from_str(&json).expect("turns deserialize");
+    assert_eq!(restored, turns);
+
+    let model = MockCompletionModel::from_turns(restored);
+    assert_eq!(model.script(), turns);
+    assert_eq!(model.stream_script(), Vec::<Vec<MockStreamEvent>>::new());
+
+    let stream_turns = vec![vec![
+        MockStreamEvent::Text("hi".into()),
+        MockStreamEvent::FinalResponse(super::super::streaming::mock_final(Usage::new())),
+    ]];
+    let json = serde_json::to_string(&stream_turns).expect("stream turns serialize");
+    let restored: Vec<Vec<MockStreamEvent>> =
+        serde_json::from_str(&json).expect("stream turns deserialize");
+    assert_eq!(restored, stream_turns);
+    let model = MockCompletionModel::from_stream_turns(restored);
+    assert_eq!(model.stream_script(), stream_turns);
+    assert!(model.script().is_empty());
 }

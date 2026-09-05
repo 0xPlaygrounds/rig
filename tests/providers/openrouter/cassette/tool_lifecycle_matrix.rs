@@ -41,7 +41,7 @@ use rig::completion::{
 };
 use rig::prelude::*;
 use rig::providers::openrouter;
-use rig::streaming::{StreamedAssistantContent, StreamingCompletionResponse};
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -287,7 +287,7 @@ async fn run_model(client: openrouter::Client, cell: Cell) -> Observation {
             },
         },
         Transport::Streaming => {
-            let raw = match model.raw_stream(request(&model, cell)).await {
+            let raw = match model.stream(request(&model, cell)).await {
                 Ok(raw) => raw,
                 Err(error) => {
                     return Observation {
@@ -296,19 +296,19 @@ async fn run_model(client: openrouter::Client, cell: Cell) -> Observation {
                     };
                 }
             };
-            let normalized = rig::streaming::normalize_stream(raw, |terminal| {
-                Ok::<_, rig::completion::CompletionError>(("openrouter", terminal).into())
-            });
-            let mut stream = StreamingCompletionResponse::stream("openrouter", normalized);
+            let mut stream = raw;
             let mut observation = Observation::default();
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
+                    Ok(StreamEvent::BlockEnd {
+                        block: Some(AssistantContent::ToolCall(tool_call)),
+                        ..
+                    }) => {
                         observation.names.push(tool_call.function.name);
                         observation.ids.push(tool_call.id.to_string());
                         observation.arguments.push(tool_call.function.arguments);
                     }
-                    Ok(StreamedAssistantContent::Final(terminal)) => {
+                    Ok(StreamEvent::Final(terminal)) => {
                         observation.finish_reason = terminal.finish_reason;
                     }
                     Ok(_) => {}

@@ -10,7 +10,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use super::{IndexStrategy, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{
-    embeddings::{Embedding, EmbeddingModel, EmbeddingModelHandle, distance::VectorDistance},
+    embeddings::{Embedding, EmbeddingModel, distance::VectorDistance},
     vector_store::request::Filter,
 };
 
@@ -348,6 +348,18 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
 #[derive(Eq, PartialEq)]
 struct RankingItem<'a, D: Serialize>(OrderedFloat<f64>, &'a String, &'a D, &'a String);
 
+/// The ranking's items best first — highest score, then document id for
+/// equal scores. A `BinaryHeap` iterates in heap order, which depends on
+/// the order its items arrived in (a `HashMap`'s iteration order, so a
+/// process's hash seed): a search that consumed the heap unsorted put the
+/// same documents into a request in a different order from one run to the
+/// next, and a recorded request replayed as a different one.
+fn ranked<D: Serialize + Eq>(docs: EmbeddingRanking<'_, D>) -> Vec<RankingItem<'_, D>> {
+    let mut items: Vec<RankingItem<'_, D>> = docs.into_iter().map(|Reverse(item)| item).collect();
+    items.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(right.1)));
+    items
+}
+
 impl<D: Serialize + Eq> Ord for RankingItem<'_, D> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0.cmp(&other.0)
@@ -363,7 +375,7 @@ impl<D: Serialize + Eq> PartialOrd for RankingItem<'_, D> {
 type EmbeddingRanking<'a, D> = BinaryHeap<Reverse<RankingItem<'a, D>>>;
 
 impl<D: Serialize> InMemoryVectorStore<D> {
-    pub fn index(self, model: impl EmbeddingModel + 'static) -> InMemoryVectorIndex<D> {
+    pub fn index<M: EmbeddingModel>(self, model: M) -> InMemoryVectorIndex<D, M> {
         InMemoryVectorIndex::new(model, self)
     }
 
@@ -384,25 +396,22 @@ impl<D: Serialize> InMemoryVectorStore<D> {
 /// queries into vectors.
 ///
 /// The model's concrete type is erased at construction into an
-/// [`EmbeddingModelHandle`], so the index's type names no provider. The index
+/// the model by type, so the index is generic over its provider. The index
 /// is a long-lived consumer of a model, not a place to swap one: the handle
 /// it holds is fixed for the index's lifetime, because an index populated
 /// under one model is only meaningful under that model.
-pub struct InMemoryVectorIndex<D: Serialize> {
-    model: EmbeddingModelHandle,
+pub struct InMemoryVectorIndex<D: Serialize, M> {
+    model: M,
     pub store: InMemoryVectorStore<D>,
 }
 
-impl<D: Serialize> InMemoryVectorIndex<D> {
-    pub fn new(model: impl EmbeddingModel + 'static, store: InMemoryVectorStore<D>) -> Self {
-        Self {
-            model: EmbeddingModelHandle::new(model),
-            store,
-        }
+impl<D: Serialize, M> InMemoryVectorIndex<D, M> {
+    pub fn new(model: M, store: InMemoryVectorStore<D>) -> Self {
+        Self { model, store }
     }
 
     /// The erased embedding model this index queries with.
-    pub fn model(&self) -> &EmbeddingModelHandle {
+    pub fn model(&self) -> &M {
         &self.model
     }
 
@@ -419,8 +428,8 @@ impl<D: Serialize> InMemoryVectorIndex<D> {
     }
 }
 
-impl<D: Serialize + WasmCompatSend + WasmCompatSync + Eq> VectorStoreIndex
-    for InMemoryVectorIndex<D>
+impl<D: Serialize + WasmCompatSend + WasmCompatSync + Eq, M: EmbeddingModel> VectorStoreIndex
+    for InMemoryVectorIndex<D, M>
 {
     type Filter = Filter<serde_json::Value>;
 
@@ -437,10 +446,10 @@ impl<D: Serialize + WasmCompatSend + WasmCompatSync + Eq> VectorStoreIndex
             req.threshold(),
         )?;
 
-        // Return n best
-        docs.into_iter()
-            // The distance should always be between 0 and 1, so distance should be fine to use as an absolute value
-            .map(|Reverse(RankingItem(distance, id, doc, _))| {
+        // The n best, best first.
+        ranked(docs)
+            .into_iter()
+            .map(|RankingItem(distance, id, doc, _)| {
                 Ok((
                     distance.0,
                     id.clone(),
@@ -466,8 +475,9 @@ impl<D: Serialize + WasmCompatSend + WasmCompatSync + Eq> VectorStoreIndex
             req.threshold(),
         )?;
 
-        docs.into_iter()
-            .map(|Reverse(RankingItem(distance, id, _, _))| Ok((distance.0, id.clone())))
+        ranked(docs)
+            .into_iter()
+            .map(|RankingItem(distance, id, _, _)| Ok((distance.0, id.clone())))
             .collect::<Result<Vec<_>, _>>()
     }
 }

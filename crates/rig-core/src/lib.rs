@@ -149,7 +149,9 @@ extern crate self as rig;
 pub mod audio_generation;
 pub mod client;
 pub mod completion;
+pub mod effect;
 pub mod embeddings;
+pub mod error;
 pub mod http_client;
 pub mod id;
 #[cfg(feature = "image")]
@@ -167,6 +169,7 @@ pub mod prelude;
 pub(crate) mod provider_response;
 pub mod providers;
 pub mod rerank;
+pub mod serve;
 
 pub mod streaming;
 #[cfg(any(test, feature = "test-utils"))]
@@ -184,6 +187,7 @@ pub mod ws_client;
 // Re-export commonly used types and traits
 pub use completion::message;
 pub use embeddings::Embed;
+pub use error::{ErrorKind, ErrorReport};
 pub use provider_response::ProviderResponseError;
 // `schemars`, `serde`, and `serde_json` are re-exported so macro-generated
 // code (and downstream crates) can resolve them through Rig instead of
@@ -192,6 +196,9 @@ pub use schemars;
 pub use serde;
 pub use serde_json;
 
+#[cfg(feature = "derive")]
+#[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
+pub use rig_derive::ContextValue;
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use rig_derive::Embed;
@@ -215,14 +222,9 @@ const _: fn() = || {
     fn assert_send_static<T: Send + 'static>() {}
     assert_send_sync_static::<tool::PortableDynamicTool>();
     assert_send_sync_static::<tool::ManagedToolToken>();
-    assert_send_sync_static::<streaming::StreamedAssistantContent>();
-    // The erased model every driver (futures agent, systems runtime, registry)
-    // holds, and the serializable identity it is resolved from.
-    assert_send_sync_static::<completion::ModelHandle>();
+    assert_send_sync_static::<streaming::StreamEvent>();
+    // The serializable identity a typed view is resolved from.
     assert_send_sync_static::<completion::ModelRef>();
-    // The erased tool set a driver forks and the per-turn catalog it pins.
-    assert_send_sync_static::<tool::ToolSet>();
-    assert_send_sync_static::<tool::ToolCatalog>();
     assert_send_sync_static::<tool::DynamicTool>();
     // One erased transport shared by every provider client a host builds.
     assert_send_sync_static::<http_client::BoxedHttpClient>();

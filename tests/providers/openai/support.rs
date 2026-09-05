@@ -77,6 +77,66 @@ pub(super) async fn with_openai_lifecycle_cassette<M, F, Fut>(
     cassette.finish_after_test(result).await;
 }
 
+/// The effect corpus's retrieval matrix (Matrix A):
+/// `tests/cassettes/openai/corpus_retrieval/`.
+pub(super) async fn with_openai_corpus_retrieval_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's provider-breadth matrix (Matrix N):
+/// `tests/cassettes/openai/corpus_breadth/`.
+pub(super) async fn with_openai_corpus_breadth_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's delta-wire matrix (Matrix K):
+/// `tests/cassettes/openai/corpus_delta/`.
+pub(super) async fn with_openai_corpus_delta_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's host-families matrix (Matrix I):
+/// `tests/cassettes/openai/corpus_host/`.
+pub(super) async fn with_openai_corpus_host_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's output-mode matrix (Matrix H):
+/// `tests/cassettes/openai/corpus_output/`.
+pub(super) async fn with_openai_corpus_output_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
 pub(super) async fn with_openai_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
     F: FnOnce(openai::Client) -> Fut,

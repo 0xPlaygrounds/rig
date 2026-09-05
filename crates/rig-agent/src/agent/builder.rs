@@ -1,36 +1,61 @@
-use std::{collections::HashMap, sync::Arc};
+//! Agent construction.
+//!
+//! `AgentBuilder::new(model)` creates the agent's bus and registers the
+//! model on it; every tool, memory backend and retrieval index added to the
+//! builder is registered as a handler under a generated key, and the agent
+//! keeps the [`BusDriver`](crate::bus::BusDriver) and drives it inline
+//! while a run is awaited. `AgentBuilder::over_bus` builds an agent over a
+//! host's bus instead: the host drives.
+//!
+//! The typestate tracks where tools come from:
+//! - `NoToolConfig`: no tools yet;
+//! - `WithBuilderTools`: tools added through the builder API;
+//! - `WithToolServerHandle`: a pre-existing shared [`ToolServerHandle`].
+//!
+//! Use one or the other, not both.
 
+use std::sync::{Arc, OnceLock};
+
+use crate::bus::{Bus, Dispatcher, Registrar};
+use rig_core::serve::ErasedHandler;
+use rig_core::serve::ServingPolicy;
+use rig_core::serve::adapters::{CompletionAdapter, MemoryAdapter, RetrieveAdapter};
+use rig_core::{
+    completion::{CompletionModel, Document, ModelRef},
+    effect::{HandlerKey, Key, family},
+    memory::ConversationMemory,
+    vector_store::{VectorSearchRequest, VectorStoreIndex, request::DynamicSearchFilter},
+    wasm_compat::{WasmCompatSend, WasmCompatSync},
+};
 use schemars::{JsonSchema, Schema, schema_for};
 
-use rig_core::{
-    memory::ConversationMemory,
-    message::ToolChoice,
-    vector_store::{VectorSearchRequest, VectorStoreIndexDyn},
-};
-
 use crate::{
-    agent::hook::{AgentHook, CompletionCall, CompletionCallAction, HookContext, RequestPatch},
-    completion::{CompletionModel, Document},
+    agent::{
+        AgentHook, CompletionCallAction, CompletionCallEvent as CompletionCall, HookContext,
+        RequestPatch,
+    },
+    completion::message::ToolChoice,
     tool::{
         DynamicTool, PortableDynamicTool, Tool, ToolSet,
         server::{ToolServer, ToolServerHandle},
     },
 };
 
-use super::{Agent, ModelHandle, OutputMode, completion::AgentConfig};
+use super::{Agent, OutputMode, completion::AgentConfig, drive::AgentBus};
 
-struct DynamicContext<I> {
+/// The `dynamic_context` hook: retrieves documents for the prompt through
+/// the agent's bus (an `IndexHandle` bound to the index registered at
+/// build) and patches them into the request as extra context.
+struct DynamicContext {
     samples: usize,
-    index: I,
+    /// The index's key, minted at build once the agent's owner is known.
+    key: Arc<OnceLock<Key<family::Retrieve>>>,
 }
 
-impl<I> AgentHook for DynamicContext<I>
-where
-    I: VectorStoreIndexDyn,
-{
+impl AgentHook for DynamicContext {
     async fn on_completion_call(
         &self,
-        _ctx: &HookContext,
+        ctx: &HookContext,
         event: CompletionCall<'_>,
     ) -> CompletionCallAction {
         let query = event.prompt.rag_text().or_else(|| {
@@ -43,12 +68,25 @@ where
         let Some(query) = query else {
             return CompletionCallAction::continue_run();
         };
+        let Some(key) = self.key.get() else {
+            return CompletionCallAction::stop(
+                "dynamic context is keyed at build; this hook was not built",
+            );
+        };
+        let index = match ctx.bind(key) {
+            Ok(index) => index,
+            Err(report) => {
+                return CompletionCallAction::stop(format!(
+                    "failed to bind the dynamic context index: {report}"
+                ));
+            }
+        };
 
         let request = VectorSearchRequest::builder()
             .query(query)
             .samples(self.samples as u64)
             .build();
-        match self.index.top_n(request).await {
+        match index.top_n::<serde_json::Value>(request).await {
             Ok(results) => CompletionCallAction::patch(RequestPatch::new().extra_context(
                 results.into_iter().map(|(_, id, value)| Document {
                     id,
@@ -64,93 +102,88 @@ where
     }
 }
 
-/// Marker type indicating no tool configuration has been set yet.
-///
-/// This is the default state for a new `AgentBuilder`. From this state,
-/// you can either:
-/// - Add tools via `.tool()`, `.dynamic_tool()`, `.dynamic_tools()`, or
-///   `.retrieved_tools()` (transitions to `WithBuilderTools`)
-/// - Set a pre-existing `ToolServerHandle` via `.tool_server_handle()` (transitions to `WithToolServerHandle`)
-/// - Call `.build()` to create an agent with no tools
+/// Typestate: no tools configured.
 #[derive(Default)]
 pub struct NoToolConfig;
 
-/// Typestate indicating a pre-existing `ToolServerHandle` has been provided.
-///
-/// In this state, tool-adding methods (`.tool()`, `.dynamic_tool()`, etc.) are not available.
-/// The provided handle will be used directly when building the agent.
+/// Typestate: a pre-existing shared registry supplies the tools.
 pub struct WithToolServerHandle {
     handle: ToolServerHandle,
 }
 
-/// Typestate indicating tools are being configured via the builder API.
-///
-/// In this state, you can continue adding tools via `.tool()`,
-/// `.dynamic_tool()`, `.dynamic_tools()`, and `.retrieved_tools()`. When
-/// `.build()` is called, a new `ToolServer`
-/// will be created with all the configured tools.
+/// Typestate: tools added through the builder.
 pub struct WithBuilderTools(ToolServer);
 
-/// A builder for creating an agent
+/// Where the built agent's bus comes from.
+enum BusSource {
+    /// The agent's own bus, created at build with this sizing.
+    Owned(ServingPolicy),
+    /// A host's bus; the host drives it. The agent registers on it through
+    /// the host's registrar.
+    Host(Dispatcher, Registrar),
+}
+
+/// The default model: a model the builder registers under a label, or the
+/// key of one already registered on a host's bus.
+enum DefaultModel {
+    Labelled(ModelRef, ErasedHandler),
+    /// An explicit key and the host's line that asserted it.
+    Key(HandlerKey, &'static std::panic::Location<'static>),
+}
+
+/// Builds an [`Agent`].
 ///
-/// The builder uses a typestate pattern to enforce that tool configuration
-/// is done in a mutually exclusive way: either provide a pre-existing
-/// `ToolServerHandle`, or add tools via the builder API, but not both.
-///
-/// # Example
-/// ```no_run
-/// use rig_agent::AgentBuilder;
-/// use rig_core::{client::CompletionClient, providers::openai};
-/// use rig_reqwest::prelude::*;
-///
-/// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let openai = openai::Client::from_env()?;
-///
-/// let model = openai.completion_model(openai::GPT_5_2);
-///
-/// // Configure the agent
-/// let agent = AgentBuilder::new(model)
-///     .preamble("System prompt")
-///     .context("Context document 1")
-///     .context("Context document 2")
-///     .temperature(0.8)
-///     .build();
-/// # Ok(())
-/// # }
-/// ```
+/// Every handler the builder registers (the default model, model routes,
+/// memory, dynamic-context indexes) is minted a key under the agent's
+/// owner label at build — `<owner>/model:<label>`, `<owner>/memory`,
+/// `<owner>/retrieve:context#<n>` — so two agents on one host bus never
+/// overwrite each other's handlers. The owner is [`AgentBuilder::owner`]'s
+/// label, else `agent#<n>` from a per-process counter; an agent over a
+/// host's bus names its owner up front ([`AgentBuilder::over_bus`]).
 pub struct AgentBuilder<ToolState = NoToolConfig> {
-    /// Everything the built [`Agent`] carries unchanged.
     config: AgentConfig,
-    /// Tool configuration state (typestate pattern)
     tool_state: ToolState,
+    bus: BusSource,
+    owner: Option<String>,
+    model: DefaultModel,
+    /// Handlers to register at build, by key suffix.
+    pending: Vec<(String, ErasedHandler)>,
+    /// The dynamic-context hooks' key slots, by key suffix.
+    dynamic_contexts: Vec<(String, Arc<OnceLock<Key<family::Retrieve>>>)>,
+    memory: bool,
+    record_effects: bool,
+    record_events: bool,
+    retrieval_indexes: usize,
+    /// The labels `model_route` registered, in order.
+    routes: Vec<String>,
 }
 
 impl<ToolState> AgentBuilder<ToolState> {
-    /// Set the name of the agent
+    /// Name the agent.
     pub fn name(mut self, name: impl Into<String>) -> Self {
         self.config.name = Some(name.into());
         self
     }
 
-    /// Set the description of the agent
+    /// Describe the agent.
     pub fn description(mut self, description: impl Into<String>) -> Self {
         self.config.description = Some(description.into());
         self
     }
 
-    /// Set the system prompt
+    /// Set the system prompt.
     pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
         self.config.preamble = Some(preamble.into());
         self
     }
 
-    /// Remove the system prompt
+    /// Clear the system prompt.
     pub fn without_preamble(mut self) -> Self {
         self.config.preamble = None;
         self
     }
 
-    /// Append to the preamble of the agent
+    /// Append a paragraph to the system prompt.
     pub fn append_preamble(mut self, doc: &str) -> Self {
         self.config.preamble = Some(format!(
             "{}\n{}",
@@ -160,79 +193,92 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
-    /// Add a static context document to the agent
+    /// Add a static context document.
     pub fn context(mut self, doc: impl Into<String>) -> Self {
         self.config.static_context.push(Document {
             id: format!("static_doc_{}", self.config.static_context.len()),
             text: doc.into(),
-            additional_props: HashMap::new(),
+            additional_props: Default::default(),
         });
         self
     }
 
-    /// Add dynamic context retrieved from a vector store on every model call.
-    ///
-    /// This is a convenience wrapper around an internal completion-call hook.
-    /// The hook searches with the current prompt's first text part, falling back
-    /// to the latest textual history message, and appends the retrieved documents
-    /// to the request after static context. Retrieval and injected documents
-    /// follow registration order relative to application hooks, so register a
-    /// stop policy before this helper when it should prevent retrieval. A
-    /// retrieval failure stops the run before provider I/O.
-    pub fn dynamic_context<I>(self, samples: usize, index: I) -> Self
+    /// Retrieve `samples` documents from `index` for every prompt and add
+    /// them as context. The index is registered on the agent's bus.
+    pub fn dynamic_context<I, F>(mut self, samples: usize, index: I) -> Self
     where
-        I: VectorStoreIndexDyn + 'static,
+        I: VectorStoreIndex<Filter = F> + 'static,
+        F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
     {
-        self.add_hook(DynamicContext { samples, index })
+        let n = self.retrieval_indexes;
+        self.retrieval_indexes += 1;
+        let suffix = format!("retrieve:context#{n}");
+        let key = Arc::new(OnceLock::new());
+        self.pending.push((
+            suffix.clone(),
+            ErasedHandler::new(RetrieveAdapter::new(index)),
+        ));
+        self.dynamic_contexts.push((suffix, key.clone()));
+        self.add_hook(DynamicContext { samples, key })
     }
 
-    /// Set the tool choice for the agent
+    /// Retrieve `samples` documents for every prompt from `handler` — any
+    /// retrieval-family handler, such as a replayer answering a recorded
+    /// index from an effect log — registered under the agent's next
+    /// context key, as [`dynamic_context`](Self::dynamic_context) would
+    /// register an index.
+    pub fn dynamic_context_handler(
+        mut self,
+        samples: usize,
+        handler: impl rig_core::serve::Serve + 'static,
+    ) -> Self {
+        let n = self.retrieval_indexes;
+        self.retrieval_indexes += 1;
+        let suffix = format!("retrieve:context#{n}");
+        let key = Arc::new(OnceLock::new());
+        self.pending
+            .push((suffix.clone(), ErasedHandler::new(handler)));
+        self.dynamic_contexts.push((suffix, key.clone()));
+        self.add_hook(DynamicContext { samples, key })
+    }
+
+    /// Set the tool choice.
     pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.config.tool_choice = Some(tool_choice);
         self
     }
 
-    /// Set the default total model-call budget, including the initial call and
-    /// every retry or continuation. Zero permits no model calls.
+    /// Set the default maximum number of turns.
     pub fn default_max_turns(mut self, default_max_turns: usize) -> Self {
         self.config.max_turns = default_max_turns;
         self
     }
 
-    /// Set the temperature of the model
+    /// Set the sampling temperature.
     pub fn temperature(mut self, temperature: f64) -> Self {
         self.config.temperature = Some(temperature);
         self
     }
 
-    /// Set the maximum number of tokens for the completion
+    /// Set the output-token cap.
     pub fn max_tokens(mut self, max_tokens: u64) -> Self {
         self.config.max_tokens = Some(max_tokens);
         self
     }
 
-    /// Set additional parameters to be passed to the model
+    /// Set provider passthrough parameters.
     pub fn additional_params(mut self, params: serde_json::Value) -> Self {
         self.config.additional_params = Some(params);
         self
     }
 
-    /// Opt in or out of recording sensitive request, response, and tool content
-    /// on GenAI telemetry spans for requests made by this agent.
-    ///
-    /// Defaults to `false`. Enabling this can expose prompts, retrieved context,
-    /// tool results, model responses, and other sensitive or high-cardinality data
-    /// through OpenTelemetry span attributes, which can increase observability
-    /// backend storage and query costs. Only enable it when content telemetry is
-    /// acceptable for this agent. Structural metadata and token usage remain
-    /// available when this is disabled.
+    /// Record message content into telemetry spans.
     pub fn record_content_telemetry(mut self, enabled: bool) -> Self {
         self.config.record_telemetry_content = enabled;
         self
     }
 
-    /// Set the output schema for structured output. When set, providers that support
-    /// native structured outputs will constrain the model's response to match this schema.
+    /// Constrain the output to `T`'s JSON schema.
     pub fn output_schema<T>(mut self) -> Self
     where
         T: JsonSchema,
@@ -241,22 +287,13 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
-    /// Set the output schema for structured output. In comparison to `AgentBuilder::schema()` which requires type annotation, you can put in any schema you'd like here.
+    /// Constrain the output to a raw JSON schema.
     pub fn output_schema_raw(mut self, schema: Schema) -> Self {
         self.config.output_schema = Some(schema);
         self
     }
 
-    /// Set how `output_schema` is enforced — [`OutputMode::Tool`] (output as a
-    /// tool call, the default when the agent has tools), [`OutputMode::Native`]
-    /// (provider structured output), or [`OutputMode::Prompted`] (see #1928).
-    /// Has no effect unless `output_schema`/`output_schema_raw` is also set.
-    /// Apply a [`RunSpec`](crate::run::spec::RunSpec) — the protocol-facing half of
-    /// an agent definition as plain data (loaded from a file, built by a
-    /// host) — over this builder's current values. Model, tools, hooks and
-    /// memory are untouched; later builder calls override individual fields.
-    ///
-    /// Fails only if `spec.output_schema` is not a valid JSON schema.
+    /// Apply a run spec's settings.
     pub fn apply_spec(
         mut self,
         spec: &crate::run::spec::RunSpec,
@@ -265,43 +302,124 @@ impl<ToolState> AgentBuilder<ToolState> {
         Ok(self)
     }
 
+    /// Set the structured-output mode.
     pub fn output_mode(mut self, mode: OutputMode) -> Self {
         self.config.output_mode = mode;
         self
     }
 
-    /// Attach a [`ConversationMemory`] backend.
-    ///
-    /// When set, the agent will automatically load prior conversation history before
-    /// each prompt and append the new turn after a successful response. A
-    /// `conversation_id` must be supplied either via [`AgentBuilder::conversation`]
-    /// or per-request via [`crate::agent::AgentRunner::conversation`].
-    /// If neither is set, memory is silently bypassed.
+    /// Persist and load conversation history through `memory`, registered
+    /// on the agent's bus.
     pub fn memory<B>(mut self, memory: B) -> Self
     where
         B: ConversationMemory + 'static,
     {
-        self.config.memory = Some(Arc::new(memory));
+        self.pending.push((
+            "memory".to_owned(),
+            ErasedHandler::new(MemoryAdapter::new(memory)),
+        ));
+        self.memory = true;
         self
     }
 
-    /// Set a default conversation id used when none is provided per-request.
-    ///
-    /// Most agents are reused across users or threads; prefer setting the id
-    /// per-request via [`crate::agent::AgentRunner::conversation`].
+    /// Serve conversation memory from `handler` — any memory-family
+    /// handler, such as a replayer answering a recorded conversation from
+    /// an effect log — registered under the agent's memory key.
+    pub fn memory_handler(mut self, handler: impl rig_core::serve::Serve + 'static) -> Self {
+        self.pending
+            .push(("memory".to_owned(), ErasedHandler::new(handler)));
+        self.memory = true;
+        self
+    }
+
+    /// The conversation id memory loads and saves under.
     pub fn conversation(mut self, id: impl Into<rig_core::id::ConversationId>) -> Self {
         self.config.conversation_id = Some(id.into());
         self
     }
 
-    /// Attach a default hook to the agent. Each call appends to the agent's hook
-    /// stack; hooks run for every prompt request (unless more are added per
-    /// request) in registration order. How their results compose is
-    /// event-dependent: model selections and `ToolCall`/`ToolResult` rewrites
-    /// chain, `CompletionCall` request patches accumulate and merge, while
-    /// model-turn steering and observe-only/recovery events use
-    /// first-non-`Continue`-wins. See the [`hook`](crate::agent::hook) module
-    /// docs.
+    /// Register another model the run can select by label
+    /// (`ModelSelectionAction::select(label)`, `using_model(label)`).
+    pub fn model_route<M>(mut self, label: impl Into<ModelRef>, model: M) -> Self
+    where
+        M: CompletionModel + 'static,
+    {
+        let label = label.into();
+        self.routes.push(label.as_str().to_owned());
+        self.pending.push((
+            rig_core::effect::model_key(label.as_str()).to_string(),
+            ErasedHandler::new(CompletionAdapter::new(label, model)),
+        ));
+        self
+    }
+
+    /// Register a route served by `handler` — any completion-family
+    /// handler, such as a replayer answering a recorded route from an
+    /// effect log — under the agent's key for `label`, so the program's
+    /// required row names the route as [`model_route`](Self::model_route)
+    /// would.
+    pub fn model_route_handler(
+        mut self,
+        label: impl Into<ModelRef>,
+        handler: impl rig_core::serve::Serve + 'static,
+    ) -> Self {
+        let label = label.into();
+        self.routes.push(label.as_str().to_owned());
+        self.pending.push((
+            rig_core::effect::model_key(label.as_str()).to_string(),
+            ErasedHandler::new(handler),
+        ));
+        self
+    }
+
+    /// Name the agent's keys: `<owner>/model:<label>`, `<owner>/memory`,
+    /// `<owner>/retrieve:context#<n>`, and its own tools' `<owner>/tool:…`.
+    /// The default is the agent's [`name`](Self::name) when one is set —
+    /// so a named agent's keys are the same in every process, which a log
+    /// meant for replay elsewhere needs — else `agent#<n>` from a
+    /// per-process counter.
+    pub fn owner(mut self, label: impl Into<String>) -> Self {
+        self.owner = Some(label.into());
+        self
+    }
+
+    /// The bus sizing and serving policy this agent's bus is created with.
+    /// The default serves concurrently; the agent's tool concurrency is
+    /// governed by the runner, which the cassette corpus was recorded with
+    /// at its default of one. An agent over a host's bus reports the
+    /// default: the host sized its bus.
+    pub fn bus_config(&self) -> ServingPolicy {
+        match &self.bus {
+            BusSource::Owned(config) => *config,
+            BusSource::Host(..) => ServingPolicy::default(),
+        }
+    }
+
+    /// Size the agent's own bus. No effect on an agent over a host's bus.
+    pub fn configure_bus(mut self, bus_config: ServingPolicy) -> Self {
+        if let BusSource::Owned(config) = &mut self.bus {
+            *config = bus_config;
+        }
+        self
+    }
+
+    /// Record every dispatch into the agent's effect log
+    /// ([`Agent::effect_log`]).
+    pub fn record_effects(mut self) -> Self {
+        self.record_effects = true;
+        self
+    }
+
+    /// Record every dispatch *and* keep a streamed completion's events
+    /// verbatim on its record, so a golden pins the event sequence and a
+    /// replay re-emits the original delta boundaries.
+    pub fn record_effects_with_events(mut self) -> Self {
+        self.record_effects = true;
+        self.record_events = true;
+        self
+    }
+
+    /// Add a hook.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
         H: AgentHook + 'static,
@@ -310,51 +428,205 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
-    /// Carry the configuration into a builder with a new tool state.
     fn with_tool_state<S>(self, tool_state: S) -> AgentBuilder<S> {
         AgentBuilder {
             config: self.config,
             tool_state,
+            bus: self.bus,
+            owner: self.owner,
+            model: self.model,
+            pending: self.pending,
+            dynamic_contexts: self.dynamic_contexts,
+            memory: self.memory,
+            record_effects: self.record_effects,
+            record_events: self.record_events,
+            retrieval_indexes: self.retrieval_indexes,
+            routes: self.routes,
         }
     }
 
-    /// Assemble the [`Agent`], resolving the tool server handle from the final
-    /// tool state.
-    fn build_agent(self, handle: impl FnOnce(ToolState) -> ToolServerHandle) -> Agent {
+    fn build_agent(self, handle: impl FnOnce(ToolState, &str) -> ToolServerHandle) -> Agent {
+        /// A host's `over_bus` key that serves another family: the host's
+        /// programming error, reported at the host's line.
+        #[allow(
+            clippy::panic,
+            reason = "a wrong-family host key is a programming error at the host's call site, not a runtime condition; `build` stays infallible for every other case"
+        )]
+        fn host_key_of_another_family(
+            key: &HandlerKey,
+            caller: &'static std::panic::Location<'static>,
+            family: rig_core::effect::EffectFamily,
+        ) -> ! {
+            panic!(
+                "the model key `{key}` handed to `over_bus` at {caller} serves the {family} family, not a completion model"
+            )
+        }
+
+        let Self {
+            mut config,
+            tool_state,
+            bus,
+            owner,
+            model,
+            mut pending,
+            dynamic_contexts,
+            memory,
+            record_effects,
+            record_events,
+            retrieval_indexes: _,
+            routes,
+        } = self;
+        // The owner: the label given, else the agent's name (so a named
+        // agent's keys are the same in every process — what a log meant
+        // for replay elsewhere needs), else a per-process counter.
+        let owner = owner
+            .or_else(|| config.name.clone())
+            .unwrap_or_else(crate::agent::drive::default_owner);
+        config.bus = match bus {
+            BusSource::Owned(bus_config) => {
+                let (dispatcher, registrar, driver) = Bus::channel_with(bus_config);
+                AgentBus::owned(dispatcher, registrar, driver, owner, bus_config)
+            }
+            BusSource::Host(dispatcher, registrar) => AgentBus::over(dispatcher, registrar, owner),
+        };
+        config.model_key = match model {
+            DefaultModel::Labelled(label, handler) => {
+                let suffix = rig_core::effect::model_key(label.as_str()).to_string();
+                pending.insert(0, (suffix, handler));
+                config.bus.model_key(label.as_str())
+            }
+            DefaultModel::Key(key, caller) => {
+                // A host's key is asserted, not minted: check what it serves
+                // now, and fail at build — at the host's line — rather than
+                // at the first run. A key that serves another family is the
+                // host's programming error, not a runtime condition, so it
+                // is a panic (decided: `build()` stays infallible for every
+                // other case); a key nothing serves *yet* is legal — the
+                // host may register after building — and fails at the
+                // first run as `HandlerUnavailable`.
+                if let Some(descriptor) = config.bus.dispatcher().descriptor(&key)
+                    && descriptor.family.family()
+                        != <family::Completion as rig_core::effect::Family>::FAMILY
+                {
+                    host_key_of_another_family(&key, caller, descriptor.family.family());
+                }
+                Key::new_unchecked(key)
+            }
+        };
+        for (suffix, handler) in pending {
+            let key = config.bus.raw_key(&suffix);
+            crate::agent::drive::register_generated(config.bus.register_erased(key, handler));
+        }
+        for (suffix, slot) in dynamic_contexts {
+            // The slot is this builder's own, filled exactly once.
+            let key = config.bus.key(&suffix);
+            config.context_keys.push(key.clone());
+            let _ = slot.set(key);
+        }
+        config.route_keys = routes
+            .iter()
+            .map(|label| config.bus.model_key(label))
+            .collect();
+        if memory {
+            config.memory_key = Some(config.bus.key("memory"));
+        }
+        if record_effects {
+            crate::agent::drive::register_generated(config.bus.enable_recording(record_events));
+        }
+        let tool_server_handle = handle(tool_state, config.bus.owner());
+        tool_server_handle.attach(config.bus.registrar());
         Agent {
-            tool_server_handle: handle(self.tool_state),
-            config: self.config,
+            tool_server_handle,
+            config,
         }
     }
 }
 
 impl AgentBuilder<NoToolConfig> {
-    /// Create a new agent builder with the given model.
-    ///
-    /// The typed model is erased once, here, into a [`ModelHandle`]; the built
-    /// [`Agent`] carries no model type parameter.
+    /// An agent over its own bus, with `model` registered as the default
+    /// model (label `default`).
     pub fn new<M>(model: M) -> Self
     where
         M: CompletionModel + 'static,
     {
-        Self::from_model_handle(ModelHandle::new(model))
+        Self::named_model("default", model)
     }
 
-    /// Create an agent builder from an already-erased runtime model handle.
-    pub fn from_model_handle(model: ModelHandle) -> Self {
+    /// An agent over its own bus, with `model` registered under `label`.
+    pub fn named_model<M>(label: impl Into<ModelRef>, model: M) -> Self
+    where
+        M: CompletionModel + 'static,
+    {
+        Self::with_bus_config(ServingPolicy::default(), label, model)
+    }
+
+    /// An agent over its own bus created with `bus_config`, with `model`
+    /// registered under `label`.
+    pub fn with_bus_config<M>(
+        bus_config: ServingPolicy,
+        label: impl Into<ModelRef>,
+        model: M,
+    ) -> Self
+    where
+        M: CompletionModel + 'static,
+    {
+        let label = label.into();
+        let handler = ErasedHandler::new(CompletionAdapter::new(label.clone(), model));
+        Self::start(
+            BusSource::Owned(bus_config),
+            None,
+            DefaultModel::Labelled(label, handler),
+        )
+    }
+
+    /// An agent over a host's bus, named `owner` on it: the model under
+    /// `model` must be registered on the bus (the key is used as given),
+    /// and the host drives it. Everything else the builder registers
+    /// (memory, routes, tools) goes through `registrar`, keyed under
+    /// `owner`.
+    #[track_caller]
+    pub fn over_bus(
+        dispatcher: Dispatcher,
+        registrar: Registrar,
+        owner: impl Into<String>,
+        model: HandlerKey,
+    ) -> Self {
+        Self::start(
+            BusSource::Host(dispatcher, registrar),
+            Some(owner.into()),
+            DefaultModel::Key(model, std::panic::Location::caller()),
+        )
+    }
+
+    fn start(bus: BusSource, owner: Option<String>, model: DefaultModel) -> Self {
+        // The config's bus and model key are placeholders until build mints
+        // the real ones under the owner.
+        let (placeholder, placeholder_registrar, _driver) =
+            Bus::channel_with(ServingPolicy::default());
+        let key = Key::new_unchecked(match &model {
+            DefaultModel::Labelled(label, _) => HandlerKey::from(label.as_str()),
+            DefaultModel::Key(key, _) => key.clone(),
+        });
         Self {
-            config: AgentConfig::new(model),
+            config: AgentConfig::new(
+                AgentBus::over(placeholder, placeholder_registrar, String::new()),
+                key,
+            ),
             tool_state: NoToolConfig,
+            bus,
+            owner,
+            model,
+            pending: Vec::new(),
+            dynamic_contexts: Vec::new(),
+            memory: false,
+            record_effects: false,
+            record_events: false,
+            retrieval_indexes: 0,
+            routes: Vec::new(),
         }
     }
-}
 
-impl AgentBuilder<NoToolConfig> {
-    /// Set a pre-existing ToolServerHandle for the agent.
-    ///
-    /// After calling this method, tool-adding methods (`.tool()`, `.dynamic_tool()`, etc.)
-    /// will not be available. Use this when you want to share a `ToolServer`
-    /// between multiple agents or have pre-configured tools.
+    /// Use a pre-existing shared registry.
     pub fn tool_server_handle(
         self,
         handle: ToolServerHandle,
@@ -362,17 +634,11 @@ impl AgentBuilder<NoToolConfig> {
         self.with_tool_state(WithToolServerHandle { handle })
     }
 
-    /// Transition into the `WithBuilderTools` state with no tools yet; every
-    /// tool-adding method below is the `WithBuilderTools` method after this
-    /// one-way step.
     fn into_tool_builder(self) -> AgentBuilder<WithBuilderTools> {
         self.with_tool_state(WithBuilderTools(ToolServer::new()))
     }
 
-    /// Add a static tool to the agent.
-    ///
-    /// This transitions the builder to the `WithBuilderTools` state, where
-    /// additional tools can be added but `tool_server_handle()` is no longer available.
+    /// Add a typed tool.
     pub fn tool<T>(self, tool: T) -> AgentBuilder<WithBuilderTools>
     where
         T: Tool + 'static,
@@ -380,87 +646,100 @@ impl AgentBuilder<NoToolConfig> {
         self.into_tool_builder().tool(tool)
     }
 
-    /// Add a pre-erased tool — the extension point for adapters that implement
-    /// [`ErasedTool`](crate::tool::ErasedTool) directly (remote tool protocols
-    /// such as MCP, provided by companion crates). Transitions the builder to
-    /// the `WithBuilderTools` state.
-    pub fn erased_tool(
-        self,
-        tool: std::sync::Arc<dyn crate::tool::ErasedTool>,
-    ) -> AgentBuilder<WithBuilderTools> {
-        self.into_tool_builder().erased_tool(tool)
-    }
-
-    /// Build the agent with no tools configured.
-    ///
-    /// An empty `ToolServer` will be created for the agent.
+    /// Build the agent with no tools.
     pub fn build(self) -> Agent {
-        self.build_agent(|_| ToolServer::new().run())
+        self.build_agent(|_, owner| ToolServer::new().owner(owner).run())
     }
 }
 
-/// Generate the `NoToolConfig` tool methods that transition into the
-/// `WithBuilderTools` state by forwarding verbatim through
-/// [`AgentBuilder::into_tool_builder`] to the `WithBuilderTools` method of the
-/// same name. Doc comments live at each invocation; `tool` (generic over the
-/// tool type) and the single-tool `erased_tool` helper stay hand-written above.
-macro_rules! forward_into_tool_builder {
-    ($( $(#[$attr:meta])* $name:ident ( $($arg:ident : $ty:ty),* $(,)? ) );* $(;)?) => {
-        impl AgentBuilder<NoToolConfig> {
-            $(
-                $(#[$attr])*
-                pub fn $name(self, $($arg: $ty),*) -> AgentBuilder<WithBuilderTools> {
-                    self.into_tool_builder().$name($($arg),*)
-                }
-            )*
-        }
-    };
-}
+impl AgentBuilder<NoToolConfig> {
+    /// Add a runtime-defined tool.
+    pub fn dynamic_tool(self, tool: DynamicTool) -> AgentBuilder<WithBuilderTools> {
+        self.into_tool_builder().dynamic_tool(tool)
+    }
 
-forward_into_tool_builder! {
-    /// Add one runtime-defined tool to the agent.
-    dynamic_tool(tool: DynamicTool);
+    /// Add a portable tool.
+    pub fn portable_dynamic_tool(
+        self,
+        tool: PortableDynamicTool,
+    ) -> AgentBuilder<WithBuilderTools> {
+        self.into_tool_builder().portable_dynamic_tool(tool)
+    }
 
-    /// Add one context-free dynamic tool through the classic registry adapter.
-    portable_dynamic_tool(tool: PortableDynamicTool);
+    /// Add runtime-defined tools.
+    pub fn dynamic_tools(self, tools: Vec<DynamicTool>) -> AgentBuilder<WithBuilderTools> {
+        self.into_tool_builder().dynamic_tools(tools)
+    }
 
-    /// Add runtime-defined tools to the agent.
-    ///
-    /// This is useful when tool definitions and callbacks are constructed at runtime.
-    /// Transitions the builder to the `WithBuilderTools` state.
-    dynamic_tools(tools: Vec<DynamicTool>);
-
-
-    /// Configure tools retrieved from a vector index for each prompt.
-    ///
-    /// Transitions the builder to the `WithBuilderTools` state.
-    retrieved_tools(
+    /// Add retrievable tools chosen per request by `index`.
+    pub fn retrieved_tools<I, F>(
+        self,
         sample: usize,
-        index: impl VectorStoreIndexDyn + 'static,
-        toolset: ToolSet
-    );
+        index: I,
+        toolset: ToolSet,
+    ) -> AgentBuilder<WithBuilderTools>
+    where
+        I: VectorStoreIndex<Filter = F> + 'static,
+        F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        self.into_tool_builder()
+            .retrieved_tools(sample, index, toolset)
+    }
+
+    /// Add retrievable tools chosen per request by `handler`, a
+    /// retrieval-family handler such as a replayer answering a recorded
+    /// index; see [`ToolServer::retrieved_tools_handler`].
+    pub fn retrieved_tools_handler(
+        self,
+        sample: usize,
+        handler: impl rig_core::serve::Serve + 'static,
+        toolset: ToolSet,
+    ) -> AgentBuilder<WithBuilderTools> {
+        self.into_tool_builder()
+            .retrieved_tools_handler(sample, handler, toolset)
+    }
 }
 
 impl AgentBuilder<WithToolServerHandle> {
-    /// Build the agent using the pre-configured ToolServerHandle.
+    /// Build the agent over the shared registry.
     pub fn build(self) -> Agent {
-        self.build_agent(|state| state.handle)
+        self.build_agent(|state, _| state.handle)
     }
 }
 
 impl AgentBuilder<WithBuilderTools> {
-    /// Configure the [`ToolServer`] the builder is accumulating tools into. Every
-    /// tool-adding method here is one of its registrations, so registration
-    /// semantics live in exactly one place.
     fn map_server(self, register: impl FnOnce(ToolServer) -> ToolServer) -> Self {
-        let Self { config, tool_state } = self;
+        let Self {
+            config,
+            tool_state,
+            bus,
+            owner,
+            model,
+            pending,
+            dynamic_contexts,
+            memory,
+            record_effects,
+            record_events,
+            retrieval_indexes,
+            routes,
+        } = self;
         Self {
             config,
             tool_state: WithBuilderTools(register(tool_state.0)),
+            bus,
+            owner,
+            model,
+            pending,
+            dynamic_contexts,
+            memory,
+            record_effects,
+            record_events,
+            retrieval_indexes,
+            routes,
         }
     }
 
-    /// Add another static tool to the agent.
+    /// Add a typed tool.
     pub fn tool<T>(self, tool: T) -> Self
     where
         T: Tool + 'static,
@@ -468,46 +747,49 @@ impl AgentBuilder<WithBuilderTools> {
         self.map_server(|server| server.tool(tool))
     }
 
-    /// Add one runtime-defined tool to the agent.
+    /// Add a runtime-defined tool.
     pub fn dynamic_tool(self, tool: DynamicTool) -> Self {
         self.map_server(|server| server.dynamic_tool(tool))
     }
 
-    /// Add one context-free dynamic tool through the classic registry adapter.
+    /// Add a portable tool.
     pub fn portable_dynamic_tool(self, tool: PortableDynamicTool) -> Self {
         self.map_server(|server| server.portable_dynamic_tool(tool))
     }
 
-    /// Add runtime-defined tools to the agent.
+    /// Add runtime-defined tools.
     pub fn dynamic_tools(self, tools: Vec<DynamicTool>) -> Self {
         self.map_server(|server| server.dynamic_tools(tools))
     }
 
-    /// Add a pre-erased tool — the extension point for adapters that implement
-    /// [`ErasedTool`](crate::tool::ErasedTool) directly (remote tool protocols
-    /// such as MCP, provided by companion crates).
-    pub fn erased_tool(self, tool: std::sync::Arc<dyn crate::tool::ErasedTool>) -> Self {
-        self.map_server(|server| server.erased_tool(tool))
-    }
-
-    /// Configure tools retrieved from a vector index for each prompt.
-    pub fn retrieved_tools(
-        self,
-        sample: usize,
-        index: impl VectorStoreIndexDyn + 'static,
-        toolset: ToolSet,
-    ) -> Self {
+    /// Add retrievable tools chosen per request by `index`.
+    pub fn retrieved_tools<I, F>(self, sample: usize, index: I, toolset: ToolSet) -> Self
+    where
+        I: VectorStoreIndex<Filter = F> + 'static,
+        F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
+    {
         self.map_server(|server| server.retrieved_tools(sample, index, toolset))
     }
 
-    /// Build the agent with the configured tools.
-    ///
-    /// A new `ToolServer` will be created containing all tools added via
-    /// `.tool()`, `.dynamic_tool()`, `.dynamic_tools()`, and
-    /// `.retrieved_tools()`.
+    /// Add retrievable tools chosen per request by `handler`, a
+    /// retrieval-family handler such as a replayer answering a recorded
+    /// index; see [`ToolServer::retrieved_tools_handler`].
+    pub fn retrieved_tools_handler(
+        self,
+        sample: usize,
+        handler: impl rig_core::serve::Serve + 'static,
+        toolset: ToolSet,
+    ) -> Self {
+        self.map_server(|server| server.retrieved_tools_handler(sample, handler, toolset))
+    }
+
+    /// Build the agent with the builder's tools.
     pub fn build(self) -> Agent {
-        self.build_agent(|state| state.0.run())
+        // The builder's own registry takes the agent's owner, so a named
+        // agent's tool keys are stable too.
+        self.build_agent(|state, owner| state.0.owner(owner).run())
     }
 }
+
 #[cfg(test)]
 mod tests;

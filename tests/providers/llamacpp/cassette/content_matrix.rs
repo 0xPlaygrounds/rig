@@ -276,7 +276,7 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
                     model
                         .completion_request(Message::User {
                             content: vec![UserContent::ToolResult(ToolResult {
-                                call: ToolCallId::new_or_mint("call_long"),
+                                call: ToolCallId::new_or_minted("call_long", 0),
                                 provider: ProviderCallId::new("call_long"),
                                 name: "dump".to_string(),
                                 content: vec![ToolResultContent::text(long_output)],

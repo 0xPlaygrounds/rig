@@ -18,7 +18,7 @@ use rig::completion::{self, CompletionModel};
 use rig::message::{
     AssistantContent, Message, Reasoning, ReasoningContent, ToolResultContent, UserContent,
 };
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
+use rig::streaming::{BlockClose, BlockKind, Delta, StreamEvent, StreamedUserContent};
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
@@ -85,7 +85,7 @@ impl AgentHook for ReasoningDeltaHookRecorder {
             .lock()
             .expect("reasoning delta timeline lock")
             .push(ReasoningDeltaTimelineItem::Hook(ReasoningDeltaSnapshot {
-                id: event.id.to_owned(),
+                id: event.id.to_string(),
                 provider_id: event.provider_id.map(str::to_owned),
                 delta: event.delta.to_owned(),
                 aggregated: Some(event.aggregated.to_owned()),
@@ -121,16 +121,29 @@ pub(crate) async fn run_reasoning_delta_hook_streaming<M>(
         .stream()
         .await;
     let mut final_text = None;
+    // The provider reasoning id is announced once at the block's start; the
+    // deltas carry only the block id.
+    let mut block_provider_ids = HashMap::<String, String>::new();
 
     while let Some(item) = stream.next().await {
         match item.unwrap_or_else(|error| panic!("[{provider}] agent stream failed: {error}")) {
-            MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ReasoningDelta {
-                    id,
-                    provider_id,
-                    reasoning,
-                },
-            ) => probe.record_stream_delta(id, provider_id, reasoning),
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockStart {
+                id,
+                kind:
+                    BlockKind::Reasoning {
+                        provider_id: Some(provider_id),
+                    },
+            }) => {
+                block_provider_ids.insert(id.to_string(), provider_id);
+            }
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                id,
+                delta: Delta::Reasoning { text: reasoning },
+            }) => {
+                let id = id.to_string();
+                let provider_id = block_provider_ids.get(&id).cloned();
+                probe.record_stream_delta(id, provider_id, reasoning);
+            }
             MultiTurnStreamItem::FinalResponse(response) => {
                 final_text = Some(response.output().to_owned());
             }
@@ -279,17 +292,27 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
 
     while let Some(chunk) = stream.next().await {
         match chunk {
-            Ok(StreamedAssistantContent::Text(text)) => {
-                streamed_text.push_str(&text.text);
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            }) => {
+                streamed_text.push_str(&text);
             }
-            Ok(StreamedAssistantContent::Reasoning { reasoning, .. }) => {
+            Ok(StreamEvent::BlockEnd {
+                end: BlockClose::Reasoning { .. },
+                block: Some(AssistantContent::Reasoning(reasoning)),
+                ..
+            }) => {
                 saw_reasoning_block = true;
                 assistant_content.push(AssistantContent::Reasoning(reasoning));
             }
-            Ok(StreamedAssistantContent::ReasoningDelta { reasoning, .. }) => {
-                reasoning_delta_text.push_str(&reasoning);
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Reasoning { text },
+                ..
+            }) => {
+                reasoning_delta_text.push_str(&text);
             }
-            Ok(StreamedAssistantContent::Final(response)) => inspect_final(&response),
+            Ok(StreamEvent::Final(response)) => inspect_final(&response),
             Ok(_) => {}
             Err(error) => panic!("Turn 1 stream error: {error}"),
         }
@@ -361,8 +384,11 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
 
     while let Some(chunk) = stream2.next().await {
         match chunk {
-            Ok(StreamedAssistantContent::Text(text)) => {
-                turn2_text.push_str(&text.text);
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            }) => {
+                turn2_text.push_str(&text);
             }
             Ok(_) => {}
             Err(error) => panic!("Turn 2 stream error: {error}"),
@@ -647,40 +673,59 @@ pub(crate) async fn collect_stream_stats(
 
     while let Some(item) = stream.next().await {
         match item {
+            Ok(MultiTurnStreamItem::ToolCall { ref tool_call, .. }) => {
+                stats
+                    .tool_calls_in_stream
+                    .push(tool_call.function.name.clone());
+                stats.events.push("tool_call");
+            }
             Ok(MultiTurnStreamItem::StreamAssistantItem(content)) => match content {
-                StreamedAssistantContent::Reasoning { ref reasoning, .. } => {
+                StreamEvent::BlockEnd {
+                    end: BlockClose::Reasoning { .. },
+                    block: Some(AssistantContent::Reasoning(ref reasoning)),
+                    ..
+                } => {
                     record_reasoning(&mut stats, reasoning, provider);
                 }
-                StreamedAssistantContent::ReasoningDelta { .. } => {
+                StreamEvent::BlockDelta {
+                    delta: Delta::Reasoning { .. },
+                    ..
+                } => {
                     stats.reasoning_delta_count += 1;
                     if stats.events.last() != Some(&"reasoning_delta") {
                         stats.events.push("reasoning_delta");
                     }
                 }
-                StreamedAssistantContent::ToolCall { ref tool_call, .. } => {
-                    stats
-                        .tool_calls_in_stream
-                        .push(tool_call.function.name.clone());
-                    stats.events.push("tool_call");
-                }
-                StreamedAssistantContent::Text(ref text) => {
+                StreamEvent::BlockDelta {
+                    delta: Delta::Text { ref text },
+                    ..
+                } => {
                     stats.text_chunks += 1;
-                    stats.final_turn_text.push_str(&text.text);
+                    stats.final_turn_text.push_str(text);
                     if stats.events.last() != Some(&"text") {
                         stats.events.push("text");
                     }
                 }
-                StreamedAssistantContent::ToolCallDelta { .. } => {
+                StreamEvent::BlockDelta {
+                    delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                    ..
+                } => {
                     if stats.events.last() != Some(&"tool_call_delta") {
                         stats.events.push("tool_call_delta");
                     }
                 }
-                StreamedAssistantContent::Final(_) => {
+                StreamEvent::Final(_) => {
                     stats.events.push("final");
                 }
-                StreamedAssistantContent::Unknown(_) => {
+                StreamEvent::Unknown(_) => {
                     stats.events.push("unknown");
                 }
+                StreamEvent::BlockStart { .. }
+                | StreamEvent::BlockDelta {
+                    delta: Delta::TextMeta { .. },
+                    ..
+                }
+                | StreamEvent::BlockEnd { .. } => {}
             },
             Ok(MultiTurnStreamItem::StreamUserItem(ref content)) => match content {
                 StreamedUserContent::ToolResult { .. } => {

@@ -1,0 +1,252 @@
+[
+  {
+    "boundary": "collect.outcome",
+    "effect": 0,
+    "data": {
+      "key": "maintenance/model:default",
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": "read",
+              "provider": {
+                "call_id": "read"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            },
+            {
+              "type": "toolcall",
+              "id": "search",
+              "provider": {
+                "call_id": "search"
+              },
+              "function": {
+                "name": "search_file",
+                "arguments": {
+                  "needle": "Helo"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 1,
+    "data": {
+      "key": "maintenance/tool:read_file",
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "path": "greeting.txt",
+                  "content": "Helo, Rig!\n"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "preview.primary",
+    "effect": 1,
+    "data": {
+      "source": "maintenance/tool:read_file",
+      "preview": {
+        "path": "greeting.txt",
+        "content": "Helo, Rig!\n"
+      }
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 2,
+    "data": {
+      "key": "maintenance/tool:search_file",
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "matches": [
+                    {
+                      "line": 1,
+                      "text": "Helo, Rig!"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 3,
+    "data": {
+      "key": "maintenance/model:default",
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": "proposal",
+              "provider": {
+                "call_id": "proposal"
+              },
+              "function": {
+                "name": "propose_edit",
+                "arguments": {
+                  "content": "Hello, Rig!\n"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 4,
+    "data": {
+      "key": "maintenance/tool:propose_edit",
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "proposed": "Hello, Rig!\n",
+                  "path": "greeting.txt"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "boundary": "collect.outcome",
+    "effect": 5,
+    "data": {
+      "key": "maintenance/model:default",
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": "write",
+              "provider": {
+                "call_id": "write"
+              },
+              "function": {
+                "name": "apply_edit",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "synthetic",
+          "model": null
+        }
+      }
+    }
+  },
+  {
+    "boundary": "approval",
+    "effect": null,
+    "data": {
+      "decision": "cancel"
+    }
+  },
+  {
+    "boundary": "run.terminal",
+    "effect": null,
+    "data": {
+      "failed": {
+        "failure": "cancelled",
+        "kind": "cancelled",
+        "retryable": false,
+        "message": "host cancelled while awaiting approval",
+        "code": null,
+        "http_status": null,
+        "refusal": false,
+        "source_chain": []
+      }
+    }
+  }
+]

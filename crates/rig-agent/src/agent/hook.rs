@@ -8,50 +8,54 @@
 //! message IDs. Use the direct completion or streaming APIs when a hook-like
 //! integration needs the provider's typed raw response.
 //!
-//! Hooks run in registration order through [`HookStack`]. Model selections,
-//! tool-call argument rewrites, and tool-result presentation rewrites chain into
-//! later hooks; completion-call [`RequestPatch`] values accumulate and merge.
-//! A [`ModelTurnAction::Retry`] or stop action short-circuits the remaining
-//! hooks for that event. Nested stacks obey the same rules as flat stacks,
-//! including preserving an argument rewrite when an inner stack later skips or
-//! stops.
+//! Hooks run in registration order through [`HookStack`]. Model selections
+//! chain into later hooks; completion-call [`RequestPatch`] values accumulate
+//! and merge; at the dispatch boundary each hook's [`DispatchAction::Patch`]
+//! is what the next hook sees, the first [`DispatchAction::Deny`] wins, and
+//! each [`OutcomeAction::Replace`] is what the next hook sees. A
+//! [`ModelTurnAction::Retry`] or stop action short-circuits the remaining
+//! hooks for that event. Nested stacks obey the same rules as flat stacks.
 //!
-//! Register observe-only hooks before steering hooks when every observation is
-//! required: a steering stop intentionally prevents later observers from
-//! running. Tool-result rewrites change the effective `presentation` sent to
-//! the model and recorded as result-content telemetry. The
-//! [`ToolResultEvent::raw_result`] and its [`ToolResultEvent::tool_context`]
-//! remain unchanged for policy decisions and execution-outcome metadata. A
-//! tool-result stop omits result content from telemetry.
+//! **Every effect the run performs crosses one boundary.** The engine
+//! dispatches its completions, tool calls, memory loads and appends, and
+//! retrievals on the agent's bus, and [`AgentHook::on_dispatch`] /
+//! [`AgentHook::on_outcome`] see each of them: a tool call is patched
+//! (rewritten arguments), skipped, or stopped *before* it runs and its result
+//! replaced or the run stopped *after*; a completion is patched or denied
+//! before and observed or replaced after, on either medium. The internal
+//! families (`Memory`, `Retrieve`, `Embed`, `Rerank`, `Custom`) are observe-only until
+//! a hook opts in through [`AgentHook::observes`]. Register observe-only
+//! hooks before steering hooks when every observation is required: a
+//! steering stop intentionally prevents later observers from running. A
+//! replaced tool result is what the model sees and what result-content
+//! telemetry records; execution-outcome metadata describes the result the
+//! run keeps.
 //!
-//! Blocking and streaming agents share model-turn, request, tool-call, and
-//! tool-result resolution. Streaming adds text, reasoning, and tool-call delta
+//! Blocking and streaming agents share model-turn, request, and dispatch
+//! resolution. Streaming adds text, reasoning, and tool-call delta
 //! observations, but shared lifecycle actions have identical semantics on both
-//! surfaces. Streamed deltas are provisional until the model turn is accepted;
-//! a retry is surfaced as
+//! surfaces (a streamed completion's outcome is its folded terminal). Streamed
+//! deltas are provisional until the model turn is accepted; a retry is
+//! surfaced as
 //! [`MultiTurnStreamItem::ModelTurnRetried`](crate::agent::MultiTurnStreamItem::ModelTurnRetried)
 //! so consumers can discard the rejected turn's deltas.
 //!
 //! # Example
 //!
 //! ```
-//! use rig_agent::agent::{
-//!     AgentHook, CompletionResponseEvent, HookContext, ObservationAction,
-//! };
+//! use rig_agent::agent::{AgentHook, HookContext, OutcomeAction, OutcomeEvent};
 //!
 //! struct ResponseLogger;
 //!
 //! impl AgentHook for ResponseLogger {
-//!     async fn on_completion_response(
-//!         &self,
-//!         _ctx: &HookContext,
-//!         event: CompletionResponseEvent<'_>,
-//!     ) -> ObservationAction {
-//!         println!(
-//!             "message {:?}: {:?} ({:?})",
-//!             event.identity.message_id, event.content, event.usage
-//!         );
-//!         ObservationAction::continue_run()
+//!     async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+//!         if let Some(response) = event.completion() {
+//!             println!(
+//!                 "message {:?}: {:?} ({:?})",
+//!                 response.message_id, response.choice, response.usage
+//!             );
+//!         }
+//!         OutcomeAction::proceed()
 //!     }
 //! }
 //! ```
@@ -193,10 +197,9 @@
 //! against a credential-free scripted model whose output genuinely depends on
 //! the cap, on both surfaces.
 
-use rig_core::id::InternalCallId;
-use std::collections::HashMap;
+use rig_core::streaming::BlockId;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{future::Future, sync::Arc};
+use std::{collections::HashMap, future::Future, sync::Arc};
 
 use rig_core::tool::context::TypeMap;
 use rig_core::{
@@ -205,8 +208,13 @@ use rig_core::{
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
+use rig_core::{
+    completion::ModelRef,
+    effect::{EffectFamily, EffectId, EffectKind, Outcome},
+    error::{ErrorKind, ErrorReport},
+};
+
 use crate::{
-    agent::ModelHandle,
     completion::{ResponseIdentity, Usage},
     json_utils,
     tool::{ToolContext, ToolOutput, ToolResult},
@@ -300,96 +308,22 @@ impl std::fmt::Debug for Scratchpad {
     }
 }
 
-type ToolCallRewriteFrameMap = HashMap<InternalCallId, Vec<Option<serde_json::Value>>>;
-
-// A nested `HookStack` can terminate after rewriting arguments, but the public
-// action only carries the terminal reason. Resolution frames transfer that
-// rewrite across the private erased-hook boundary. Call IDs keep concurrently
-// executing tool chains isolated, and the frame stack supports arbitrary nesting.
-#[derive(Default)]
-struct ToolCallRewriteFrames {
-    inner: std::sync::Mutex<ToolCallRewriteFrameMap>,
-}
-
-impl ToolCallRewriteFrames {
-    fn lock(&self) -> std::sync::MutexGuard<'_, ToolCallRewriteFrameMap> {
-        self.inner
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    fn begin(&self, internal_call_id: InternalCallId) -> ToolCallResolutionFrame<'_> {
-        self.lock().entry(internal_call_id).or_default().push(None);
-        ToolCallResolutionFrame {
-            frames: self,
-            internal_call_id,
-            active: true,
-        }
-    }
-
-    fn record(&self, internal_call_id: InternalCallId, rewrite: serde_json::Value) {
-        if let Some(frame) = self
-            .lock()
-            .get_mut(&internal_call_id)
-            .and_then(|frames| frames.last_mut())
-        {
-            *frame = Some(rewrite);
-        }
-    }
-
-    fn finish(&self, internal_call_id: InternalCallId) -> Option<serde_json::Value> {
-        let mut frames = self.lock();
-        let (rewrite, remove_entry) =
-            frames
-                .get_mut(&internal_call_id)
-                .map_or((None, false), |frames| {
-                    let rewrite = frames.pop().flatten();
-                    (rewrite, frames.is_empty())
-                });
-        if remove_entry {
-            frames.remove(&internal_call_id);
-        }
-        rewrite
-    }
-}
-
-impl std::fmt::Debug for ToolCallRewriteFrames {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ToolCallRewriteFrames")
-            .finish_non_exhaustive()
-    }
-}
-
-struct ToolCallResolutionFrame<'a> {
-    frames: &'a ToolCallRewriteFrames,
-    internal_call_id: InternalCallId,
-    active: bool,
-}
-
-impl ToolCallResolutionFrame<'_> {
-    fn finish(mut self) -> Option<serde_json::Value> {
-        self.active = false;
-        self.frames.finish(self.internal_call_id)
-    }
-}
-
-impl Drop for ToolCallResolutionFrame<'_> {
-    fn drop(&mut self) {
-        if self.active {
-            self.frames.finish(self.internal_call_id);
-        }
-    }
-}
-
 /// Run-scoped context supplied to hooks.
 #[derive(Debug)]
 pub struct HookContext {
+    /// The bus the run dispatches through, when it has one.
+    dispatcher: Option<crate::bus::Dispatcher>,
     run_id: RunId,
     turn: AtomicUsize,
     is_streaming: bool,
     agent_name: Option<String>,
     scratchpad: Scratchpad,
-    tool_call_rewrite_frames: ToolCallRewriteFrames,
+    /// A patch a stack accumulated before one of its hooks denied the
+    /// dispatch, keyed by the effect's id. `DispatchAction::Deny` carries only
+    /// the report, so the engine reads the effective effect (the arguments a
+    /// skipped tool result reports) from here; a nested stack records into
+    /// the same slot, so the salvage survives any nesting depth.
+    salvaged_patches: std::sync::Mutex<HashMap<EffectId, EffectKind>>,
     /// Every [`RunEntry`] visible to this run — the entries the run carried
     /// in (seeded by the driver at run start) followed by this run's appends,
     /// in append order.
@@ -400,17 +334,43 @@ pub struct HookContext {
 }
 
 impl HookContext {
-    pub(crate) fn new(is_streaming: bool, agent_name: Option<String>) -> Self {
+    pub(crate) fn new(
+        is_streaming: bool,
+        agent_name: Option<String>,
+        dispatcher: Option<crate::bus::Dispatcher>,
+    ) -> Self {
         Self {
+            dispatcher,
             run_id: RunId::new(),
             turn: AtomicUsize::new(0),
             is_streaming,
             agent_name,
             scratchpad: Scratchpad::default(),
-            tool_call_rewrite_frames: ToolCallRewriteFrames::default(),
+            salvaged_patches: std::sync::Mutex::new(HashMap::new()),
             entries: std::sync::Mutex::new(Vec::new()),
             pending_entries: std::sync::Mutex::new(Vec::new()),
         }
+    }
+
+    /// Record the patch a stack had accumulated when one of its hooks denied
+    /// the dispatch `id`. The innermost stack records first and wins: an
+    /// enclosing stack's earlier patch was already threaded into what the
+    /// inner stack saw, so the inner accumulation is the last rewrite before
+    /// the terminal action.
+    fn salvage_patch(&self, id: EffectId, kind: EffectKind) {
+        self.salvaged_patches
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .entry(id)
+            .or_insert(kind);
+    }
+
+    /// The effect as patched before the dispatch `id` was denied, if any.
+    pub(crate) fn take_salvaged_patch(&self, id: EffectId) -> Option<EffectKind> {
+        self.salvaged_patches
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&id)
     }
 
     /// Seed the entries a resumed run carried; called by the driver at run
@@ -435,6 +395,67 @@ impl HookContext {
 
     pub(crate) fn set_turn(&self, turn: usize) {
         self.turn.store(turn, Ordering::Relaxed);
+    }
+
+    /// The run's bus, for a hook binding a typed view; fails when the
+    /// context was built outside a run.
+    fn bus(&self) -> Result<&crate::bus::Dispatcher, ErrorReport> {
+        self.dispatcher.as_ref().ok_or_else(|| {
+            ErrorReport::new(
+                ErrorKind::BusClosed,
+                "this hook context was built outside a run and has no bus",
+            )
+        })
+    }
+
+    /// Bind a typed view to a key that carries its family (what the agent
+    /// and its registries mint), on the run's bus. The view is scoped to
+    /// this context by its lifetime: it routes through the run's driver and
+    /// cannot outlive the run — storing it in a field or moving it into a
+    /// spawned task does not compile. A dispatch a hook makes this way is
+    /// served and recorded but does not re-enter the hook stack. Fails when
+    /// the context was built outside a run.
+    #[track_caller]
+    pub fn bind<'ctx, F: rig_core::effect::Family>(
+        &'ctx self,
+        key: &rig_core::effect::Key<F>,
+    ) -> Result<RunHandle<'ctx, F>, ErrorReport> {
+        self.bus()?.bind(key).map(RunHandle::scoped)
+    }
+
+    /// Bind the retrieval index under `key` on the run's bus, for a hook
+    /// that retrieves for itself; see [`bind`](Self::bind) for the scope.
+    /// Fails when the context was built outside a run or `key` serves
+    /// another family.
+    pub fn index<'ctx>(
+        &'ctx self,
+        key: &rig_core::effect::HandlerKey,
+    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Retrieve>, ErrorReport> {
+        self.bus()?.handle(key).map(RunHandle::scoped)
+    }
+
+    /// [`index`](Self::index) for a completion model.
+    pub fn model<'ctx>(
+        &'ctx self,
+        key: &rig_core::effect::HandlerKey,
+    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Completion>, ErrorReport> {
+        self.bus()?.handle(key).map(RunHandle::scoped)
+    }
+
+    /// [`index`](Self::index) for a tool.
+    pub fn tool<'ctx>(
+        &'ctx self,
+        key: &rig_core::effect::HandlerKey,
+    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Tool>, ErrorReport> {
+        self.bus()?.handle(key).map(RunHandle::scoped)
+    }
+
+    /// [`index`](Self::index) for conversation memory.
+    pub fn memory<'ctx>(
+        &'ctx self,
+        key: &rig_core::effect::HandlerKey,
+    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Memory>, ErrorReport> {
+        self.bus()?.handle(key).map(RunHandle::scoped)
     }
 
     /// Stable run identifier.
@@ -528,22 +549,6 @@ impl HookContext {
             .find(|entry| entry.kind == kind)
             .cloned()
     }
-
-    fn begin_tool_call_resolution(
-        &self,
-        internal_call_id: InternalCallId,
-    ) -> ToolCallResolutionFrame<'_> {
-        self.tool_call_rewrite_frames.begin(internal_call_id)
-    }
-
-    fn record_tool_call_rewrite(
-        &self,
-        internal_call_id: InternalCallId,
-        rewrite: serde_json::Value,
-    ) {
-        self.tool_call_rewrite_frames
-            .record(internal_call_id, rewrite);
-    }
 }
 
 pub use crate::run::policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
@@ -607,11 +612,11 @@ pub struct ModelSelection<'a> {
     /// (in hook registration order), when any hook patched the request.
     pub request_patch: Option<&'a RequestPatch>,
     /// Model that executed the preceding issued attempt in this run, if any.
-    pub previous_model: Option<&'a ModelHandle>,
+    pub previous_model: Option<&'a ModelRef>,
     /// Runner default used as the initial candidate for this call.
-    pub default_model: &'a ModelHandle,
+    pub default_model: &'a ModelRef,
     /// Candidate after all earlier model-selection hooks.
-    pub selected_model: &'a ModelHandle,
+    pub selected_model: &'a ModelRef,
 }
 
 impl<'a> ModelSelection<'a> {
@@ -623,9 +628,9 @@ impl<'a> ModelSelection<'a> {
         prompt: &'a Message,
         history: &'a [Message],
         request_patch: Option<&'a RequestPatch>,
-        previous_model: Option<&'a ModelHandle>,
-        default_model: &'a ModelHandle,
-        selected_model: &'a ModelHandle,
+        previous_model: Option<&'a ModelRef>,
+        default_model: &'a ModelRef,
+        selected_model: &'a ModelRef,
     ) -> Self {
         Self {
             prompt,
@@ -636,38 +641,6 @@ impl<'a> ModelSelection<'a> {
             selected_model,
         }
     }
-}
-
-/// A completed model response, in canonical Rig form.
-///
-/// Fires once per accepted model turn on both drivers: after the unary call
-/// returns under [`AgentRunner::run`](crate::agent::AgentRunner::run), and
-/// after the whole stream is assembled under
-/// [`AgentRunner::stream`](crate::agent::AgentRunner::stream).
-/// [`HookContext::is_streaming`] tells them apart. Tool-only and
-/// reasoning-only turns fire it too; a turn recovered from an invalid tool
-/// call does not. The provider-assigned message id is
-/// [`identity`](Self::identity)`.message_id`.
-#[derive(Clone, Copy)]
-pub struct CompletionResponse<'a> {
-    /// Prompt sent for this turn.
-    pub prompt: &'a Message,
-    /// Canonical assistant content returned for this turn.
-    pub content: &'a Vec<AssistantContent>,
-    /// Usage reported for this turn.
-    pub usage: Usage,
-    /// This exact attempt's response identity metadata (message-scoped,
-    /// response-scoped, and transport request ids).
-    pub identity: &'a ResponseIdentity,
-    /// The provider's own response for this attempt — see
-    /// `CompletionResponse::raw` in `rig-core` for the exact meaning of the
-    /// payload: the value the model's inherent `raw_completion` /
-    /// `raw_stream` would have returned, serialized. Every provider seam
-    /// populates it; `Value::Null` only when the response was built without
-    /// a provider behind it (a hand-constructed model, a record persisted
-    /// before the field). On a retry this is the retried attempt's own,
-    /// never a previous attempt's.
-    pub raw: &'a serde_json::Value,
 }
 
 /// Medium-neutral accepted model-turn event.
@@ -684,7 +657,7 @@ pub struct ModelTurnFinished<'a> {
     /// Usage reported for the turn.
     pub usage: Usage,
     /// This exact attempt's response identity metadata, the same value the
-    /// preceding [`CompletionResponse`] event carried. On a retry, this is
+    /// preceding completion outcome ([`OutcomeEvent`]) carried. On a retry, this is
     /// the retried attempt's own identity, never a previous attempt's.
     pub identity: &'a ResponseIdentity,
     /// Why the provider stopped generating this attempt, normalized.
@@ -776,43 +749,6 @@ impl ModelTurnAction {
     }
 }
 
-/// Pre-execution tool event.
-#[derive(Clone, Copy)]
-pub struct ToolCall<'a> {
-    /// Tool name.
-    pub tool_name: &'a str,
-    /// Durable tool-call id: the provider's when it issued one, else rig's
-    /// minted handle.
-    pub tool_call_id: Option<&'a str>,
-    /// Rig correlation id.
-    pub internal_call_id: InternalCallId,
-    /// Effective JSON arguments, including earlier rewrites.
-    pub args: &'a str,
-}
-
-/// Post-execution tool event.
-///
-/// `presentation` contains the running presentation rewrite. `raw_result` and
-/// `tool_context` always contain the original execution data.
-#[derive(Clone, Copy)]
-pub struct ToolResultEvent<'a> {
-    /// Tool name.
-    pub tool_name: &'a str,
-    /// Durable tool-call id: the provider's when it issued one, else rig's
-    /// minted handle.
-    pub tool_call_id: Option<&'a str>,
-    /// Rig correlation id.
-    pub internal_call_id: InternalCallId,
-    /// Effective arguments used for execution.
-    pub args: &'a str,
-    /// Current model-visible presentation, including earlier rewrites.
-    pub presentation: &'a ToolOutput,
-    /// Immutable raw execution result.
-    pub raw_result: &'a ToolResult,
-    /// Per-dispatch context containing inbound data and result metadata.
-    pub tool_context: &'a ToolContext,
-}
-
 /// Streaming text delta.
 #[derive(Clone, Copy)]
 pub struct TextDelta<'a> {
@@ -825,10 +761,10 @@ pub struct TextDelta<'a> {
 /// Streaming reasoning delta.
 #[derive(Clone, Copy)]
 pub struct ReasoningDelta<'a> {
-    /// Rig-generated correlator for this reasoning part. It is stable across
-    /// the part's deltas and eventual completed reasoning item, but is never
-    /// persisted as a provider-issued reasoning id.
-    pub id: &'a str,
+    /// The stream block this reasoning part streams under: stable across
+    /// the part's deltas and its eventual completed reasoning item. A minted
+    /// block id is never persisted as a provider-issued reasoning id.
+    pub id: &'a BlockId,
     /// Provider-issued durable reasoning item id, when the wire provides one.
     pub provider_id: Option<&'a str>,
     /// Newly received reasoning fragment.
@@ -840,11 +776,11 @@ pub struct ReasoningDelta<'a> {
 /// Streaming tool-call delta.
 #[derive(Clone, Copy)]
 pub struct ToolCallDelta<'a> {
-    /// Rig correlation id — stable across this call's fragments and its
-    /// completed [`ToolCall`], unique per run. Provider-issued ids arrive on
-    /// the completed call; no provider id (and no stream-internal key) is
-    /// available or rendered at delta time.
-    pub internal_call_id: InternalCallId,
+    /// The stream block this fragment extends — stable across this call's
+    /// fragments and equal to the `block_id` of its completed tool call
+    /// (the [`DispatchEvent`] for the call).
+    /// Provider-issued ids arrive on the completed call.
+    pub block_id: &'a BlockId,
     /// Tool name on the first delta.
     pub tool_name: Option<&'a str>,
     /// Newly received argument fragment.
@@ -900,7 +836,7 @@ impl RunStartAction {
 ///
 /// Fired exactly once per run, after the outcome is decided — no retry,
 /// further turn, or tool execution will run. This is deliberately distinct
-/// from per-turn finishes ([`CompletionResponse`], [`ModelTurnFinished`]):
+/// from per-turn finishes ([`OutcomeEvent`], [`ModelTurnFinished`]):
 /// those can be followed by hook-driven retries or tool turns, while
 /// `RunSettled` cannot. On the streaming surface the success case coincides
 /// with the run's `FinalResponse` stream item; `RunSettled` additionally
@@ -926,14 +862,265 @@ pub enum StepEventKind {
     RunStart,
     RunSettled,
     CompletionCall,
-    CompletionResponse,
     ModelTurnFinished,
     InvalidToolCall,
-    ToolCall,
-    ToolResult,
     TextDelta,
     ReasoningDelta,
     ToolCallDelta,
+    /// `on_dispatch`/`on_outcome` for a completion effect.
+    CompletionDispatch,
+    /// `on_dispatch`/`on_outcome` for a tool-call effect.
+    ToolDispatch,
+    /// `on_dispatch`/`on_outcome` for an embedding effect (observe-only by
+    /// default: opt in through `observes`).
+    EmbedDispatch,
+    /// `on_dispatch`/`on_outcome` for a reranking effect (observe-only by
+    /// default).
+    RerankDispatch,
+    /// `on_dispatch`/`on_outcome` for a conversation-memory effect
+    /// (observe-only by default).
+    MemoryDispatch,
+    /// `on_dispatch`/`on_outcome` for a retrieval effect (observe-only by
+    /// default).
+    RetrieveDispatch,
+    /// `on_dispatch`/`on_outcome` for a custom effect (observe-only by
+    /// default).
+    CustomDispatch,
+}
+
+impl StepEventKind {
+    /// The dispatch-boundary event kind for an effect family.
+    pub const fn for_family(family: EffectFamily) -> Self {
+        match family {
+            EffectFamily::Completion => Self::CompletionDispatch,
+            EffectFamily::Tool => Self::ToolDispatch,
+            EffectFamily::Embed => Self::EmbedDispatch,
+            EffectFamily::Rerank => Self::RerankDispatch,
+            EffectFamily::Memory => Self::MemoryDispatch,
+            EffectFamily::Retrieve => Self::RetrieveDispatch,
+            EffectFamily::Custom => Self::CustomDispatch,
+        }
+    }
+}
+
+/// An effect about to be dispatched: what `on_dispatch` sees.
+#[derive(Clone, Copy)]
+pub struct DispatchEvent<'a> {
+    /// The dispatch's id, minted before the hook runs so an observation can
+    /// be correlated with the bus-tap record.
+    pub id: EffectId,
+    /// The effect, after any earlier hook's patch.
+    pub kind: &'a EffectKind,
+    /// The turn the effect belongs to.
+    pub turn: usize,
+    /// The block the effect answers, for a tool call the model emitted.
+    pub block_id: Option<&'a BlockId>,
+    /// The context a tool call runs with: beside the effect, never in it
+    /// (effect-log format 5), so the event carries it.
+    pub context: Option<&'a ToolContext>,
+}
+
+/// What a hook decides at the dispatch boundary. Closed on purpose.
+#[derive(Debug, Clone)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "a patch carries a whole effect by design; the common `Proceed` is returned by value once per dispatch"
+)]
+pub enum DispatchAction {
+    /// Dispatch as is.
+    Proceed,
+    /// Dispatch this effect instead. A patch must keep the family; the
+    /// engine rejects a family change as an internal error.
+    Patch(EffectKind),
+    /// Do not dispatch: the effect resolves failed with this report and
+    /// never reaches a handler. For a tool call a report of kind
+    /// `Cancelled` cancels the run; any other kind becomes the skipped
+    /// result the model sees. For a completion any report fails the turn.
+    Deny(ErrorReport),
+}
+
+impl DispatchAction {
+    /// Dispatch as is.
+    pub fn proceed() -> Self {
+        Self::Proceed
+    }
+
+    /// Dispatch this effect instead.
+    pub fn patch(kind: EffectKind) -> Self {
+        Self::Patch(kind)
+    }
+
+    /// Deny with a report.
+    pub fn deny(report: ErrorReport) -> Self {
+        Self::Deny(report)
+    }
+
+    /// Deny a tool call so the model sees it as skipped with `reason`.
+    pub fn skip(reason: impl Into<String>) -> Self {
+        Self::Deny(ErrorReport::new(ErrorKind::Other, reason))
+    }
+
+    /// Deny and cancel the run with `reason`.
+    pub fn stop(reason: impl Into<String>) -> Self {
+        Self::Deny(ErrorReport::new(ErrorKind::Cancelled, reason))
+    }
+
+    /// Patch a tool call's arguments, keeping its name and context.
+    /// `Proceed` when `kind` is not a tool call.
+    pub fn rewrite_tool_args(kind: &EffectKind, args: impl Into<serde_json::Value>) -> Self {
+        match kind {
+            EffectKind::ToolCall { name, .. } => Self::Patch(EffectKind::ToolCall {
+                name: name.clone(),
+                args: json_utils::serialize_json_value(&args.into()),
+            }),
+            _ => Self::Proceed,
+        }
+    }
+
+    /// Serialize replacement arguments and patch the tool call with them.
+    pub fn try_rewrite_tool_args<T: serde::Serialize>(
+        kind: &EffectKind,
+        args: &T,
+    ) -> Result<Self, serde_json::Error> {
+        Ok(Self::rewrite_tool_args(kind, serde_json::to_value(args)?))
+    }
+}
+
+impl<'a> DispatchEvent<'a> {
+    /// The tool name, for a tool-call effect.
+    pub fn tool_name(&self) -> Option<&'a str> {
+        match self.kind {
+            EffectKind::ToolCall { name, .. } => Some(name),
+            _ => None,
+        }
+    }
+
+    /// The JSON arguments (after earlier patches), for a tool-call effect.
+    pub fn tool_args(&self) -> Option<&'a str> {
+        match self.kind {
+            EffectKind::ToolCall { args, .. } => Some(args),
+            _ => None,
+        }
+    }
+
+    /// The dispatch context, for a tool-call effect.
+    pub fn tool_context(&self) -> Option<&'a ToolContext> {
+        self.context
+    }
+
+    /// The request about to be sent, for a completion effect.
+    pub fn completion_request(&self) -> Option<&'a rig_core::completion::CompletionRequest> {
+        match self.kind {
+            EffectKind::Completion { request, .. } => Some(request),
+            _ => None,
+        }
+    }
+}
+
+/// An effect's answer: what `on_outcome` sees.
+#[derive(Clone, Copy)]
+pub struct OutcomeEvent<'a> {
+    /// The dispatch's id.
+    pub id: EffectId,
+    /// The effect that was dispatched (after patches).
+    pub kind: &'a EffectKind,
+    /// The answer, after any earlier hook's replacement.
+    pub outcome: &'a Result<Outcome, ErrorReport>,
+    /// The turn the effect belongs to.
+    pub turn: usize,
+    /// The block the effect answered, for a tool call the model emitted.
+    pub block_id: Option<&'a BlockId>,
+    /// The context the tool answered with — the values it published —
+    /// for a tool call: beside the outcome, never in it (format 5).
+    pub context: Option<&'a ToolContext>,
+}
+
+/// What a hook decides after an effect resolved. Closed on purpose.
+#[derive(Debug, Clone)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "a replacement carries a whole outcome by design; the common `Proceed` is returned by value once per dispatch"
+)]
+pub enum OutcomeAction {
+    /// Keep the answer.
+    Proceed,
+    /// Use this answer instead.
+    Replace(Result<Outcome, ErrorReport>),
+}
+
+impl OutcomeAction {
+    /// Keep the answer.
+    pub fn proceed() -> Self {
+        Self::Proceed
+    }
+
+    /// Use this answer instead.
+    pub fn replace(outcome: Result<Outcome, ErrorReport>) -> Self {
+        Self::Replace(outcome)
+    }
+
+    /// Stop the run with `reason`: a replacement whose error is `Cancelled`
+    /// terminates the run instead of being delivered. This is how a hook
+    /// that observed an answer (a completion, a tool result) ends the run.
+    pub fn stop(reason: impl Into<String>) -> Self {
+        Self::Replace(Err(ErrorReport::new(ErrorKind::Cancelled, reason)))
+    }
+
+    /// Replace the model-visible output of a tool result, keeping the
+    /// result's status and the dispatch context. `Proceed` when `event`
+    /// did not resolve to a tool result.
+    pub fn rewrite_tool_output(event: &OutcomeEvent<'_>, output: ToolOutput) -> Self {
+        match event.outcome {
+            Ok(Outcome::ToolResult { result }) => Self::Replace(Ok(Outcome::ToolResult {
+                result: result.clone().with_output(output),
+            })),
+            _ => Self::Proceed,
+        }
+    }
+
+    /// [`OutcomeAction::rewrite_tool_output`] with a text output.
+    pub fn rewrite_tool_result(event: &OutcomeEvent<'_>, text: impl Into<String>) -> Self {
+        Self::rewrite_tool_output(event, ToolOutput::text(text))
+    }
+}
+
+impl<'a> OutcomeEvent<'a> {
+    /// The tool result this outcome carries, for a tool-call effect.
+    pub fn tool_result(&self) -> Option<&'a ToolResult> {
+        match self.outcome {
+            Ok(Outcome::ToolResult { result, .. }) => Some(result),
+            _ => None,
+        }
+    }
+
+    /// The dispatch context the tool answered with, for a tool-call effect.
+    pub fn tool_context(&self) -> Option<&'a ToolContext> {
+        self.context
+    }
+
+    /// The completion this outcome carries, for a completion effect.
+    pub fn completion(&self) -> Option<&'a rig_core::completion::CompletionResponse> {
+        match self.outcome {
+            Ok(Outcome::Completion(response)) => Some(response),
+            _ => None,
+        }
+    }
+
+    /// The tool name, for a tool-call effect.
+    pub fn tool_name(&self) -> Option<&'a str> {
+        match self.kind {
+            EffectKind::ToolCall { name, .. } => Some(name),
+            _ => None,
+        }
+    }
+
+    /// The effective JSON arguments, for a tool-call effect.
+    pub fn tool_args(&self) -> Option<&'a str> {
+        match self.kind {
+            EffectKind::ToolCall { args, .. } => Some(args),
+            _ => None,
+        }
+    }
 }
 
 pub use crate::run::patch::RequestPatch;
@@ -943,8 +1130,9 @@ pub use crate::run::patch::RequestPatch;
 pub enum ModelSelectionAction {
     /// Keep the candidate supplied to this hook.
     Continue,
-    /// Replace the candidate and pass it to later hooks.
-    Select(ModelHandle),
+    /// Replace the candidate and pass it to later hooks: the label of a
+    /// model registered on the agent's bus.
+    Select(ModelRef),
     /// Stop the run before request preparation or model execution.
     Stop(String),
 }
@@ -956,8 +1144,8 @@ impl ModelSelectionAction {
     }
 
     /// Selects `model` and passes it to later hooks.
-    pub fn select(model: ModelHandle) -> Self {
-        Self::Select(model)
+    pub fn select(model: impl Into<ModelRef>) -> Self {
+        Self::Select(model.into())
     }
 
     /// Stops the run before the pending model attempt.
@@ -997,86 +1185,6 @@ impl CompletionCallAction {
     }
 }
 
-/// Action for pre-tool hooks.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ToolCallAction {
-    /// Execute with the current arguments.
-    Run,
-    /// Execute with replacement arguments.
-    Rewrite(serde_json::Value),
-    /// Do not execute; return this feedback to the model.
-    Skip(String),
-    /// Stop the run.
-    Stop(String),
-}
-
-impl ToolCallAction {
-    /// Creates an action that executes the tool with the current arguments.
-    pub fn run() -> Self {
-        Self::Run
-    }
-
-    /// Creates an action that replaces the arguments passed to the tool.
-    pub fn rewrite(args: impl Into<serde_json::Value>) -> Self {
-        Self::Rewrite(args.into())
-    }
-
-    /// Serializes replacement arguments and creates a rewrite action.
-    ///
-    /// Returns an error when `args` cannot be represented as JSON.
-    pub fn try_rewrite<T: serde::Serialize>(args: &T) -> Result<Self, serde_json::Error> {
-        Ok(Self::Rewrite(serde_json::to_value(args)?))
-    }
-
-    /// Creates an action that skips execution and returns feedback to the model.
-    pub fn skip(reason: impl Into<String>) -> Self {
-        Self::Skip(reason.into())
-    }
-
-    /// Creates an action that stops the run before executing the tool.
-    pub fn stop(reason: impl Into<String>) -> Self {
-        Self::Stop(reason.into())
-    }
-}
-
-/// Action for post-tool hooks.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ToolResultAction {
-    /// Keep the current presentation.
-    Keep,
-    /// Replace the effective presentation sent to the model and result-content
-    /// telemetry.
-    Rewrite(ToolOutput),
-    /// Stop the run.
-    Stop(String),
-}
-
-impl ToolResultAction {
-    /// Creates an action that preserves the current model-visible presentation.
-    pub fn keep() -> Self {
-        Self::Keep
-    }
-
-    /// Creates an action that replaces the effective presentation sent to the
-    /// model and result-content telemetry.
-    ///
-    /// The tool's raw structured result remains unchanged.
-    pub fn rewrite(result: impl Into<String>) -> Self {
-        Self::Rewrite(ToolOutput::text(result))
-    }
-
-    /// Creates an action that replaces the effective model and telemetry
-    /// presentation with explicit structured or multimodal output.
-    pub fn rewrite_output(output: ToolOutput) -> Self {
-        Self::Rewrite(output)
-    }
-
-    /// Creates an action that stops the run after result handling.
-    pub fn stop(reason: impl Into<String>) -> Self {
-        Self::Stop(reason.into())
-    }
-}
-
 /// Action for observe-only lifecycle events.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ObservationAction {
@@ -1100,6 +1208,16 @@ impl ObservationAction {
 
 /// Per-run lifecycle observer and steerer.
 pub trait AgentHook: WasmCompatSend + WasmCompatSync {
+    /// The name the hook stack records for this hook — what an effect
+    /// log's header names as the program's hook stack, compared on replay.
+    /// `None` (the default) is the hook's type name, which is the whole
+    /// identity of a stateless hook. A hook whose decisions depend on a
+    /// value it carries names that value here, so two of the same type
+    /// with different state are two programs and not one.
+    fn name(&self) -> Option<String> {
+        None
+    }
+
     /// Runs once before the run's first model call, seeing the initial prompt.
     ///
     /// The hook may rewrite the prompt or stop the run before any provider
@@ -1132,7 +1250,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     /// Selects the model for the pending model-call boundary.
     ///
     /// Selection is synchronous, local, and non-blocking: it operates only on
-    /// already-constructed [`ModelHandle`] values and may read or write the
+    /// already-constructed [`ModelRef`] values and may read or write the
     /// run [`Scratchpad`], but must not perform blocking I/O. It runs once per
     /// `CallModel` step whose completion-call hooks proceed — including
     /// retries and post-tool calls — never after a completion-call stop, and
@@ -1160,18 +1278,6 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { CompletionCallAction::Continue }
     }
 
-    /// Observes a completed model response on either driver; see
-    /// [`CompletionResponse`] for when it fires.
-    ///
-    /// The default action continues the run.
-    fn on_completion_response(
-        &self,
-        _ctx: &HookContext,
-        _event: CompletionResponse<'_>,
-    ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
-        async { ObservationAction::Continue }
-    }
-
     /// Observes or rejects the content produced at the end of a model turn.
     ///
     /// A retry is valid only for a tool-free turn and consumes the existing
@@ -1196,34 +1302,6 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         _event: &InvalidToolCallContext,
     ) -> impl Future<Output = Option<InvalidToolCallAction>> + WasmCompatSend {
         async { None }
-    }
-
-    /// Runs before a valid tool call is executed.
-    ///
-    /// The hook may rewrite the current arguments, skip execution, or stop the
-    /// run. Rewrites in a [`HookStack`] are passed to subsequent hooks. The
-    /// default action executes with the current arguments.
-    fn on_tool_call(
-        &self,
-        _ctx: &HookContext,
-        _event: ToolCall<'_>,
-    ) -> impl Future<Output = ToolCallAction> + WasmCompatSend {
-        async { ToolCallAction::Run }
-    }
-
-    /// Runs after a tool call resolves and before its presentation is sent to the model.
-    ///
-    /// This includes framework-skipped calls whose tool body did not execute.
-    /// Rewrites affect the model-visible presentation and result-content
-    /// telemetry, but not the raw structured result or execution-outcome
-    /// metadata. A stop omits result content from telemetry. The default action
-    /// keeps the current presentation.
-    fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        _event: ToolResultEvent<'_>,
-    ) -> impl Future<Output = ToolResultAction> + WasmCompatSend {
-        async { ToolResultAction::Keep }
     }
 
     /// Observes a text delta from a streaming response.
@@ -1261,9 +1339,55 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { ObservationAction::Continue }
     }
 
-    /// Observation interest hint, primarily for high-frequency deltas.
-    fn observes(&self, _kind: StepEventKind) -> bool {
-        true
+    /// An effect is about to be dispatched on the agent's bus. Runs for
+    /// every family; `Memory`, `Retrieve`, `Embed`, `Rerank` and `Custom` dispatches
+    /// are observe-only unless the hook opts in through
+    /// [`AgentHook::observes`] for their [`StepEventKind`].
+    ///
+    /// Gated by [`AgentHook::observes`]: a hook whose `observes` answers
+    /// `false` for [`StepEventKind::CompletionDispatch`] or
+    /// [`StepEventKind::ToolDispatch`] is **not called** for those
+    /// dispatches and cannot deny, patch or replace them. A hook that
+    /// overrides `observes` to trim delta noise must keep the dispatch
+    /// kinds it means to gate.
+    fn on_dispatch(
+        &self,
+        _ctx: &HookContext,
+        _event: DispatchEvent<'_>,
+    ) -> impl Future<Output = DispatchAction> + WasmCompatSend {
+        async { DispatchAction::Proceed }
+    }
+
+    /// An effect resolved on the agent's bus. Gated by
+    /// [`AgentHook::observes`] like [`AgentHook::on_dispatch`].
+    fn on_outcome(
+        &self,
+        _ctx: &HookContext,
+        _event: OutcomeEvent<'_>,
+    ) -> impl Future<Output = OutcomeAction> + WasmCompatSend {
+        async { OutcomeAction::Proceed }
+    }
+
+    /// Observation interest hint, primarily for high-frequency deltas. The
+    /// internal `Memory`/`Retrieve`/`Embed`/`Rerank`/`Custom` dispatch events are
+    /// off by default: no hook saw those calls before the bus, so a hook
+    /// that wants to gate them opts in here.
+    ///
+    /// This is a gate, not a hint, for the dispatch-boundary events: a
+    /// `false` for `CompletionDispatch` or `ToolDispatch` silences
+    /// [`AgentHook::on_dispatch`] and [`AgentHook::on_outcome`] for that
+    /// family — the hook can no longer deny a tool call. An override that
+    /// only wants to drop deltas answers `false` for the delta kinds alone
+    /// and leaves every `*Dispatch` kind at the default.
+    fn observes(&self, kind: StepEventKind) -> bool {
+        !matches!(
+            kind,
+            StepEventKind::EmbedDispatch
+                | StepEventKind::RerankDispatch
+                | StepEventKind::MemoryDispatch
+                | StepEventKind::RetrieveDispatch
+                | StepEventKind::CustomDispatch
+        )
     }
 }
 
@@ -1274,8 +1398,8 @@ impl AgentHook for () {
 }
 
 /// The erased hook events whose dispatch is a plain `Box::pin(self.on_*(..))`.
-/// `model_select` (sync), `invalid_tool_call` (borrowed event), and `tool_call`
-/// (wraps the rewrite-salvage frame) are hand-written below.
+/// `model_select` (sync) and `invalid_tool_call` (borrowed event) are
+/// hand-written below.
 macro_rules! for_each_boxed_hook_event {
     ($m:ident) => {
         $m!(
@@ -1285,22 +1409,10 @@ macro_rules! for_each_boxed_hook_event {
             CompletionCallAction
         );
         $m!(
-            completion_response,
-            on_completion_response,
-            CompletionResponse,
-            ObservationAction
-        );
-        $m!(
             model_turn_finished,
             on_model_turn_finished,
             ModelTurnFinished,
             ModelTurnAction
-        );
-        $m!(
-            tool_result,
-            on_tool_result,
-            ToolResultEvent,
-            ToolResultAction
         );
         $m!(text_delta, on_text_delta, TextDelta, ObservationAction);
         $m!(
@@ -1357,11 +1469,16 @@ trait DynAgentHook: WasmCompatSend + WasmCompatSync {
         ctx: &'a HookContext,
         event: &'a InvalidToolCallContext,
     ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>>;
-    fn tool_call<'a>(
+    fn dispatch<'a>(
         &'a self,
         ctx: &'a HookContext,
-        event: ToolCall<'a>,
-    ) -> WasmBoxedFuture<'a, (ToolCallAction, Option<serde_json::Value>)>;
+        event: DispatchEvent<'a>,
+    ) -> WasmBoxedFuture<'a, DispatchAction>;
+    fn outcome<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: OutcomeEvent<'a>,
+    ) -> WasmBoxedFuture<'a, OutcomeAction>;
     for_each_boxed_hook_event!(erased_hook_decl);
     fn observes(&self, kind: StepEventKind) -> bool;
 }
@@ -1397,18 +1514,19 @@ where
     ) -> WasmBoxedFuture<'a, Option<InvalidToolCallAction>> {
         Box::pin(self.on_invalid_tool_call(ctx, event))
     }
-    fn tool_call<'a>(
+    fn dispatch<'a>(
         &'a self,
         ctx: &'a HookContext,
-        event: ToolCall<'a>,
-    ) -> WasmBoxedFuture<'a, (ToolCallAction, Option<serde_json::Value>)> {
-        Box::pin(async move {
-            // Only `on_tool_call` is public dispatch. A nested `HookStack`
-            // records terminal-path rewrite state into this private frame.
-            let frame = ctx.begin_tool_call_resolution(event.internal_call_id);
-            let action = self.on_tool_call(ctx, event).await;
-            (action, frame.finish())
-        })
+        event: DispatchEvent<'a>,
+    ) -> WasmBoxedFuture<'a, DispatchAction> {
+        Box::pin(self.on_dispatch(ctx, event))
+    }
+    fn outcome<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: OutcomeEvent<'a>,
+    ) -> WasmBoxedFuture<'a, OutcomeAction> {
+        Box::pin(self.on_outcome(ctx, event))
     }
     for_each_boxed_hook_event!(erased_hook_forward);
     fn observes(&self, kind: StepEventKind) -> bool {
@@ -1424,6 +1542,10 @@ where
 #[derive(Clone, Default)]
 pub struct HookStack {
     hooks: Vec<Arc<dyn DynAgentHook>>,
+    /// The name of every hook ([`AgentHook::name`], else its type name),
+    /// in registration order, nested stacks flattened: what an effect
+    /// log's header records as the program.
+    names: Vec<String>,
 }
 
 impl std::fmt::Debug for HookStack {
@@ -1431,6 +1553,18 @@ impl std::fmt::Debug for HookStack {
         f.debug_struct("HookStack")
             .field("len", &self.hooks.len())
             .finish()
+    }
+}
+
+/// `H`'s type name without its module path (generic arguments kept), the
+/// name a [`HookStack`] records for it.
+fn short_type_name<H>() -> &'static str {
+    let full = std::any::type_name::<H>();
+    let generics = full.find('<').unwrap_or(full.len());
+    let path = &full[..generics];
+    match path.rfind("::") {
+        Some(at) => &full[at + 2..],
+        None => full,
     }
 }
 
@@ -1448,8 +1582,30 @@ impl HookStack {
     }
 
     /// Appends a hook to the end of the stack's registration order.
+    ///
+    /// The stack names the hook by its type's last path segment (`Tagger`,
+    /// not `my_crate::hooks::Tagger`): the name is the program identity an
+    /// effect log records, and the same program compiled into another
+    /// crate — a test suite replaying a golden its producer recorded — must
+    /// name the same hooks.
     pub fn push<H: AgentHook + 'static>(&mut self, hook: H) {
+        // A nested stack contributes its members' names, flattened in
+        // order, so two stacks that run the same hooks name the same program.
+        match (&hook as &dyn std::any::Any).downcast_ref::<HookStack>() {
+            Some(nested) => self.names.extend(nested.names.iter().cloned()),
+            None => self.names.push(
+                hook.name()
+                    .unwrap_or_else(|| short_type_name::<H>().to_owned()),
+            ),
+        }
         self.hooks.push(Arc::new(hook));
+    }
+
+    /// Every hook's name ([`AgentHook::name`], else its type name), in
+    /// registration order (nested stacks flattened) — the program
+    /// identity an effect log records.
+    pub fn names(&self) -> Vec<String> {
+        self.names.clone()
     }
 
     /// Returns `true` when the stack contains no hooks.
@@ -1460,36 +1616,6 @@ impl HookStack {
     /// Returns the number of hooks in the stack.
     pub fn len(&self) -> usize {
         self.hooks.len()
-    }
-
-    /// Resolve the hook chain while retaining a rewrite accumulated before a
-    /// terminal action so the runner can report the effective arguments.
-    pub(crate) async fn resolve_tool_call(
-        &self,
-        ctx: &HookContext,
-        event: ToolCall<'_>,
-    ) -> (ToolCallAction, Option<serde_json::Value>) {
-        let mut effective = None;
-        for hook in &self.hooks {
-            let rewritten = effective.as_ref().map(json_utils::serialize_json_value);
-            let current = ToolCall {
-                args: rewritten.as_deref().unwrap_or(event.args),
-                ..event
-            };
-            let (action, salvaged) = hook.tool_call(ctx, current).await;
-            if let Some(value) = salvaged {
-                effective = Some(value);
-            }
-            match action {
-                ToolCallAction::Run => {}
-                ToolCallAction::Rewrite(value) => effective = Some(value),
-                other => return (other, effective),
-            }
-        }
-        match effective {
-            Some(value) => (ToolCallAction::Rewrite(value), None),
-            None => (ToolCallAction::Run, None),
-        }
     }
 }
 
@@ -1535,7 +1661,7 @@ where
 /// [`first_non_continue`] over the erased hooks: `(on_* name, erased name,
 /// event type, action type)`, mirroring `for_each_boxed_hook_event!`. The
 /// genuinely chaining events (`on_model_select`, `on_completion_call`,
-/// `on_invalid_tool_call`, `on_tool_call`, `on_tool_result`) stay hand-written.
+/// `on_invalid_tool_call`, `on_dispatch`, `on_outcome`) stay hand-written.
 macro_rules! stack_first_non_continue {
     ($($on:ident, $erased:ident, $event:ident, $action:ident;)+) => {
         $(
@@ -1622,7 +1748,6 @@ impl AgentHook for HookStack {
     }
 
     stack_first_non_continue! {
-        on_completion_response, completion_response, CompletionResponse, ObservationAction;
         on_model_turn_finished, model_turn_finished, ModelTurnFinished, ModelTurnAction;
         on_text_delta, text_delta, TextDelta, ObservationAction;
         on_reasoning_delta, reasoning_delta, ReasoningDelta, ObservationAction;
@@ -1640,37 +1765,158 @@ impl AgentHook for HookStack {
         }
         None
     }
-    async fn on_tool_call(&self, ctx: &HookContext, event: ToolCall<'_>) -> ToolCallAction {
-        let internal_call_id = event.internal_call_id;
-        let (action, salvaged) = self.resolve_tool_call(ctx, event).await;
-        // This is a no-op for direct calls. Under private erased dispatch it
-        // returns a nested stack's terminal-path rewrite to its parent stack.
-        if let Some(rewrite) = salvaged {
-            ctx.record_tool_call_rewrite(internal_call_id, rewrite);
-        }
-        action
-    }
-    async fn on_tool_result(
-        &self,
-        ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        let mut effective: Option<ToolOutput> = None;
+    async fn on_dispatch(&self, ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        let kind = StepEventKind::for_family(event.kind.family());
+        let mut patched: Option<EffectKind> = None;
         for hook in &self.hooks {
-            let current = ToolResultEvent {
-                presentation: effective.as_ref().unwrap_or(event.presentation),
+            if !hook.observes(kind) {
+                continue;
+            }
+            let current = DispatchEvent {
+                kind: patched.as_ref().unwrap_or(event.kind),
                 ..event
             };
-            match hook.tool_result(ctx, current).await {
-                ToolResultAction::Keep => {}
-                ToolResultAction::Rewrite(value) => effective = Some(value),
-                stop @ ToolResultAction::Stop(_) => return stop,
+            match hook.dispatch(ctx, current).await {
+                DispatchAction::Proceed => {}
+                DispatchAction::Patch(next) => patched = Some(next),
+                deny @ DispatchAction::Deny(_) => {
+                    // The denial wins, but an earlier hook's patch is what
+                    // the skipped result must report: keep it for the engine.
+                    if let Some(kind) = patched {
+                        ctx.salvage_patch(event.id, kind);
+                    }
+                    return deny;
+                }
             }
         }
-        effective.map_or(ToolResultAction::Keep, ToolResultAction::Rewrite)
+        patched.map_or(DispatchAction::Proceed, DispatchAction::Patch)
     }
+
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let kind = StepEventKind::for_family(event.kind.family());
+        let mut replaced: Option<Result<Outcome, ErrorReport>> = None;
+        for hook in &self.hooks {
+            if !hook.observes(kind) {
+                continue;
+            }
+            let current = OutcomeEvent {
+                outcome: replaced.as_ref().unwrap_or(event.outcome),
+                ..event
+            };
+            match hook.outcome(ctx, current).await {
+                OutcomeAction::Proceed => {}
+                OutcomeAction::Replace(next) => replaced = Some(next),
+            }
+        }
+        replaced.map_or(OutcomeAction::Proceed, OutcomeAction::Replace)
+    }
+
     fn observes(&self, kind: StepEventKind) -> bool {
         self.hooks.iter().any(|hook| hook.observes(kind))
+    }
+}
+
+/// A typed view a hook bound through its [`HookContext`], scoped to the
+/// run by its lifetime: it is `!'static`, so a hook cannot store it in a
+/// field or move it into a spawned task — the compiler refuses. It offers
+/// the family-generic API of [`Handle`](crate::bus::Handle) by
+/// delegation rather than `Deref` (a `Deref` to the `Clone` handle would
+/// hand back an owned `'static` view through `.clone()`, which is the one
+/// thing this type exists to prevent). A host that wants an owned handle
+/// takes it from a [`Dispatcher`](crate::bus::Dispatcher) it holds
+/// itself.
+///
+/// ```compile_fail
+/// use rig_agent::agent::{HookContext, RunHandle};
+/// use rig_core::effect::{Key, family};
+///
+/// fn escape(ctx: &HookContext, key: &Key<family::Completion>) {
+///     let handle = ctx.bind(key).unwrap();
+///     // `handle` borrows `ctx`; the task must be `'static`.
+///     tokio::spawn(async move {
+///         let _ = handle.key();
+///     });
+/// }
+/// ```
+///
+/// ```compile_fail
+/// use rig_agent::agent::{HookContext, RunHandle};
+/// use rig_core::effect::{Key, family};
+///
+/// struct Stash {
+///     kept: std::sync::Mutex<Option<RunHandle<'static, family::Completion>>>,
+/// }
+///
+/// fn stash(stash: &Stash, ctx: &HookContext, key: &Key<family::Completion>) {
+///     *stash.kept.lock().unwrap() = Some(ctx.bind(key).unwrap());
+/// }
+/// ```
+pub struct RunHandle<'ctx, F: rig_core::effect::Family> {
+    inner: crate::bus::Handle<F>,
+    _run: std::marker::PhantomData<&'ctx HookContext>,
+}
+
+impl<'ctx, F: rig_core::effect::Family> RunHandle<'ctx, F> {
+    fn scoped(inner: crate::bus::Handle<F>) -> Self {
+        Self {
+            inner,
+            _run: std::marker::PhantomData,
+        }
+    }
+
+    /// Dispatch a typed request of this family.
+    pub fn dispatch(&self, request: F::Request) -> crate::bus::Typed<F> {
+        self.inner.dispatch(request)
+    }
+
+    /// The key this view dispatches to.
+    pub fn key(&self) -> &rig_core::effect::HandlerKey {
+        self.inner.key()
+    }
+
+    /// The descriptor now (a runtime replacement under the key is visible).
+    pub fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+        self.inner.descriptor()
+    }
+
+    /// Whether the bus behind this view has closed.
+    pub fn is_closed(&self) -> bool {
+        self.inner.is_closed()
+    }
+}
+
+impl RunHandle<'_, rig_core::effect::family::Retrieve> {
+    /// Scored documents, deserialized on this side of the bus.
+    pub fn top_n<T: serde::de::DeserializeOwned>(
+        &self,
+        req: rig_core::vector_store::request::VectorSearchRequest<
+            rig_core::vector_store::request::Filter<serde_json::Value>,
+        >,
+    ) -> crate::bus::Retrieval<T> {
+        self.inner.top_n(req)
+    }
+}
+
+impl RunHandle<'_, rig_core::effect::family::Completion> {
+    /// A unary completion.
+    pub fn complete(
+        &self,
+        request: rig_core::completion::CompletionRequest,
+    ) -> crate::bus::Completion {
+        self.inner.complete(request)
+    }
+
+    /// The model's label as the handler advertises it now.
+    pub fn model_ref(&self) -> ModelRef {
+        self.inner.model_ref()
+    }
+}
+
+impl<F: rig_core::effect::Family> std::fmt::Debug for RunHandle<'_, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RunHandle")
+            .field("key", self.inner.key())
+            .finish_non_exhaustive()
     }
 }
 

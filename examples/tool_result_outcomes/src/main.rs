@@ -15,11 +15,12 @@
 //!    while allowing `Network`/`ENETUNREACH` feedback to reach the model. Correlation
 //!    matters because results from concurrent tool calls can interleave.
 //!
-//! `ToolResultEvent` carries facts about one execution: `raw_result` contains the
-//! standard classification and `tool_context` holds tool/application-specific typed
-//! metadata that is never sent to the model. The scratchpad is different: it is
-//! shared, run-scoped hook state. Here it lets one hook record facts for the next
-//! hook without coupling either hook to model-visible result text.
+//! The tool-call `OutcomeEvent` carries facts about one execution: `tool_result()`
+//! contains the standard classification and `tool_context()` holds
+//! tool/application-specific typed metadata that is never sent to the model. The
+//! scratchpad is different: it is shared, run-scoped hook state. Here it lets one
+//! hook record facts for the next hook without coupling either hook to
+//! model-visible result text.
 //!
 //! Live commands (require `OPENAI_API_KEY`):
 //!
@@ -33,8 +34,8 @@
 
 use anyhow::{Result, bail};
 use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
-    ToolResultAction, ToolResultEvent,
+    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, OutcomeAction, OutcomeEvent,
+    RequestPatch,
 };
 use rig::message::ToolChoice;
 use rig::prelude::*;
@@ -62,10 +63,11 @@ struct ProbeArgs {
     operation: Operation,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, rig::ContextValue)]
+#[context(key = "example.failure_site")]
 struct FailureSite {
     operation: Operation,
-    resource: &'static str,
+    resource: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -74,6 +76,8 @@ enum ProbeError {
     DiskIo,
     #[error("network is unreachable for backup.example.net")]
     NetworkUnreachable,
+    #[error("tool context: {0}")]
+    Context(#[from] rig::tool::ToolContextError),
 }
 
 struct SystemProbe;
@@ -115,6 +119,7 @@ impl Tool for SystemProbe {
                     .with_code("ENETUNREACH")
                     .with_source(error)
             }
+            ProbeError::Context(error) => ToolExecutionError::from(error),
         }
     }
 
@@ -128,18 +133,18 @@ impl Tool for SystemProbe {
                 ProbeError::DiskIo,
                 FailureSite {
                     operation: args.operation,
-                    resource: "/data/archive.bin",
+                    resource: "/data/archive.bin".to_string(),
                 },
             ),
             Operation::ConnectNetwork => (
                 ProbeError::NetworkUnreachable,
                 FailureSite {
                     operation: args.operation,
-                    resource: "backup.example.net",
+                    resource: "backup.example.net".to_string(),
                 },
             ),
         };
-        context.insert_result(site);
+        context.insert_result(site)?;
         Err(error)
     }
 }
@@ -169,12 +174,12 @@ impl AgentHook for ForceSystemProbeOnFirstTurn {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct FailureRecord {
-    internal_call_id: rig::id::InternalCallId,
+    block_id: rig::streaming::BlockId,
     tool_name: String,
     kind: ToolErrorKind,
     code: Option<String>,
     operation: Operation,
-    resource: &'static str,
+    resource: String,
 }
 
 #[derive(Clone, Default)]
@@ -183,17 +188,18 @@ struct FailureLedger(Vec<FailureRecord>);
 struct FailureRecorder;
 
 fn failure_record(
-    internal_call_id: rig::id::InternalCallId,
+    block_id: &rig::streaming::BlockId,
     tool_name: &str,
     result: &ToolResult,
     tool_context: &ToolContext,
 ) -> Option<FailureRecord> {
-    let (Some(error), Some(site)) = (result.error(), tool_context.result::<FailureSite>()) else {
+    let (Some(error), Ok(Some(site))) = (result.error(), tool_context.result::<FailureSite>())
+    else {
         return None;
     };
 
     Some(FailureRecord {
-        internal_call_id,
+        block_id: block_id.clone(),
         tool_name: tool_name.to_string(),
         kind: error.kind(),
         code: error.code().map(str::to_string),
@@ -203,18 +209,18 @@ fn failure_record(
 }
 
 impl AgentHook for FailureRecorder {
-    async fn on_tool_result(
-        &self,
-        ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        let Some(record) = failure_record(
-            event.internal_call_id,
-            event.tool_name,
-            event.raw_result,
-            event.tool_context,
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        // `on_outcome` fires for every effect family; only tool results matter here.
+        let (Some(block_id), Some(tool_name), Some(result), Some(tool_context)) = (
+            event.block_id,
+            event.tool_name(),
+            event.tool_result(),
+            event.tool_context(),
         ) else {
-            return ToolResultAction::keep();
+            return OutcomeAction::proceed();
+        };
+        let Some(record) = failure_record(block_id, tool_name, result, tool_context) else {
+            return OutcomeAction::proceed();
         };
         println!(
             "[recorder] {} {} failed: kind={}, code={}, resource={}",
@@ -226,7 +232,7 @@ impl AgentHook for FailureRecorder {
         );
         ctx.scratchpad()
             .update(|ledger: &mut FailureLedger| ledger.0.push(record));
-        ToolResultAction::keep()
+        OutcomeAction::proceed()
     }
 }
 
@@ -249,42 +255,41 @@ fn decide(record: &FailureRecord) -> PolicyDecision {
 
 fn policy_action(
     ledger: Option<&FailureLedger>,
-    internal_call_id: rig::id::InternalCallId,
-) -> ToolResultAction {
+    block_id: &rig::streaming::BlockId,
+) -> OutcomeAction {
     let decision = ledger
         .and_then(|ledger| {
             ledger
                 .0
                 .iter()
                 .rev()
-                .find(|record| record.internal_call_id == internal_call_id)
+                .find(|record| record.block_id == *block_id)
         })
         .map(decide);
 
     match decision {
-        Some(PolicyDecision::Fatal(reason)) => ToolResultAction::stop(reason),
+        Some(PolicyDecision::Fatal(reason)) => OutcomeAction::stop(reason),
         Some(PolicyDecision::Recoverable) => {
             println!("[policy] recoverable failure; returning feedback to the model");
-            ToolResultAction::keep()
+            OutcomeAction::proceed()
         }
-        None => ToolResultAction::keep(),
+        None => OutcomeAction::proceed(),
     }
 }
 
 struct FatalFailurePolicy;
 
 impl AgentHook for FatalFailurePolicy {
-    async fn on_tool_result(
-        &self,
-        ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.raw_result.error().is_none() {
-            return ToolResultAction::keep();
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let (Some(block_id), Some(result)) = (event.block_id, event.tool_result()) else {
+            return OutcomeAction::proceed();
+        };
+        if result.error().is_none() {
+            return OutcomeAction::proceed();
         }
 
         let ledger = ctx.scratchpad().get::<FailureLedger>();
-        policy_action(ledger.as_ref(), event.internal_call_id)
+        policy_action(ledger.as_ref(), block_id)
     }
 }
 
@@ -351,7 +356,12 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rig::ErrorKind;
     use rig::tool::ToolSet;
+
+    fn stops_run(action: &OutcomeAction) -> bool {
+        matches!(action, OutcomeAction::Replace(Err(report)) if report.kind == ErrorKind::Cancelled)
+    }
 
     async fn structured_failure(operation: Operation) -> (ToolResult, ToolContext) {
         let tools = ToolSet::from_tools(vec![SystemProbe]);
@@ -385,11 +395,13 @@ mod tests {
         assert_eq!(error.kind(), ToolErrorKind::Network);
         assert_eq!(error.code(), Some("ENETUNREACH"));
         assert_eq!(result.output().as_text(), error.model_feedback());
+        let site = context.result::<FailureSite>();
+        assert!(site.is_ok(), "decodes: {site:?}");
         assert_eq!(
-            context.result::<FailureSite>(),
-            Some(&FailureSite {
+            site.ok().flatten(),
+            Some(FailureSite {
                 operation: Operation::ConnectNetwork,
-                resource: "backup.example.net",
+                resource: "backup.example.net".to_string(),
             })
         );
     }
@@ -401,13 +413,17 @@ mod tests {
             structured_failure(Operation::ConnectNetwork).await;
 
         let mut ledger = FailureLedger::default();
-        let fatal_call = rig::id::InternalCallId::new();
-        let recoverable_call = rig::id::InternalCallId::new();
-        let missing_call = rig::id::InternalCallId::new();
-        let fatal_record =
-            failure_record(fatal_call, SystemProbe::NAME, &fatal_result, &fatal_context);
+        let fatal_call = rig::streaming::BlockId::wire("fatal");
+        let recoverable_call = rig::streaming::BlockId::wire("recoverable");
+        let missing_call = rig::streaming::BlockId::wire("missing");
+        let fatal_record = failure_record(
+            &fatal_call,
+            SystemProbe::NAME,
+            &fatal_result,
+            &fatal_context,
+        );
         let recoverable_record = failure_record(
-            recoverable_call,
+            &recoverable_call,
             SystemProbe::NAME,
             &recoverable_result,
             &recoverable_context,
@@ -422,19 +438,19 @@ mod tests {
         // Interleave a later recoverable record: policy must not use `last()`.
         ledger.0.push(recoverable_record);
 
+        assert!(stops_run(&policy_action(Some(&ledger), &fatal_call)));
         assert!(matches!(
-            policy_action(Some(&ledger), fatal_call),
-            ToolResultAction::Stop(_)
+            policy_action(Some(&ledger), &recoverable_call),
+            OutcomeAction::Proceed
         ));
-        assert_eq!(
-            policy_action(Some(&ledger), recoverable_call),
-            ToolResultAction::Keep
-        );
-        assert_eq!(
-            policy_action(Some(&ledger), missing_call),
-            ToolResultAction::Keep
-        );
-        assert_eq!(policy_action(None, fatal_call), ToolResultAction::Keep);
+        assert!(matches!(
+            policy_action(Some(&ledger), &missing_call),
+            OutcomeAction::Proceed
+        ));
+        assert!(matches!(
+            policy_action(None, &fatal_call),
+            OutcomeAction::Proceed
+        ));
     }
 
     #[tokio::test]
@@ -442,7 +458,7 @@ mod tests {
         let (result, _context) = structured_failure(Operation::ReadDisk).await;
         assert!(
             failure_record(
-                rig::id::InternalCallId::new(),
+                &rig::streaming::BlockId::wire("other"),
                 SystemProbe::NAME,
                 &result,
                 &ToolContext::new(),
@@ -451,16 +467,16 @@ mod tests {
         );
 
         let stale = FailureLedger(vec![FailureRecord {
-            internal_call_id: rig::id::InternalCallId::new(),
+            block_id: rig::streaming::BlockId::wire("stale"),
             tool_name: SystemProbe::NAME.to_string(),
             kind: ToolErrorKind::Other,
             code: Some("EIO".to_string()),
             operation: Operation::ReadDisk,
-            resource: "/stale",
+            resource: "/stale".to_string(),
         }]);
-        assert_eq!(
-            policy_action(Some(&stale), rig::id::InternalCallId::new()),
-            ToolResultAction::Keep
-        );
+        assert!(matches!(
+            policy_action(Some(&stale), &rig::streaming::BlockId::wire("fresh")),
+            OutcomeAction::Proceed
+        ));
     }
 }

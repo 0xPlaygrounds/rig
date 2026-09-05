@@ -84,6 +84,51 @@ impl std::fmt::Display for ProviderResponseError {
 
 impl std::error::Error for ProviderResponseError {}
 
+/// The wire shape of [`ProviderResponseError`]: the status as its number,
+/// the body and the provider's request id — the error's identity. The
+/// headers are not on the wire: they are the transport's (`date`, the
+/// rate-limit counters), differ on every response to the same request,
+/// and a record that carried them was never the same twice — an effect
+/// log's error record replayed from one cassette diverged from itself a
+/// second later. A deserialized error has `headers: None`, "not captured",
+/// which is what a replayed error is.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProviderResponseErrorWire {
+    status: Option<u16>,
+    body: String,
+    provider_request_id: Option<String>,
+}
+
+impl serde::Serialize for ProviderResponseError {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        ProviderResponseErrorWire {
+            status: self.status.map(|status| status.as_u16()),
+            body: self.body.clone(),
+            provider_request_id: self.provider_request_id.clone(),
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ProviderResponseError {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+        let wire = ProviderResponseErrorWire::deserialize(deserializer)?;
+        let status = wire
+            .status
+            .map(StatusCode::from_u16)
+            .transpose()
+            .map_err(D::Error::custom)?;
+        Ok(Self {
+            status,
+            body: wire.body,
+            provider_request_id: wire.provider_request_id,
+            headers: None,
+        })
+    }
+}
+
 /// Parses an optional response body as JSON.
 ///
 /// Returns:
@@ -112,7 +157,7 @@ pub(crate) fn completion_error_from_body(
 /// variant; the generated helpers read from those two sources only, since they
 /// are the only ones that genuinely represent a provider's response.
 macro_rules! impl_provider_response_helpers {
-    ($error:ty) => {
+    ($error:ty $(, $report:ident)?) => {
         impl $error {
             /// Builds an error from a captured HTTP status and raw response body,
             /// routing it so the `provider_response_*` helpers stay useful.
@@ -270,6 +315,9 @@ macro_rules! impl_provider_response_helpers {
                 match self {
                     Self::ProviderResponse(response) => response.status,
                     Self::HttpError(error) => error.non_success_status(),
+                    $(Self::$report(report) => report
+                        .http_status
+                        .and_then(|status| http::StatusCode::from_u16(status).ok()),)?
                     _ => None,
                 }
             }
@@ -282,6 +330,7 @@ macro_rules! impl_provider_response_helpers {
             pub fn provider_request_id(&self) -> Option<&str> {
                 match self {
                     Self::ProviderResponse(response) => response.provider_request_id.as_deref(),
+                    $(Self::$report(report) => report.request_id.as_deref(),)?
                     _ => None,
                 }
             }

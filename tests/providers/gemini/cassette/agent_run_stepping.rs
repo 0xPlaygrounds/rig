@@ -148,9 +148,10 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                                 call.preresolved_result.is_none(),
                                 "no recovery happened, so no call should be preresolved"
                             );
-                            assert!(
-                                call.internal_call_id.is_none(),
-                                "non-streamed turns carry no internal call ids"
+                            assert_eq!(
+                                call.block_id,
+                                rig::streaming::BlockId::wire(call.tool_call.id.as_str()),
+                                "a buffered turn's call is keyed by its durable id"
                             );
                             executed_tools.push(call.tool_call.function.name.clone());
                         }

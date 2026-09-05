@@ -1,4 +1,5 @@
-use crate::streaming::{self, StreamedAssistantContent};
+use crate::message::AssistantContent;
+use crate::streaming::{self, BlockClose, BlockKind, Delta, StreamEvent};
 use bytes::Bytes;
 use futures::StreamExt;
 
@@ -39,9 +40,20 @@ pub(crate) async fn assert_zero_arg_tool_call_is_emitted(
 
     while let Some(chunk) = stream.next().await {
         match chunk.expect("stream item should be ok") {
-            StreamedAssistantContent::ToolCallDelta { .. } => {}
-            StreamedAssistantContent::Final(_) => saw_final = true,
-            StreamedAssistantContent::ToolCall { tool_call, .. } => {
+            StreamEvent::BlockStart {
+                kind: BlockKind::ToolCall,
+                ..
+            }
+            | StreamEvent::BlockDelta {
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                ..
+            } => {}
+            StreamEvent::Final(_) => saw_final = true,
+            StreamEvent::BlockEnd {
+                end: BlockClose::ToolCall(_),
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            } => {
                 collected_tool_calls.push(tool_call);
             }
             _ => panic!("unexpected stream item while asserting zero-arg tool call"),

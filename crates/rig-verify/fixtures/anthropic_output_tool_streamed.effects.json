@@ -1,0 +1,610 @@
+{
+  "header": {
+    "run_spec": 1030837007388641174,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Return a concise event object for a local Rust meetup in Seattle."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "final_result",
+              "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "title",
+                  "category",
+                  "summary"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": "toolu_REDACTED_1",
+              "provider": {
+                "call_id": "toolu_REDACTED_1"
+              },
+              "function": {
+                "name": "final_result",
+                "arguments": {
+                  "title": "Seattle Rust Meetup",
+                  "category": "Technology / Programming",
+                  "summary": "A local gathering for Rust programming language enthusiasts in Seattle. Attendees share projects, discuss best practices, explore new Rust features, and network with fellow developers passionate about systems programming and memory-safe software development."
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 679,
+            "output_tokens": 138,
+            "total_tokens": 817,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": null,
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "raw": {
+            "usage": {
+              "output_tokens": 138,
+              "input_tokens": 679,
+              "cache_creation_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "cache_read_input_tokens": 0
+            },
+            "stop_reason": "tool_use",
+            "message_id": "msg_REDACTED_1",
+            "model": "claude-sonnet-4-6"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "wire:toolu_REDACTED_1",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_name",
+            "name": "final_result"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{\"title\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ": \"Se"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "attle R"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "ust Meetup"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ", \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "category"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\": \"Technol"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "ogy / Pro"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "gramming\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ", "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\"summary\": \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "A local gath"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "ering for Ru"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "st progr"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "amming lan"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "guage enthu"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "sias"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "ts in Seattl"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "e. Attendees"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " share proje"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "cts"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ", discuss "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "best"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " p"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "ractices, e"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "xplore new "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "Ru"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "st fea"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "tures, and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " networ"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "k w"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "ith "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "fellow de"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "velopers "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "passionate "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "abo"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "ut system"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "s pr"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "ogr"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "amming and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": " memo"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "ry-sa"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "fe s"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "twar"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "e developmen"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:toolu_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "t.\"}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:toolu_REDACTED_1",
+          "end": {
+            "close": "tool_call",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": "toolu_REDACTED_1",
+            "provider": {
+              "call_id": "toolu_REDACTED_1"
+            },
+            "function": {
+              "name": "final_result",
+              "arguments": {
+                "title": "Seattle Rust Meetup",
+                "category": "Technology / Programming",
+                "summary": "A local gathering for Rust programming language enthusiasts in Seattle. Attendees share projects, discuss best practices, explore new Rust features, and network with fellow developers passionate about systems programming and memory-safe software development."
+              }
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 679,
+            "output_tokens": 138,
+            "total_tokens": 817,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "tool_calls",
+          "message_id": "msg_REDACTED_1",
+          "response_id": null,
+          "provider_request_id": "req_REDACTED_1",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "raw": {
+            "usage": {
+              "output_tokens": 138,
+              "input_tokens": 679,
+              "cache_creation_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "cache_read_input_tokens": 0
+            },
+            "stop_reason": "tool_use",
+            "message_id": "msg_REDACTED_1",
+            "model": "claude-sonnet-4-6"
+          }
+        }
+      ]
+    }
+  ]
+}

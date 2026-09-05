@@ -52,14 +52,14 @@ use std::sync::{Arc, Mutex};
 
 use futures::StreamExt as _;
 use rig::agent::{
-    AgentBuilder, AgentHook, CompletionResponseEvent, HookContext, ModelTurnAction,
-    ModelTurnFinished, MultiTurnStreamItem, ObservationAction,
+    AgentBuilder, AgentHook, HookContext, ModelTurnAction, ModelTurnFinished, MultiTurnStreamItem,
+    OutcomeAction, OutcomeEvent,
 };
 use rig::completion::ResponseIdentity;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::StreamEvent;
 use serde_json::Value;
 
 use super::super::support::{assert_matches_recorded_token, sse_json_frames, with_openai_cassette};
@@ -175,24 +175,23 @@ impl RawProbe {
 }
 
 impl AgentHook for RawProbe {
-    async fn on_completion_response(
-        &self,
-        ctx: &HookContext,
-        event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let Some(response) = event.completion() else {
+            return OutcomeAction::proceed();
+        };
         self.completion_responses
             .lock()
             .expect("probe")
             .push(ResponseSeen {
                 streaming: ctx.is_streaming(),
-                tool_call: event
-                    .content
+                tool_call: response
+                    .choice
                     .iter()
                     .any(|content| matches!(content, AssistantContent::ToolCall(_))),
-                identity: event.identity.clone(),
-                raw: event.raw.clone(),
+                identity: response.identity(),
+                raw: response.raw.clone(),
             });
-        ObservationAction::continue_run()
+        OutcomeAction::proceed()
     }
 
     async fn on_model_turn_finished(
@@ -315,9 +314,9 @@ fn streamed_body(sink: Observed, route: Route, tools: bool, probe: RawProbe) -> 
             let mut final_response = None;
             while let Some(item) = stream.next().await {
                 match item.expect("stream item should succeed") {
-                    MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
-                        terminal,
-                    )) => observation.finals.push(terminal.raw.clone()),
+                    MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(terminal)) => {
+                        observation.finals.push(terminal.raw.clone())
+                    }
                     MultiTurnStreamItem::CompletionCall(call) => {
                         observation.stream_calls.push(call.raw.clone());
                     }

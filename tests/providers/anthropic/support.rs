@@ -299,6 +299,151 @@ pub(super) async fn with_anthropic_reasoning_usage_cassette<F, Fut>(
     with_anthropic_cassette(spec, test_body).await;
 }
 
+/// The effect corpus's request-shape matrix (Matrix E), one wrapper per
+/// matrix so its cassettes are one suite directory
+/// (`tests/cassettes/anthropic/corpus_request_shape/`).
+pub(super) async fn with_anthropic_corpus_request_shape_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's hook matrix (Matrix B):
+/// `tests/cassettes/anthropic/corpus_hooks/`.
+pub(super) async fn with_anthropic_corpus_hooks_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's serving matrix (Matrix C):
+/// `tests/cassettes/anthropic/corpus_serving/`.
+pub(super) async fn with_anthropic_corpus_serving_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's outcome matrix (Matrix D):
+/// `tests/cassettes/anthropic/corpus_outcome/`.
+pub(super) async fn with_anthropic_corpus_outcome_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's endings matrix (Matrix F):
+/// `tests/cassettes/anthropic/corpus_endings/`.
+pub(super) async fn with_anthropic_corpus_endings_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's oracle matrix (Matrix O):
+/// `tests/cassettes/anthropic/corpus_oracle/`.
+pub(super) async fn with_anthropic_corpus_oracle_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's per-turn shaping matrix (Matrix M):
+/// `tests/cassettes/anthropic/corpus_shaping/`.
+pub(super) async fn with_anthropic_corpus_shaping_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's memory matrix (Matrix J):
+/// `tests/cassettes/anthropic/corpus_memory/`.
+pub(super) async fn with_anthropic_corpus_memory_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's layers matrix (Matrix P):
+/// `tests/cassettes/anthropic/corpus_layers/`.
+pub(super) async fn with_anthropic_corpus_layers_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's causal-dispatch matrix (Matrix Q):
+/// `tests/cassettes/anthropic/corpus_causal/`.
+pub(super) async fn with_anthropic_corpus_causal_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's host-families matrix (Matrix I):
+/// `tests/cassettes/anthropic/corpus_host/`.
+pub(super) async fn with_anthropic_corpus_host_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's output-mode matrix (Matrix H):
+/// `tests/cassettes/anthropic/corpus_output/`.
+pub(super) async fn with_anthropic_corpus_output_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
 /// The `request-id` response header each interaction of an Anthropic cassette
 /// recorded, in wire order — one entry per interaction, `None` for an
 /// interaction whose response carried no such header.

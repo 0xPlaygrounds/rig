@@ -88,7 +88,7 @@ use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 use rig::telemetry::ProviderResponseExt;
 use rig::transcription::TranscriptionModel;
 use serde_json::{Value, json};
@@ -992,8 +992,14 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
             let mut reasoning = String::new();
             while let Some(item) = stream.next().await {
                 match item.expect("no stream item should be an error") {
-                    StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
-                    StreamedAssistantContent::ReasoningDelta { reasoning: r, .. } => {
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text: chunk },
+                        ..
+                    } => text.push_str(&chunk),
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Reasoning { text: r },
+                        ..
+                    } => {
                         reasoning.push_str(&r);
                     }
                     _ => {}
@@ -1009,11 +1015,11 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
                 "streamed text must not contain the reasoning"
             );
             assert!(
-                has_reasoning(&stream.choice),
+                has_reasoning(&stream.snapshot()),
                 "the aggregated choice should keep reasoning as reasoning"
             );
             assert_eq!(
-                choice_text(&stream.choice),
+                choice_text(&stream.snapshot()),
                 text,
                 "the aggregated text must be exactly the streamed text deltas"
             );
@@ -1113,13 +1119,13 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
             // signature-only reasoning block for these bytes. The blocking
             // mapper now agrees.
             assert!(
-                signature_of(&stream.choice).is_some(),
+                signature_of(&stream.snapshot()).is_some(),
                 "the streamed choice should carry the trailing signature"
             );
             assert!(
-                choice_text(&stream.choice).contains("289"),
+                choice_text(&stream.snapshot()).contains("289"),
                 "the streamed answer must be there, got {:?}",
-                choice_text(&stream.choice)
+                choice_text(&stream.snapshot())
             );
         },
     )

@@ -1,0 +1,7 @@
+{
+  "files": {
+    "greeting.txt": "Hello, Rig!\n"
+  },
+  "writes": 1,
+  "result": "The greeting typo in greeting.txt was fixed, changing \"Helo, Rig!\" to \"Hello, Rig!\". The edit was applied and the file was validated successfully."
+}

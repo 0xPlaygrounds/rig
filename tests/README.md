@@ -7,6 +7,9 @@ Rig's root crate uses integration test targets under `tests/`.
 - `tests/providers/<provider>/live/` contains provider tests that still require a real service.
 - `tests/integrations.rs` is the vector-store and external-service integration target.
 - `tests/core.rs` contains provider-agnostic core behavior tests.
+- `tests/ecs_consumer.rs` exercises the real headless ECS maintenance consumer;
+  its [recording, golden and repair workflow](consumer/README.md) is also runnable
+  through `cargo run -p rig --example ecs-consumer -- plan`.
 
 Most provider tests are ignored live tests unless they have been migrated to cassettes.
 

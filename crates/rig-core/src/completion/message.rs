@@ -371,8 +371,9 @@ pub struct EmptyToolCallId;
 /// Rig's tool-call correlation handle: non-empty by construction, minted at
 /// the provider boundary when the provider issued no identifier.
 ///
-/// Mirrors the streaming layer's `WireId` idiom — one idiom, not two —
-/// except that it is *required and minted* rather than optional: correlation
+/// Like the streaming layer's [`non_empty_id`](crate::streaming::non_empty_id)
+/// rule — an empty string is never an id — except that it is *required and
+/// minted* rather than optional: correlation
 /// must always work, since a [`ToolResult`] must always name the call it
 /// answers. Provider provenance lives on [`ToolCall::provider`], so a
 /// consumer can still see that the provider issued nothing.
@@ -388,15 +389,28 @@ impl ToolCallId {
         if id.is_empty() { None } else { Some(Self(id)) }
     }
 
-    /// Mint a fresh, unique handle (21-character URL-safe id).
-    pub fn mint() -> Self {
-        Self(crate::id::generate())
+    /// The handle for a call a wire delivered without an id: derived from
+    /// its position (`tool-<index>`, the same spelling as
+    /// [`BlockId::minted`](crate::streaming::BlockId::minted) for the tool
+    /// kind), never from randomness — a run replays only if every id it
+    /// mints is a function of what it received.
+    pub fn minted(index: u64) -> Self {
+        Self(format!(
+            "{}-{index}",
+            crate::streaming::MintKind::Tool.as_str()
+        ))
     }
 
-    /// Adopt `id` when non-empty, mint otherwise — the boundary guard for
-    /// wires that may omit the identifier.
-    pub fn new_or_mint(id: impl Into<String>) -> Self {
-        Self::new(id).unwrap_or_else(Self::mint)
+    /// The handle for a streamed call whose wire carried no id: the block
+    /// that assembled it names it, deterministically.
+    pub fn from_block(block: &crate::streaming::BlockId) -> Self {
+        Self(block.to_string())
+    }
+
+    /// Adopt `id` when non-empty, else `minted(index)` — the boundary guard
+    /// for wires that may omit the identifier.
+    pub fn new_or_minted(id: impl Into<String>, index: u64) -> Self {
+        Self::new(id).unwrap_or_else(|| Self::minted(index))
     }
 
     /// The correlation handle for the given provider identity: the
@@ -408,10 +422,10 @@ impl ToolCallId {
     /// (`ProviderCallId`'s constructors reject the empty string, but its
     /// fields are public, so an empty `call_id` from a literal
     /// construction still mints rather than producing an empty handle.)
-    pub fn for_provider(provider: Option<&ProviderCallId>) -> Self {
+    pub fn for_provider_or(provider: Option<&ProviderCallId>, minted: Self) -> Self {
         provider
             .and_then(|provider| Self::new(provider.call_id.clone()))
-            .unwrap_or_else(Self::mint)
+            .unwrap_or(minted)
     }
 
     /// Borrow the identifier.
@@ -597,9 +611,9 @@ pub struct ToolCall {
 }
 
 impl ToolCall {
-    fn assemble(provider: Option<ProviderCallId>, function: ToolFunction) -> Self {
+    fn assemble(provider: Option<ProviderCallId>, index: u64, function: ToolFunction) -> Self {
         Self {
-            id: ToolCallId::for_provider(provider.as_ref()),
+            id: ToolCallId::for_provider_or(provider.as_ref(), ToolCallId::minted(index)),
             provider,
             function,
             signature: None,
@@ -611,14 +625,26 @@ impl ToolCall {
     pub fn new(id: ToolCallId, function: ToolFunction) -> Self {
         Self {
             id,
-            ..Self::assemble(None, function)
+            ..Self::assemble(None, 0, function)
         }
     }
 
     /// The single-identifier provider boundary: adopt the wire's id when it
     /// issued one, mint when it did not (empty or absent ids mint).
     pub fn from_wire(wire_id: impl Into<String>, function: ToolFunction) -> Self {
-        Self::assemble(ProviderCallId::new(wire_id), function)
+        Self::from_wire_indexed(wire_id, 0, function)
+    }
+
+    /// [`ToolCall::from_wire`] for the `index`-th call of a response whose
+    /// wire may omit ids: an empty `wire_id` yields `tool-<index>`, so two
+    /// id-less calls in one response stay distinct and a re-run yields the
+    /// same ids.
+    pub fn from_wire_indexed(
+        wire_id: impl Into<String>,
+        index: u64,
+        function: ToolFunction,
+    ) -> Self {
+        Self::assemble(ProviderCallId::new(wire_id), index, function)
     }
 
     /// The dual-identifier provider boundary (OpenAI Responses): `item_id`
@@ -631,7 +657,7 @@ impl ToolCall {
     ) -> Self {
         let provider =
             ProviderCallId::new(call_id).map(|provider| provider.with_item_id(item_id.into()));
-        Self::assemble(provider, function)
+        Self::assemble(provider, 0, function)
     }
 
     /// Attach provider-issued identifiers.
@@ -1430,7 +1456,7 @@ impl UserContent {
         content: Vec<ToolResultContent>,
     ) -> Self {
         UserContent::ToolResult(ToolResult {
-            call: ToolCallId::new_or_mint(call),
+            call: ToolCallId::new_or_minted(call, 0),
             provider: None,
             name: name.into(),
             content,
@@ -1448,7 +1474,7 @@ impl UserContent {
         content: Vec<ToolResultContent>,
     ) -> Self {
         let provider = ProviderCallId::new(wire_id);
-        let call = ToolCallId::for_provider(provider.as_ref());
+        let call = ToolCallId::for_provider_or(provider.as_ref(), ToolCallId::minted(0));
         Self::tool_result_for(call, provider, name, content)
     }
 
@@ -1480,7 +1506,7 @@ impl UserContent {
         content: Vec<ToolResultContent>,
     ) -> Self {
         let provider = ProviderCallId::new(call_id).map(|provider| provider.with_item_id(item_id));
-        let call = ToolCallId::for_provider(provider.as_ref());
+        let call = ToolCallId::for_provider_or(provider.as_ref(), ToolCallId::minted(0));
         Self::tool_result_for(call, provider, name, content)
     }
 }
@@ -1776,19 +1802,6 @@ impl From<Vec<AssistantContent>> for Message {
 impl From<Vec<UserContent>> for Message {
     fn from(content: Vec<UserContent>) -> Self {
         Message::User { content }
-    }
-}
-
-impl From<ToolResultContent> for Message {
-    fn from(tool_result_content: ToolResultContent) -> Self {
-        Message::User {
-            content: vec![UserContent::ToolResult(ToolResult {
-                call: ToolCallId::mint(),
-                provider: None,
-                name: String::new(),
-                content: vec![tool_result_content],
-            })],
-        }
     }
 }
 

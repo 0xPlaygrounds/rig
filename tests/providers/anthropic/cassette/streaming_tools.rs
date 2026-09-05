@@ -1,11 +1,13 @@
 //! Anthropic streaming tools smoke test.
 
+use rig::message::AssistantContent;
+
 use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
 use rig::message::{Message, ToolCallId, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
+use rig::streaming::{Delta, StreamEvent, StreamedUserContent};
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;
@@ -101,6 +103,59 @@ async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message()
 
     assert_cassette_groups_multiple_tool_results(
         "streaming_tools/streaming_tools_batches_multiple_tool_results_in_one_followup_message",
+        &["lookup_harbor_label", "lookup_orchard_label"],
+    );
+}
+
+#[tokio::test]
+async fn serial_serving_reproduces_the_recorded_request_order() {
+    // The corpus was recorded with the bus's default (concurrent serving)
+    // and the runner's tool concurrency of one. Serial serving is a
+    // per-key property: the two tools are two keys, so both calls still run
+    // and the follow-up request carries the results in call order — the
+    // cassette matches the request bytes, so a different order would not
+    // replay.
+    with_anthropic_cassette(
+        "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
+        |client| async move {
+            let order = OutOfOrderSignalOrder::default();
+            let agent = client
+                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .configure_bus(rig_core::serve::ServingPolicy {
+                    serial_per_handler: true,
+                    ..rig_core::serve::ServingPolicy::default()
+                })
+                .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                .tool(OutOfOrderAlphaSignal(order.clone()))
+                .tool(OutOfOrderBetaSignal(order))
+                .build();
+
+            let mut stream = agent
+                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+                .max_turns(8)
+                .tool_concurrency(2)
+                .stream()
+                .await;
+            let observation = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                collect_concurrent_tool_observation(&mut stream),
+            )
+            .await
+            .expect("serial serving is per key; two tools never wait on each other");
+
+            assert!(observation.errors.is_empty(), "{:?}", observation.errors);
+            assert!(observation.got_final_response);
+            assert_eq!(
+                observation.history_tool_results,
+                ["lookup_harbor_label", "lookup_orchard_label"],
+                "the follow-up request carries the results in the recorded order"
+            );
+        },
+    )
+    .await;
+
+    assert_cassette_groups_multiple_tool_results(
+        "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         &["lookup_harbor_label", "lookup_orchard_label"],
     );
 }
@@ -272,10 +327,7 @@ async fn collect_concurrent_tool_observation(
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                tool_call,
-                ..
-            })) => {
+            Ok(MultiTurnStreamItem::ToolCall { tool_call, .. }) => {
                 tool_names_by_id.insert(tool_call.id.clone(), tool_call.function.name.clone());
                 observation.tool_calls.push(tool_call.function.name);
                 observation.events.push("tool_call");
@@ -303,28 +355,34 @@ async fn collect_concurrent_tool_observation(
                 }
                 observation.events.push("final_response");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(_))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Text { text: _ },
+                ..
+            })) => {
                 observation.events.push("text");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ToolCallDelta { .. },
-            )) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                ..
+            })) => {
                 observation.events.push("tool_call_delta");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Reasoning(_)),
                 ..
             })) => {
                 observation.events.push("reasoning");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ReasoningDelta { .. },
-            )) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Reasoning { .. },
+                ..
+            })) => {
                 observation.events.push("reasoning_delta");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(_))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(_))) => {
                 observation.events.push("stream_final");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Unknown(_))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Unknown(_))) => {
                 observation.events.push("unknown");
             }
             Ok(MultiTurnStreamItem::CompletionCall(_)) => {}
@@ -588,4 +646,87 @@ fn content_items(message: &Value) -> impl Iterator<Item = &Value> {
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
+}
+
+/// Golden `anthropic_streaming_with_events`: a streamed tool turn recorded
+/// with its stream events kept, so the corpus pins the event sequence, not
+/// only the folded completion.
+#[tokio::test]
+async fn streaming_tools_effect_log_is_the_golden_fixture() {
+    with_anthropic_cassette(
+        "streaming_tools/streaming_tools_smoke",
+        |client| async move {
+            let agent = client
+                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .name("golden")
+                .preamble(STREAMING_TOOLS_PREAMBLE)
+                .tool(Adder)
+                .tool(Subtract)
+                .default_max_turns(2)
+                .record_effects_with_events()
+                .build();
+            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
+            let response = collect_stream_final_response(&mut stream)
+                .await
+                .expect("streaming tool prompt should succeed");
+            assert_mentions_expected_number(&response, -3);
+            let log = agent.take_effect_log().expect("recording");
+            assert!(
+                log.records.iter().any(|record| record
+                    .events
+                    .as_ref()
+                    .is_some_and(|events| !events.is_empty())),
+                "a streamed completion keeps its events"
+            );
+            crate::goldens::golden_effects("anthropic_streaming_with_events", &log);
+        },
+    )
+    .await;
+}
+
+/// Golden `anthropic_concurrent_tools_serial`: two tool calls in one turn
+/// dispatched concurrently by the runner and served one at a time per key
+/// (`serial_per_handler: true`) — the cassette-ordered property, recorded.
+#[tokio::test]
+async fn concurrent_tools_serial_effect_log_is_the_golden_fixture() {
+    with_anthropic_cassette(
+        "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
+        |client| async move {
+            let order = OutOfOrderSignalOrder::default();
+            let agent = client
+                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .name("golden")
+                .configure_bus(rig_core::serve::ServingPolicy {
+                    serial_per_handler: true,
+                    ..rig_core::serve::ServingPolicy::default()
+                })
+                .preamble(TWO_TOOL_STREAM_PREAMBLE)
+                .tool(OutOfOrderAlphaSignal(order.clone()))
+                .tool(OutOfOrderBetaSignal(order))
+                .record_effects()
+                .build();
+            let mut stream = agent
+                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+                .max_turns(8)
+                .tool_concurrency(2)
+                .stream()
+                .await;
+            let observation = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                collect_concurrent_tool_observation(&mut stream),
+            )
+            .await
+            .expect("serial serving is per key; two tools never wait on each other");
+            assert!(observation.errors.is_empty(), "{:?}", observation.errors);
+            assert!(observation.got_final_response);
+            let log = agent.take_effect_log().expect("recording");
+            assert_eq!(
+                log.header.bus.map(|bus| bus.serial_per_handler),
+                Some(true),
+                "the header says how it was served"
+            );
+            crate::goldens::golden_effects("anthropic_concurrent_tools_serial", &log);
+        },
+    )
+    .await;
 }

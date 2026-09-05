@@ -14,6 +14,7 @@ use crate::http_client::HttpClientExt;
 use crate::http_client::Request;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::gemini::streaming::shared_parts;
+use crate::providers::internal::chunk_lifecycle::ChunkParts;
 use crate::providers::internal::sse_transport::{
     OpenLog, SseTransportOptions, open_wire_stream, skip_blank_frames,
 };
@@ -89,42 +90,14 @@ impl From<StreamingCompletionResponse> for crate::completion::Usage {
     }
 }
 
-/// Normalize the Interactions API's terminal streaming record.
-///
-/// The finish reason comes from the completed interaction's lifecycle status —
-/// the API has no `finishReason` field — and is absent when the stream ended
-/// without one.
-fn map_stream_final(
-    response: &StreamingCompletionResponse,
-) -> Result<streaming::StreamFinal, CompletionError> {
-    let usage = response.into();
-    let interaction = response.interaction.as_ref();
-    let finish_reason = interaction
-        .and_then(|interaction| interaction.status.as_ref())
-        .map(map_interaction_status);
-    let message_id = interaction
-        .map(|interaction| interaction.id.as_str())
-        .filter(|id| !id.is_empty());
-
-    Ok(streaming::StreamFinal::new(PROVIDER_NAME, usage)
-        .with_optional_finish_reason(finish_reason)
-        .with_optional_response_id(message_id)
-        .with_optional_model(response.model_version.as_deref()))
-}
-
 impl<T> InteractionsCompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    /// Open an Interactions stream whose terminal record stays provider-native.
-    ///
-    /// The normalized [`CompletionModel::stream`](crate::completion::CompletionModel::stream)
-    /// delegates here and maps only the terminal record, so both paths open
-    /// exactly one stream over the same request, telemetry, and error handling.
-    pub async fn raw_stream(
+    pub(crate) async fn stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let span = CompletionSpanBuilder::new(
             PROVIDER_NAME,
             &self.model,
@@ -152,28 +125,19 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        Ok(open_wire_stream(
-            GenericEventSource::new(self.client.clone(), req),
-            SseTransportOptions {
-                open_log: OpenLog::Debug,
-                stream_ended_is_error: false,
-                log_transport_errors: true,
-            },
-            skip_blank_frames,
-            InteractionsAdapter::default(),
-            span,
-        ))
-    }
-
-    pub(crate) async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let inner = self.raw_stream(completion_request).await?;
-
         Ok(streaming::StreamingCompletionResponse::stream(
             PROVIDER_NAME,
-            streaming::normalize_stream(inner, |response| map_stream_final(&response)),
+            open_wire_stream(
+                GenericEventSource::new(self.client.clone(), req),
+                SseTransportOptions {
+                    open_log: OpenLog::Debug,
+                    stream_ended_is_error: false,
+                    log_transport_errors: true,
+                },
+                skip_blank_frames,
+                InteractionsAdapter::default(),
+                span,
+            ),
         ))
     }
 }
@@ -216,7 +180,7 @@ impl Default for InteractionsAdapter {
     fn default() -> Self {
         Self {
             reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
-                shared_parts::REASONING_ID,
+                crate::streaming::MintKind::Reasoning,
             ),
             failed: false,
             open_function_steps: ToolCallBridge::new(),
@@ -227,13 +191,12 @@ impl Default for InteractionsAdapter {
 impl WireAdapter for InteractionsAdapter {
     type Frame = WireFrame;
     type Event = InteractionSseEvent;
-    type Response = StreamingCompletionResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<InteractionSseEvent> {
         classify_interaction_frame(&frame.as_str())
     }
 
-    fn interpret(&mut self, event: InteractionSseEvent, out: &mut AdapterOutput<Self::Response>) {
+    fn interpret(&mut self, event: InteractionSseEvent, out: &mut AdapterOutput) {
         if self.failed {
             return;
         }
@@ -246,10 +209,8 @@ impl WireAdapter for InteractionsAdapter {
                         arguments_delta.arguments,
                     ) {
                         slot.saw_arguments_delta = true;
-                        out.push(Ok(streaming::RawStreamingChoice::ToolCallDelta {
-                            id: slot.key().clone(),
-                            content: streaming::ToolCallDeltaContent::Delta(fragment),
-                        }));
+                        let key = slot.key().clone();
+                        out.tool_arguments(&key, fragment);
                     } else {
                         tracing::warn!(
                             step_index = index,
@@ -260,7 +221,7 @@ impl WireAdapter for InteractionsAdapter {
                 ContentDelta::ThoughtSummary(ThoughtSummaryDelta { content }) => {
                     if let ThoughtSummaryContent::Text(text) = content {
                         self.reasoning.emit_chunk(
-                            crate::providers::internal::chunk_lifecycle::ChunkParts {
+                            ChunkParts {
                                 reasoning: Some(text.text),
                                 reasoning_signature: None,
                                 text: None,
@@ -277,7 +238,7 @@ impl WireAdapter for InteractionsAdapter {
                     // empty-buffer branch class (84a43e9e #2) cannot recur
                     // because there is no branch.
                     self.reasoning.emit_chunk(
-                        crate::providers::internal::chunk_lifecycle::ChunkParts {
+                        ChunkParts {
                             reasoning: None,
                             reasoning_signature: Some(signature),
                             text: None,
@@ -287,20 +248,12 @@ impl WireAdapter for InteractionsAdapter {
                     );
                 }
                 delta => {
-                    if let Some(choice) =
-                        content_delta_to_choice(delta, self.open_function_steps.minted_ids())
+                    if let Some(parts) =
+                        content_delta_to_parts(delta, self.open_function_steps.minted_ids())
                     {
                         // Interleaving content ends an open thought block —
                         // the shared lifecycle synthesizes the boundary end.
-                        self.reasoning.emit_chunk(
-                            crate::providers::internal::chunk_lifecycle::ChunkParts {
-                                reasoning: None,
-                                reasoning_signature: None,
-                                text: None,
-                                tool_events: vec![choice],
-                            },
-                            out,
-                        );
+                        self.reasoning.emit_chunk(parts, out);
                     }
                 }
             },
@@ -333,14 +286,20 @@ impl WireAdapter for InteractionsAdapter {
                             .is_none_or(|object| !object.is_empty())
                     });
                     let key = slot.key().clone();
-                    let tool_events = vec![streaming::RawStreamingChoice::ToolCallDelta {
-                        id: key,
-                        content: streaming::ToolCallDeltaContent::Name(name),
-                    }];
+                    let tool_events = vec![
+                        streaming::StreamEvent::BlockStart {
+                            id: key.clone(),
+                            kind: streaming::BlockKind::ToolCall,
+                        },
+                        streaming::StreamEvent::BlockDelta {
+                            id: key,
+                            delta: streaming::Delta::ToolName { name },
+                        },
+                    ];
                     // Tool content interleaving an open thought block: the
                     // shared lifecycle synthesizes the boundary end.
                     self.reasoning.emit_chunk(
-                        crate::providers::internal::chunk_lifecycle::ChunkParts {
+                        ChunkParts {
                             reasoning: None,
                             reasoning_signature: None,
                             text: None,
@@ -349,20 +308,14 @@ impl WireAdapter for InteractionsAdapter {
                         out,
                     );
                 } else {
-                    let choices =
-                        step_start_to_choices(step, self.open_function_steps.minted_ids());
-                    if !choices.is_empty() {
-                        // Interleaving content ends an open thought block —
-                        // the shared lifecycle synthesizes the boundary end.
-                        self.reasoning.emit_chunk(
-                            crate::providers::internal::chunk_lifecycle::ChunkParts {
-                                reasoning: None,
-                                reasoning_signature: None,
-                                text: None,
-                                tool_events: choices,
-                            },
-                            out,
-                        );
+                    // Every convertible item in wire order, each declared as
+                    // its own chunk: the first one interleaving an open
+                    // thought block ends it (the shared lifecycle synthesizes
+                    // the boundary end once), and text lands in the active
+                    // text block between the calls exactly where the wire
+                    // put it.
+                    for parts in step_start_to_parts(step, self.open_function_steps.minted_ids()) {
+                        self.reasoning.emit_chunk(parts, out);
                     }
                 }
             }
@@ -371,9 +324,7 @@ impl WireAdapter for InteractionsAdapter {
                 // assembly. Malformed accumulated input surfaces in-band
                 // (`Error` policy), matching the other complete-block wires.
                 if let Some(slot) = self.open_function_steps.remove(index) {
-                    out.push(Ok(streaming::RawStreamingChoice::ToolInputEnd(
-                        function_step_end(&slot),
-                    )));
+                    out.push(Ok(function_step_end(&slot)));
                 }
             }
             InteractionSseEvent::InteractionCompleted { interaction, .. } => {
@@ -400,23 +351,45 @@ impl WireAdapter for InteractionsAdapter {
                         index,
                         "closing a function-call step left open at interaction.completed"
                     );
-                    out.push(Ok(streaming::RawStreamingChoice::ToolInputEnd(
-                        function_step_end(&slot),
-                    )));
+                    out.push(Ok(function_step_end(&slot)));
                 }
 
                 // Only a genuine `interaction.completed` event counts as the
                 // provider completing the turn; the driver stops consuming
                 // after the terminal record. EOF without one is truncation and
                 // synthesizes nothing (see `finish`).
+                //
+                // The finish reason comes from the completed interaction's
+                // lifecycle status — the API has no `finishReason` field —
+                // and is absent when the interaction carries none.
                 let model_version = interaction.model.clone();
-                out.push(Ok(streaming::RawStreamingChoice::FinalResponse(
-                    StreamingCompletionResponse {
-                        usage: interaction.usage,
-                        interaction: Some(interaction),
-                        model_version,
-                    },
-                )));
+                let native = StreamingCompletionResponse {
+                    usage: interaction.usage,
+                    interaction: Some(interaction),
+                    model_version,
+                };
+                let raw = match serde_json::to_value(&native) {
+                    Ok(raw) => raw,
+                    Err(err) => {
+                        out.error(err.into());
+                        return;
+                    }
+                };
+                let usage = (&native).into();
+                let interaction = native.interaction.as_ref();
+                let finish_reason = interaction
+                    .and_then(|interaction| interaction.status.as_ref())
+                    .map(map_interaction_status);
+                let message_id = interaction
+                    .map(|interaction| interaction.id.as_str())
+                    .filter(|id| !id.is_empty());
+                out.final_record(
+                    streaming::StreamFinal::new(PROVIDER_NAME, usage)
+                        .with_optional_finish_reason(finish_reason)
+                        .with_optional_response_id(message_id)
+                        .with_optional_model(native.model_version.as_deref())
+                        .with_raw(raw),
+                );
             }
             event @ InteractionSseEvent::Error { .. } => {
                 // Preserve the provider error payload (code + message) as the
@@ -436,7 +409,7 @@ impl WireAdapter for InteractionsAdapter {
         }
     }
 
-    fn finish(&mut self, _out: &mut AdapterOutput<Self::Response>) {
+    fn finish(&mut self, _out: &mut AdapterOutput) {
         // EOF without `interaction.completed` is truncation: no terminal
         // record may be synthesized — it would report a successful completion
         // for a turn the provider aborted.
@@ -480,7 +453,7 @@ where
                         // grammar events — there is no raw passthrough item to
                         // carry an unknown frame on, so it stays a warned skip
                         // (the completion path surfaces Unknown via the
-                        // driver's `RawStreamingChoice::Unknown` passthrough).
+                        // driver's `StreamEvent::Unknown` passthrough).
                         Ok(TriagedFrame::Unknown(_)) => {}
                         Err(error) => yield Err(error),
                     }
@@ -515,21 +488,52 @@ where
 /// the other complete-block wires.
 fn function_step_end(
     slot: &crate::providers::internal::tool_call_bridge::ToolCallSlot,
-) -> streaming::ToolInputEnd {
+) -> streaming::StreamEvent {
     slot.end_event(streaming::UnparseableToolInput::Error)
 }
 
-fn step_start_to_choices(
-    step: Step,
+/// A whole function call as one declared chunk (its start and end in the
+/// tool-event slot).
+fn function_call_parts(
+    name: String,
+    arguments: Option<Value>,
+    id: Option<String>,
     tool_ids: &mut streaming::SyntheticIds,
-) -> Vec<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+) -> ChunkParts {
+    // The wire's id when present; never the tool name — a name-as-id
+    // fallback collides two same-tool calls in one turn.
+    ChunkParts {
+        reasoning: None,
+        reasoning_signature: None,
+        text: None,
+        tool_events: shared_parts::function_call(
+            name,
+            arguments.unwrap_or(Value::Object(Map::new())),
+            id,
+            None,
+            tool_ids,
+        ),
+    }
+}
+
+/// Visible text as one declared chunk.
+fn text_parts(text: String) -> ChunkParts {
+    ChunkParts {
+        reasoning: None,
+        reasoning_signature: None,
+        text: Some(text),
+        tool_events: Vec::new(),
+    }
+}
+
+fn step_start_to_parts(step: Step, tool_ids: &mut streaming::SyntheticIds) -> Vec<ChunkParts> {
     match step {
         // Every convertible item, in wire order: a `model_output` step can
         // interleave text and function calls in one `content` list, and
         // keeping only the first silently dropped the rest.
         Step::ModelOutput { content } => content
             .into_iter()
-            .filter_map(|content| content_to_choice(content, tool_ids))
+            .filter_map(|content| content_to_parts(content, tool_ids))
             .collect(),
         Step::FunctionCall(FunctionCallContent {
             name,
@@ -539,30 +543,20 @@ fn step_start_to_choices(
             let Some(name) = name else {
                 return Vec::new();
             };
-            // The wire's id when present; never the tool name — a
-            // name-as-id fallback collides two same-tool calls in one turn.
-            vec![shared_parts::function_call(
-                name,
-                arguments.unwrap_or(Value::Object(Map::new())),
-                id,
-                None,
-                tool_ids,
-            )]
+            vec![function_call_parts(name, arguments, id, tool_ids)]
         }
         _ => Vec::new(),
     }
 }
 
-fn content_to_choice(
+fn content_to_parts(
     content: Content,
     tool_ids: &mut streaming::SyntheticIds,
-) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+) -> Option<ChunkParts> {
     match content {
-        Content::Text(text) if !text.text.is_empty() => {
-            Some(streaming::RawStreamingChoice::Message(text.text))
-        }
+        Content::Text(text) if !text.text.is_empty() => Some(text_parts(text.text)),
         Content::FunctionCall(content) => {
-            step_start_to_choices(Step::FunctionCall(content), tool_ids)
+            step_start_to_parts(Step::FunctionCall(content), tool_ids)
                 .into_iter()
                 .next()
         }
@@ -570,29 +564,21 @@ fn content_to_choice(
     }
 }
 
-fn content_delta_to_choice(
+fn content_delta_to_parts(
     delta: ContentDelta,
     tool_ids: &mut streaming::SyntheticIds,
-) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+) -> Option<ChunkParts> {
     match delta {
         ContentDelta::Text(TextDelta {
             text: Some(text), ..
-        }) => Some(streaming::RawStreamingChoice::Message(text)),
+        }) => Some(text_parts(text)),
         ContentDelta::FunctionCall(FunctionCallContent {
             name,
             arguments,
             id,
         }) => {
             let name = name?;
-            // The wire's id when present; never the tool name — a
-            // name-as-id fallback collides two same-tool calls in one turn.
-            Some(shared_parts::function_call(
-                name,
-                arguments.unwrap_or(Value::Object(Map::new())),
-                id,
-                None,
-                tool_ids,
-            ))
+            Some(function_call_parts(name, arguments, id, tool_ids))
         }
         // Thought deltas (`thought_summary`, `thought_signature`) are
         // stateful — the adapter accumulates and restates them in

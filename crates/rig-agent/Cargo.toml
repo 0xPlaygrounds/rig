@@ -25,6 +25,7 @@ fastrand = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 indexmap = { workspace = true }
+rig-effect-log = { path = "../rig-effect-log", version = "0.42.0" }
 rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
 rig-derive = { path = "../rig-derive", version = "0.42.0", optional = true }
 schemars = { workspace = true }
@@ -35,15 +36,29 @@ tokio = { workspace = true, features = ["rt", "sync"], optional = true }
 tracing = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 
+# The model checker's shims, only under `RUSTFLAGS=--cfg rig_loom` (the
+# pattern tokio uses): nothing is added to the default graph.
+[target.'cfg(rig_loom)'.dependencies]
+loom = "0.7"
+
 [dev-dependencies]
 rig-reqwest = { path = "../rig-reqwest", version = "0.42.0" }
 anyhow = { workspace = true }
 # `cargo test -p rig-agent` needs rig-core's mock models even when the
 # `test-utils` feature is not requested explicitly.
 rig-core = { path = "../rig-core", features = ["test-utils"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
 tokio-test = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+# The one executed wasm test of the bus (`tests/bus_wasm.rs`): the bus
+# driven by `spawn_local` in the browser target, under
+# `wasm-bindgen-test-runner`.
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+wasm-bindgen-futures = { workspace = true }
 
 [features]
 default = ["derive"]

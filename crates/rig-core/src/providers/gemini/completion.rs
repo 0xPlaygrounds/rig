@@ -607,7 +607,10 @@ pub(crate) fn function_call_finish_reason_error(
 /// all is an `Err`. One part can yield *two* items: a trailing
 /// `thoughtSignature` rides a text part that carries no `thought` flag, and
 /// the signature belongs to a reasoning block rather than to the text.
-fn map_response_part(part: &Part) -> Result<Vec<completion::AssistantContent>, CompletionError> {
+fn map_response_part(
+    part: &Part,
+    tool_index: &mut u64,
+) -> Result<Vec<completion::AssistantContent>, CompletionError> {
     let Part {
         thought,
         thought_signature,
@@ -652,8 +655,13 @@ fn map_response_part(part: &Part) -> Result<Vec<completion::AssistantContent>, C
             }
         }
         PartKind::FunctionCall(function_call) => {
-            let tool_call = message::ToolCall::from_wire(
+            // Gemini function calls carry no id on most models: the
+            // `index`-th call of the response is `tool-<index>`.
+            let index = *tool_index;
+            *tool_index += 1;
+            let tool_call = message::ToolCall::from_wire_indexed(
                 function_call.id.clone().unwrap_or_default(),
+                index,
                 message::ToolFunction::new(function_call.name.clone(), function_call.args.clone()),
             )
             .with_signature(thought_signature.clone());
@@ -781,8 +789,9 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
         // signature is placed against the content mapped *before* it, so the
         // fold cannot become a `map`.
         let mut content: Vec<completion::AssistantContent> = Vec::with_capacity(parts.len());
+        let mut tool_index = 0;
         for part in parts {
-            content.extend(map_response_part(part)?);
+            content.extend(map_response_part(part, &mut tool_index)?);
             if !part.thought.unwrap_or(false)
                 && matches!(part.part, PartKind::Text(_))
                 && let Some(signature) = part.thought_signature.clone()

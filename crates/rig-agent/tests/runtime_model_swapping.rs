@@ -13,12 +13,12 @@ use std::{
 
 use futures::{Stream, StreamExt, stream};
 use rig_agent::{
-    Agent, AgentBuilder, ModelHandle,
+    Agent, AgentBuilder, ModelRef,
     agent::{
-        AgentHook, AgentRunner, CompletionCallAction, HookContext, InvalidToolCallAction,
-        ModelSelection, ModelSelectionAction, ModelTurnAction, ModelTurnFinished, NoToolConfig,
-        RequestPatch, StreamingError, StreamingResult, ToolCall as ToolCallEvent, ToolCallAction,
-        ToolResultAction, ToolResultEvent,
+        AgentHook, AgentRunner, CompletionCallAction, DispatchAction, DispatchEvent, HookContext,
+        InvalidToolCallAction, ModelSelection, ModelSelectionAction, ModelTurnAction,
+        ModelTurnFinished, NoToolConfig, OutcomeAction, OutcomeEvent, RequestPatch, StreamingError,
+        StreamingResult,
     },
     completion::{
         CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Message,
@@ -26,11 +26,15 @@ use rig_agent::{
     },
     extractor::{Extractor, ExtractorBuilder},
     streaming::{
-        RawStreamingChoice, StreamFinal, StreamedAssistantContent, StreamingCompletionResponse,
+        BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal,
+        StreamingCompletionResponse, ToolCallEnd, UnparseableToolInput,
     },
     tool::{Tool, ToolContext, ToolExecutionError},
 };
-use rig_core::message::{AssistantContent, ReasoningContent, ToolCall, ToolFunction, UserContent};
+use rig_core::{
+    error::ErrorKind,
+    message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction, UserContent},
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
@@ -265,10 +269,14 @@ fn stream_from_script(
     if let Turn::Error(message) = &turn {
         return Err(CompletionError::ProviderError(message.clone()));
     }
-    let mut events = vec![Ok(RawStreamingChoice::MessageId(turn.message_id()))];
+    let mut events = vec![Ok(StreamEvent::BlockStart {
+        id: BlockId::wire(turn.message_id()),
+        kind: BlockKind::Message,
+    })];
+    let text_block = MintKind::Text.for_wire_index(0);
     match &turn {
         Turn::Text { text, .. } => {
-            events.push(Ok(RawStreamingChoice::Message(text.clone())));
+            events.push(Ok(StreamEvent::text(text_block, text.clone())));
         }
         Turn::Tool {
             id,
@@ -277,47 +285,62 @@ fn stream_from_script(
             ..
         } => {
             // Canonical fragmenting-wire shape: name/args fragments closed by
-            // a tool-input end; the shared accumulator assembles the call and
-            // mints the correlation id at the first fragment.
-            events.push(Ok(RawStreamingChoice::ToolCallDelta {
-                id: rig_agent::streaming::StreamPartId::wire(id.clone()),
-                content: rig_agent::streaming::ToolCallDeltaContent::Name(name.clone()),
+            // a tool-call end; the shared accumulator assembles the call and
+            // opens the block at the first fragment.
+            events.push(Ok(StreamEvent::BlockDelta {
+                id: BlockId::wire(id.clone()),
+                delta: Delta::ToolName { name: name.clone() },
             }));
-            events.push(Ok(RawStreamingChoice::ToolCallDelta {
-                id: rig_agent::streaming::StreamPartId::wire(id.clone()),
-                content: rig_agent::streaming::ToolCallDeltaContent::Delta(arguments.to_string()),
+            events.push(Ok(StreamEvent::BlockDelta {
+                id: BlockId::wire(id.clone()),
+                delta: Delta::ToolArguments {
+                    arguments: arguments.to_string(),
+                },
             }));
-            events.push(Ok(RawStreamingChoice::ToolInputEnd(
-                rig_agent::streaming::ToolInputEnd::new(
-                    id.clone(),
-                    rig_agent::streaming::UnparseableToolInput::Drop,
-                ),
-            )));
+            events.push(Ok(StreamEvent::BlockEnd {
+                id: BlockId::wire(id.clone()),
+                end: BlockClose::ToolCall(ToolCallEnd::new(UnparseableToolInput::Drop)),
+                block: None,
+            }));
         }
         Turn::Rich { text, .. } => {
-            events.push(Ok(RawStreamingChoice::Reasoning {
-                id: rig_agent::streaming::MintKind::Reasoning.for_wire_index(1),
-                provider_id: None,
-                content: ReasoningContent::Summary("summary".to_owned()),
+            // A whole reasoning block restated at its (wire-sent) end.
+            let whole = MintKind::Reasoning.for_wire_index(1);
+            events.push(Ok(StreamEvent::BlockStart {
+                id: whole.clone(),
+                kind: BlockKind::Reasoning { provider_id: None },
             }));
-            events.push(Ok(RawStreamingChoice::ReasoningDelta {
-                id: rig_agent::streaming::MintKind::Reasoning.for_wire_index(2),
-                provider_id: None,
-                reasoning: "reasoning delta".to_owned(),
+            events.push(Ok(StreamEvent::BlockEnd {
+                id: whole,
+                end: BlockClose::Reasoning {
+                    reasoning: Some(Reasoning {
+                        id: None,
+                        content: vec![ReasoningContent::Summary("summary".to_owned())],
+                    }),
+                    signature: None,
+                    wire_sent: true,
+                },
+                block: None,
             }));
-            events.push(Ok(RawStreamingChoice::Unknown(
+            events.push(Ok(StreamEvent::BlockDelta {
+                id: MintKind::Reasoning.for_wire_index(2),
+                delta: Delta::Reasoning {
+                    text: "reasoning delta".to_owned(),
+                },
+            }));
+            events.push(Ok(StreamEvent::Unknown(
                 serde_json::json!({
                     "type": "provider_native_event",
                     "provider": script.provider,
                 })
                 .into(),
             )));
-            events.push(Ok(RawStreamingChoice::Message(text.clone())));
+            events.push(Ok(StreamEvent::text(text_block, text.clone())));
         }
         // Handled by the early return above.
         Turn::Error(_) => return Err(CompletionError::ProviderError("unreachable".to_owned())),
     }
-    events.push(Ok(RawStreamingChoice::FinalResponse(
+    events.push(Ok(StreamEvent::Final(
         StreamFinal::new(script.provider, turn.usage()).with_message_id(turn.message_id()),
     )));
 
@@ -427,7 +450,7 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
         .expect("direct provider stream");
     let mut stream_final: Option<StreamFinal> = None;
     while let Some(item) = low_level_stream.next().await {
-        if let StreamedAssistantContent::Final(final_) = item.expect("stream item") {
+        if let StreamEvent::Final(final_) = item.expect("stream item") {
             stream_final = Some(final_);
         }
     }
@@ -455,8 +478,18 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
     .expect("custom model extraction");
     assert_eq!(extracted.output.value, "external model extraction");
 
-    let handle = ModelHandle::named("diagnostic-alpha", alpha);
-    let debug = format!("{handle:?}");
+    let diagnostic = AgentBuilder::named_model("diagnostic-alpha", alpha).build();
+    assert_eq!(
+        diagnostic.model_ref(),
+        Some(ModelRef::from("diagnostic-alpha")),
+        "the agent's default model is addressed by its registered label"
+    );
+    let debug = format!(
+        "{:?}",
+        diagnostic
+            .model_descriptor()
+            .expect("registered model descriptor")
+    );
     assert!(debug.contains("diagnostic-alpha"));
     assert!(!debug.contains("credential-must-not-leak"));
 }
@@ -465,9 +498,6 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
 async fn replacement_and_override_scopes_have_value_semantics() {
     let alpha = alpha_static("alpha");
     let beta = beta_static("beta");
-    let beta_handle = ModelHandle::named("beta", beta.clone());
-    let alpha_handle = ModelHandle::named("alpha", alpha.clone());
-
     let mut agent = AgentBuilder::new(alpha.clone()).build();
     let runner_before_replacement = agent.runner("runner snapshot");
     agent.set_model(beta.clone());
@@ -489,8 +519,10 @@ async fn replacement_and_override_scopes_have_value_semantics() {
         "beta"
     );
 
-    let original = AgentBuilder::new(alpha.clone()).build();
-    let changed_clone = original.clone().with_model_handle(beta_handle.clone());
+    let original = AgentBuilder::named_model("alpha", alpha.clone())
+        .model_route("beta", beta.clone())
+        .build();
+    let changed_clone = original.clone().with_model_ref("beta");
     assert_eq!(
         original.prompt("original").await.expect("original").output,
         "alpha"
@@ -507,7 +539,7 @@ async fn replacement_and_override_scopes_have_value_semantics() {
     assert_eq!(
         original
             .prompt("one run")
-            .using_model(beta_handle.clone())
+            .using_model("beta")
             .await
             .expect("fixed override")
             .output,
@@ -524,7 +556,7 @@ async fn replacement_and_override_scopes_have_value_semantics() {
 
     let typed: ExtractedValue = original
         .prompt_typed("typed one-run override")
-        .using_model(ModelHandle::new(beta_static(r#"{"value":"typed beta"}"#)))
+        .using_model_value(beta_static(r#"{"value":"typed beta"}"#))
         .await
         .expect("typed override")
         .output;
@@ -535,17 +567,17 @@ async fn replacement_and_override_scopes_have_value_semantics() {
     assert_eq!(
         original
             .prompt("hook after run default")
-            .using_model(alpha_handle)
+            .using_model("alpha")
             .add_hook(SelectWith(
                 move |_context: &HookContext, event: ModelSelection<'_>| {
                     observed_for_hook
                         .lock()
                         .expect("candidate observations")
                         .push((
-                            event.default_model.label().map(str::to_owned),
-                            event.selected_model.label().map(str::to_owned),
+                            Some(event.default_model.to_string()),
+                            Some(event.selected_model.to_string()),
                         ));
-                    ModelSelectionAction::select(beta_handle.clone())
+                    ModelSelectionAction::select("beta")
                 }
             ))
             .await
@@ -564,14 +596,12 @@ async fn replacement_and_override_scopes_have_value_semantics() {
 
 #[tokio::test]
 async fn agent_and_request_model_selection_hooks_have_expected_scope() {
-    let default = ModelHandle::named("default", alpha_static("default"));
-    let routed = ModelHandle::named("routed", beta_static("agent routed"));
-    let request = ModelHandle::named("request", alpha_static("request routed"));
-    let routed_for_hook = routed.clone();
-    let agent = AgentBuilder::from_model_handle(default)
+    let agent = AgentBuilder::named_model("default", alpha_static("default"))
+        .model_route("routed", beta_static("agent routed"))
+        .model_route("request", alpha_static("request routed"))
         .add_hook(SelectWith(
             move |_context: &HookContext, _event: ModelSelection<'_>| {
-                ModelSelectionAction::select(routed_for_hook.clone())
+                ModelSelectionAction::select("routed")
             },
         ))
         .build();
@@ -590,8 +620,8 @@ async fn agent_and_request_model_selection_hooks_have_expected_scope() {
             .prompt("request hook")
             .add_hook(SelectWith(
                 move |_context: &HookContext, event: ModelSelection<'_>| {
-                    assert_eq!(event.selected_model.label(), Some("routed"));
-                    ModelSelectionAction::select(request.clone())
+                    assert_eq!(event.selected_model.as_str(), "routed");
+                    ModelSelectionAction::select("request")
                 }
             ))
             .await
@@ -699,7 +729,7 @@ async fn extraction_override_is_run_local_and_sets_each_retry_default() {
 
     let specialist = extractor
         .extract("use the specialist")
-        .using_model(ModelHandle::new(BetaModel(specialist_script.clone())))
+        .using_model_value(BetaModel(specialist_script.clone()))
         .await
         .expect("run-local extraction override");
     assert_eq!(specialist.output.value, "specialist");
@@ -737,32 +767,30 @@ async fn extraction_retries_reenter_model_selection_hooks() {
     };
     let second = BetaModel(Script::new("second", [submit_turn.clone()], submit_turn));
     let second_script = second.0.clone();
-    let first = ModelHandle::named("first", first);
-    let second = ModelHandle::named("second", second);
     let selections = Arc::new(Mutex::new(Vec::new()));
     let selections_for_hook = selections.clone();
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_hook = attempts.clone();
-    let extractor = ExtractorBuilder::<ExtractedValue>::new(default)
-        .add_hook(SelectWith(
-            move |context: &HookContext, event: ModelSelection<'_>| {
-                selections_for_hook.lock().expect("selection log").push((
-                    context.turn(),
-                    event
-                        .previous_model
-                        .and_then(ModelHandle::label)
-                        .map(str::to_owned),
-                ));
-                let attempt = attempts_for_hook.fetch_add(1, Ordering::SeqCst);
-                ModelSelectionAction::select(if attempt == 0 {
-                    first.clone()
-                } else {
-                    second.clone()
-                })
-            },
-        ))
-        .retries(1)
-        .build();
+    let extractor = ExtractorBuilder::<ExtractedValue>::from_agent_builder(
+        AgentBuilder::new(default)
+            .model_route("first", first)
+            .model_route("second", second),
+    )
+    .add_hook(SelectWith(
+        move |context: &HookContext, event: ModelSelection<'_>| {
+            selections_for_hook.lock().expect("selection log").push((
+                context.turn(),
+                event
+                    .previous_model
+                    .map(ModelRef::as_str)
+                    .map(str::to_owned),
+            ));
+            let attempt = attempts_for_hook.fetch_add(1, Ordering::SeqCst);
+            ModelSelectionAction::select(if attempt == 0 { "first" } else { "second" })
+        },
+    ))
+    .retries(1)
+    .build();
 
     let extracted = extractor
         .extract("repair the structured output")
@@ -841,22 +869,22 @@ impl AgentHook for LifecycleLog {
         ModelTurnAction::continue_run()
     }
 
-    async fn on_tool_call(
+    async fn on_dispatch(
         &self,
         _context: &HookContext,
-        event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        self.push(format!("tool-call:{}", event.tool_name));
-        ToolCallAction::run()
+        event: DispatchEvent<'_>,
+    ) -> DispatchAction {
+        if let Some(name) = event.tool_name() {
+            self.push(format!("tool-call:{name}"));
+        }
+        DispatchAction::proceed()
     }
 
-    async fn on_tool_result(
-        &self,
-        _context: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        self.push(format!("tool-result:{}", event.tool_name));
-        ToolResultAction::keep()
+    async fn on_outcome(&self, _context: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if let Some(name) = event.tool_name() {
+            self.push(format!("tool-result:{name}"));
+        }
+        OutcomeAction::proceed()
     }
 }
 
@@ -915,9 +943,8 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
         let lifecycle = LifecycleLog::default();
         let selected = Arc::new(Mutex::new(Vec::new()));
         let selected_for_router = selected.clone();
-        let alpha_handle = ModelHandle::named("alpha", alpha);
-        let beta_handle = ModelHandle::named("beta", beta);
-        let response = AgentBuilder::from_model_handle(alpha_handle.clone())
+        let response = AgentBuilder::named_model("alpha", alpha)
+            .model_route("beta", beta)
             .tool(LookupTool {
                 calls: calls.clone(),
             })
@@ -931,11 +958,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
                         .lock()
                         .expect("selection lock")
                         .push(context.turn());
-                    ModelSelectionAction::select(if context.turn() == 1 {
-                        alpha_handle.clone()
-                    } else {
-                        beta_handle.clone()
-                    })
+                    ModelSelectionAction::select(if context.turn() == 1 { "alpha" } else { "beta" })
                 },
             ))
             .await
@@ -960,7 +983,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
         Vec<CompletionRequest>,
         Vec<usize>,
         Vec<&'static str>,
-        Vec<rig_core::id::InternalCallId>,
+        Vec<rig_core::streaming::BlockId>,
     ) {
         let (alpha, beta) = routing_models();
         let beta_script = beta.0.clone();
@@ -968,9 +991,8 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
         let lifecycle = LifecycleLog::default();
         let selected = Arc::new(Mutex::new(Vec::new()));
         let selected_for_router = selected.clone();
-        let alpha_handle = ModelHandle::named("alpha", alpha);
-        let beta_handle = ModelHandle::named("beta", beta);
-        let agent = AgentBuilder::from_model_handle(alpha_handle.clone())
+        let agent = AgentBuilder::named_model("alpha", alpha)
+            .model_route("beta", beta)
             .tool(LookupTool {
                 calls: calls.clone(),
             })
@@ -985,50 +1007,40 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
                         .lock()
                         .expect("selection lock")
                         .push(context.turn());
-                    ModelSelectionAction::select(if context.turn() == 1 {
-                        alpha_handle.clone()
-                    } else {
-                        beta_handle.clone()
-                    })
+                    ModelSelectionAction::select(if context.turn() == 1 { "alpha" } else { "beta" })
                 },
             ))
             .stream()
             .await;
         let mut final_response = None;
         let mut events = Vec::new();
-        let mut internal_call_ids = Vec::new();
+        let mut block_ids = Vec::new();
         while let Some(item) = stream.next().await {
             match item.expect("stream item") {
                 rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                    StreamedAssistantContent::ToolCallDelta {
-                        internal_call_id, ..
+                    StreamEvent::BlockDelta {
+                        id: block_id,
+                        delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
                     },
                 ) => {
                     events.push("tool-delta");
-                    internal_call_ids.push(internal_call_id);
+                    block_ids.push(block_id);
                 }
-                rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                    StreamedAssistantContent::ToolCall {
-                        internal_call_id, ..
-                    },
-                ) => {
+                rig_agent::agent::MultiTurnStreamItem::ToolCall { block_id, .. } => {
                     events.push("tool-call");
-                    internal_call_ids.push(internal_call_id);
+                    block_ids.push(block_id);
                 }
                 rig_agent::agent::MultiTurnStreamItem::ToolExecutionCommitted {
-                    internal_call_id,
-                    ..
+                    block_id, ..
                 } => {
                     events.push("tool-commit");
-                    internal_call_ids.push(internal_call_id);
+                    block_ids.push(block_id);
                 }
                 rig_agent::agent::MultiTurnStreamItem::StreamUserItem(
-                    rig_agent::streaming::StreamedUserContent::ToolResult {
-                        internal_call_id, ..
-                    },
+                    rig_agent::streaming::StreamedUserContent::ToolResult { id: block_id, .. },
                 ) => {
                     events.push("tool-result");
-                    internal_call_ids.push(internal_call_id);
+                    block_ids.push(block_id);
                 }
                 rig_agent::agent::MultiTurnStreamItem::FinalResponse(response) => {
                     final_response = Some(response);
@@ -1043,7 +1055,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
             beta_script.requests(),
             selected.lock().expect("selection lock").clone(),
             events,
-            internal_call_ids,
+            block_ids,
         )
     }
 
@@ -1056,7 +1068,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
         streaming_beta,
         streaming_selected,
         stream_events,
-        stream_internal_call_ids,
+        stream_block_ids,
     ) = run_streaming().await;
 
     assert_eq!(blocking.output, "synthesized answer");
@@ -1083,11 +1095,12 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
     );
     // The correlation id is minted by the shared accumulator when the call's
     // first fragment arrives; every downstream stage must carry that one id.
-    let correlation = *stream_internal_call_ids
+    let correlation = stream_block_ids
         .first()
-        .expect("at least one correlated event");
+        .expect("at least one correlated event")
+        .clone();
     assert_eq!(
-        stream_internal_call_ids,
+        stream_block_ids,
         vec![correlation; 5],
         "deltas, the completed call, execution, and result retain one correlation id"
     );
@@ -1114,13 +1127,12 @@ impl AgentHook for RetryFirst {
 async fn retries_reenter_selection_without_leaking_rejected_turn_state() {
     let alpha = alpha_static("rejected draft");
     let beta = beta_static("accepted answer");
-    let alpha_handle = ModelHandle::named("alpha", alpha);
     let beta_script = beta.0.clone();
-    let beta_handle = ModelHandle::named("beta", beta);
     let selections = Arc::new(Mutex::new(Vec::new()));
     let selections_for_router = selections.clone();
 
-    let response = AgentBuilder::from_model_handle(alpha_handle.clone())
+    let response = AgentBuilder::named_model("alpha", alpha)
+        .model_route("beta", beta)
         .add_hook(RetryFirst(Arc::new(AtomicUsize::new(0))))
         .build()
         .prompt("try twice")
@@ -1131,14 +1143,10 @@ async fn retries_reenter_selection_without_leaking_rejected_turn_state() {
                     context.turn(),
                     event
                         .previous_model
-                        .and_then(ModelHandle::label)
+                        .map(ModelRef::as_str)
                         .map(str::to_owned),
                 ));
-                ModelSelectionAction::select(if context.turn() == 1 {
-                    alpha_handle.clone()
-                } else {
-                    beta_handle.clone()
-                })
+                ModelSelectionAction::select(if context.turn() == 1 { "alpha" } else { "beta" })
             },
         ))
         .await
@@ -1186,12 +1194,11 @@ async fn invalid_tool_retry_reenters_selection_exactly_once() {
     let invalid = Turn::tool("missing_tool", 2, "invalid-tool-message");
     let alpha = AlphaModel(Script::new("alpha", [invalid.clone()], invalid));
     let beta = beta_static("recovered after invalid tool");
-    let alpha_handle = ModelHandle::named("alpha", alpha);
-    let beta_handle = ModelHandle::named("beta", beta);
     let selections = Arc::new(Mutex::new(Vec::new()));
     let selections_for_router = selections.clone();
 
-    let output = AgentBuilder::from_model_handle(alpha_handle.clone())
+    let output = AgentBuilder::named_model("alpha", alpha)
+        .model_route("beta", beta)
         .add_hook(RetryInvalidTool)
         .build()
         .prompt("recover from an invalid tool")
@@ -1203,14 +1210,10 @@ async fn invalid_tool_retry_reenters_selection_exactly_once() {
                     context.turn(),
                     event
                         .previous_model
-                        .and_then(ModelHandle::label)
+                        .map(ModelRef::as_str)
                         .map(str::to_owned),
                 ));
-                ModelSelectionAction::select(if context.turn() == 1 {
-                    alpha_handle.clone()
-                } else {
-                    beta_handle.clone()
-                })
+                ModelSelectionAction::select(if context.turn() == 1 { "alpha" } else { "beta" })
             },
         ))
         .await
@@ -1237,20 +1240,24 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
 
     while let Some(item) = stream.next().await {
         match item.expect("normalized stream item") {
+            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Reasoning(_)),
+                ..
+            }) => saw_reasoning = true,
             rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::Reasoning { .. },
-            ) => saw_reasoning = true,
-            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::ReasoningDelta { .. },
+                StreamEvent::BlockDelta {
+                    delta: Delta::Reasoning { .. },
+                    ..
+                },
             ) => saw_reasoning_delta = true,
-            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::Unknown(value),
-            ) => {
+            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Unknown(
+                value,
+            )) => {
                 saw_unknown = value.value()["type"] == "provider_native_event";
             }
-            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::Final(final_),
-            ) => provider_final = Some(final_),
+            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(
+                final_,
+            )) => provider_final = Some(final_),
             rig_agent::agent::MultiTurnStreamItem::FinalResponse(response) => {
                 final_response = Some(response);
             }
@@ -1290,10 +1297,8 @@ async fn selected_model_capability_is_used_for_each_prepared_attempt() {
         noncomposing_turn,
     ));
     let noncomposing_script = noncomposing.0.clone();
-    let composing_handle = ModelHandle::new(composing);
-    let noncomposing_handle = ModelHandle::new(noncomposing);
-
-    let _response = AgentBuilder::from_model_handle(composing_handle.clone())
+    let _response = AgentBuilder::named_model("composing", composing)
+        .model_route("noncomposing", noncomposing)
         .output_schema::<ExtractedValue>()
         .output_mode(rig_agent::agent::OutputMode::Auto)
         .tool(LookupTool {
@@ -1306,9 +1311,9 @@ async fn selected_model_capability_is_used_for_each_prepared_attempt() {
         .add_hook(SelectWith(
             move |context: &HookContext, _event: ModelSelection<'_>| {
                 ModelSelectionAction::select(if context.turn() == 1 {
-                    composing_handle.clone()
+                    "composing"
                 } else {
-                    noncomposing_handle.clone()
+                    "noncomposing"
                 })
             },
         ))
@@ -1369,11 +1374,11 @@ impl CompletionModel for GatedToolModel {
         Ok(StreamingCompletionResponse::stream(
             "gated",
             Box::pin(stream::iter([
-                Ok(RawStreamingChoice::Message("unused".to_owned())),
-                Ok(RawStreamingChoice::FinalResponse(StreamFinal::new(
-                    "gated",
-                    usage(1),
-                ))),
+                Ok(StreamEvent::text(
+                    MintKind::Text.for_wire_index(0),
+                    "unused",
+                )),
+                Ok(StreamEvent::Final(StreamFinal::new("gated", usage(1)))),
             ])),
         ))
     }
@@ -1387,13 +1392,12 @@ async fn routing_changes_cannot_rebind_an_in_flight_attempt_but_affect_the_next_
     };
     let started = gated.started.clone();
     let release = gated.release.clone();
-    let gated_handle = ModelHandle::named("gated", gated);
-    let beta_handle = ModelHandle::named("beta", beta_static("after tool"));
     let use_beta = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let use_beta_for_router = use_beta.clone();
     let tool_calls = Arc::new(AtomicUsize::new(0));
 
-    let agent = AgentBuilder::from_model_handle(gated_handle.clone())
+    let agent = AgentBuilder::named_model("gated", gated)
+        .model_route("beta", beta_static("after tool"))
         .tool(LookupTool {
             calls: tool_calls.clone(),
         })
@@ -1405,9 +1409,9 @@ async fn routing_changes_cannot_rebind_an_in_flight_attempt_but_affect_the_next_
             .add_hook(SelectWith(
                 move |_context: &HookContext, _event: ModelSelection<'_>| {
                     ModelSelectionAction::select(if use_beta_for_router.load(Ordering::SeqCst) {
-                        beta_handle.clone()
+                        "beta"
                     } else {
-                        gated_handle.clone()
+                        "gated"
                     })
                 },
             ))
@@ -1470,7 +1474,7 @@ struct PendingRawStream {
 }
 
 impl Stream for PendingRawStream {
-    type Item = Result<RawStreamingChoice, CompletionError>;
+    type Item = Result<StreamEvent, CompletionError>;
 
     fn poll_next(mut self: Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if !self.notified {
@@ -1553,18 +1557,18 @@ async fn dropping_pending_unary_and_streaming_attempts_cancels_by_drop() {
 
 #[tokio::test]
 async fn concurrent_runs_and_handle_calls_are_independent() {
-    let alpha_handle = ModelHandle::named("alpha", alpha_static("alpha concurrent"));
-    let beta_handle = ModelHandle::named("beta", beta_static("beta concurrent"));
-    let agent = AgentBuilder::from_model_handle(alpha_handle.clone()).build();
+    let agent = AgentBuilder::named_model("alpha", alpha_static("alpha concurrent"))
+        .model_route("beta", beta_static("beta concurrent"))
+        .build();
 
     let alpha_run = agent.prompt("alpha run").add_hook(SelectWith(
         move |_context: &HookContext, _event: ModelSelection<'_>| {
-            ModelSelectionAction::select(alpha_handle.clone())
+            ModelSelectionAction::select("alpha")
         },
     ));
     let beta_run = agent.prompt("beta run").add_hook(SelectWith(
         move |_context: &HookContext, _event: ModelSelection<'_>| {
-            ModelSelectionAction::select(beta_handle.clone())
+            ModelSelectionAction::select("beta")
         },
     ));
     let (alpha, beta) = tokio::join!(alpha_run, beta_run);
@@ -1574,7 +1578,7 @@ async fn concurrent_runs_and_handle_calls_are_independent() {
     );
     assert_eq!(beta.expect("beta concurrent run").output, "beta concurrent");
 
-    let shared = ModelHandle::new(alpha_static("shared handle"));
+    let shared = agent.register_model("shared", alpha_static("shared handle"));
     let first = agent.prompt("first shared").using_model(shared.clone());
     let second = agent.prompt("second shared").using_model(shared);
     let (first, second) = tokio::join!(first, second);
@@ -1624,7 +1628,7 @@ fn observing_selector(
             context.turn(),
             event
                 .previous_model
-                .and_then(ModelHandle::label)
+                .map(ModelRef::as_str)
                 .map(str::to_owned),
             event.request_patch.and_then(|patch| patch.temperature),
             event.request_patch.and_then(|patch| patch.preamble.clone()),
@@ -1685,10 +1689,10 @@ async fn a_request_patch_can_influence_the_selected_model_on_both_surfaces() {
         let alpha = alpha_static("alpha answer");
         let beta = beta_static("beta answer");
         let beta_script = beta.0.clone();
-        let beta_handle = ModelHandle::named("beta", beta);
         // The completion-call hook escalates via a patch; the selection hook
         // routes to beta exactly when it observes the escalation marker.
         let agent = AgentBuilder::new(alpha)
+            .model_route("beta", beta)
             .add_hook(PatchWith(RequestPatch::new().temperature(0.9)))
             .add_hook(SelectWith(
                 move |_context: &HookContext, event: ModelSelection<'_>| {
@@ -1697,7 +1701,7 @@ async fn a_request_patch_can_influence_the_selected_model_on_both_surfaces() {
                         .and_then(|patch| patch.temperature)
                         .is_some_and(|temperature| temperature > 0.5);
                     if escalated {
-                        ModelSelectionAction::select(beta_handle.clone())
+                        ModelSelectionAction::select("beta")
                     } else {
                         ModelSelectionAction::continue_run()
                     }
@@ -1779,9 +1783,8 @@ async fn failed_preparation_follows_selection_and_does_not_issue_an_attempt() {
         let model = AlphaModel(Script::new("alpha", [alpha_turn.clone()], alpha_turn));
         let script = model.0.clone();
         let observations: SelectionObservations = Arc::new(Mutex::new(Vec::new()));
-        let alpha_handle = ModelHandle::named("alpha", model.clone());
         let bad_patch = BadSecondTurnPatch;
-        let agent = AgentBuilder::from_model_handle(alpha_handle)
+        let agent = AgentBuilder::named_model("alpha", model.clone())
             .tool(LookupTool {
                 calls: Arc::new(AtomicUsize::new(0)),
             })
@@ -1862,22 +1865,25 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
         ));
         let script = flaky.0.clone();
         let observations: SelectionObservations = Arc::new(Mutex::new(Vec::new()));
-        let flaky_handle = ModelHandle::named("flaky", flaky);
-        let agent = AgentBuilder::from_model_handle(flaky_handle)
+        let agent = AgentBuilder::named_model("flaky", flaky)
             .add_hook(observing_selector(observations.clone()))
             .build();
 
+        // The bus carries a provider failure across the hop as a
+        // provider-kind `ErrorReport` whose message is the provider's own.
         let failed_with_provider_error = if streaming {
             matches!(
                 drain_stream(agent.stream_prompt("boom").stream().await).await,
-                Err(StreamingError::Completion(CompletionError::ProviderError(message)))
-                    if message == "provider exploded"
+                Err(StreamingError::Report(report))
+                    if report.kind == ErrorKind::Provider
+                        && report.message.ends_with("provider exploded")
             )
         } else {
             matches!(
                 agent.prompt("boom").await,
-                Err(PromptError::CompletionError(CompletionError::ProviderError(message)))
-                    if message == "provider exploded"
+                Err(PromptError::Report(report))
+                    if report.kind == ErrorKind::Provider
+                        && report.message.ends_with("provider exploded")
             )
         };
         assert!(
@@ -1897,11 +1903,10 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
     // committed.
     let invalid = Turn::tool("missing_tool", 2, "invalid-message");
     let alpha = AlphaModel(Script::new("alpha", [invalid.clone()], invalid));
-    let beta_handle = ModelHandle::named("beta", beta_static("recovered"));
-    let alpha_handle = ModelHandle::named("alpha", alpha);
     let observations: SelectionObservations = Arc::new(Mutex::new(Vec::new()));
     let observations_for_router = observations.clone();
-    let output = AgentBuilder::from_model_handle(alpha_handle.clone())
+    let output = AgentBuilder::named_model("alpha", alpha)
+        .model_route("beta", beta_static("recovered"))
         .add_hook(RetryInvalidTool)
         .build()
         .prompt("recover")
@@ -1916,16 +1921,12 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
                         context.turn(),
                         event
                             .previous_model
-                            .and_then(ModelHandle::label)
+                            .map(ModelRef::as_str)
                             .map(str::to_owned),
                         None,
                         None,
                     ));
-                ModelSelectionAction::select(if context.turn() == 1 {
-                    alpha_handle.clone()
-                } else {
-                    beta_handle.clone()
-                })
+                ModelSelectionAction::select(if context.turn() == 1 { "alpha" } else { "beta" })
             },
         ))
         .await
@@ -1934,4 +1935,52 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
     let observed = observations.lock().expect("observation lock").clone();
     assert_eq!(observed[0], (1, None, None, None));
     assert_eq!(observed[1], (2, Some("alpha".to_owned()), None, None));
+}
+
+#[tokio::test]
+async fn an_agent_level_swap_serves_the_next_run_and_rebinds_live_handles() {
+    let agent = AgentBuilder::named_model("alpha", alpha_static("one")).build();
+    let parts = agent
+        .into_parts()
+        .map_err(|_| "the only clone can take the bus apart")
+        .expect("into_parts");
+    let rig_agent::agent::AgentParts {
+        dispatcher,
+        registrar: _,
+        driver,
+        agent,
+    } = parts;
+    let task = tokio::spawn(driver);
+    let handle: rig_agent::bus::ModelHandle = dispatcher
+        .bind(agent.model_key())
+        .expect("bound before the swap");
+    let before = handle.descriptor();
+
+    let first = agent.prompt("hi").run().await.expect("first run");
+    assert_eq!(first.output, "one");
+
+    let label = agent.register_model(
+        "alpha",
+        BetaModel(Script::composing(
+            "beta",
+            [],
+            Turn::text("two", 2, "beta-message"),
+        )),
+    );
+    assert_eq!(
+        label.as_str(),
+        "alpha",
+        "the same label, a new model behind it"
+    );
+
+    let second = agent.prompt("hi").run().await.expect("second run");
+    assert_eq!(second.output, "two", "the swap serves the next run");
+    let after = handle.descriptor();
+    assert_ne!(
+        before, after,
+        "a handle bound before the swap reports the new descriptor"
+    );
+    assert_eq!(handle.model_ref().as_str(), "alpha");
+    drop((agent, dispatcher, handle));
+    task.await.expect("driver task");
 }

@@ -101,28 +101,26 @@ fn spawn_server(listener: TcpListener, messages: Vec<String>, abort: bool) {
 /// terminal or session error) and this helper replays them. One policy the
 /// helper supplies that the buffered session cannot: tool calls the provider
 /// fully delivered flush before a session error, mirroring the SSE loop's
-/// flush-before-terminal-error contract (`RawChoiceAccumulator::take_tool_calls`).
+/// flush-before-terminal-error contract (`RawChoiceAccumulator::flush_tool_calls`).
 async fn drain_openai_responses_websocket_events(
     provider: &'static str,
     events: Vec<Result<ResponsesWebSocketEvent, CompletionError>>,
 ) -> conformance::DrainedStream {
     use ResponsesWebSocketEvent;
+    use rig_core::providers::internal::adapter::AdapterOutput;
     use rig_core::providers::openai::responses_api::ResponsesUsage;
     use rig_core::providers::openai::responses_api::streaming::{
-        RawChoiceAccumulator, ResponseChunkKind, ResponsesStreamOptions, normalize_responses_stream,
+        RawChoiceAccumulator, ResponseChunkKind, ResponsesStreamOptions,
     };
 
-    let mut accumulator = RawChoiceAccumulator::new(ResponsesUsage::new());
-    let mut raw = Vec::new();
+    let mut accumulator = RawChoiceAccumulator::new(provider, ResponsesUsage::new());
+    let mut out = AdapterOutput::new();
     let mut errored = false;
     for event in events {
         match event {
-            Ok(ResponsesWebSocketEvent::Item(chunk)) => raw.extend(
-                accumulator
-                    .decode_item_chunk(chunk, ResponsesStreamOptions::strict())
-                    .into_iter()
-                    .map(Ok),
-            ),
+            Ok(ResponsesWebSocketEvent::Item(chunk)) => {
+                accumulator.decode_item_chunk(chunk, ResponsesStreamOptions::strict(), &mut out);
+            }
             Ok(ResponsesWebSocketEvent::Response(chunk)) => {
                 let terminal = matches!(
                     chunk.kind,
@@ -133,8 +131,8 @@ async fn drain_openai_responses_websocket_events(
                 if let Err(error) =
                     accumulator.record_response_chunk(chunk.kind, chunk.response, "")
                 {
-                    raw.extend(accumulator.take_tool_calls().into_iter().map(Ok));
-                    raw.push(Err(error));
+                    accumulator.flush_tool_calls(&mut out);
+                    out.error(error);
                     errored = true;
                     break;
                 }
@@ -144,32 +142,33 @@ async fn drain_openai_responses_websocket_events(
             }
             // Semantic skip, raw passthrough: an unknown frame never reaches
             // the accumulator but is still yielded verbatim.
-            Ok(ResponsesWebSocketEvent::Unknown(value)) => {
-                raw.push(Ok(rig_core::streaming::RawStreamingChoice::Unknown(value)));
-            }
+            Ok(ResponsesWebSocketEvent::Unknown(value)) => out.unknown(value),
             // `response.done` / `error` envelopes are websocket-only shapes the
             // fixtures never script; the production session maps them to a
             // terminal or a provider error before this replay runs.
             Ok(ResponsesWebSocketEvent::Done(_)) => {}
             Ok(ResponsesWebSocketEvent::Error(error)) => {
-                raw.extend(accumulator.take_tool_calls().into_iter().map(Ok));
-                raw.push(Err(CompletionError::ProviderError(error.to_string())));
+                accumulator.flush_tool_calls(&mut out);
+                out.error(CompletionError::ProviderError(error.to_string()));
                 errored = true;
                 break;
             }
             Err(error) => {
-                raw.extend(accumulator.take_tool_calls().into_iter().map(Ok));
-                raw.push(Err(error));
+                accumulator.flush_tool_calls(&mut out);
+                out.error(error);
                 errored = true;
                 break;
             }
         }
     }
     if !errored {
-        raw.extend(accumulator.finish().into_iter().map(Ok));
+        accumulator.finish(&mut out);
     }
 
-    let stream = normalize_responses_stream(provider, Box::pin(futures::stream::iter(raw)));
+    let stream = rig_core::streaming::StreamingCompletionResponse::stream(
+        provider,
+        Box::pin(futures::stream::iter(out.into_items())),
+    );
     conformance::fixtures::drain(stream).await
 }
 

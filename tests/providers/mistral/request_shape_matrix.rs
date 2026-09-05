@@ -38,7 +38,7 @@ use rig::completion::{CompletionModel, FinishReason};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::mistral;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 use serde_json::{Value, json};
 
 use super::support::with_mistral_request_shape_cassette_result;
@@ -173,11 +173,17 @@ async fn run_cell(client: mistral::Client, cell: Cell, observed: SharedObservati
             let mut observation = Observation::default();
             while let Some(item) = stream.next().await {
                 match item? {
-                    StreamedAssistantContent::Text(text) => observation.text.push_str(&text.text),
-                    StreamedAssistantContent::ToolCall { tool_call, .. } => observation
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text },
+                        ..
+                    } => observation.text.push_str(&text),
+                    StreamEvent::BlockEnd {
+                        block: Some(AssistantContent::ToolCall(tool_call)),
+                        ..
+                    } => observation
                         .calls
                         .push((tool_call.function.name, tool_call.function.arguments)),
-                    StreamedAssistantContent::Final(final_record) => {
+                    StreamEvent::Final(final_record) => {
                         observation.finish_reason = final_record.finish_reason;
                     }
                     _ => {}

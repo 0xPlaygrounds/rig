@@ -28,12 +28,14 @@
 //! recorded request forced the call), so a recording that stopped calling
 //! fails instead of covering nothing.
 
+use rig::message::AssistantContent;
+
 use futures::StreamExt as _;
 use rig::completion::{CompletionModel, CompletionRequest, FinishReason, ToolDefinition};
 use rig::prelude::*;
 use rig::providers::mistral;
 use rig::providers::openai::completion::streaming::StreamingCompletionResponse;
-use rig::streaming::{StreamFinal, StreamedAssistantContent};
+use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -96,10 +98,13 @@ async fn collect_tool_calls_and_terminal(
     };
     while let Some(item) = stream.next().await {
         match item.expect("stream item should not be an error") {
-            StreamedAssistantContent::ToolCall { tool_call, .. } => {
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            } => {
                 observation.tool_calls.push(tool_call);
             }
-            StreamedAssistantContent::Final(final_record) => {
+            StreamEvent::Final(final_record) => {
                 observation.terminal = Some(final_record);
             }
             _ => {}
@@ -251,7 +256,10 @@ async fn stream_raw_round_trips_terminal_type() {
             );
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.finish_reason, terminal.finish_reason);
-            assert_eq!(typed.provider_request_id, terminal.provider_request_id);
+            assert_eq!(
+                typed.provider_request_id, None,
+                "the transport id is stamped on the normalized terminal, not the native record"
+            );
             *sink.lock().expect("observation lock") = Some(terminal);
             Ok::<(), anyhow::Error>(())
         },
@@ -347,7 +355,10 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
             );
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.finish_reason, terminal.finish_reason);
-            assert_eq!(typed.provider_request_id, terminal.provider_request_id);
+            assert_eq!(
+                typed.provider_request_id, None,
+                "the transport id is stamped on the normalized terminal, not the native record"
+            );
             *sink.lock().expect("observation lock") = Some(observation);
             Ok::<(), anyhow::Error>(())
         },

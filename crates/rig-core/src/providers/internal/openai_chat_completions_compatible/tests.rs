@@ -3,8 +3,10 @@ use super::{
     CompatibleStreamProfile, map_openai_finish_reason, send_compatible_raw_streaming_request,
 };
 use crate::completion::{CompletionError, FinishReason};
+use crate::error::ErrorKind;
 use crate::http_client;
-use crate::streaming::StreamedAssistantContent;
+use crate::message::AssistantContent;
+use crate::streaming::{BlockClose, BlockKind, Delta, StreamEvent};
 use crate::test_utils::MockStreamingClient;
 use crate::test_utils::internal_streaming_profiles::{
     DistinctToolCallEvictionProfile, ErrorAfterPendingToolCallProfile, FinishReasonCleanupProfile,
@@ -21,13 +23,46 @@ async fn send_compatible_streaming_request<T, P>(
 ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError>
 where
     T: crate::http_client::HttpClientExt + Clone + 'static,
-    P: CompatibleStreamProfile<FinalResponse = crate::streaming::StreamFinal> + 'static,
+    P: CompatibleStreamProfile + 'static,
 {
-    let raw = send_compatible_raw_streaming_request(http_client, req, None, profile).await?;
+    let raw = send_compatible_raw_streaming_request(
+        http_client,
+        req,
+        None,
+        "test-compatible".to_owned(),
+        profile,
+    )
+    .await?;
     Ok(crate::streaming::StreamingCompletionResponse::stream(
         "test-compatible",
-        crate::streaming::normalize_stream(raw, Ok),
+        raw,
     ))
+}
+
+/// A tool call's open and its fragments — the lifecycle events around a
+/// call that tests asserting on completed calls skip over.
+fn is_tool_lifecycle(event: &StreamEvent) -> bool {
+    matches!(
+        event,
+        StreamEvent::BlockStart {
+            kind: BlockKind::ToolCall,
+            ..
+        } | StreamEvent::BlockDelta {
+            delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+            ..
+        }
+    )
+}
+
+/// The completed tool call a `BlockEnd` published, if it did.
+fn completed_tool_call(event: StreamEvent) -> Option<crate::message::ToolCall> {
+    match event {
+        StreamEvent::BlockEnd {
+            block: Some(AssistantContent::ToolCall(tool_call)),
+            ..
+        } => Some(tool_call),
+        _ => None,
+    }
 }
 
 /// Normalize a turn that produced `content` under `finish_reason`.
@@ -179,8 +214,7 @@ async fn tool_call_closes_the_open_reasoning_block() {
     while stream.next().await.is_some() {}
 
     let reasoning_texts: Vec<String> = stream
-        .choice
-        .clone()
+        .snapshot()
         .into_iter()
         .filter_map(|item| match item {
             crate::completion::AssistantContent::Reasoning(reasoning) => Some(
@@ -227,8 +261,7 @@ async fn a_combined_chunk_emits_reasoning_before_its_tool_call() {
     while stream.next().await.is_some() {}
 
     let kinds: Vec<&'static str> = stream
-        .choice
-        .clone()
+        .snapshot()
         .into_iter()
         .map(|item| match item {
             crate::completion::AssistantContent::Reasoning(_) => "reasoning",
@@ -286,9 +319,7 @@ async fn evicted_tool_call_emits_object_input_end_to_end() {
 
     let mut collected_tool_calls = Vec::new();
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::ToolCall { tool_call, .. } =
-            item.expect("stream item should be ok")
-        {
+        if let Some(tool_call) = completed_tool_call(item.expect("stream item should be ok")) {
             collected_tool_calls.push(tool_call);
         }
     }
@@ -326,19 +357,19 @@ async fn normalize_chunk_errors_terminate_without_flushing_or_finalizing() {
             .await
             .expect("stream should start");
 
+    // The call's name fragment (which opens its block leniently) arrives
+    // before the malformed frame is reached.
     match stream
         .next()
         .await
         .expect("expected tool call delta before normalize error")
         .expect("first item should be ok")
     {
-        StreamedAssistantContent::ToolCallDelta { content, .. } => {
-            assert_eq!(
-                content,
-                crate::streaming::ToolCallDeltaContent::Name("ping".to_owned())
-            );
-        }
-        other => panic!("expected tool call delta, got {other:?}"),
+        StreamEvent::BlockDelta {
+            delta: Delta::ToolName { name },
+            ..
+        } => assert_eq!(name, "ping"),
+        other => panic!("expected tool call name delta, got {other:?}"),
     }
 
     let err = stream
@@ -355,8 +386,12 @@ async fn normalize_chunk_errors_terminate_without_flushing_or_finalizing() {
     let mut saw_final = false;
     while let Some(item) = stream.next().await {
         match item.expect("post-error items should be ok") {
-            StreamedAssistantContent::Final(_) => saw_final = true,
-            StreamedAssistantContent::ToolCall { .. } => {}
+            StreamEvent::Final(_) => saw_final = true,
+            StreamEvent::BlockEnd {
+                end: BlockClose::ToolCall(_),
+                block: Some(AssistantContent::ToolCall(_)),
+                ..
+            } => {}
             other => panic!("unexpected post-error stream item: {other:?}"),
         }
     }
@@ -391,9 +426,7 @@ async fn distinct_same_name_tool_calls_evict_by_id_when_a_new_call_starts() {
 
     let mut collected_tool_calls = Vec::new();
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::ToolCall { tool_call, .. } =
-            item.expect("stream item should be ok")
-        {
+        if let Some(tool_call) = completed_tool_call(item.expect("stream item should be ok")) {
             collected_tool_calls.push(tool_call);
         }
     }
@@ -443,8 +476,8 @@ async fn streaming_http_non_success_preserves_status_and_body() {
         )
     );
     assert_eq!(
-        err.provider_response_status(),
-        Some(http::StatusCode::TOO_MANY_REQUESTS)
+        err.http_status,
+        Some(http::StatusCode::TOO_MANY_REQUESTS.as_u16())
     );
     assert_eq!(err.provider_response_body(), Some(body));
     assert_eq!(
@@ -484,6 +517,19 @@ async fn streaming_in_band_error_envelope_preserves_full_payload() {
         .await
         .expect("stream should start");
 
+    // The text block opens, then the partial content arrives.
+    let opened = stream
+        .next()
+        .await
+        .expect("stream should open the text block")
+        .expect("text block start should be ok");
+    assert!(matches!(
+        opened,
+        StreamEvent::BlockStart {
+            kind: BlockKind::Text { .. },
+            ..
+        }
+    ));
     let first = stream
         .next()
         .await
@@ -491,7 +537,7 @@ async fn streaming_in_band_error_envelope_preserves_full_payload() {
         .expect("partial content should be ok");
     assert!(matches!(
         first,
-        StreamedAssistantContent::Text(text) if text.text == "partial"
+        StreamEvent::BlockDelta { delta: Delta::Text { text }, .. } if text == "partial"
     ));
 
     let err = match stream.next().await {
@@ -499,8 +545,8 @@ async fn streaming_in_band_error_envelope_preserves_full_payload() {
         Some(Ok(_)) => panic!("expected in-band provider error after partial content"),
         None => panic!("stream ended before in-band provider error"),
     };
-    assert!(matches!(err, CompletionError::ProviderResponse(_)));
-    assert_eq!(err.provider_response_status(), None);
+    assert_eq!(err.kind, ErrorKind::ProviderResponse);
+    assert_eq!(err.http_status, None);
     assert_eq!(err.provider_response_body(), Some(body));
     assert!(
         stream.next().await.is_none(),
@@ -534,6 +580,19 @@ async fn streaming_mid_stream_http_non_success_preserves_status_and_body() {
         .await
         .expect("stream should start");
 
+    // The text block opens, then the partial content arrives.
+    let opened = stream
+        .next()
+        .await
+        .expect("stream should open the text block")
+        .expect("text block start should be ok");
+    assert!(matches!(
+        opened,
+        StreamEvent::BlockStart {
+            kind: BlockKind::Text { .. },
+            ..
+        }
+    ));
     let first = stream
         .next()
         .await
@@ -541,7 +600,7 @@ async fn streaming_mid_stream_http_non_success_preserves_status_and_body() {
         .expect("partial content should be ok");
     assert!(matches!(
         first,
-        StreamedAssistantContent::Text(text) if text.text == "partial"
+        StreamEvent::BlockDelta { delta: Delta::Text { text }, .. } if text == "partial"
     ));
 
     let err = match stream.next().await {
@@ -550,8 +609,8 @@ async fn streaming_mid_stream_http_non_success_preserves_status_and_body() {
         None => panic!("stream ended before HTTP transport error"),
     };
     assert_eq!(
-        err.provider_response_status(),
-        Some(http::StatusCode::BAD_GATEWAY)
+        err.http_status,
+        Some(http::StatusCode::BAD_GATEWAY.as_u16())
     );
     assert_eq!(err.provider_response_body(), Some(body));
     assert!(
@@ -611,10 +670,10 @@ async fn streaming_non_http_transport_error_stays_provider_error() {
         err.to_string(),
         "ProviderError: Invalid content type was returned: \"application/json\""
     );
-    assert!(matches!(err, CompletionError::ProviderError(_)));
+    assert_eq!(err.kind, ErrorKind::Provider);
     // Rig-generated transport diagnostics are not provider response bodies.
     assert_eq!(err.provider_response_body(), None);
-    assert_eq!(err.provider_response_status(), None);
+    assert_eq!(err.http_status, None);
 }
 
 #[tokio::test]
@@ -639,9 +698,12 @@ async fn tool_calls_finish_reason_surfaces_partial_argument_errors() {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::ToolCallDelta { .. }) => {}
-            Ok(StreamedAssistantContent::Final(_)) => saw_final = true,
-            Ok(StreamedAssistantContent::ToolCall { .. }) => saw_tool_call = true,
+            Ok(event) if is_tool_lifecycle(&event) => {}
+            Ok(StreamEvent::Final(_)) => saw_final = true,
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(_)),
+                ..
+            }) => saw_tool_call = true,
             Ok(other) => {
                 panic!("unexpected stream item while asserting finish-reason policy: {other:?}")
             }
@@ -682,9 +744,18 @@ async fn length_finish_reason_drops_partial_argument_payloads() {
 
     while let Some(item) = stream.next().await {
         match item.expect("length-truncated partial calls are tolerated") {
-            StreamedAssistantContent::ToolCallDelta { .. } | StreamedAssistantContent::Final(_) => {
-            }
-            StreamedAssistantContent::ToolCall { .. } => {
+            event if is_tool_lifecycle(&event) => {}
+            StreamEvent::Final(_) => {}
+            // The dropped call's end finalized nothing.
+            StreamEvent::BlockEnd {
+                end: BlockClose::ToolCall(_),
+                block: None,
+                ..
+            } => {}
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(_)),
+                ..
+            } => {
                 panic!("a partial length-truncated call must not be emitted")
             }
             other => panic!("unexpected truncation stream item: {other:?}"),
@@ -693,7 +764,7 @@ async fn length_finish_reason_drops_partial_argument_payloads() {
 
     assert!(
         stream
-            .choice
+            .snapshot()
             .iter()
             .all(|content| !matches!(content, crate::completion::AssistantContent::ToolCall(_)))
     );
@@ -725,7 +796,7 @@ async fn length_finish_reason_drops_a_call_with_no_argument_tokens() {
 
     assert!(
         stream
-            .choice
+            .snapshot()
             .iter()
             .all(|content| !matches!(content, crate::completion::AssistantContent::ToolCall(_))),
         "a length-truncated empty argument slot must not become a tool invocation"
@@ -756,8 +827,8 @@ async fn tool_calls_finish_reason_keeps_a_deliberate_zero_argument_call() {
 
     while stream.next().await.is_some() {}
 
-    let calls = stream
-        .choice
+    let snapshot = stream.snapshot();
+    let calls = snapshot
         .iter()
         .filter_map(|content| match content {
             crate::completion::AssistantContent::ToolCall(call) => Some(call),
@@ -802,15 +873,18 @@ async fn transport_error_still_flushes_fully_delivered_tool_calls() {
     let mut collected_tool_calls = Vec::new();
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::ToolCallDelta { .. }) => {}
-            Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
+            Ok(event) if is_tool_lifecycle(&event) => {}
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            }) => {
                 assert!(
                     !saw_error,
                     "the flushed tool call must arrive before the terminal error"
                 );
                 collected_tool_calls.push(tool_call);
             }
-            Ok(StreamedAssistantContent::Final(_)) => saw_final = true,
+            Ok(StreamEvent::Final(_)) => saw_final = true,
             Ok(other) => panic!("unexpected stream item: {other:?}"),
             Err(_) => saw_error = true,
         }
@@ -864,7 +938,7 @@ async fn bare_done_after_only_unparseable_frames_emits_no_terminal() {
     let mut saw_final = false;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::Final(_)) => saw_final = true,
+            Ok(StreamEvent::Final(_)) => saw_final = true,
             Ok(other) => panic!("unexpected stream item: {other:?}"),
             Err(_) => error_count += 1,
         }

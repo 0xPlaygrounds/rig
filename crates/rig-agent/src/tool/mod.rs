@@ -26,8 +26,12 @@
 //!     value: i64,
 //! }
 //!
-//! #[derive(Clone, Debug, PartialEq)]
+//! #[derive(Serialize, Deserialize)]
 //! struct AuditRecord(i64);
+//!
+//! impl rig_core::tool::ContextValue for AuditRecord {
+//!     const KEY: &'static str = "audit_record";
+//! }
 //!
 //! struct Add;
 //!
@@ -58,7 +62,7 @@
 //!         args: Self::Args,
 //!     ) -> Result<Self::Output, Self::Error> {
 //!         let value = args.left + args.right;
-//!         context.insert_result(AuditRecord(value));
+//!         let _ = context.insert_result(AuditRecord(value));
 //!         Ok(Sum { value })
 //!     }
 //! }
@@ -108,14 +112,17 @@
 //! a terminal provider or telemetry concern; Rig does not reconstruct rich
 
 pub mod builtin;
+pub mod catalog;
+pub mod registry;
 pub mod server;
 
+pub use catalog::{ToolCatalog, ToolLease};
+pub use registry::{RegisteredTool, ToolDispatch, ToolSet, dispatch_tool};
 pub use rig_core::tool::{
-    DynamicTool, ErasedEmbeddingTool, ErasedTool, IntoToolOutput, PortableDynamicTool,
-    RegisteredTool, Tool, ToolCatalog, ToolDispatch, ToolEmbedding, ToolErrorKind,
-    ToolExecutionError, ToolOutput, ToolResult, ToolSet, dispatch_tool, tool_definition,
+    DynamicTool, ErasedTool, IntoToolOutput, PortableDynamicTool, Tool, ToolEmbedding,
+    ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult, tool_definition,
 };
-pub use rig_core::tool::{MissingToolContext, ToolContext};
+pub use rig_core::tool::{ToolContext, ToolContextError};
 
 #[cfg(test)]
 mod toolset_clone_tests;

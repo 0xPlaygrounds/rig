@@ -9,7 +9,7 @@
 //! **per attempt**, never a previous attempt's — as `raw` on the
 //! `CompletionResponse` and `ModelTurnFinished` hook events, on each
 //! `CompletionCall` the run records, and on the streamed
-//! `StreamedAssistantContent::Final`. `raw` is `Value::Null` only on a value
+//! `StreamEvent::Final`. `raw` is `Value::Null` only on a value
 //! built by hand, with no provider response behind it; `Value::Null` never
 //! means "not requested".
 //!
@@ -21,7 +21,7 @@
 //! | 2 | `hooks_observe_raw_streamed` | `agent.stream_prompt` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `message_id` matches fixture | recorded |
 //! | 3 | `multi_turn_tool_run_records_distinct_raw_blocking` | tool run, `agent.prompt` | two `completion_calls`, two different `raw["id"]`s equal to the interactions' ids in order | recorded |
 //! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.stream_prompt` | two `CompletionCall` items, two different `raw["message_id"]`s equal to the interactions' ids in order | recorded |
-//! | 5 | `streamed_final_carries_final_turn_raw` | tool run, `agent.stream_prompt` | the last `StreamedAssistantContent::Final.raw["message_id"]` is the last interaction's id | recorded |
+//! | 5 | `streamed_final_carries_final_turn_raw` | tool run, `agent.stream_prompt` | the last `StreamEvent::Final.raw["message_id"]` is the last interaction's id | recorded |
 //! | 6 | `retried_turn_records_retried_attempt_raw_blocking` | `ModelTurnFinished` → `Retry` once, `agent.prompt` | second recorded call / second event carry the second interaction's `id` | recorded |
 //! | 7 | `retried_turn_records_retried_attempt_raw_streamed` | same, `agent.stream_prompt` | same, by `message_id` | recorded |
 //!
@@ -43,14 +43,14 @@ use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 use rig::agent::{
-    AgentHook, HookContext, ModelTurnAction, ModelTurnFinished, MultiTurnStreamItem,
-    ObservationAction,
+    AgentHook, HookContext, ModelTurnAction, ModelTurnFinished, MultiTurnStreamItem, OutcomeAction,
+    OutcomeEvent,
 };
 use rig::completion::Message;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_HAIKU_4_5;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde_json::Value;
 
@@ -123,23 +123,22 @@ impl RawProbe {
 }
 
 impl AgentHook for RawProbe {
-    async fn on_completion_response(
-        &self,
-        ctx: &HookContext,
-        event: rig::agent::CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let Some(response) = event.completion() else {
+            return OutcomeAction::proceed();
+        };
         self.completion_response
             .lock()
             .expect("probe")
             .push(ResponseSeen {
                 streaming: ctx.is_streaming(),
-                tool_call: event
-                    .content
+                tool_call: response
+                    .choice
                     .iter()
                     .any(|content| matches!(content, AssistantContent::ToolCall(_))),
-                raw: event.raw.clone(),
+                raw: response.raw.clone(),
             });
-        ObservationAction::continue_run()
+        OutcomeAction::proceed()
     }
 
     async fn on_model_turn_finished(
@@ -171,7 +170,7 @@ async fn drain(mut stream: rig::agent::StreamingResult) -> StreamedRun {
     while let Some(item) = stream.next().await {
         match item.expect("stream item should succeed") {
             MultiTurnStreamItem::CompletionCall(call) => run.completion_calls.push(call),
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(final_)) => {
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(final_)) => {
                 run.finals.push(final_);
             }
             MultiTurnStreamItem::FinalResponse(response) => {

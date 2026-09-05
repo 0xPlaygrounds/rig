@@ -11,14 +11,14 @@ use rig::agent::run::{
     StreamedTurnEvent,
 };
 use rig::agent::{
-    AgentHook, InvalidToolCallAction, MultiTurnStreamItem, StreamingError,
-    ToolCall as ToolCallEvent, ToolCallAction,
+    AgentHook, DispatchAction, DispatchEvent, InvalidToolCallAction, MultiTurnStreamItem,
+    StreamingError,
 };
 use rig::completion::{PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 use rig_agent::test_utils::{validate_cancelled_failure, validate_max_turns_failure};
 
 use super::super::agent_run_support::{
@@ -72,8 +72,12 @@ async fn run_streamed_turn(
         while let Some(event) = events.pop_front() {
             match event {
                 StreamedTurnEvent::EmitIngested => {
-                    if let StreamedAssistantContent::Text(text) = &item {
-                        collected_text.push_str(&text.text);
+                    if let StreamEvent::BlockDelta {
+                        delta: Delta::Text { text },
+                        ..
+                    } = &item
+                    {
+                        collected_text.push_str(text);
                     }
                 }
                 StreamedTurnEvent::EmitToolCallDelta { .. } => {}
@@ -108,7 +112,8 @@ async fn run_streamed_turn(
                         Ok(resolution) => {
                             let replayed = assembler.resolve_pending_invalid(&resolution);
                             match resolution {
-                                StreamedResolution::Repaired { .. } => {
+                                StreamedResolution::Repaired { .. }
+                                | StreamedResolution::Ignored => {
                                     events.extend(replayed);
                                 }
                                 StreamedResolution::TurnAbandoned {
@@ -145,7 +150,7 @@ async fn run_streamed_turn(
         )
         .expect("turns without provider usage still record a completion call");
     }
-    let streamed_turn = assembler.finish(stream.message_id.clone(), &stream.choice);
+    let streamed_turn = assembler.finish(stream.message_id.clone(), &stream.snapshot());
     run.streamed_turn(streamed_turn)?;
     Ok(TurnEnd::Finished)
 }
@@ -154,7 +159,7 @@ async fn drain_stream_usage(stream: &mut rig::streaming::StreamingCompletionResp
 where
 {
     while let Some(item) = stream.next().await {
-        if let Ok(StreamedAssistantContent::Final(final_response)) = item {
+        if let Ok(StreamEvent::Final(final_response)) = item {
             return final_response.usage;
         }
     }
@@ -211,10 +216,15 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
                     }
                     AgentRunStep::CallTools { calls } => {
                         for call in &calls {
-                            assert!(
-                                call.internal_call_id.is_some(),
-                                "streamed turns persist internal call ids: {call:?}"
-                            );
+                            // A streamed turn's call carries the block id it
+                            // arrived under: the wire id when the provider
+                            // issued one, else the id the adapter minted.
+                            match &call.block_id {
+                                rig::streaming::BlockId::Wire(id) => {
+                                    assert_eq!(id, call.tool_call.id.as_str(), "{call:?}");
+                                }
+                                rig::streaming::BlockId::Minted { .. } => {}
+                            }
                         }
                         run.tool_results(execute_pending_calls(&calls))
                             .expect("tool results should be accepted");
@@ -542,12 +552,15 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
 struct CancelOnToolCall;
 
 impl AgentHook for CancelOnToolCall {
-    async fn on_tool_call(
+    async fn on_dispatch(
         &self,
         _ctx: &rig::agent::HookContext,
-        _event: ToolCallEvent<'_>,
-    ) -> ToolCallAction {
-        ToolCallAction::stop("cancelled by test hook")
+        event: DispatchEvent<'_>,
+    ) -> DispatchAction {
+        if event.tool_name().is_none() {
+            return DispatchAction::proceed();
+        }
+        DispatchAction::stop("cancelled by test hook")
     }
 }
 

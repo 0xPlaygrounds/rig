@@ -37,7 +37,7 @@ use rig::completion::{CompletionModel, Message, NormalizeCompletionResponse};
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::{RawStreamingChoice, StreamedAssistantContent};
+use rig::streaming::{Delta, StreamEvent};
 use serde_json::{Value, json};
 
 use super::super::support::with_openai_history_roundtrip_cassette_result;
@@ -207,15 +207,28 @@ async fn run_cell(client: openai::Client, cell: Cell, observed: SharedObservatio
             }
         }
         (Transport::Streaming, Surface::Raw) => {
-            let mut stream = model.raw_stream(request(&model, cell)).await?;
+            // The raw surface is the same event stream; the native terminal
+            // record rides on `StreamFinal::raw`, so the raw cell asserts the
+            // terminal decodes back to the chat-completions native type.
+            let mut stream = model.stream(request(&model, cell)).await?;
             let mut observation = Observation {
                 text: String::new(),
                 saw_terminal: false,
             };
             while let Some(item) = stream.next().await {
                 match item? {
-                    RawStreamingChoice::Message(text) => observation.text.push_str(&text),
-                    RawStreamingChoice::FinalResponse(_) => observation.saw_terminal = true,
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text },
+                        ..
+                    } => observation.text.push_str(&text),
+                    StreamEvent::Final(record) => {
+                        serde_json::from_value::<
+                            openai::completion::streaming::StreamingCompletionResponse<
+                                openai::completion::Usage,
+                            >,
+                        >(record.raw.clone())?;
+                        observation.saw_terminal = true;
+                    }
                     _ => {}
                 }
             }
@@ -229,8 +242,11 @@ async fn run_cell(client: openai::Client, cell: Cell, observed: SharedObservatio
             };
             while let Some(item) = stream.next().await {
                 match item? {
-                    StreamedAssistantContent::Text(text) => observation.text.push_str(&text.text),
-                    StreamedAssistantContent::Final(_) => observation.saw_terminal = true,
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text },
+                        ..
+                    } => observation.text.push_str(&text),
+                    StreamEvent::Final(_) => observation.saw_terminal = true,
                     _ => {}
                 }
             }

@@ -37,7 +37,7 @@ use rig::completion::{CompletionModel, Message, NormalizeCompletionResponse};
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::mistral;
-use rig::streaming::{RawStreamingChoice, StreamedAssistantContent};
+use rig::streaming::{Delta, StreamEvent};
 use serde_json::{Value, json};
 
 use super::support::with_mistral_history_roundtrip_cassette_result;
@@ -207,15 +207,18 @@ async fn run_cell(client: mistral::Client, cell: Cell, observed: SharedObservati
             }
         }
         (Transport::Streaming, Surface::Raw) => {
-            let mut stream = model.raw_stream(request(&model, cell)).await?;
+            let mut stream = model.stream(request(&model, cell)).await?;
             let mut observation = Observation {
                 text: String::new(),
                 saw_terminal: false,
             };
             while let Some(item) = stream.next().await {
                 match item? {
-                    RawStreamingChoice::Message(text) => observation.text.push_str(&text),
-                    RawStreamingChoice::FinalResponse(_) => observation.saw_terminal = true,
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text },
+                        ..
+                    } => observation.text.push_str(&text),
+                    StreamEvent::Final(_) => observation.saw_terminal = true,
                     _ => {}
                 }
             }
@@ -229,8 +232,11 @@ async fn run_cell(client: mistral::Client, cell: Cell, observed: SharedObservati
             };
             while let Some(item) = stream.next().await {
                 match item? {
-                    StreamedAssistantContent::Text(text) => observation.text.push_str(&text.text),
-                    StreamedAssistantContent::Final(_) => observation.saw_terminal = true,
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text },
+                        ..
+                    } => observation.text.push_str(&text),
+                    StreamEvent::Final(_) => observation.saw_terminal = true,
                     _ => {}
                 }
             }

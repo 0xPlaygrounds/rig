@@ -1,0 +1,139 @@
+{
+  "header": {
+    "run_spec": 171082663332529849,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "host/rerank",
+        "family": {
+          "family": "rerank",
+          "model": "host",
+          "max_documents": 16
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "host/rerank": "rerank"
+    },
+    "hooks": [
+      "RerankDocs"
+    ],
+    "required": {
+      "golden/model:default": "completion"
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "host/rerank",
+      "kind": {
+        "effect": "rerank",
+        "request": {
+          "query": "Reply with the single word: ready.",
+          "documents": [
+            "the harbor label",
+            "the orchard label"
+          ]
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "reranked",
+          "results": [
+            {
+              "index": 1,
+              "document": "the orchard label",
+              "relevance_score": 0.17
+            },
+            {
+              "index": 0,
+              "document": "the harbor label",
+              "relevance_score": 0.16
+            }
+          ],
+          "model": "mock-rerank",
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "provider": "mock"
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reply with the single word: ready."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "ready"
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "mock",
+          "model": null
+        }
+      }
+    }
+  ]
+}

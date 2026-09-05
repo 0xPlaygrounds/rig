@@ -1,7 +1,7 @@
 //! Hook-system stress suite: streaming lifecycle and blocking-vs-streaming
 //! parity — `TextDelta` / `CompletionResponse` / `ModelTurnFinished` on the
 //! streaming surface (`CompletionResponse` fires once per accepted turn on
-//! both drivers, tool-only turns included), `ToolResultAction::Rewrite`
+//! both drivers, tool-only turns included), `OutcomeAction::Replace`
 //! redaction reaching the `FinalResponse`,
 //! `active_tools` narrowing and `Skip` on the streaming driver, and the same
 //! workflow producing the same answer on both surfaces. Recorded against real

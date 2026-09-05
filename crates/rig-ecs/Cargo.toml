@@ -1,0 +1,75 @@
+[package]
+name = "rig-ecs"
+version.workspace = true
+edition = { workspace = true }
+license = "MIT"
+description = "rig inside a Bevy World: effects as entities, handlers as entities, the driver as a system."
+repository = "https://github.com/0xPlaygrounds/rig"
+# Not published yet; rig-verify is the precedent.
+publish = false
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[features]
+default = ["replay"]
+# `Replay` and the `EffectLog` resource: record a world's effects into a
+# log and replay a log through a world.
+replay = ["dep:rig-effect-log"]
+# The inspector's view: `Reflect` on every component (remote wrappers for
+# the rig-core types they hold), `reflect::ReflectPlugin` registering
+# them, `reflect::ReflectedScene` — the graph as reflected data beside the
+# serde scene. rig-core takes no Bevy dependency: the wrappers live here.
+reflect = ["dep:bevy_reflect", "bevy_ecs/bevy_reflect", "bevy_app/bevy_reflect"]
+# Prompts and tool definitions as assets: `assets::{Prompt, ToolDefinitions}`
+# with `bevy_asset` loaders, and the systems that turn them into a
+# `Preamble` and `Grant`s.
+assets = ["dep:bevy_asset", "reflect"]
+
+[dependencies]
+rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
+rig-effect-log = { path = "../rig-effect-log", version = "0.42.0", optional = true }
+# Each Bevy crate with default features off and exactly what the module
+# needs: `std` for the executor-backed task pools and `bevy_app`'s
+# `ScheduleRunnerPlugin`; `multi_threaded` so handler futures run on pool
+# threads natively (the single-threaded pool takes over on wasm).
+bevy_ecs = { workspace = true }
+bevy_tasks = { workspace = true }
+bevy_app = { workspace = true }
+bevy_reflect = { workspace = true, optional = true }
+bevy_asset = { workspace = true, optional = true }
+futures = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+rig-core = { path = "../rig-core", version = "0.42.0", features = ["test-utils"] }
+
+# The module executed on `wasm32-unknown-unknown` (`tests/bus_wasm.rs`),
+# under `wasm-bindgen-test-runner`, as rig-agent's `tests/bus_wasm.rs` is.
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+# The feature suites: a test that needs a feature names it, so the default
+# `cargo test` builds without it and `--all-features` runs it.
+[[test]]
+name = "reflect_roundtrip"
+required-features = ["reflect"]
+
+[[test]]
+name = "reflect_scene"
+required-features = ["reflect"]
+
+[[test]]
+name = "assets_prompt"
+required-features = ["assets"]
+
+[[example]]
+name = "prompt_from_assets"
+required-features = ["assets"]

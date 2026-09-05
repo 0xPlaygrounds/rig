@@ -61,6 +61,7 @@ pub mod core {
 }
 
 pub mod agent;
+pub mod bus;
 pub mod client;
 pub mod completion;
 pub mod extractor;
@@ -71,6 +72,7 @@ pub(crate) use rig_core::json_utils;
 pub mod prelude;
 pub mod run;
 pub mod streaming;
+pub(crate) mod sync;
 #[cfg(any(test, feature = "test-utils"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils;
@@ -101,4 +103,7 @@ const _: fn() = || {
     assert_send_sync_static::<agent::RunEvents>();
     assert_send_sync_static::<agent::PromptResponse>();
     assert_send_sync_static::<tool::server::ToolServerHandle>();
+    // The erased tool set a driver forks and the per-turn catalog it pins.
+    assert_send_sync_static::<tool::ToolSet>();
+    assert_send_sync_static::<tool::ToolCatalog>();
 };

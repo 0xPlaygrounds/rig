@@ -13,7 +13,7 @@ use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, ReasoningContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 
 use super::super::support::with_anthropic_cassette;
 
@@ -167,16 +167,20 @@ async fn redacted_thinking_streaming() {
 
             while let Some(item) = stream.next().await {
                 match item.expect("stream item should be ok") {
-                    StreamedAssistantContent::Reasoning { reasoning, .. } => {
-                        if reasoning
-                            .content
-                            .iter()
-                            .any(|item| matches!(item, ReasoningContent::Redacted { .. }))
-                        {
-                            saw_redacted_reasoning = true;
-                        }
+                    StreamEvent::BlockEnd {
+                        block: Some(AssistantContent::Reasoning(reasoning)),
+                        ..
+                    } if reasoning
+                        .content
+                        .iter()
+                        .any(|item| matches!(item, ReasoningContent::Redacted { .. })) =>
+                    {
+                        saw_redacted_reasoning = true;
                     }
-                    StreamedAssistantContent::Text(text) => streamed_text.push_str(&text.text),
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text },
+                        ..
+                    } => streamed_text.push_str(&text),
                     _ => {}
                 }
             }

@@ -2,8 +2,8 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the value the model's inherent
-//! `raw_stream` yielded as its terminal record — for Doubleword the shared
+//! [`rig::streaming::StreamFinal::raw`] carries the provider-native terminal record
+//! behind the stream's `StreamEvent::Final` — for Doubleword the shared
 //! chat-completions terminal [`StreamingCompletionResponse`] over the shared
 //! [`openai::Usage`] — serialized. Capture is always on: there is no flag to
 //! request it, nothing about it reaches the wire, and a `Value::Null` only ever

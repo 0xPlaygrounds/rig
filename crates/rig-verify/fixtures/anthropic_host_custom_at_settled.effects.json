@@ -1,0 +1,141 @@
+{
+  "header": {
+    "run_spec": 10072942899351225430,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      },
+      {
+        "key": "host/note",
+        "family": {
+          "family": "custom",
+          "kind": "corpus:note"
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "host/note": "custom"
+    },
+    "hooks": [
+      "NoteAtSettled"
+    ],
+    "required": {
+      "golden/model:default": "completion"
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reply with the single word: ready."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "ready"
+            }
+          ],
+          "usage": {
+            "input_tokens": 26,
+            "output_tokens": 4,
+            "total_tokens": 30,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": null,
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "raw": {
+            "content": [
+              {
+                "type": "text",
+                "text": "ready"
+              }
+            ],
+            "id": "msg_REDACTED_1",
+            "model": "claude-sonnet-4-6",
+            "role": "assistant",
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {
+              "input_tokens": 26,
+              "cache_read_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "output_tokens": 4
+            },
+            "provider_request_id": "req_REDACTED_1"
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "host/note",
+      "kind": {
+        "effect": "custom",
+        "kind": "corpus:note",
+        "payload": {
+          "at": "settled"
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "custom",
+          "payload": {
+            "accepted": true,
+            "at": "settled"
+          }
+        }
+      }
+    }
+  ]
+}

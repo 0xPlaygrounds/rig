@@ -10,7 +10,7 @@
 //! usage from the stream's final `data:` frame plus the envelope fields the
 //! chunks carried (`object`, `created`, `system_fingerprint`) accumulated under
 //! `additional_params`. Every terminal record the seam yields carries `raw` —
-//! that record serialized by `normalize_stream` — the terminal record only,
+//! that record serialized by the adapter's `final_record` — the terminal record only,
 //! never the frames, and nothing about it is sent to the server. `raw ==
 //! Value::Null` means only that a `StreamFinal` was built by hand without a
 //! provider terminal behind it, which no cell here can produce.
@@ -48,7 +48,7 @@ use futures::StreamExt;
 use rig::completion::CompletionModel as _;
 use rig::prelude::*;
 use rig::providers::{llamacpp, openai};
-use rig::streaming::{StreamFinal, StreamedAssistantContent};
+use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -65,7 +65,7 @@ fn request(model: &llamacpp::CompletionModel) -> rig::completion::CompletionRequ
 async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamFinal {
     let mut finals = Vec::new();
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::Final(record) = item.expect("stream item should be ok") {
+        if let StreamEvent::Final(record) = item.expect("stream item should be ok") {
             finals.push(record);
         }
     }
@@ -143,7 +143,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
             );
 
             // The typed terminal agrees with the normalized one on usage and
-            // identity: raw is the record normalize_stream mapped.
+            // identity: raw is the record the adapter's `final_record` mapped.
             assert_eq!(
                 typed.usage.prompt_tokens as u64,
                 terminal.usage.input_tokens

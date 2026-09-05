@@ -150,7 +150,7 @@ fn weather_tool_definition() -> completion::ToolDefinition {
 fn rig_tool_result(content: message::ToolResultContent) -> message::Message {
     message::Message::User {
         content: vec![message::UserContent::ToolResult(message::ToolResult {
-            call: message::ToolCallId::new_or_mint("call-id"),
+            call: message::ToolCallId::new_or_minted("call-id", 0),
             provider: message::ProviderCallId::new("call-id")
                 .map(|provider| provider.with_item_id("result-id")),
             name: "tool".to_string(),
@@ -226,7 +226,7 @@ async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
     let request = CompletionRequestBuilder::new(model.clone(), "hi").build();
     let mut stream = model.stream(request).await.expect("mock stream");
     while stream.next().await.is_some() {}
-    let choice = stream.choice.clone();
+    let choice = stream.snapshot();
     // The provenance funnel: a minted stream identity never becomes the
     // durable `Reasoning::id`, so the replayed history carries no id at
     // all — there is nothing for a serializer gate to filter, and no
@@ -364,7 +364,7 @@ fn multiple_text_tool_result_blocks_preserve_order_as_rich_function_output() {
 
     let input = message::Message::User {
         content: vec![message::UserContent::ToolResult(message::ToolResult {
-            call: message::ToolCallId::new_or_mint("call-id"),
+            call: message::ToolCallId::new_or_minted("call-id", 0),
             provider: message::ProviderCallId::new("call-id")
                 .map(|provider| provider.with_item_id("result-id")),
             name: "tool".to_string(),
@@ -459,7 +459,7 @@ fn tool_result_images_and_text_preserve_order_as_rich_function_output() {
     ];
     let input = message::Message::User {
         content: vec![message::UserContent::ToolResult(message::ToolResult {
-            call: message::ToolCallId::new_or_mint("call-id"),
+            call: message::ToolCallId::new_or_minted("call-id", 0),
             provider: message::ProviderCallId::new("call-id")
                 .map(|provider| provider.with_item_id("result-id")),
             name: "tool".to_string(),

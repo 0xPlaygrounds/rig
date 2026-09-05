@@ -5,8 +5,7 @@
 //!
 //! Capture is always on. The terminal record of every stream the seam yields
 //! carries `raw`: the value
-//! [`ResponsesCompletionModel::raw_stream`](rig::providers::chatgpt::ResponsesCompletionModel::raw_stream)
-//! would have yielded as its `FinalResponse` — the Responses API's
+//! the Responses API stream adapter produces as its native terminal — the Responses API's
 //! [`StreamingCompletionResponse`](rig::providers::openai::responses_api::streaming::StreamingCompletionResponse):
 //! the terminal `response.completed` event's usage, status, ids and model —
 //! serialized with `serde_json::to_value`. It is the terminal record only, and
@@ -37,7 +36,7 @@ use rig::completion::CompletionModel as _;
 use rig::prelude::*;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
-use rig::streaming::{StreamFinal, StreamedAssistantContent};
+use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -55,7 +54,7 @@ fn request(model: &chatgpt::ResponsesCompletionModel) -> rig::completion::Comple
 async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamFinal {
     let mut finals = Vec::new();
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::Final(record) = item.expect("stream item should be ok") {
+        if let StreamEvent::Final(record) = item.expect("stream item should be ok") {
             finals.push(record);
         }
     }
@@ -94,7 +93,7 @@ fn recorded_terminal_response(scenario: &str) -> Value {
 }
 
 // ---------------------------------------------------------------------------
-// 1: raw is the raw_stream FinalResponse, serialized
+// 1: raw is the provider-native terminal record, serialized
 // ---------------------------------------------------------------------------
 
 #[tokio::test]

@@ -41,7 +41,7 @@ use rig::completion::{
 };
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::{StreamedAssistantContent, StreamingCompletionResponse};
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -285,8 +285,8 @@ async fn run_model(client: openai::Client, cell: Cell) -> Observation {
             },
         },
         Transport::Streaming => {
-            let raw = match model.raw_stream(request(&model, cell)).await {
-                Ok(raw) => raw,
+            let mut stream = match model.stream(request(&model, cell)).await {
+                Ok(stream) => stream,
                 Err(error) => {
                     return Observation {
                         errors: vec![error.to_string()],
@@ -294,19 +294,18 @@ async fn run_model(client: openai::Client, cell: Cell) -> Observation {
                     };
                 }
             };
-            let normalized = rig::streaming::normalize_stream(raw, |terminal| {
-                Ok::<_, rig::completion::CompletionError>(("openai", terminal).into())
-            });
-            let mut stream = StreamingCompletionResponse::stream("openai", normalized);
             let mut observation = Observation::default();
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
+                    Ok(StreamEvent::BlockEnd {
+                        block: Some(AssistantContent::ToolCall(tool_call)),
+                        ..
+                    }) => {
                         observation.names.push(tool_call.function.name);
                         observation.ids.push(tool_call.id.to_string());
                         observation.arguments.push(tool_call.function.arguments);
                     }
-                    Ok(StreamedAssistantContent::Final(terminal)) => {
+                    Ok(StreamEvent::Final(terminal)) => {
                         observation.finish_reason = terminal.finish_reason;
                     }
                     Ok(_) => {}

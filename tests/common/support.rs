@@ -6,7 +6,7 @@ use rig::{
     agent::{MultiTurnStreamItem, StreamingError, StreamingResult},
     completion::{AssistantContent, ToolDefinition},
     embeddings::Embedding,
-    streaming::{StreamedAssistantContent, StreamedUserContent, StreamingCompletionResponse},
+    streaming::{Delta, StreamEvent, StreamedUserContent, StreamingCompletionResponse},
     tool::PortableTool,
     tool::Tool,
 };
@@ -628,7 +628,7 @@ pub(crate) async fn collect_stream_final_response_and_provider_final(
 
     while let Some(item) = stream.next().await {
         match item? {
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(final_)) => {
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(final_)) => {
                 provider_final = Some(final_);
             }
             MultiTurnStreamItem::FinalResponse(response) => {
@@ -654,12 +654,13 @@ pub(crate) async fn assert_stream_contains_zero_arg_tool_call_named(
 
     while let Some(chunk) = stream.next().await {
         match chunk.expect("stream item should be ok") {
-            StreamedAssistantContent::Final(_) => saw_final = true,
-            StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                if tool_call.function.name == expected_name {
-                    assert_eq!(tool_call.function.arguments, json!({}));
-                    saw_matching_tool_call = true;
-                }
+            StreamEvent::Final(_) => saw_final = true,
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            } if tool_call.function.name == expected_name => {
+                assert_eq!(tool_call.function.arguments, json!({}));
+                saw_matching_tool_call = true;
             }
             _ => {}
         }
@@ -736,37 +737,57 @@ pub(crate) async fn collect_stream_observation(stream: &mut StreamingResult) -> 
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(content)) => match content {
-                StreamedAssistantContent::Text(text) => {
-                    observation.all_streamed_text.push_str(&text.text);
-                    observation.final_turn_text.push_str(&text.text);
+            Ok(MultiTurnStreamItem::StreamAssistantItem(event)) => match event {
+                StreamEvent::BlockDelta {
+                    delta: Delta::Text { text },
+                    ..
+                } => {
+                    observation.all_streamed_text.push_str(&text);
+                    observation.final_turn_text.push_str(&text);
                     observation.events.push("text");
                 }
-                StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                    observation.tool_calls.push(tool_call.function.name.clone());
-                    observation.tool_call_records.push(ToolCallRecord {
-                        name: tool_call.function.name,
-                        signature: tool_call.signature,
-                        additional_params: tool_call.additional_params,
-                    });
-                    observation.events.push("tool_call");
-                }
-                StreamedAssistantContent::ToolCallDelta { .. } => {
+                StreamEvent::BlockDelta {
+                    delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                    ..
+                } => {
                     observation.events.push("tool_call_delta");
                 }
-                StreamedAssistantContent::Reasoning { .. } => {
+                StreamEvent::BlockEnd {
+                    block: Some(AssistantContent::Reasoning(_)),
+                    ..
+                } => {
                     observation.events.push("reasoning");
                 }
-                StreamedAssistantContent::ReasoningDelta { .. } => {
+                StreamEvent::BlockDelta {
+                    delta: Delta::Reasoning { .. },
+                    ..
+                } => {
                     observation.events.push("reasoning_delta");
                 }
-                StreamedAssistantContent::Final(_) => {
+                StreamEvent::Final(_) => {
                     observation.events.push("stream_final");
                 }
-                StreamedAssistantContent::Unknown(_) => {
+                StreamEvent::Unknown(_) => {
                     observation.events.push("unknown");
                 }
+                StreamEvent::BlockStart { .. }
+                | StreamEvent::BlockDelta {
+                    delta: Delta::TextMeta { .. },
+                    ..
+                }
+                | StreamEvent::BlockEnd { .. } => {}
             },
+            // The engine reports the model's completed calls itself once the
+            // turn commits; the provider-level `BlockEnd` is not forwarded.
+            Ok(MultiTurnStreamItem::ToolCall { tool_call, .. }) => {
+                observation.tool_calls.push(tool_call.function.name.clone());
+                observation.tool_call_records.push(ToolCallRecord {
+                    name: tool_call.function.name,
+                    signature: tool_call.signature,
+                    additional_params: tool_call.additional_params,
+                });
+                observation.events.push("tool_call");
+            }
             Ok(MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { .. })) => {
                 observation.tool_results += 1;
                 observation.final_turn_text.clear();
@@ -801,8 +822,11 @@ pub(crate) async fn collect_text_and_terminal(
 
     while let Some(item) = stream.next().await {
         match item.expect("stream item should not be an error") {
-            StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
-            StreamedAssistantContent::Final(final_record) => terminal = Some(final_record),
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: chunk },
+                ..
+            } => text.push_str(&chunk),
+            StreamEvent::Final(final_record) => terminal = Some(final_record),
             _ => {}
         }
     }
@@ -819,11 +843,17 @@ where
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::Text(text)) => {
-                observation.text.push_str(&text.text);
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            }) => {
+                observation.text.push_str(&text);
                 observation.events.push("text");
             }
-            Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            }) => {
                 observation.tool_calls.push(tool_call.clone());
                 observation.tool_call_records.push(ToolCallRecord {
                     name: tool_call.function.name,
@@ -832,22 +862,37 @@ where
                 });
                 observation.events.push("tool_call");
             }
-            Ok(StreamedAssistantContent::ToolCallDelta { .. }) => {
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                ..
+            }) => {
                 observation.events.push("tool_call_delta");
             }
-            Ok(StreamedAssistantContent::Reasoning { .. }) => {
+            Ok(StreamEvent::BlockEnd {
+                block: Some(AssistantContent::Reasoning(_)),
+                ..
+            }) => {
                 observation.events.push("reasoning");
             }
-            Ok(StreamedAssistantContent::ReasoningDelta { .. }) => {
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Reasoning { .. },
+                ..
+            }) => {
                 observation.events.push("reasoning_delta");
             }
-            Ok(StreamedAssistantContent::Final(_)) => {
+            Ok(StreamEvent::Final(_)) => {
                 observation.got_final = true;
                 observation.events.push("final");
             }
-            Ok(StreamedAssistantContent::Unknown(_)) => {
+            Ok(StreamEvent::Unknown(_)) => {
                 observation.events.push("unknown");
             }
+            Ok(StreamEvent::BlockStart { .. })
+            | Ok(StreamEvent::BlockDelta {
+                delta: Delta::TextMeta { .. },
+                ..
+            })
+            | Ok(StreamEvent::BlockEnd { .. }) => {}
             Err(error) => {
                 observation.errors.push(error.to_string());
                 observation.events.push("error");
@@ -1228,16 +1273,18 @@ impl IdentityProbe {
 }
 
 impl rig::agent::AgentHook for IdentityProbe {
-    async fn on_completion_response(
+    async fn on_outcome(
         &self,
         _ctx: &rig::agent::HookContext,
-        event: rig::agent::CompletionResponseEvent<'_>,
-    ) -> rig::agent::ObservationAction {
-        self.responses
-            .lock()
-            .expect("response identities")
-            .push(event.identity.clone());
-        rig::agent::ObservationAction::continue_run()
+        event: rig::agent::OutcomeEvent<'_>,
+    ) -> rig::agent::OutcomeAction {
+        if let Some(response) = event.completion() {
+            self.responses
+                .lock()
+                .expect("response identities")
+                .push(response.identity());
+        }
+        rig::agent::OutcomeAction::proceed()
     }
 
     async fn on_model_turn_finished(

@@ -88,8 +88,11 @@ async fn collect_openai_stream(chunks: &[&str]) -> (String, Option<crate::stream
     let mut terminal = None;
     while let Some(chunk) = stream.next().await {
         match chunk.expect("stream item") {
-            streaming::StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
-            streaming::StreamedAssistantContent::Final(final_record) => {
+            streaming::StreamEvent::BlockDelta {
+                delta: streaming::Delta::Text { text: chunk },
+                ..
+            } => text.push_str(&chunk),
+            streaming::StreamEvent::Final(final_record) => {
                 terminal = Some(final_record);
             }
             _ => {}
@@ -110,15 +113,18 @@ async fn collect_openai_raw_terminal(chunks: &[&str]) -> Option<StreamingComplet
             chunks.iter().copied().chain(std::iter::once("[DONE]")),
         ),
     };
-    let mut stream = send_compatible_raw_streaming_request(client, streaming_request())
-        .await
-        .expect("raw stream should open");
+    let mut stream =
+        send_compatible_raw_streaming_request(client, streaming_request(), "openai".to_owned())
+            .await
+            .expect("raw stream should open");
 
+    // The provider-native terminal rides on the normalized record's `raw`.
     let mut terminal = None;
     while let Some(chunk) = stream.next().await {
-        if let streaming::RawStreamingChoice::FinalResponse(response) = chunk.expect("stream item")
-        {
-            terminal = Some(response);
+        if let streaming::StreamEvent::Final(record) = chunk.expect("stream item") {
+            terminal = Some(
+                serde_json::from_value(record.raw).expect("raw is the provider's terminal record"),
+            );
         }
     }
     terminal
@@ -573,7 +579,7 @@ async fn test_streaming_usage_only_chunk_is_not_ignored() {
 
     let mut final_usage = None;
     while let Some(chunk) = stream.next().await {
-        if let streaming::StreamedAssistantContent::Final(res) = chunk.unwrap() {
+        if let streaming::StreamEvent::Final(res) = chunk.unwrap() {
             final_usage = Some(res.usage);
             break;
         }
@@ -603,7 +609,7 @@ async fn test_streaming_final_record_carries_provider_metadata() {
 
     let mut final_response = None;
     while let Some(chunk) = stream.next().await {
-        if let streaming::StreamedAssistantContent::Final(res) = chunk.unwrap() {
+        if let streaming::StreamEvent::Final(res) = chunk.unwrap() {
             final_response = Some(res);
             break;
         }
@@ -636,7 +642,7 @@ async fn test_streaming_unknown_finish_reason_reaches_the_final_record() {
 
     let mut final_response = None;
     while let Some(chunk) = stream.next().await {
-        if let streaming::StreamedAssistantContent::Final(res) = chunk.unwrap() {
+        if let streaming::StreamEvent::Final(res) = chunk.unwrap() {
             final_response = Some(res);
             break;
         }
@@ -653,8 +659,8 @@ async fn test_streaming_unknown_finish_reason_reaches_the_final_record() {
 
 /// A `stop` reported on a turn that streamed a tool call must surface as
 /// `ToolCalls`. The provider mapper deliberately does not do this — the
-/// upgrade belongs to `normalize_stream`, which sees the emitted tool
-/// calls — so this pins the wiring rather than the mapping.
+/// upgrade belongs to the public `StreamingCompletionResponse`, which sees the
+/// emitted tool calls — so this pins the wiring rather than the mapping.
 #[tokio::test]
 async fn test_stop_finish_reason_upgrades_to_tool_calls() {
     use crate::test_utils::MockStreamingClient;
@@ -676,8 +682,11 @@ async fn test_stop_finish_reason_upgrades_to_tool_calls() {
     let mut final_response = None;
     while let Some(chunk) = stream.next().await {
         match chunk.unwrap() {
-            streaming::StreamedAssistantContent::ToolCall { .. } => saw_tool_call = true,
-            streaming::StreamedAssistantContent::Final(res) => final_response = Some(res),
+            streaming::StreamEvent::BlockEnd {
+                block: Some(crate::message::AssistantContent::ToolCall(_)),
+                ..
+            } => saw_tool_call = true,
+            streaming::StreamEvent::Final(res) => final_response = Some(res),
             _ => {}
         }
     }
@@ -713,11 +722,17 @@ async fn test_streaming_reasoning_content_and_text_chunks_are_incremental() {
 
     while let Some(chunk) = stream.next().await {
         match chunk.unwrap() {
-            streaming::StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
+            streaming::StreamEvent::BlockDelta {
+                delta: streaming::Delta::Reasoning { text: reasoning },
+                ..
+            } => {
                 reasoning_chunks.push(reasoning);
             }
-            streaming::StreamedAssistantContent::Text(text) => text_chunks.push(text.text),
-            streaming::StreamedAssistantContent::Final(response) => {
+            streaming::StreamEvent::BlockDelta {
+                delta: streaming::Delta::Text { text },
+                ..
+            } => text_chunks.push(text),
+            streaming::StreamEvent::Final(response) => {
                 final_response = Some(response);
             }
             _ => {}
@@ -739,7 +754,6 @@ async fn test_streaming_reasoning_content_and_text_chunks_are_incremental() {
 
 #[tokio::test]
 async fn test_streaming_cached_input_tokens_populated() {
-    use crate::streaming::RawStreamingChoice;
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -755,19 +769,22 @@ async fn test_streaming_cached_input_tokens_populated() {
     // The raw stream keeps the provider's own usage payload, so this
     // asserts both halves: what the provider reported and what it
     // normalizes into.
-    let mut stream = send_compatible_raw_streaming_request(client, streaming_request())
-        .await
-        .unwrap();
+    let mut stream =
+        send_compatible_raw_streaming_request(client, streaming_request(), "openai".to_owned())
+            .await
+            .unwrap();
 
     let mut final_response = None;
     while let Some(chunk) = stream.next().await {
-        if let RawStreamingChoice::FinalResponse(res) = chunk.unwrap() {
-            final_response = Some(res);
+        if let streaming::StreamEvent::Final(record) = chunk.unwrap() {
+            final_response = Some(record.raw);
             break;
         }
     }
 
-    let res = final_response.expect("expected a final response");
+    let res: StreamingCompletionResponse =
+        serde_json::from_value(final_response.expect("expected a final response"))
+            .expect("raw is the provider's terminal record");
 
     // Verify provider-level usage has the cached_tokens
     assert_eq!(
@@ -817,9 +834,9 @@ async fn test_duplicate_index_different_id_tool_calls() {
 
     let mut collected_tool_calls = Vec::new();
     while let Some(chunk) = stream.next().await {
-        if let streaming::StreamedAssistantContent::ToolCall {
-            tool_call,
-            internal_call_id: _,
+        if let streaming::StreamEvent::BlockEnd {
+            block: Some(crate::message::AssistantContent::ToolCall(tool_call)),
+            ..
         } = chunk.unwrap()
         {
             collected_tool_calls.push(tool_call);
@@ -868,9 +885,9 @@ async fn test_tool_call_id_chunk_without_function_is_preserved() {
 
     let mut collected_tool_calls = Vec::new();
     while let Some(chunk) = stream.next().await {
-        if let streaming::StreamedAssistantContent::ToolCall {
-            tool_call,
-            internal_call_id: _,
+        if let streaming::StreamEvent::BlockEnd {
+            block: Some(crate::message::AssistantContent::ToolCall(tool_call)),
+            ..
         } = chunk.unwrap()
         {
             collected_tool_calls.push(tool_call);
@@ -918,9 +935,9 @@ async fn test_unique_id_per_chunk_single_tool_call() {
 
     let mut collected_tool_calls = Vec::new();
     while let Some(chunk) = stream.next().await {
-        if let streaming::StreamedAssistantContent::ToolCall {
-            tool_call,
-            internal_call_id: _,
+        if let streaming::StreamEvent::BlockEnd {
+            block: Some(crate::message::AssistantContent::ToolCall(tool_call)),
+            ..
         } = chunk.unwrap()
         {
             collected_tool_calls.push(tool_call);
@@ -1014,10 +1031,10 @@ async fn test_default_profile_surfaces_unparseable_frames_as_errors() {
     let mut unknown = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(streaming::StreamedAssistantContent::Final(_)) => saw_final = true,
+            Ok(streaming::StreamEvent::Final(_)) => saw_final = true,
             // The unknown-shaped event skips the semantic path but
             // surfaces verbatim on the raw passthrough channel.
-            Ok(streaming::StreamedAssistantContent::Unknown(value)) => unknown = Some(value),
+            Ok(streaming::StreamEvent::Unknown(value)) => unknown = Some(value),
             Ok(other) => panic!("unexpected stream item: {other:?}"),
             Err(_) => error_count += 1,
         }
@@ -1060,8 +1077,11 @@ async fn azure_content_filter_prelude_chunk_is_a_no_op_not_an_error() {
     let mut saw_final = false;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(streaming::StreamedAssistantContent::Text(text)) => texts.push(text.text),
-            Ok(streaming::StreamedAssistantContent::Final(_)) => saw_final = true,
+            Ok(streaming::StreamEvent::BlockDelta {
+                delta: streaming::Delta::Text { text },
+                ..
+            }) => texts.push(text),
+            Ok(streaming::StreamEvent::Final(_)) => saw_final = true,
             Ok(_) => {}
             Err(error) => panic!("the filter prelude chunk must not error: {error}"),
         }
@@ -1102,7 +1122,7 @@ mod raw_capture {
 
         let mut terminal = None;
         while let Some(item) = stream.next().await {
-            if let streaming::StreamedAssistantContent::Final(record) = item.expect("stream item") {
+            if let streaming::StreamEvent::Final(record) = item.expect("stream item") {
                 terminal = Some(record);
             }
         }
@@ -1130,7 +1150,7 @@ mod raw_capture {
         assert_eq!(raw["additional_params"]["service_tier"], "default");
         assert_eq!(raw["additional_params"]["system_fingerprint"], "fp_stream");
 
-        let renormalized: streaming::StreamFinal = ("openai", typed).into();
+        let renormalized = typed.into_stream_final("openai");
         assert_eq!(record.identity(), renormalized.identity());
         assert_eq!(record.finish_reason, renormalized.finish_reason);
         assert_eq!(record.model, renormalized.model);

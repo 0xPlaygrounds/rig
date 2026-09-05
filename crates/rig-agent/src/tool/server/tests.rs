@@ -2,7 +2,7 @@ use std::{
     future::{Future, pending, poll_fn},
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
     },
     task::Poll,
     time::Duration,
@@ -350,7 +350,9 @@ pub async fn handle_add_tool_uses_canonical_static_name() {
 #[tokio::test]
 pub async fn retrieval_resolves_canonical_key() {
     let mut toolset = ToolSet::default();
-    toolset.add_retrieved_tool(NamedTool::new());
+    toolset
+        .add_retrieved_tool(NamedTool::new())
+        .expect("the tool context serializes");
     let handle = ToolServer::new()
         .retrieved_tools(1, MockToolIndex::new([NamedTool::NAME]), toolset)
         .run();
@@ -596,22 +598,32 @@ pub async fn test_toolserver_parallel_retrieval() {
     assert!(tool_names.contains(&"subtract"));
 }
 
-#[derive(Clone)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct SessionId(String);
 
-struct CloneTrackedContext {
-    clones: Arc<AtomicUsize>,
-    value: usize,
+impl rig_core::tool::ContextValue for SessionId {
+    const KEY: &'static str = "test.server_session_id";
 }
 
-impl Clone for CloneTrackedContext {
-    fn clone(&self) -> Self {
-        self.clones.fetch_add(1, Ordering::SeqCst);
-        Self {
-            clones: self.clones.clone(),
-            value: self.value,
-        }
-    }
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Counter(usize);
+
+impl rig_core::tool::ContextValue for Counter {
+    const KEY: &'static str = "test.counter";
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CounterResult(usize);
+
+impl rig_core::tool::ContextValue for CounterResult {
+    const KEY: &'static str = "test.counter_result";
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Note(String);
+
+impl rig_core::tool::ContextValue for Note {
+    const KEY: &'static str = "test.note";
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -636,12 +648,11 @@ impl crate::tool::Tool for ContextReader {
         context: &mut ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, ToolExecutionError> {
-        if let Some(value) = context.get_mut::<CloneTrackedContext>() {
-            value.value += 1;
-            let result_value = value.value;
-            context.insert_result(result_value);
+        if let Some(Counter(value)) = context.get::<Counter>()? {
+            context.insert(Counter(value + 1))?;
+            context.insert_result(CounterResult(value + 1))?;
         }
-        Ok(context.get::<SessionId>().map_or_else(
+        Ok(context.get::<SessionId>()?.map_or_else(
             || "no session".to_string(),
             |session| format!("session:{}", session.0),
         ))
@@ -652,7 +663,7 @@ impl crate::tool::Tool for ContextReader {
 async fn context_reaches_the_single_execute_path() {
     let handle = ToolServer::new().tool(ContextReader).run();
     let mut context = ToolContext::new();
-    context.insert(SessionId("abc-123".to_string()));
+    context.insert(SessionId("abc-123".to_string())).unwrap();
     let result = execute_tool_with_context(&handle, "context_reader", "{}", &mut context)
         .await
         .unwrap();
@@ -660,29 +671,25 @@ async fn context_reaches_the_single_execute_path() {
 }
 
 #[tokio::test]
-async fn server_dispatch_snapshot_clones_once_and_only_publishes_result_metadata() {
+async fn server_dispatch_snapshot_isolates_and_only_publishes_result_metadata() {
     let handle = ToolServer::new().tool(ContextReader).run();
-    let clones = Arc::new(AtomicUsize::new(0));
     let mut context = ToolContext::new();
-    context.insert(CloneTrackedContext {
-        clones: clones.clone(),
-        value: 0,
-    });
+    context.insert(Counter(0)).unwrap();
 
     let result = execute_tool_with_context(&handle, "context_reader", "{}", &mut context)
         .await
         .unwrap();
 
     assert_eq!(result, "no session");
-    assert_eq!(clones.load(Ordering::SeqCst), 1);
     assert_eq!(
-        context
-            .get::<CloneTrackedContext>()
-            .map(|value| value.value),
+        context.get::<Counter>().unwrap().map(|value| value.0),
         Some(0),
         "tool-local inbound mutations must not change the caller's context"
     );
-    assert_eq!(context.result::<usize>(), Some(&1));
+    assert_eq!(
+        context.result::<CounterResult>().unwrap().map(|v| v.0),
+        Some(1)
+    );
 }
 
 struct PendingTool(Arc<AtomicBool>);
@@ -706,7 +713,7 @@ impl Tool for PendingTool {
         context: &mut ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, ToolExecutionError> {
-        context.insert_result("unpublished".to_string());
+        context.insert_result(Note("unpublished".to_string()))?;
         self.0.store(true, Ordering::SeqCst);
         pending().await
     }
@@ -717,7 +724,7 @@ async fn cancelled_server_dispatch_does_not_retain_stale_result_metadata() {
     let started = Arc::new(AtomicBool::new(false));
     let handle = ToolServer::new().tool(PendingTool(started.clone())).run();
     let mut context = ToolContext::new();
-    context.insert_result("stale".to_string());
+    context.insert_result(Note("stale".to_string())).unwrap();
 
     let mut execution = Box::pin(handle.execute(PendingTool::NAME, "null", &mut context));
     tokio::time::timeout(
@@ -737,7 +744,7 @@ async fn cancelled_server_dispatch_does_not_retain_stale_result_metadata() {
     .expect("pending tool did not start");
     drop(execution);
 
-    assert!(context.result::<String>().is_none());
+    assert!(context.result::<Note>().unwrap().is_none());
 }
 
 #[tokio::test]
@@ -752,7 +759,7 @@ async fn empty_tool_context_uses_default() {
 async fn tool_ignoring_context_still_works() {
     let handle = ToolServer::new().tool(MockAddTool).run();
     let mut context = ToolContext::new();
-    context.insert(SessionId("ignored".to_string()));
+    context.insert(SessionId("ignored".to_string())).unwrap();
     let args = serde_json::to_string(&serde_json::json!({"x": 3, "y": 7})).unwrap();
     let result = execute_tool_with_context(&handle, "add", &args, &mut context)
         .await

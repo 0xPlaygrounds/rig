@@ -28,7 +28,7 @@ use rig_agent::{
         CompletionError, CompletionModel, CompletionRequest, CompletionResponse, FinishReason,
         Usage,
     },
-    streaming::{RawStreamingChoice, StreamFinal, StreamingCompletionResponse},
+    streaming::{BlockId, StreamEvent, StreamFinal, StreamingCompletionResponse},
 };
 use rig_core::message::AssistantContent;
 
@@ -79,8 +79,8 @@ impl CompletionModel for BudgetedModel {
         Ok(StreamingCompletionResponse::stream(
             "budgeted",
             Box::pin(stream::iter([
-                Ok(RawStreamingChoice::Message(text)),
-                Ok(RawStreamingChoice::FinalResponse(
+                Ok(StreamEvent::text(BlockId::wire("text-1"), text)),
+                Ok(StreamEvent::Final(
                     StreamFinal::new("budgeted", Usage::new()).with_finish_reason(reason),
                 )),
             ])),

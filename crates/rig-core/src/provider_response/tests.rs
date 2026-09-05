@@ -348,3 +348,45 @@ fn display_goldens_for_error_shapes() {
         assert_eq!(with_headers.to_string(), bare_text);
     }
 }
+
+/// The wire carries the error's identity — status, body, request id — and
+/// not the response's headers: those are the transport's (`date`, the
+/// rate-limit counters) and differ on every response to one request, so a
+/// record that carried them was never the same twice. A decoded error has
+/// `headers: None`: not captured, which is what a replayed error is.
+#[test]
+fn provider_response_error_round_trips_its_identity_and_not_its_headers() {
+    use super::ProviderResponseError;
+    let mut headers = http::HeaderMap::new();
+    headers.append("retry-after", http::HeaderValue::from_static("7"));
+    headers.append(
+        "date",
+        http::HeaderValue::from_static("Thu, 03 Sep 2026 21:39:09 GMT"),
+    );
+    let error = ProviderResponseError::new(http::StatusCode::TOO_MANY_REQUESTS, "slow")
+        .with_provider_request_id(Some("req-1".into()))
+        .with_headers(Some(Box::new(headers)));
+    let json = serde_json::to_string(&error).unwrap();
+    assert!(!json.contains("headers"), "{json}");
+    let back: ProviderResponseError = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, error.clone().with_headers(None));
+    assert!(
+        back.headers.is_none(),
+        "a decoded error captured no headers"
+    );
+    // A wire that names headers is another format, refused.
+    assert!(
+        serde_json::from_str::<ProviderResponseError>(
+            r#"{"status":429,"body":"slow","provider_request_id":null,"headers":[]}"#
+        )
+        .is_err()
+    );
+
+    let bare = ProviderResponseError::without_status("gone");
+    let back: ProviderResponseError =
+        serde_json::from_str(&serde_json::to_string(&bare).unwrap()).unwrap();
+    assert_eq!(back, bare);
+
+    let bad = r#"{"status":99,"body":"","provider_request_id":null,"headers":null}"#;
+    assert!(serde_json::from_str::<ProviderResponseError>(bad).is_err());
+}

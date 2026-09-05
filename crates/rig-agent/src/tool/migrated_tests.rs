@@ -352,7 +352,9 @@ fn retrieved_tool_schemas_use_canonical_name() {
     }
 
     let mut toolset = ToolSet::default();
-    toolset.add_retrieved_tool(RetrievedTool);
+    toolset
+        .add_retrieved_tool(RetrievedTool)
+        .expect("the tool context serializes");
 
     let schemas = toolset.schemas().unwrap();
     assert_eq!(schemas.len(), 1);
@@ -365,7 +367,9 @@ async fn portable_embedding_tool_uses_classic_retrieval_without_schema_drift() {
     let tool = PortableEmbeddingFixture::new("shared");
     let portable_schema = ToolSchema::try_from(&tool).unwrap();
     let mut toolset = ToolSet::default();
-    toolset.add_retrieved_tool(tool);
+    toolset
+        .add_retrieved_tool(tool)
+        .expect("the tool context serializes");
 
     let schemas = toolset.schemas().unwrap();
     assert_eq!(schemas.len(), 1);

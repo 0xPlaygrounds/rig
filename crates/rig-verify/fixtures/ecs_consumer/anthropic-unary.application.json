@@ -1,0 +1,7 @@
+{
+  "files": {
+    "greeting.txt": "Hello, Rig!\n"
+  },
+  "writes": 1,
+  "result": "**Summary:**\n- ✓ Found typo: \"Helo, Rig!\" \n- ✓ Proposed correction: \"Hello, Rig!\"\n- ✓ Edit applied successfully\n- ✓ File validated: Content is now correct with \"Hello, Rig!\"\n\nThe greeting typo has been fixed!"
+}

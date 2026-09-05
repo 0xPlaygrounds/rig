@@ -25,7 +25,10 @@ use crate::support::assert_mentions_expected_number;
 async fn build_tool_index(
     client: &gemini::Client,
     toolset: &ToolSet,
-) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<rig::embeddings::ToolSchema> {
+) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<
+    rig::embeddings::ToolSchema,
+    gemini::embedding::EmbeddingModel,
+> {
     let embedding_model = client.embedding_model(gemini::embedding::EMBEDDING_001);
     // ToolSet::schemas() returns registration order, so the recorded
     // embedding batch replays deterministically.
@@ -51,8 +54,12 @@ async fn dynamic_tool_retrieved_and_merged_with_static() {
         "dynamic_tools/dynamic_tool_retrieved_and_merged_with_static",
         |client| async move {
             let mut toolset = ToolSet::default();
-            toolset.add_retrieved_tool(subtract);
-            toolset.add_retrieved_tool(EmbedMultiply::default());
+            toolset
+                .add_retrieved_tool(subtract)
+                .expect("the tool context serializes");
+            toolset
+                .add_retrieved_tool(EmbedMultiply::default())
+                .expect("the tool context serializes");
             let index = build_tool_index(&client, &toolset).await;
 
             let agent = client
@@ -94,8 +101,12 @@ async fn dynamic_only_agent_retrieves_tool_per_prompt() {
         "dynamic_tools/dynamic_only_agent_retrieves_tool_per_prompt",
         |client| async move {
             let mut toolset = ToolSet::default();
-            toolset.add_retrieved_tool(add);
-            toolset.add_retrieved_tool(EmbedSubtract::default());
+            toolset
+                .add_retrieved_tool(add)
+                .expect("the tool context serializes");
+            toolset
+                .add_retrieved_tool(EmbedSubtract::default())
+                .expect("the tool context serializes");
             let index = build_tool_index(&client, &toolset).await;
 
             let agent = client
@@ -131,9 +142,15 @@ async fn sample_caps_retrieved_definitions() {
         "dynamic_tools/sample_caps_retrieved_definitions",
         |client| async move {
             let mut toolset = ToolSet::default();
-            toolset.add_retrieved_tool(EmbedAdd::default());
-            toolset.add_retrieved_tool(EmbedSubtract::default());
-            toolset.add_retrieved_tool(EmbedMultiply::default());
+            toolset
+                .add_retrieved_tool(EmbedAdd::default())
+                .expect("the tool context serializes");
+            toolset
+                .add_retrieved_tool(EmbedSubtract::default())
+                .expect("the tool context serializes");
+            toolset
+                .add_retrieved_tool(EmbedMultiply::default())
+                .expect("the tool context serializes");
             let index = build_tool_index(&client, &toolset).await;
 
             let agent = client

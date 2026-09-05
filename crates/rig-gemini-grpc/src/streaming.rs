@@ -44,24 +44,16 @@ struct GrpcAdapter {
 impl Default for GrpcAdapter {
     fn default() -> Self {
         Self {
-            reasoning: MintedReasoningLifecycle::new(REASONING_ID),
+            reasoning: MintedReasoningLifecycle::new(streaming::MintKind::Reasoning),
             tool_ids: streaming::SyntheticIds::tool(),
             failed: false,
         }
     }
 }
 
-/// Gemini thought parts carry no id or block boundaries; a per-stream constant
-/// minted identity keeps every thought delta merging into one item, and the
-/// core accumulator's minted-id boundary splits items around other output.
-/// Minted, so it can never reach a request.
-const REASONING_ID: streaming::StreamPartId =
-    streaming::StreamPartId::minted(streaming::MintKind::Reasoning, 0);
-
 impl WireAdapter for GrpcAdapter {
     type Frame = proto::GenerateContentResponse;
     type Event = proto::GenerateContentResponse;
-    type Response = StreamingCompletionResponse;
 
     fn classify(&self, frame: Self::Frame) -> WireEvent<Self::Event> {
         // prost/tonic already deserialized the frame, and a gRPC decode
@@ -72,7 +64,7 @@ impl WireAdapter for GrpcAdapter {
         wire::classify_typed_event(TypedEvent::Modeled(frame))
     }
 
-    fn interpret(&mut self, resp: Self::Event, out: &mut AdapterOutput<Self::Response>) {
+    fn interpret(&mut self, resp: Self::Event, out: &mut AdapterOutput) {
         if self.failed {
             return;
         }
@@ -111,11 +103,14 @@ impl WireAdapter for GrpcAdapter {
         // chunk (or a default) would report a successful completion for a turn
         // the provider never finished.
         if is_final {
-            out.push(Ok(streaming::RawStreamingChoice::FinalResponse(resp)));
+            match terminal_record(&resp) {
+                Ok(record) => out.final_record(record),
+                Err(err) => out.error(err.into()),
+            }
         }
     }
 
-    fn finish(&mut self, _out: &mut AdapterOutput<Self::Response>) {
+    fn finish(&mut self, _out: &mut AdapterOutput) {
         // EOF without a finish reason is truncation: no terminal record.
     }
 
@@ -132,7 +127,7 @@ impl GrpcAdapter {
     /// Declare what one protobuf part carried; the shared lifecycle derives
     /// the event sequence, so this adapter holds no boundary bookkeeping of
     /// its own (the REST wire's `interpret_part` has the same shape).
-    fn interpret_part(&mut self, part: &proto::Part) -> ChunkParts<StreamingCompletionResponse> {
+    fn interpret_part(&mut self, part: &proto::Part) -> ChunkParts {
         match &part.data {
             // A thought part's signature closes the thinking block: the shared
             // accumulator signs the accumulated deltas, using the same base64
@@ -162,8 +157,8 @@ impl GrpcAdapter {
                 // turn. An id-less call keys the stream by a minted identity,
                 // counted up per stream so two id-less calls stay distinct,
                 // and its durable id stays absent.
-                let key = match streaming::WireId::new(function_call.id.clone()) {
-                    Some(wire_id) => streaming::StreamPartId::wire(wire_id.into_string()),
+                let key = match streaming::non_empty_id(function_call.id.clone()) {
+                    Some(wire_id) => streaming::BlockId::wire(wire_id),
                     None => self.tool_ids.mint(),
                 };
 
@@ -171,17 +166,25 @@ impl GrpcAdapter {
                 // the part identity and `call_id` stays unset — setting both
                 // from one id would take the dual-wire arm downstream and
                 // fabricate an item id the wire never issued.
-                let tool_call = streaming::RawStreamingToolCall::new(
-                    key,
-                    function_call.name.clone(),
-                    args_json,
-                )
-                // A signature on a function-call part belongs to the
-                // call, not to the thought block.
-                .with_signature(encode_signature(&part.thought_signature));
+                let mut end = streaming::ToolCallEnd::whole(function_call.name.clone(), args_json)
+                    // A signature on a function-call part belongs to the
+                    // call, not to the thought block.
+                    .with_signature(encode_signature(&part.thought_signature));
+                end.tool_id = key.wire_str().map(str::to_owned);
 
+                // A whole call is its start and its authoritative end.
                 ChunkParts {
-                    tool_events: vec![streaming::RawStreamingChoice::ToolCall(tool_call)],
+                    tool_events: vec![
+                        streaming::StreamEvent::BlockStart {
+                            id: key.clone(),
+                            kind: streaming::BlockKind::ToolCall,
+                        },
+                        streaming::StreamEvent::BlockEnd {
+                            id: key,
+                            end: streaming::BlockClose::ToolCall(end),
+                            block: None,
+                        },
+                    ],
                     ..ChunkParts::default()
                 }
             }
@@ -198,6 +201,31 @@ impl GrpcAdapter {
     }
 }
 
+/// Map the terminal `GenerateContentResponse` onto rig's
+/// [`streaming::StreamFinal`], serializing the native record onto
+/// [`streaming::StreamFinal::raw`].
+fn terminal_record(
+    response: &proto::GenerateContentResponse,
+) -> Result<streaming::StreamFinal, serde_json::Error> {
+    let usage = super::completion::map_usage(response.usage_metadata.as_ref());
+    let finish_reason = response
+        .candidates
+        .first()
+        .and_then(|candidate| super::completion::map_finish_reason(candidate.finish_reason));
+
+    Ok(
+        streaming::StreamFinal::new(super::completion::PROVIDER_NAME, usage)
+            .with_optional_finish_reason(finish_reason)
+            .with_optional_response_id(
+                Some(response.response_id.clone()).filter(|id| !id.is_empty()),
+            )
+            .with_optional_model(
+                Some(response.model_version.clone()).filter(|model| !model.is_empty()),
+            )
+            .with_raw(serde_json::to_value(response)?),
+    )
+}
+
 /// Drive already-typed `GenerateContentResponse` events through the full
 /// shared pipeline — driver policy, canonical grammar, terminal
 /// normalization.
@@ -210,19 +238,20 @@ pub fn stream_from_events(
     + WasmCompatSend
     + 'static,
 ) -> streaming::StreamingCompletionResponse {
-    let raw = run_wire_stream(events, GrpcAdapter::default());
     streaming::StreamingCompletionResponse::stream(
         super::completion::PROVIDER_NAME,
-        normalize_grpc_stream(raw),
+        run_wire_stream(events, GrpcAdapter::default()),
     )
 }
 
-/// Open a stream whose terminal record stays Gemini's own protobuf response.
-pub(crate) async fn raw_stream(
+/// Open a stream normalized to rig's [`streaming::StreamFinal`] terminal
+/// record; the adapter maps Gemini's own protobuf terminal onto
+/// [`streaming::StreamFinal::raw`].
+pub(crate) async fn stream(
     client: Client,
     model: String,
     completion_request: CompletionRequest,
-) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
+) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
     let request = super::completion::create_grpc_request(&model, completion_request)?;
 
     let mut grpc_client = client
@@ -249,47 +278,10 @@ pub(crate) async fn raw_stream(
         }
     };
 
-    Ok(Box::pin(run_wire_stream(transport, GrpcAdapter::default())))
-}
-
-/// Open a stream normalized to rig's [`streaming::StreamFinal`] terminal
-/// record. Delegates to [`raw_stream`] — one RPC either way.
-pub(crate) async fn stream(
-    client: Client,
-    model: String,
-    completion_request: CompletionRequest,
-) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-    let raw = raw_stream(client, model, completion_request).await?;
-
     Ok(streaming::StreamingCompletionResponse::stream(
         super::completion::PROVIDER_NAME,
-        normalize_grpc_stream(raw),
+        run_wire_stream(transport, GrpcAdapter::default()),
     ))
-}
-
-/// Normalize the provider-native terminal record into rig's
-/// [`streaming::StreamFinal`].
-fn normalize_grpc_stream(
-    raw: streaming::RawStreamingResult<StreamingCompletionResponse>,
-) -> streaming::StreamingResult {
-    streaming::normalize_stream(raw, |response| {
-        let usage = super::completion::map_usage(response.usage_metadata.as_ref());
-        let finish_reason = response
-            .candidates
-            .first()
-            .and_then(|candidate| super::completion::map_finish_reason(candidate.finish_reason));
-
-        Ok(
-            streaming::StreamFinal::new(super::completion::PROVIDER_NAME, usage)
-                .with_optional_finish_reason(finish_reason)
-                .with_optional_response_id(
-                    Some(response.response_id.clone()).filter(|id| !id.is_empty()),
-                )
-                .with_optional_model(
-                    Some(response.model_version).filter(|model| !model.is_empty()),
-                ),
-        )
-    })
 }
 
 #[cfg(test)]

@@ -1,0 +1,551 @@
+{
+  "header": {
+    "run_spec": 9072754608376111302,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      },
+      {
+        "key": "golden/tool:add#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "Add x and y together",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The first number to add"
+              },
+              "y": {
+                "type": "number",
+                "description": "The second number to add"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/tool:add#0": "tool"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/tool:add#0": "tool"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25, then reply with just the number."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": "call_REDACTED_1",
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 101,
+            "output_tokens": 17,
+            "total_tokens": 118,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "openai",
+          "model": "gpt-4o-2024-08-06",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 101,
+              "completion_tokens": 17,
+              "total_tokens": 118,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              }
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "gpt-4o-2024-08-06",
+            "additional_params": {
+              "created": 0,
+              "obfuscation": "obfuscation_REDACTED_12",
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "system_fingerprint": "fp_REDACTED_1"
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_name",
+            "name": "add"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "x"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "17"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": ",\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "y"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "\":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "25"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:call_REDACTED_1",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "call_REDACTED_1",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": "call_REDACTED_1",
+            "provider": {
+              "call_id": "call_REDACTED_1"
+            },
+            "function": {
+              "name": "add",
+              "arguments": {
+                "x": 17,
+                "y": 25
+              }
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 101,
+            "output_tokens": 17,
+            "total_tokens": 118,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "provider": "openai",
+          "model": "gpt-4o-2024-08-06",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 101,
+              "completion_tokens": 17,
+              "total_tokens": 118,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              }
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "gpt-4o-2024-08-06",
+            "additional_params": {
+              "created": 0,
+              "obfuscation": "obfuscation_REDACTED_12",
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "system_fingerprint": "fp_REDACTED_1"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tool_output": {},
+      "id": 2,
+      "key": "golden/tool:add#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "add",
+        "args": "{\"x\":17,\"y\":25}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": 42
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 3,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25, then reply with just the number."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": "call_REDACTED_1",
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 17,
+                      "y": 25
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "call_REDACTED_1",
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 42
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "42"
+            }
+          ],
+          "usage": {
+            "input_tokens": 126,
+            "output_tokens": 2,
+            "total_tokens": 128,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_2",
+          "provider_request_id": "req_REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-4o-2024-08-06",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 126,
+              "completion_tokens": 2,
+              "total_tokens": 128,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              }
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-REDACTED_2",
+            "model": "gpt-4o-2024-08-06",
+            "additional_params": {
+              "created": 0,
+              "obfuscation": "obfuscation_REDACTED_16",
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "system_fingerprint": "fp_REDACTED_1"
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "42"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 126,
+            "output_tokens": 2,
+            "total_tokens": 128,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "stop",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_2",
+          "provider_request_id": "req_REDACTED_2",
+          "provider": "openai",
+          "model": "gpt-4o-2024-08-06",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 126,
+              "completion_tokens": 2,
+              "total_tokens": 128,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              }
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-REDACTED_2",
+            "model": "gpt-4o-2024-08-06",
+            "additional_params": {
+              "created": 0,
+              "obfuscation": "obfuscation_REDACTED_16",
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "system_fingerprint": "fp_REDACTED_1"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

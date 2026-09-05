@@ -4,9 +4,9 @@ use rig_core::{
 };
 
 use crate::{
-    agent::{Agent, MultiTurnStreamItem, Text},
+    agent::{Agent, MultiTurnStreamItem},
     completion::{CompletionError, PromptError, Usage},
-    streaming::StreamedAssistantContent,
+    streaming::{Delta, StreamEvent},
 };
 use rig_core::wasm_compat::WasmCompatSend;
 
@@ -111,9 +111,10 @@ impl CliChat for AgentImpl {
             };
 
             match chunk {
-                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
-                    Text { text, .. },
-                ))) => {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                    delta: Delta::Text { text },
+                    ..
+                })) => {
                     print!("{text}");
                     acc.push_str(&text);
                 }

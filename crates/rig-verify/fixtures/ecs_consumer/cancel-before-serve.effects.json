@@ -1,0 +1,108 @@
+{
+  "header": {
+    "deliveries": [],
+    "handlers": [
+      {
+        "key": "maintenance/model:default",
+        "family": {
+          "family": "completion",
+          "model": "synthetic/maintenance",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "maintenance/tool:apply_edit",
+        "family": {
+          "family": "tool",
+          "name": "apply_edit",
+          "description": "Apply the proposed edit after host approval",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      },
+      {
+        "key": "maintenance/tool:propose_edit",
+        "family": {
+          "family": "tool",
+          "name": "propose_edit",
+          "description": "Propose replacement contents for greeting.txt without writing",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "content"
+            ]
+          }
+        }
+      },
+      {
+        "key": "maintenance/tool:read_file",
+        "family": {
+          "family": "tool",
+          "name": "read_file",
+          "description": "Read greeting.txt",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      },
+      {
+        "key": "maintenance/tool:search_file",
+        "family": {
+          "family": "tool",
+          "name": "search_file",
+          "description": "Find matching lines in greeting.txt",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "needle": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "needle"
+            ]
+          }
+        }
+      },
+      {
+        "key": "maintenance/tool:validate_file",
+        "family": {
+          "family": "tool",
+          "name": "validate_file",
+          "description": "Validate the greeting file after an approved write",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ],
+    "signature": {},
+    "hooks": [],
+    "required": {},
+    "programs": {
+      "maintenance/run#0": {
+        "required": {
+          "maintenance/model:default": "completion",
+          "maintenance/tool:apply_edit": "tool",
+          "maintenance/tool:propose_edit": "tool",
+          "maintenance/tool:read_file": "tool",
+          "maintenance/tool:search_file": "tool",
+          "maintenance/tool:validate_file": "tool"
+        },
+        "policy": 8128296642129697036
+      }
+    }
+  },
+  "records": []
+}

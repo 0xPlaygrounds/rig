@@ -9,12 +9,62 @@ use rmcp::model::{
 use rmcp::service::PeerRequestOptions;
 
 use rig_core::message::{ImageMediaType, MimeType, ToolResultContent};
-use rig_core::tool::{PortableDynamicTool, ToolContext, ToolExecutionError, ToolOutput};
+use rig_core::tool::{
+    ContextValue, PortableDynamicTool, ToolContext, ToolContextError, ToolExecutionError,
+    ToolOutput,
+};
 use rig_core::wasm_compat::WasmBoxedFuture;
 
-/// Re-export of [`rmcp::model::Meta`]: place one in the per-call [`ToolContext`]
-/// to have MCP tools forward it as the request's `_meta`.
+/// Re-export of [`rmcp::model::Meta`]: wrap one in [`McpMeta`] and place it
+/// in the per-call [`ToolContext`] to have MCP tools forward it as the
+/// request's `_meta`.
 pub use rmcp::model::Meta;
+
+/// The request `_meta` a caller places in the [`ToolContext`] for an MCP
+/// tool, forwarded as the call's `_meta` (SEP-1319). A newtype because the
+/// context stores values under declared keys and `rmcp::model::Meta` is
+/// not this crate's to implement [`ContextValue`] for.
+#[derive(
+    Debug, Clone, Default, PartialEq, rig_core::serde::Serialize, rig_core::serde::Deserialize,
+)]
+#[serde(crate = "rig_core::serde", transparent)]
+pub struct McpMeta(pub Meta);
+
+impl ContextValue for McpMeta {
+    const KEY: &'static str = "rmcp.meta";
+}
+
+/// The `structuredContent` an MCP tool answered with, on the context's
+/// result map for result hooks.
+#[derive(Debug, Clone, PartialEq, rig_core::serde::Serialize, rig_core::serde::Deserialize)]
+#[serde(crate = "rig_core::serde", transparent)]
+pub struct McpStructuredContent(pub serde_json::Value);
+
+impl ContextValue for McpStructuredContent {
+    const KEY: &'static str = "rmcp.structured_content";
+}
+
+/// The response `_meta` an MCP tool answered with, on the context's result
+/// map for result hooks.
+#[derive(
+    Debug, Clone, Default, PartialEq, rig_core::serde::Serialize, rig_core::serde::Deserialize,
+)]
+#[serde(crate = "rig_core::serde", transparent)]
+pub struct McpResponseMeta(pub Meta);
+
+impl ContextValue for McpResponseMeta {
+    const KEY: &'static str = "rmcp.response_meta";
+}
+
+/// The untouched [`CallToolResult`], on the context's result map for
+/// result hooks.
+#[derive(Debug, Clone, PartialEq, rig_core::serde::Serialize, rig_core::serde::Deserialize)]
+#[serde(crate = "rig_core::serde", transparent)]
+pub struct McpCallToolResult(pub CallToolResult);
+
+impl ContextValue for McpCallToolResult {
+    const KEY: &'static str = "rmcp.call_tool_result";
+}
 
 /// Default per-call timeout applied to MCP tools (see issue #1914).
 ///
@@ -438,14 +488,18 @@ pub fn tools_from_server(
 /// result hooks: the `structuredContent` value, the response [`Meta`], and the
 /// untouched [`CallToolResult`]. Host-only; the model sees only the ordered
 /// presentation content.
-pub fn preserve_mcp_result(context: &mut ToolContext, result: CallToolResult) {
+pub fn preserve_mcp_result(
+    context: &mut ToolContext,
+    result: CallToolResult,
+) -> Result<(), ToolContextError> {
     if let Some(structured) = result.structured_content.clone() {
-        context.insert_result(structured);
+        context.insert_result(McpStructuredContent(structured))?;
     }
     if let Some(meta) = result.meta.clone() {
-        context.insert_result(meta);
+        context.insert_result(McpResponseMeta(meta))?;
     }
-    context.insert_result(result);
+    context.insert_result(McpCallToolResult(result))?;
+    Ok(())
 }
 
 /// An MCP tool as a context-aware rig-core dynamic tool, with a liveness probe
@@ -475,12 +529,13 @@ impl From<McpTool> for PortableDynamicTool {
             parameters,
             move |context: &mut ToolContext, args: serde_json::Value| {
                 let tool = Arc::clone(&tool);
-                let meta = context.get::<rmcp::model::Meta>().cloned();
+                let meta = context.get::<McpMeta>();
                 Box::pin(async move {
+                    let meta = meta?.map(|meta| meta.0);
                     let result = tool.execute_mcp(args.to_string(), meta).await?;
                     let is_error = result.is_error == Some(true);
                     let output = mcp_result_output(&result);
-                    preserve_mcp_result(context, result);
+                    preserve_mcp_result(context, result)?;
                     let output = output?;
                     if is_error {
                         Err(ToolExecutionError::other(format!(

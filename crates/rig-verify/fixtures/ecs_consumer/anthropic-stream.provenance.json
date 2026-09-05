@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "source": "scrubbed-cassette-replay",
+  "case": "anthropic-stream",
+  "cassette_sha256": "2d838a241c0256de12fcf41ab3b2c840fa966133f98867bb75c4e8797eb730b3",
+  "provider_model": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5"
+  },
+  "generation": {
+    "revision": "25e8225be8a7c6b2b8af0e5a4cb0dd9993ffb503",
+    "dirty": true
+  },
+  "capture": {
+    "case": "anthropic-stream",
+    "source": "live-provider",
+    "provider_model": {
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5"
+    },
+    "cassette_sha256": "2d838a241c0256de12fcf41ab3b2c840fa966133f98867bb75c4e8797eb730b3",
+    "limits": {
+      "requests": 32,
+      "output_tokens": 512,
+      "seconds": 300,
+      "retries": 0
+    }
+  },
+  "artifacts_sha256": {
+    "application": "581b49c1a4de178d918cfd58790186c50315626098cde6151b3cb2c2985e47b7",
+    "checkpoints": "1c30b13a674063b4a2cd2b4e485f226081d86e0904dfd6d60e0e09d444f043be",
+    "effects": "46c5b6162bf2bf255ca8ee098a8b4ca923904b87a5cfa4d01840f66d16ba2f9b",
+    "observations": "6c97117e0fbf8d8b3d618602f529d7e5a6879f103d1bf5106554c06337b0eb46"
+  }
+}

@@ -3,7 +3,7 @@ use crate::message::{ToolCall, ToolFunction, ToolResult};
 
 fn call(id: &str) -> AssistantContent {
     AssistantContent::ToolCall(ToolCall {
-        id: ToolCallId::new_or_mint(id),
+        id: ToolCallId::new_or_minted(id, 0),
         provider: None,
         function: ToolFunction {
             name: "add".into(),
@@ -15,7 +15,7 @@ fn call(id: &str) -> AssistantContent {
 }
 fn result(id: &str) -> UserContent {
     UserContent::ToolResult(ToolResult {
-        call: ToolCallId::new_or_mint(id),
+        call: ToolCallId::new_or_minted(id, 0),
         provider: None,
         name: "add".into(),
         content: vec![ToolResultContent::text("3")],

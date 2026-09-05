@@ -1,0 +1,548 @@
+{
+  "header": {
+    "run_spec": 13216707040221315529,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "golden/retrieve:context#0",
+        "family": {
+          "family": "retrieve"
+        }
+      },
+      {
+        "key": "golden/tool:add#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "Add x and y together",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          },
+          "embedding": {
+            "context": null,
+            "embedding_docs": [
+              "Add two numbers together to get their sum"
+            ]
+          }
+        }
+      },
+      {
+        "key": "golden/tool:subtract#1",
+        "family": {
+          "family": "tool",
+          "name": "subtract",
+          "description": "Subtract y from x",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          },
+          "embedding": {
+            "context": null,
+            "embedding_docs": [
+              "Subtract one number from another to get their difference"
+            ]
+          }
+        }
+      },
+      {
+        "key": "golden/retrieve:tools#0",
+        "family": {
+          "family": "retrieve"
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/retrieve:context#0": "retrieve",
+      "golden/retrieve:tools#0": "retrieve",
+      "golden/tool:subtract#1": "tool"
+    },
+    "hooks": [
+      "DynamicContext"
+    ],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/retrieve:context#0": "retrieve",
+      "golden/retrieve:tools#0": "retrieve",
+      "golden/tool:add#0": "tool",
+      "golden/tool:subtract#1": "tool"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/retrieve:context#0",
+      "kind": {
+        "effect": "retrieve",
+        "query": {
+          "query": "top_n",
+          "req": {
+            "query": "Subtract 8 from 50 with the subtract tool, then reply with just the number.",
+            "samples": 1,
+            "threshold": null,
+            "additional_params": null,
+            "filter": null
+          }
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "documents",
+          "retrieved": "scored",
+          "results": [
+            [
+              0.5375477438605082,
+              "doc1",
+              "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "golden/retrieve:tools#0",
+      "kind": {
+        "effect": "retrieve",
+        "query": {
+          "query": "top_n_ids",
+          "req": {
+            "query": "Subtract 8 from 50 with the subtract tool, then reply with just the number.",
+            "samples": 1,
+            "threshold": null,
+            "additional_params": null,
+            "filter": null
+          }
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "documents",
+          "retrieved": "ids",
+          "results": [
+            [
+              0.6825767869102776,
+              "subtract"
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 3,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator. You must use the provided tools for every arithmetic operation."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Subtract 8 from 50 with the subtract tool, then reply with just the number."
+                }
+              ]
+            }
+          ],
+          "documents": [
+            {
+              "id": "doc1",
+              "text": "\"A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.\""
+            }
+          ],
+          "tools": [
+            {
+              "name": "subtract",
+              "description": "Subtract y from x",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  },
+                  "y": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": "tool-0",
+              "function": {
+                "name": "subtract",
+                "arguments": {
+                  "x": 50,
+                  "y": 8
+                }
+              },
+              "signature": "signature_REDACTED_1",
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 124,
+            "output_tokens": 19,
+            "total_tokens": 238,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 95
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "responseId": "id_REDACTED_1",
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "thoughtSignature": "signature_REDACTED_1",
+                      "functionCall": {
+                        "name": "subtract",
+                        "args": {
+                          "x": 50,
+                          "y": 8
+                        }
+                      }
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "safetyRatings": null,
+                "citationMetadata": null,
+                "tokenCount": null,
+                "avgLogprobs": null,
+                "logprobsResult": null,
+                "index": 0,
+                "finishMessage": "Model generated function call(s)."
+              }
+            ],
+            "promptFeedback": null,
+            "usageMetadata": {
+              "promptTokenCount": 124,
+              "candidatesTokenCount": 19,
+              "totalTokenCount": 238,
+              "thoughtsTokenCount": 95,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 124
+                }
+              ]
+            },
+            "modelVersion": "gemini-2.5-flash"
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 4,
+      "key": "golden/tool:subtract#1",
+      "kind": {
+        "effect": "tool_call",
+        "name": "subtract",
+        "args": "{\"x\":50,\"y\":8}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": 42
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 5,
+      "key": "golden/retrieve:context#0",
+      "kind": {
+        "effect": "retrieve",
+        "query": {
+          "query": "top_n",
+          "req": {
+            "query": "Subtract 8 from 50 with the subtract tool, then reply with just the number.",
+            "samples": 1,
+            "threshold": null,
+            "additional_params": null,
+            "filter": null
+          }
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "documents",
+          "retrieved": "scored",
+          "results": [
+            [
+              0.5375477438605082,
+              "doc1",
+              "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 6,
+      "key": "golden/retrieve:tools#0",
+      "kind": {
+        "effect": "retrieve",
+        "query": {
+          "query": "top_n_ids",
+          "req": {
+            "query": "Subtract 8 from 50 with the subtract tool, then reply with just the number.",
+            "samples": 1,
+            "threshold": null,
+            "additional_params": null,
+            "filter": null
+          }
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "documents",
+          "retrieved": "ids",
+          "results": [
+            [
+              0.6825767869102776,
+              "subtract"
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 7,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator. You must use the provided tools for every arithmetic operation."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Subtract 8 from 50 with the subtract tool, then reply with just the number."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": "tool-0",
+                  "function": {
+                    "name": "subtract",
+                    "arguments": {
+                      "x": 50,
+                      "y": 8
+                    }
+                  },
+                  "signature": "signature_REDACTED_1",
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": "tool-0",
+                  "name": "subtract",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 42
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [
+            {
+              "id": "doc1",
+              "text": "\"A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.\""
+            }
+          ],
+          "tools": [
+            {
+              "name": "subtract",
+              "description": "Subtract y from x",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  },
+                  "y": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "42"
+            }
+          ],
+          "usage": {
+            "input_tokens": 157,
+            "output_tokens": 2,
+            "total_tokens": 159,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "responseId": "id_REDACTED_2",
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "text": "42"
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "safetyRatings": null,
+                "citationMetadata": null,
+                "tokenCount": null,
+                "avgLogprobs": null,
+                "logprobsResult": null,
+                "index": 0,
+                "finishMessage": null
+              }
+            ],
+            "promptFeedback": null,
+            "usageMetadata": {
+              "promptTokenCount": 157,
+              "candidatesTokenCount": 2,
+              "totalTokenCount": 159,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 157
+                }
+              ]
+            },
+            "modelVersion": "gemini-2.5-flash"
+          }
+        }
+      }
+    }
+  ]
+}

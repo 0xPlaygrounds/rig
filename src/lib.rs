@@ -87,6 +87,22 @@ pub mod core {
     pub use rig_core::*;
 }
 
+/// The classic runtime's effect bus (`rig_agent::bus`): the dispatcher,
+/// the registrar, the driver, the typed views. What a handler implements is
+/// `rig::core::serve`; the vocabulary is `rig::core::effect`. Effects
+/// without the classic agent are `rig-ecs`'s.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub mod bus {
+    pub use rig_agent::bus::*;
+}
+
+/// Record and replay (`rig_effect_log`): the effect log, its header, the
+/// recorder a driver writes to and the replayer that answers from it.
+pub mod effect_log {
+    pub use rig_effect_log::*;
+}
+
 /// The sans-IO run layer of rig-agent (`rig_agent::run`): `AgentRun` and its
 /// step/turn types, the run's spec, request preparation, output policy and
 /// per-turn patch, its response and error types, the invalid-call decision
@@ -206,10 +222,17 @@ pub mod tool {
     pub use rig_core::tool::{
         PortableDynamicTool, PortableTool, PortableToolEmbedding, portable_tool_definition,
     };
-    // Contextual authoring and the erased tool set — rig-core, always available.
+    // Contextual authoring and the erased tool — rig-core, always available.
     pub use rig_core::tool::{
-        DynamicTool, ErasedTool, MissingToolContext, RegisteredTool, Tool, ToolCatalog,
-        ToolContext, ToolDispatch, ToolEmbedding, ToolSet, dispatch_tool, tool_definition,
+        DynamicTool, ErasedTool, Tool, ToolContext, ToolContextError, ToolEmbedding,
+        tool_definition,
+    };
+    // The registry — a registration, the ordered set, the per-turn catalog,
+    // dispatch by name — is the driver's: rig-agent, under `agent`.
+    #[cfg(feature = "agent")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+    pub use rig_agent::tool::{
+        RegisteredTool, ToolCatalog, ToolDispatch, ToolLease, ToolSet, dispatch_tool,
     };
     // Built-in portable tools (e.g. `ThinkTool`), always available.
     pub use rig_core::tool::builtin;

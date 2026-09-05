@@ -220,6 +220,24 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
     ),
     ("rig-derive", Exempt("proc-macro crate — no runtime wire")),
     (
+        "rig-effect-log",
+        Exempt(
+            "record and replay over the bus — the effect log, recorder, replayer; no provider, no wire",
+        ),
+    ),
+    (
+        "rig-ecs",
+        Exempt(
+            "the bus in a Bevy World — effects, handlers and the driver as entities and systems; no provider, no wire",
+        ),
+    ),
+    (
+        "rig-verify",
+        Exempt(
+            "the bus's behavioural verification suite — tests over rig-core and rig-agent's public API, no provider, no wire",
+        ),
+    ),
+    (
         "rig-fastembed",
         Exempt("local embedding models only — no completion model, no streaming wire"),
     ),

@@ -142,7 +142,7 @@ async fn a_tool_call_cut_mid_arguments_does_not_destroy_the_turn() {
 #[tokio::test]
 async fn the_streaming_path_drops_the_same_cut_call() {
     use futures::StreamExt as _;
-    use rig::streaming::StreamedAssistantContent;
+    use rig::streaming::StreamEvent;
 
     with_llamacpp_competent_cassette(
         "truncation_matrix/streaming_tool_call_cut_mid_arguments",
@@ -164,8 +164,11 @@ async fn the_streaming_path_drops_the_same_cut_call() {
             let mut terminated = false;
             while let Some(item) = stream.next().await {
                 match item.expect("no stream item may be an error") {
-                    StreamedAssistantContent::ToolCall { .. } => completed_calls += 1,
-                    StreamedAssistantContent::Final(_) => terminated = true,
+                    StreamEvent::BlockEnd {
+                        block: Some(AssistantContent::ToolCall(_)),
+                        ..
+                    } => completed_calls += 1,
+                    StreamEvent::Final(_) => terminated = true,
                     _ => {}
                 }
             }

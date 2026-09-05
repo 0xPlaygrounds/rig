@@ -36,12 +36,12 @@ use serde::{Serialize, de::DeserializeOwned};
 
 use rig_core::{
     message::{Message, ToolChoice},
-    vector_store::VectorStoreIndexDyn,
+    vector_store::{VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
 use crate::{
-    agent::{Agent, AgentBuilder, AgentHook, ModelHandle, OutputMode, TypedRun},
+    agent::{Agent, AgentBuilder, AgentHook, ModelRef, OutputMode, TypedRun},
     completion::CompletionModel,
 };
 
@@ -64,8 +64,18 @@ where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
     /// Set a different default model for this extractor's subsequent runs.
-    pub fn with_model_handle(mut self, model: ModelHandle) -> Self {
-        self.agent.set_model_handle(model);
+    /// Use the model registered under `label` on the extractor's bus.
+    pub fn with_model_ref(mut self, label: impl Into<ModelRef>) -> Self {
+        self.agent.set_model_ref(label);
+        self
+    }
+
+    /// Register `model` on the extractor's bus and use it.
+    pub fn with_model<M>(mut self, model: M) -> Self
+    where
+        M: CompletionModel + 'static,
+    {
+        self.agent.set_model(model);
         self
     }
 
@@ -130,13 +140,13 @@ where
     where
         M: CompletionModel + 'static,
     {
-        Self::from_model_handle(ModelHandle::new(model))
+        Self::from_agent_builder(AgentBuilder::new(model))
     }
 
     /// Create an extractor builder from an opaque runtime model handle.
-    pub fn from_model_handle(model: ModelHandle) -> Self {
+    pub fn from_agent_builder(builder: AgentBuilder) -> Self {
         Self {
-            agent_builder: AgentBuilder::from_model_handle(model)
+            agent_builder: builder
                 .preamble("\
                     You are an AI assistant whose purpose is to extract structured data from the provided text.\n\
                     You will have access to a `submit` function that defines the structure of the data to extract from the provided text.\n\
@@ -167,8 +177,6 @@ where
         ///
         /// This delegates to [`AgentBuilder::dynamic_context`] and therefore uses the
         /// same completion-call hook lifecycle as an agent.
-        dynamic_context[I: VectorStoreIndexDyn + 'static](samples: usize, index: I);
-
         additional_params(params: serde_json::Value);
 
         /// Set the maximum number of tokens for the completion
@@ -182,6 +190,16 @@ where
         /// Completion-response hooks receive canonical Rig content, usage, prompt,
         /// and identity fields, just like hooks attached directly to an agent.
         add_hook[H: AgentHook + 'static](hook: H);
+    }
+
+    /// Retrieve `samples` documents from `index` for every extraction.
+    pub fn dynamic_context<I, F>(mut self, samples: usize, index: I) -> Self
+    where
+        I: VectorStoreIndex<Filter = F> + 'static,
+        F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        self.agent_builder = self.agent_builder.dynamic_context(samples, index);
+        self
     }
 
     /// Set the maximum number of retries for the extractor.

@@ -31,6 +31,6 @@ pub mod handle;
 pub mod message;
 pub mod request;
 
-pub use handle::{ModelHandle, ModelRef};
+pub use handle::ModelRef;
 pub use message::{AssistantContent, Message, MessageError};
 pub use request::*;

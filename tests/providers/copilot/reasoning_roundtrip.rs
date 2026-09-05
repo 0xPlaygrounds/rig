@@ -7,8 +7,8 @@ use rig::completion::{
     CompletionError, CompletionModel, CompletionRequest, CompletionResponse, ProviderCapabilities,
 };
 use rig::prelude::*;
-use rig::providers::copilot::{self, CopilotStreamingResponse};
-use rig::streaming::{RawStreamingChoice, StreamingCompletionResponse, normalize_stream};
+use rig::providers::copilot;
+use rig::streaming::{StreamEvent, StreamingCompletionResponse};
 
 use crate::copilot::{live_responses_model, with_copilot_cassette};
 use crate::reasoning::{self, ReasoningRoundtripAgent};
@@ -16,12 +16,12 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 /// Copilot's own terminal stream record carries reasoning metadata that rig's
 /// normalized `StreamFinal` does not model, and the roundtrip cassette records
 /// exactly one interaction per turn. This wrapper lets the shared roundtrip
-/// drive the same requests through `raw_stream` while the test keeps a copy of
-/// Copilot's provider-native terminal records.
+/// drive the same requests through `stream` while the test keeps a copy of
+/// the terminal records, whose `raw` is Copilot's provider-native record.
 #[derive(Clone)]
 struct CapturingProviderFinals {
     inner: copilot::CompletionModel,
-    finals: Arc<Mutex<Vec<CopilotStreamingResponse>>>,
+    finals: Arc<Mutex<Vec<rig::streaming::StreamFinal>>>,
 }
 
 impl CapturingProviderFinals {
@@ -32,7 +32,7 @@ impl CapturingProviderFinals {
         }
     }
 
-    fn finals(&self) -> Arc<Mutex<Vec<CopilotStreamingResponse>>> {
+    fn finals(&self) -> Arc<Mutex<Vec<rig::streaming::StreamFinal>>> {
         Arc::clone(&self.finals)
     }
 }
@@ -49,10 +49,10 @@ impl CompletionModel for CapturingProviderFinals {
         &self,
         request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
-        let raw = self.inner.raw_stream(request).await?;
+        let raw = self.inner.stream(request).await?;
         let finals = self.finals();
         let captured = raw.map(move |item| {
-            if let Ok(RawStreamingChoice::FinalResponse(response)) = &item {
+            if let Ok(StreamEvent::Final(response)) = &item {
                 finals
                     .lock()
                     .expect("captured provider finals should not be poisoned")
@@ -62,11 +62,9 @@ impl CompletionModel for CapturingProviderFinals {
             item
         });
 
-        Ok(StreamingCompletionResponse::stream(
+        Ok(StreamingCompletionResponse::from_events(
             copilot::PROVIDER_NAME,
-            normalize_stream(Box::pin(captured), |response| {
-                Ok((copilot::PROVIDER_NAME, response).into())
-            }),
+            Box::pin(captured),
         ))
     }
 
@@ -100,9 +98,9 @@ async fn streaming() {
         let response = finals
             .first()
             .expect("Copilot reasoning stream should yield a provider final response");
-        let CopilotStreamingResponse::Responses(response) = response else {
-            panic!("Copilot reasoning stream should use the Responses route");
-        };
+        let response: rig::providers::openai::responses_api::streaming::StreamingCompletionResponse =
+            serde_json::from_value(response.raw.clone())
+                .expect("Copilot reasoning stream should use the Responses route");
         assert_eq!(response.reasoning_context.as_deref(), Some("current_turn"));
         assert_eq!(response.reasoning_metadata.as_ref(), expected.as_object());
     })

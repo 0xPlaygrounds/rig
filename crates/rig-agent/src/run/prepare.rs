@@ -12,8 +12,8 @@
 use std::collections::BTreeSet;
 
 use rig_core::completion::{
-    CompletionError, CompletionModel, CompletionRequestBuilder, Document, Message,
-    ProviderCapabilities, ToolDefinition,
+    CompletionError, CompletionRequestBuilder, Document, Message, ProviderCapabilities,
+    ToolDefinition,
 };
 use rig_core::message::ToolChoice;
 
@@ -89,10 +89,7 @@ impl PreparedRequest {
     /// Apply every prepared field to a provider request builder, in the
     /// protocol's canonical order. The builder keeps its prompt and anything
     /// the driver set on it.
-    pub fn apply<M: CompletionModel>(
-        self,
-        builder: CompletionRequestBuilder<M>,
-    ) -> CompletionRequestBuilder<M> {
+    pub fn apply<M>(self, builder: CompletionRequestBuilder<M>) -> CompletionRequestBuilder<M> {
         let builder = builder
             .messages(self.chat_history)
             .temperature_opt(self.temperature)
@@ -220,32 +217,36 @@ pub fn prepare_request(
     // become Tool once tools appear. Otherwise resolve from the request, the
     // schema, the tool set, whether the tool choice permits the output-tool call,
     // and whether the provider composes native structured output with tools.
+    //
+    // The name Tool mode would use is known before the mode is resolved — the
+    // run's committed name, or a collision-safe pick against the full
+    // pre-filter set (or the executable set when unfiltered) — so the
+    // resolution asks whether the choice can call *that* tool: a `Specific`
+    // set naming it keeps Tool mode, one omitting it degrades to Native.
+    let candidate_output_tool = committed_output_tool.map_or_else(
+        || {
+            pick_output_tool_name(
+                pre_filter_tool_names
+                    .as_ref()
+                    .unwrap_or(&executable_tool_names),
+            )
+        },
+        str::to_owned,
+    );
     let resolved_mode = if committed_output_tool.is_some() && output_schema.is_some() {
         OutputMode::Tool
     } else {
         resolve_output_mode(
             output_schema.is_some(),
             !executable_tool_names.is_empty(),
-            tool_choice_permits_output_tool(tool_choice),
+            output_tool_callable(tool_choice, &candidate_output_tool),
             capabilities.composes_native_output_with_tools,
             output_mode,
         )
     };
 
-    // In Tool mode, reuse the run's committed name or pick a collision-safe one
-    // against the full pre-filter set (or the executable set when unfiltered).
-    let output_tool_name = matches!(resolved_mode, OutputMode::Tool).then(|| {
-        committed_output_tool.map_or_else(
-            || {
-                pick_output_tool_name(
-                    pre_filter_tool_names
-                        .as_ref()
-                        .unwrap_or(&executable_tool_names),
-                )
-            },
-            str::to_owned,
-        )
-    });
+    let output_tool_name =
+        matches!(resolved_mode, OutputMode::Tool).then_some(candidate_output_tool);
 
     // A freshly picked name never collides, but a name pinned on turn 1 can if a
     // real tool with that name becomes effective later (for example through a
@@ -301,7 +302,7 @@ pub fn prepare_request(
             }
             OutputMode::Tool => None,
             OutputMode::Prompted => output_schema.map(|schema| {
-                let schema_json = serde_json::to_string(schema).unwrap_or_default();
+                let schema_json = rig_core::json_utils::to_canonical_string(schema);
                 format!(
                     "Respond with ONLY a single JSON object that conforms to this JSON Schema. \
                      Do not include any prose, explanation, or markdown code fences.\n{schema_json}"
@@ -402,32 +403,22 @@ pub fn prepare_request(
 /// Base name of the synthetic output tool used by [`OutputMode::Tool`].
 const DEFAULT_OUTPUT_TOOL_NAME: &str = "final_result";
 
-/// Whether the active [`ToolChoice`] lets the model call the synthetic output
-/// tool. Tool output mode finalizes via that call, so when the choice forbids it
-/// (`None`, or a `Specific` allow-list that lists only the caller's real tools)
-/// Tool mode cannot work and must fall back to native structured output.
-fn tool_choice_permits_output_tool(tool_choice: Option<&ToolChoice>) -> bool {
-    matches!(
-        tool_choice,
-        None | Some(ToolChoice::Auto | ToolChoice::Required)
-    )
-}
-
-/// Whether the active [`ToolChoice`] can call the *named* synthetic output tool.
+/// Whether the active [`ToolChoice`] can call the named synthetic output tool.
 ///
-/// Unlike [`tool_choice_permits_output_tool`] — which runs during output-mode
-/// resolution, before the output-tool name is known, and so conservatively
-/// treats every `Specific` set as forbidding the call — this knows the committed
-/// output-tool name, so a `Specific` set that names it counts as callable. That
-/// matches [`allowed_tool_names_for_choice`], which advertises the output tool
-/// for exactly that choice. Only a `None` choice or a `Specific` set that omits
-/// the output tool genuinely cannot finalize a pinned Tool-mode turn.
+/// Tool output mode finalizes via that call, so the mode resolves to Tool only
+/// when the choice permits it: `Auto`, `Required`, or a `Specific` set that
+/// names the output tool (which [`allowed_tool_names_for_choice`] advertises
+/// for exactly that choice). A `None` choice, or a `Specific` set that lists
+/// only the caller's real tools, cannot finalize a Tool-mode turn: an
+/// uncommitted run degrades to native structured output, a committed one
+/// warns.
 fn output_tool_callable(tool_choice: Option<&ToolChoice>, output_tool_name: &str) -> bool {
     match tool_choice {
+        None | Some(ToolChoice::Auto | ToolChoice::Required) => true,
+        Some(ToolChoice::None) => false,
         Some(ToolChoice::Specific { function_names }) => function_names
             .iter()
             .any(|name| name.as_str() == output_tool_name),
-        other => tool_choice_permits_output_tool(other),
     }
 }
 

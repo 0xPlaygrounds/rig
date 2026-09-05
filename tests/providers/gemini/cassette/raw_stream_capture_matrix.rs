@@ -3,7 +3,7 @@
 //!
 //! # The feature
 //!
-//! Raw capture is always on: `normalize_stream` serializes the value the
+//! Raw capture is always on: the adapter's `final_record` serializes the value the
 //! inherent `raw_stream` yielded as its `FinalResponse` — Gemini's own
 //! [`StreamingCompletionResponse`] terminal record (`map_stream_final`'s
 //! input) — onto the terminal [`rig::streaming::StreamFinal::raw`]. There is
@@ -34,10 +34,12 @@
 //! `usageMetadata`, read with the same `data:` framing the streaming tests use.
 //!
 //! Cell 3 is the tool-turn twin: Gemini spells a call-only turn's finish
-//! `"STOP"` on the wire and rig's `normalize_stream` reconciles the terminal
+//! `"STOP"` on the wire and the adapter's terminal mapping reconciles the terminal
 //! to `ToolCalls` from the tool call it saw, so this is the one place the
 //! terminal `raw` and the normalized terminal legitimately disagree — `raw`
 //! must keep the wire spelling and the terminal must report the upgrade.
+
+use rig::message::AssistantContent;
 
 use futures::StreamExt;
 use rig::completion::{CompletionModel as _, FinishReason};
@@ -45,7 +47,7 @@ use rig::message::{ToolCall, ToolChoice};
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::streaming::StreamingCompletionResponse;
-use rig::streaming::{StreamFinal, StreamedAssistantContent};
+use rig::streaming::{Delta, StreamEvent, StreamFinal};
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;
@@ -101,9 +103,15 @@ async fn drain_stream(
     let mut tool_calls = Vec::new();
     while let Some(item) = stream.next().await {
         match item.expect("stream item should succeed") {
-            StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
-            StreamedAssistantContent::ToolCall { tool_call, .. } => tool_calls.push(tool_call),
-            StreamedAssistantContent::Final(final_record) => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: delta },
+                ..
+            } => text.push_str(&delta),
+            StreamEvent::BlockEnd {
+                block: Some(AssistantContent::ToolCall(tool_call)),
+                ..
+            } => tool_calls.push(tool_call),
+            StreamEvent::Final(final_record) => {
                 assert!(
                     terminal.replace(final_record).is_none(),
                     "a stream yields exactly one terminal record"
@@ -163,7 +171,7 @@ fn last_usage_frame(scenario: &str) -> Value {
 
 /// The premise of the forced-tool cell: the recorded stream carries a
 /// `functionCall` part naming `add`, and its finish is still spelled `"STOP"`
-/// — the wire shape `normalize_stream` reconciles to `ToolCalls`. Returns the
+/// — the wire shape the adapter's terminal mapping reconciles to `ToolCalls`. Returns the
 /// last frame carrying `usageMetadata`, as [`last_usage_frame`] does.
 fn last_usage_frame_of_function_call_stream(scenario: &str) -> Value {
     let frames = crate::cassettes::recorded_sse_json_frames(PROVIDER, scenario);

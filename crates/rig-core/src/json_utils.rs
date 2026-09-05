@@ -44,7 +44,7 @@ where
     V: Serialize,
 {
     let mut entries: Vec<_> = map.iter().collect();
-    entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+    entries.sort_by_key(|(key, _)| *key);
     serializer.collect_map(entries)
 }
 
@@ -65,6 +65,38 @@ where
         Some(map) => serialize_map_sorted(map, serializer),
         None => serializer.serialize_none(),
     }
+}
+
+/// `value` serialized with every object's keys sorted, at every depth.
+///
+/// `serde_json` keeps insertion order in a build that enables its
+/// `preserve_order` feature and sorts otherwise, so text rendered from a
+/// `serde_json::Value` — a schema quoted into a preamble — would differ
+/// between two crates over the same value, and with it the request bytes a
+/// prompt cache is keyed on. Key order carries no meaning, so the sorted
+/// rendering is the rendering.
+pub fn to_canonical_string(value: &serde_json::Value) -> String {
+    fn sorted(value: &serde_json::Value) -> serde_json::Value {
+        match value {
+            serde_json::Value::Object(map) => {
+                let mut entries: Vec<_> = map.iter().collect();
+                entries.sort_by_key(|(key, _)| *key);
+                let mut out = serde_json::Map::new();
+                for (key, value) in entries {
+                    out.insert(key.clone(), sorted(value));
+                }
+                serde_json::Value::Object(out)
+            }
+            serde_json::Value::Array(items) => {
+                serde_json::Value::Array(items.iter().map(sorted).collect())
+            }
+            serde_json::Value::Null
+            | serde_json::Value::Bool(_)
+            | serde_json::Value::Number(_)
+            | serde_json::Value::String(_) => value.clone(),
+        }
+    }
+    sorted(value).to_string()
 }
 
 pub fn merge(a: serde_json::Value, b: serde_json::Value) -> serde_json::Value {

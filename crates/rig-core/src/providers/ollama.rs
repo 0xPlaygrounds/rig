@@ -47,7 +47,7 @@ use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::internal;
-use crate::streaming::{RawStreamingChoice, RawStreamingResult, StreamFinal};
+use crate::streaming::{StreamFinal, ToolCallEnd};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
@@ -478,8 +478,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
         // and is echoed back to Ollama on the next turn (issue #1926). `choice`
         // is the only place it can live — the normalized response carries no
         // provider payload — so dropping it here would lose the reasoning
-        // entirely, unlike the streaming path (see
-        // `RawStreamingChoice::ReasoningDelta` below).
+        // entirely, unlike the streaming path (see the `thinking` reasoning
+        // deltas in `OllamaAdapter::interpret` below).
         if let Some(thinking) = thinking.as_deref().filter(|t| !t.is_empty()) {
             assistant_contents.push(completion::AssistantContent::reasoning(thinking));
         }
@@ -697,8 +697,9 @@ enum Level {
 
 // ---------- CompletionModel Implementation ----------
 
-/// Ollama's terminal stream record, kept provider-native for
-/// [`CompletionModel::raw_stream`].
+/// Ollama's terminal stream record: the `done: true` line's counters as rig
+/// parsed them, serialized onto [`StreamFinal::raw`] by the adapter's
+/// terminal mapping.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct StreamingCompletionResponse {
     /// Provider-reported model identifier from the terminating NDJSON line.
@@ -725,14 +726,14 @@ impl From<&StreamingCompletionResponse> for Usage {
     }
 }
 
-impl From<StreamingCompletionResponse> for StreamFinal {
-    fn from(response: StreamingCompletionResponse) -> StreamFinal {
-        // Ollama's `/api/chat` stream assigns no message identifier, so the
-        // normalized `message_id` stays unset.
-        StreamFinal::new(PROVIDER_NAME, Usage::from(&response))
-            .with_optional_finish_reason(response.done_reason.as_deref().map(map_done_reason))
-            .with_model(response.model)
-    }
+/// The adapter's terminal mapping: Ollama's `done: true` record as a
+/// normalized [`StreamFinal`] (the caller attaches `raw`).
+fn stream_final(response: StreamingCompletionResponse) -> StreamFinal {
+    // Ollama's `/api/chat` stream assigns no message identifier, so the
+    // normalized `message_id` stays unset.
+    StreamFinal::new(PROVIDER_NAME, Usage::from(&response))
+        .with_optional_finish_reason(response.done_reason.as_deref().map(map_done_reason))
+        .with_model(response.model)
 }
 
 /// Reassembles newline-delimited JSON lines from a chunked HTTP byte stream.
@@ -826,18 +827,158 @@ where
             .await
             .map(|(payload, _)| payload)
     }
+}
 
-    /// Open a stream whose terminal record stays Ollama-native.
-    ///
-    /// This is the escape hatch for Ollama's own terminal payload; it shares the
-    /// request builder, transport, telemetry, and error handling with
-    /// [`CompletionModel::stream`](completion::CompletionModel::stream), which
-    /// calls it and normalizes the terminal record once through
-    /// [`streaming::normalize_stream`] — one network request either way.
-    pub async fn raw_stream(
+/// The Ollama NDJSON wire as a
+/// [`WireAdapter`](internal::adapter::WireAdapter).
+///
+/// Stateless: every line is a whole response record. Frame-triage policy
+/// (warn-skip `Unknown` — unpopulated on this undiscriminated wire — and
+/// in-band `Err` on `Corrupt`, so a later genuine `done: true` record can
+/// still complete the stream) lives in
+/// [`run_wire_stream`](internal::adapter::run_wire_stream), not here.
+struct OllamaAdapter {
+    /// Owns the constant-key reasoning lifecycle: `thinking` deltas
+    /// accumulate under the per-stream minted key, and the boundary end
+    /// this wire never announces is derived, not hand-rolled here.
+    reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle,
+    /// Per-stream minter for id-less tool-call keys. Counted across the
+    /// whole stream, not per record — a per-record enumeration would hand
+    /// two id-less calls in separate records the same `Minted(Tool, 0)`
+    /// key, and one would silently swallow the other downstream.
+    tool_ids: crate::streaming::SyntheticIds,
+}
+
+impl Default for OllamaAdapter {
+    fn default() -> Self {
+        Self {
+            reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle::new(
+                crate::streaming::MintKind::Reasoning,
+            ),
+            tool_ids: crate::streaming::SyntheticIds::tool(),
+        }
+    }
+}
+
+impl internal::adapter::WireAdapter for OllamaAdapter {
+    type Frame = internal::adapter::WireFrame;
+    type Event = CompletionResponse;
+
+    fn classify(&self, frame: Self::Frame) -> internal::wire::WireEvent<CompletionResponse> {
+        match frame {
+            internal::adapter::WireFrame::Bytes(line) => {
+                internal::wire::classify_untyped_line(&line)
+            }
+            internal::adapter::WireFrame::Text(line) => {
+                internal::wire::classify_untyped_line(line.as_bytes())
+            }
+        }
+    }
+
+    fn interpret(
+        &mut self,
+        response: CompletionResponse,
+        out: &mut internal::adapter::AdapterOutput,
+    ) {
+        let span = tracing::Span::current();
+        if response.done {
+            span.record("gen_ai.response.model", &response.model);
+        }
+
+        if let Message::Assistant {
+            content,
+            thinking,
+            tool_calls,
+            ..
+        } = response.message
+        {
+            // A daemon-issued call id keys the stream and travels as the
+            // durable id; an id-less call (older daemons) keys by a
+            // distinct minted identity and its durable id stays absent —
+            // never the tool name, which would collide two same-tool calls
+            // in one turn.
+            let mut tool_events = internal::adapter::AdapterOutput::new();
+            for tool_call in tool_calls {
+                let key = match tool_call
+                    .id
+                    .as_deref()
+                    .and_then(crate::streaming::non_empty_id)
+                {
+                    Some(wire_id) => crate::streaming::BlockId::wire(wire_id.as_str()),
+                    None => self.tool_ids.mint(),
+                };
+                let mut end =
+                    ToolCallEnd::whole(tool_call.function.name, tool_call.function.arguments);
+                if let Some(wire_id) = key.wire_str() {
+                    end = end.with_tool_id(wire_id);
+                }
+                tool_events.tool_call(key, end);
+            }
+
+            // Declare what the record carried; the shared lifecycle derives
+            // the canonical sequence (boundary end included).
+            self.reasoning.emit_chunk(
+                internal::chunk_lifecycle::ChunkParts {
+                    reasoning: thinking,
+                    reasoning_signature: None,
+                    text: Some(content),
+                    tool_events: tool_events
+                        .into_items()
+                        .into_iter()
+                        .filter_map(Result::ok)
+                        .collect(),
+                },
+                out,
+            );
+        }
+
+        // Only a `done: true` record counts as the provider completing the
+        // turn; the driver stops consuming after the terminal record.
+        if response.done {
+            span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
+            span.record("gen_ai.usage.output_tokens", response.eval_count);
+            let native = StreamingCompletionResponse {
+                model: response.model,
+                total_duration: response.total_duration,
+                load_duration: response.load_duration,
+                prompt_eval_count: response.prompt_eval_count,
+                prompt_eval_duration: response.prompt_eval_duration,
+                eval_count: response.eval_count,
+                eval_duration: response.eval_duration,
+                done_reason: response.done_reason,
+            };
+            match serde_json::to_value(&native) {
+                Ok(raw) => out.final_record(stream_final(native).with_raw(raw)),
+                Err(err) => out.error(err.into()),
+            }
+        }
+    }
+
+    fn finish(&mut self, _out: &mut internal::adapter::AdapterOutput) {
+        // EOF without a `done: true` record is truncation: no terminal record
+        // may be synthesized.
+    }
+}
+
+impl<T> completion::CompletionModel for CompletionModel<T>
+where
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
+{
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        // Capture before `try_into` consumes the raw value.
+        let raw = self.raw_completion(completion_request).await?;
+        let captured = serde_json::to_value(&raw)?;
+        let response: completion::CompletionResponse = raw.try_into()?;
+        Ok(response.with_raw(captured))
+    }
+
+    async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let system_instructions = request.system_instructions().map(str::to_owned);
         let record_telemetry_content = request.record_telemetry_content;
         let mut request = OllamaCompletionRequest::try_from((self.model.as_ref(), request))?;
@@ -910,170 +1051,14 @@ where
             }
         };
 
-        let stream: RawStreamingResult<StreamingCompletionResponse> = Box::pin(
+        let stream: streaming::StreamingResult = Box::pin(
             internal::adapter::run_wire_stream(transport, OllamaAdapter::default())
                 .instrument(span),
         );
 
-        Ok(stream)
-    }
-}
-
-/// The Ollama NDJSON wire as a
-/// [`WireAdapter`](internal::adapter::WireAdapter).
-///
-/// Stateless: every line is a whole response record. Frame-triage policy
-/// (warn-skip `Unknown` — unpopulated on this undiscriminated wire — and
-/// in-band `Err` on `Corrupt`, so a later genuine `done: true` record can
-/// still complete the stream) lives in
-/// [`run_wire_stream`](internal::adapter::run_wire_stream), not here.
-struct OllamaAdapter {
-    /// Owns the constant-key reasoning lifecycle: `thinking` deltas
-    /// accumulate under the per-stream minted key, and the boundary end
-    /// this wire never announces is derived, not hand-rolled here.
-    reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle,
-    /// Per-stream minter for id-less tool-call keys. Counted across the
-    /// whole stream, not per record — a per-record enumeration would hand
-    /// two id-less calls in separate records the same `Minted(Tool, 0)`
-    /// key, and one would silently swallow the other downstream.
-    tool_ids: crate::streaming::SyntheticIds,
-}
-
-impl Default for OllamaAdapter {
-    fn default() -> Self {
-        Self {
-            reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle::new(
-                crate::streaming::StreamPartId::minted(crate::streaming::MintKind::Reasoning, 0),
-            ),
-            tool_ids: crate::streaming::SyntheticIds::tool(),
-        }
-    }
-}
-
-impl internal::adapter::WireAdapter for OllamaAdapter {
-    type Frame = internal::adapter::WireFrame;
-    type Event = CompletionResponse;
-    type Response = StreamingCompletionResponse;
-
-    fn classify(&self, frame: Self::Frame) -> internal::wire::WireEvent<CompletionResponse> {
-        match frame {
-            internal::adapter::WireFrame::Bytes(line) => {
-                internal::wire::classify_untyped_line(&line)
-            }
-            internal::adapter::WireFrame::Text(line) => {
-                internal::wire::classify_untyped_line(line.as_bytes())
-            }
-        }
-    }
-
-    fn interpret(
-        &mut self,
-        response: CompletionResponse,
-        out: &mut internal::adapter::AdapterOutput<Self::Response>,
-    ) {
-        let span = tracing::Span::current();
-        if response.done {
-            span.record("gen_ai.response.model", &response.model);
-        }
-
-        if let Message::Assistant {
-            content,
-            thinking,
-            tool_calls,
-            ..
-        } = response.message
-        {
-            // A daemon-issued call id keys the stream and travels as the
-            // durable id; an id-less call (older daemons) keys by a
-            // distinct minted identity and its durable id stays absent —
-            // never the tool name, which would collide two same-tool calls
-            // in one turn.
-            let mut tool_events = Vec::with_capacity(tool_calls.len());
-            for tool_call in tool_calls {
-                let key = match tool_call
-                    .id
-                    .as_deref()
-                    .and_then(crate::streaming::WireId::new)
-                {
-                    Some(wire_id) => crate::streaming::StreamPartId::wire(wire_id.as_str()),
-                    None => self.tool_ids.mint(),
-                };
-                tool_events.push(RawStreamingChoice::ToolCall(
-                    crate::streaming::RawStreamingToolCall::new(
-                        key,
-                        tool_call.function.name,
-                        tool_call.function.arguments,
-                    ),
-                ));
-            }
-
-            // Declare what the record carried; the shared lifecycle derives
-            // the canonical sequence (boundary end included).
-            self.reasoning.emit_chunk(
-                internal::chunk_lifecycle::ChunkParts {
-                    reasoning: thinking,
-                    reasoning_signature: None,
-                    text: Some(content),
-                    tool_events,
-                },
-                out,
-            );
-        }
-
-        // Only a `done: true` record counts as the provider completing the
-        // turn; the driver stops consuming after the terminal record.
-        if response.done {
-            span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
-            span.record("gen_ai.usage.output_tokens", response.eval_count);
-            out.push(Ok(RawStreamingChoice::FinalResponse(
-                StreamingCompletionResponse {
-                    model: response.model,
-                    total_duration: response.total_duration,
-                    load_duration: response.load_duration,
-                    prompt_eval_count: response.prompt_eval_count,
-                    prompt_eval_duration: response.prompt_eval_duration,
-                    eval_count: response.eval_count,
-                    eval_duration: response.eval_duration,
-                    done_reason: response.done_reason,
-                },
-            )));
-        }
-    }
-
-    fn finish(&mut self, _out: &mut internal::adapter::AdapterOutput<Self::Response>) {
-        // EOF without a `done: true` record is truncation: no terminal record
-        // may be synthesized.
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + WasmCompatSend + 'static,
-{
-    async fn completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Capture before `try_into` consumes the raw value.
-        let raw = self.raw_completion(completion_request).await?;
-        let captured = serde_json::to_value(&raw)?;
-        let response: completion::CompletionResponse = raw.try_into()?;
-        Ok(response.with_raw(captured))
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let stream = self.raw_stream(request).await?;
-        let normalized =
-            streaming::normalize_stream(stream, |response: StreamingCompletionResponse| {
-                Ok(response.into())
-            });
-
         Ok(streaming::StreamingCompletionResponse::stream(
             PROVIDER_NAME,
-            normalized,
+            stream,
         ))
     }
 }

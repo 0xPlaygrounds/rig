@@ -20,6 +20,22 @@ pub struct ToolOutput {
     content: Vec<ToolResultContent>,
 }
 
+// Serde is the content list itself; deserialization goes through
+// [`ToolOutput::content`] so an empty list is rejected at the boundary, the
+// same as at construction.
+impl Serialize for ToolOutput {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.content.serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ToolOutput {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let content = Vec::<ToolResultContent>::deserialize(deserializer)?;
+        Self::content(content).map_err(serde::de::Error::custom)
+    }
+}
+
 impl fmt::Debug for ToolOutput {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let content_kinds = self
@@ -200,6 +216,9 @@ where
         // a blanket `Serialize` impl with negative exceptions, so preserve these
         // two canonical rich types before taking the serialization path.
         let value = &self as &dyn Any;
+        if let Some(output) = value.downcast_ref::<ToolOutput>() {
+            return Ok(output.clone());
+        }
         if let Some(content) = value.downcast_ref::<ToolResultContent>() {
             return Ok(ToolOutput::one(content.clone()));
         }
@@ -224,12 +243,6 @@ where
                 ToolExecutionError::other(format!("failed to serialize tool output: {error}"))
                     .with_source(error)
             })
-    }
-}
-
-impl IntoToolOutput for ToolOutput {
-    fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
-        Ok(self)
     }
 }
 

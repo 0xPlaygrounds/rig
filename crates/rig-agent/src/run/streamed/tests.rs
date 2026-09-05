@@ -3,6 +3,7 @@ use super::super::response::PromptError;
 use super::super::{AgentRun, AgentRunStep};
 use super::*;
 use rig_core::message::{Text, ToolResultContent, UserContent};
+use rig_core::streaming::{ToolCallEnd, UnparseableToolInput};
 use rig_core::test_utils::mock_final;
 use serde_json::json;
 
@@ -43,7 +44,7 @@ fn assembler_round_trips_mid_stream() {
     let direct = uninterrupted.finish(Some("msg".to_string()), &final_choice);
     let resumed = restored.finish(Some("msg".to_string()), &final_choice);
     assert_eq!(resumed.choice, direct.choice);
-    assert_eq!(resumed.internal_call_ids, direct.internal_call_ids);
+    assert_eq!(resumed.block_ids, direct.block_ids);
     assert_eq!(resumed.executable_tool_names, direct.executable_tool_names);
     assert_eq!(resumed.allowed_tool_names, direct.allowed_tool_names);
 }
@@ -52,19 +53,13 @@ fn assembler() -> StreamedTurnAssembler {
     StreamedTurnAssembler::new(tool_names(&["add"]), tool_names(&["add"]))
 }
 
-fn text_item(text: &str) -> StreamedAssistantContent {
-    StreamedAssistantContent::Text(Text::new(text.to_string()))
+fn text_item(text: &str) -> StreamEvent {
+    StreamEvent::text(BlockId::wire("text"), text)
 }
 
-/// Deterministic test-only internal id derived from a wire id, so a
-/// delta and its completed call correlate without threading state.
-fn iid_for(id: &str) -> InternalCallId {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in id.bytes() {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x100_0000_01b3);
-    }
-    InternalCallId::from_raw(hash | 1).expect("non-zero")
+/// The block a call streams under: its wire id.
+fn iid_for(id: &str) -> BlockId {
+    BlockId::wire(id)
 }
 
 fn tool_call(id: &str, name: &str) -> ToolCall {
@@ -73,28 +68,39 @@ fn tool_call(id: &str, name: &str) -> ToolCall {
     ToolCall::from_wire(id, ToolFunction::new(name.to_string(), json!({"x": 1})))
 }
 
-fn tool_call_item(id: &str, name: &str) -> StreamedAssistantContent {
-    StreamedAssistantContent::ToolCall {
-        tool_call: tool_call(id, name),
-        internal_call_id: iid_for(id),
+/// A completed tool call as the public stream yields it: the tool block's
+/// end, with the accumulator's finalized call.
+fn completed_tool_call(tool_call: ToolCall, block_id: BlockId) -> StreamEvent {
+    StreamEvent::BlockEnd {
+        id: block_id,
+        end: BlockClose::ToolCall(ToolCallEnd::new(UnparseableToolInput::Drop)),
+        block: Some(AssistantContent::ToolCall(tool_call)),
     }
 }
 
-fn final_item() -> StreamedAssistantContent {
-    StreamedAssistantContent::Final(mock_final(Usage::new()))
+fn tool_call_item(id: &str, name: &str) -> StreamEvent {
+    completed_tool_call(tool_call(id, name), iid_for(id))
 }
 
-fn name_delta(id: &str, name: &str) -> StreamedAssistantContent {
-    StreamedAssistantContent::ToolCallDelta {
-        internal_call_id: iid_for(id),
-        content: ToolCallDeltaContent::Name(name.to_string()),
+fn final_item() -> StreamEvent {
+    StreamEvent::Final(mock_final(Usage::new()))
+}
+
+fn name_delta(id: &str, name: &str) -> StreamEvent {
+    StreamEvent::BlockDelta {
+        id: iid_for(id),
+        delta: Delta::ToolName {
+            name: name.to_string(),
+        },
     }
 }
 
-fn args_delta(id: &str, arguments: &str) -> StreamedAssistantContent {
-    StreamedAssistantContent::ToolCallDelta {
-        internal_call_id: iid_for(id),
-        content: ToolCallDeltaContent::Delta(arguments.to_string()),
+fn args_delta(id: &str, arguments: &str) -> StreamEvent {
+    StreamEvent::BlockDelta {
+        id: iid_for(id),
+        delta: Delta::ToolArguments {
+            arguments: arguments.to_string(),
+        },
     }
 }
 
@@ -119,7 +125,7 @@ fn unknown_item_emits_to_consumer_without_touching_accumulation() {
         .expect("ingest text should succeed");
 
     let events = asm
-        .ingest(&StreamedAssistantContent::Unknown(
+        .ingest(&StreamEvent::Unknown(
             json!({ "type": "web_search_call", "id": "ws_1" }).into(),
         ))
         .expect("ingest unknown should succeed");
@@ -148,32 +154,39 @@ enum ShapeClass {
     TaggedRigBlock,
     MalformedParamsText,
     /// A provider-native frame that happens to carry a string `text`
-    /// key (e.g. an annotation event). Tolerance folds its text into
-    /// the message — the documented noise tradeoff: never losing real
-    /// text outranks occasionally ingesting a frame's caption.
+    /// key (e.g. an annotation event). Not rig content: it stays quiet.
     ProviderNativeTextCarrying,
     ProviderNativeUnmodeled,
 }
 
 #[derive(Debug, PartialEq)]
 enum ExpectedOutcome {
-    Assembled { text: &'static str },
+    /// The payload is rig assistant content: excluding it from assembly
+    /// loses transcript content, so the assembler counts it.
     ExcludedAndCounted,
+    /// A provider-native shape rig does not model: excluded quietly.
     ExcludedQuiet,
 }
 
 /// The matrix's outcome column. No wildcard arm — the compiler is the
 /// missing-cell error.
+///
+/// Every row reaches the assembler as an `Unknown` passthrough payload —
+/// the stream vocabulary is typed, so an adapter emits text as a text
+/// delta and only unmodeled frames travel as `Unknown`. What the matrix
+/// pins is the classification of what *does* arrive there: a tagged rig
+/// block (a replayed assistant item, text included) is counted; a text
+/// carrier whose params were malformed is counted; a bare or unknown-tagged
+/// object is a provider-native shape and stays quiet.
 fn expected(shape: ShapeClass) -> ExpectedOutcome {
     match shape {
-        ShapeClass::WellFormedText
-        | ShapeClass::UnknownKeyedText
-        | ShapeClass::TaggedText
-        | ShapeClass::ProviderNativeTextCarrying => ExpectedOutcome::Assembled { text: "hi" },
-        ShapeClass::TaggedRigBlock | ShapeClass::MalformedParamsText => {
+        ShapeClass::TaggedText | ShapeClass::TaggedRigBlock | ShapeClass::MalformedParamsText => {
             ExpectedOutcome::ExcludedAndCounted
         }
-        ShapeClass::ProviderNativeUnmodeled => ExpectedOutcome::ExcludedQuiet,
+        ShapeClass::WellFormedText
+        | ShapeClass::UnknownKeyedText
+        | ShapeClass::ProviderNativeTextCarrying
+        | ShapeClass::ProviderNativeUnmodeled => ExpectedOutcome::ExcludedQuiet,
     }
 }
 
@@ -250,30 +263,12 @@ fn decode_outcome_matrix_is_total_and_no_shape_is_silent() {
     }
 
     for (shape, payload) in cases {
-        let item = serde_json::from_value::<StreamedAssistantContent>(payload.clone())
-            .expect("stream-item decode is tolerant and must not fail");
+        let item = StreamEvent::Unknown(payload.clone().into());
         let mut asm = assembler();
+        asm.ingest(&item).expect("ingest");
+        assert_eq!(asm.aggregated_text(), "", "{shape:?}: {payload}");
         match expected(shape) {
-            ExpectedOutcome::Assembled { text } => {
-                assert!(
-                    matches!(&item, StreamedAssistantContent::Text(t) if t.text == text),
-                    "{shape:?} must decode as stream text: {payload}"
-                );
-                asm.ingest(&item).expect("ingest");
-                assert_eq!(asm.aggregated_text(), text, "{shape:?}: {payload}");
-                assert_eq!(
-                    asm.excluded_assistant_content(),
-                    0,
-                    "{shape:?} must not count as excluded: {payload}"
-                );
-            }
             ExpectedOutcome::ExcludedAndCounted => {
-                assert!(
-                    matches!(&item, StreamedAssistantContent::Unknown(_)),
-                    "{shape:?} must decode Unknown: {payload}"
-                );
-                asm.ingest(&item).expect("ingest");
-                assert_eq!(asm.aggregated_text(), "", "{shape:?}: {payload}");
                 assert_eq!(
                     asm.excluded_assistant_content(),
                     1,
@@ -281,12 +276,6 @@ fn decode_outcome_matrix_is_total_and_no_shape_is_silent() {
                 );
             }
             ExpectedOutcome::ExcludedQuiet => {
-                assert!(
-                    matches!(&item, StreamedAssistantContent::Unknown(_)),
-                    "{shape:?} must decode Unknown: {payload}"
-                );
-                asm.ingest(&item).expect("ingest");
-                assert_eq!(asm.aggregated_text(), "", "{shape:?}: {payload}");
                 assert_eq!(
                     asm.excluded_assistant_content(),
                     0,
@@ -335,15 +324,19 @@ fn argument_deltas_buffer_until_name_validates() {
     let contents: Vec<_> = events
         .iter()
         .map(|event| match event {
-            StreamedTurnEvent::EmitToolCallDelta { content, .. } => content.clone(),
+            StreamedTurnEvent::EmitToolCallDelta { delta, .. } => delta.clone(),
             other => panic!("expected EmitToolCallDelta, got {other:?}"),
         })
         .collect();
     assert_eq!(
         contents,
         vec![
-            ToolCallDeltaContent::Name("add".to_string()),
-            ToolCallDeltaContent::Delta("{\"x\"".to_string()),
+            Delta::ToolName {
+                name: "add".to_string()
+            },
+            Delta::ToolArguments {
+                arguments: "{\"x\"".to_string()
+            },
         ]
     );
 
@@ -367,10 +360,18 @@ fn buffered_arguments_without_validated_name_error_at_final() {
 #[test]
 fn finish_orders_reasoning_text_then_tool_calls() {
     let mut asm = assembler();
-    asm.ingest(&StreamedAssistantContent::ReasoningDelta {
-        id: "corr_1".to_string(),
-        provider_id: Some("rs_1".to_string()),
-        reasoning: "think".to_string(),
+    asm.ingest(&StreamEvent::BlockStart {
+        id: BlockId::wire("corr_1"),
+        kind: BlockKind::Reasoning {
+            provider_id: Some("rs_1".to_string()),
+        },
+    })
+    .expect("ingest");
+    asm.ingest(&StreamEvent::BlockDelta {
+        id: BlockId::wire("corr_1"),
+        delta: Delta::Reasoning {
+            text: "think".to_string(),
+        },
     })
     .expect("ingest should succeed");
     asm.ingest(&tool_call_item("tc_1", "add"))
@@ -396,15 +397,34 @@ fn finish_orders_reasoning_text_then_tool_calls() {
     assert_eq!(kinds, vec!["reasoning", "text", "tool_call"]);
 }
 
-fn reasoning_delta(
+/// A reasoning delta, preceded by its block start when the wire issued a
+/// provider id (the start is where the durable id travels now).
+fn reasoning_delta_events(
     correlator: &str,
     provider_id: Option<&str>,
     text: &str,
-) -> StreamedAssistantContent {
-    StreamedAssistantContent::ReasoningDelta {
-        id: correlator.to_string(),
-        provider_id: provider_id.map(str::to_string),
-        reasoning: text.to_string(),
+) -> Vec<StreamEvent> {
+    let mut events = Vec::new();
+    if let Some(provider_id) = provider_id {
+        events.push(StreamEvent::BlockStart {
+            id: BlockId::wire(correlator),
+            kind: BlockKind::Reasoning {
+                provider_id: Some(provider_id.to_string()),
+            },
+        });
+    }
+    events.push(StreamEvent::BlockDelta {
+        id: BlockId::wire(correlator),
+        delta: Delta::Reasoning {
+            text: text.to_string(),
+        },
+    });
+    events
+}
+
+fn ingest_all(asm: &mut StreamedTurnAssembler, events: Vec<StreamEvent>) {
+    for event in events {
+        asm.ingest(&event).expect("ingest");
     }
 }
 
@@ -413,14 +433,19 @@ fn completed_reasoning(
     provider_id: Option<&str>,
     text: &str,
     signature: Option<&str>,
-) -> StreamedAssistantContent {
+) -> StreamEvent {
     let mut reasoning = Reasoning::new_with_signature(text, signature.map(str::to_string));
     if let Some(provider_id) = provider_id {
         reasoning = reasoning.with_id(provider_id.to_string());
     }
-    StreamedAssistantContent::Reasoning {
-        reasoning,
-        id: correlator.to_string(),
+    StreamEvent::BlockEnd {
+        id: BlockId::wire(correlator),
+        end: BlockClose::Reasoning {
+            reasoning: None,
+            signature: signature.map(str::to_string),
+            wire_sent: true,
+        },
+        block: Some(AssistantContent::Reasoning(reasoning)),
     }
 }
 
@@ -431,19 +456,34 @@ fn assembled_reasoning_of(asm: &StreamedTurnAssembler) -> Vec<Reasoning> {
 #[test]
 fn aggregated_reasoning_delta_is_scoped_to_each_interleaved_part() {
     let mut asm = assembler();
-    asm.ingest(&reasoning_delta("corr_a", None, "first "))
-        .expect("ingest");
-    assert_eq!(asm.aggregated_reasoning("corr_a"), Some("first "));
+    ingest_all(&mut asm, reasoning_delta_events("corr_a", None, "first "));
+    assert_eq!(
+        asm.aggregated_reasoning(&BlockId::wire("corr_a")),
+        Some("first ")
+    );
 
-    asm.ingest(&reasoning_delta("corr_b", Some("rs_b"), "second"))
-        .expect("ingest");
-    assert_eq!(asm.aggregated_reasoning("corr_b"), Some("second"));
+    ingest_all(
+        &mut asm,
+        reasoning_delta_events("corr_b", Some("rs_b"), "second"),
+    );
+    assert_eq!(
+        asm.aggregated_reasoning(&BlockId::wire("corr_b")),
+        Some("second")
+    );
 
-    asm.ingest(&reasoning_delta("corr_a", Some("rs_a"), "part"))
-        .expect("ingest");
-    assert_eq!(asm.aggregated_reasoning("corr_a"), Some("first part"));
-    assert_eq!(asm.aggregated_reasoning("corr_b"), Some("second"));
-    assert_eq!(asm.aggregated_reasoning("missing"), None);
+    ingest_all(
+        &mut asm,
+        reasoning_delta_events("corr_a", Some("rs_a"), "part"),
+    );
+    assert_eq!(
+        asm.aggregated_reasoning(&BlockId::wire("corr_a")),
+        Some("first part")
+    );
+    assert_eq!(
+        asm.aggregated_reasoning(&BlockId::wire("corr_b")),
+        Some("second")
+    );
+    assert_eq!(asm.aggregated_reasoning(&BlockId::wire("missing")), None);
 
     let reasoning = assembled_reasoning_of(&asm);
     assert_eq!(reasoning[0].id.as_deref(), Some("rs_a"));
@@ -453,8 +493,10 @@ fn aggregated_reasoning_delta_is_scoped_to_each_interleaved_part() {
 #[test]
 fn aggregated_reasoning_delta_uses_a_new_pending_part_after_completion() {
     let mut asm = assembler();
-    asm.ingest(&reasoning_delta("corr_a", Some("rs_a"), "old"))
-        .expect("ingest");
+    ingest_all(
+        &mut asm,
+        reasoning_delta_events("corr_a", Some("rs_a"), "old"),
+    );
     asm.ingest(&completed_reasoning(
         "corr_a",
         Some("rs_a"),
@@ -462,23 +504,28 @@ fn aggregated_reasoning_delta_uses_a_new_pending_part_after_completion() {
         Some("sig"),
     ))
     .expect("ingest");
-    assert_eq!(asm.aggregated_reasoning("corr_a"), None);
+    assert_eq!(asm.aggregated_reasoning(&BlockId::wire("corr_a")), None);
 
-    asm.ingest(&reasoning_delta("corr_a", Some("rs_new"), "new"))
-        .expect("ingest");
-    assert_eq!(asm.aggregated_reasoning("corr_a"), Some("new"));
+    ingest_all(
+        &mut asm,
+        reasoning_delta_events("corr_a", Some("rs_new"), "new"),
+    );
+    assert_eq!(
+        asm.aggregated_reasoning(&BlockId::wire("corr_a")),
+        Some("new")
+    );
 }
 
 #[test]
 fn interleaved_delta_parts_stay_distinct_in_arrival_order() {
     let mut asm = assembler();
-    asm.ingest(&reasoning_delta("corr_a", None, "first "))
-        .expect("ingest");
-    asm.ingest(&reasoning_delta("corr_a", None, "part"))
-        .expect("ingest");
+    ingest_all(&mut asm, reasoning_delta_events("corr_a", None, "first "));
+    ingest_all(&mut asm, reasoning_delta_events("corr_a", None, "part"));
     asm.ingest(&tool_call_item("tc_1", "add")).expect("ingest");
-    asm.ingest(&reasoning_delta("corr_b", None, "second part"))
-        .expect("ingest");
+    ingest_all(
+        &mut asm,
+        reasoning_delta_events("corr_b", None, "second part"),
+    );
 
     let reasoning = assembled_reasoning_of(&asm);
     assert_eq!(
@@ -502,8 +549,10 @@ fn delta_only_part_survives_alongside_a_completed_block() {
     // whose synthesized end stays silent, while an encrypted block
     // arrives completed. Both must reach history, deltas first.
     let mut asm = assembler();
-    asm.ingest(&reasoning_delta("corr_cot", None, "visible thoughts"))
-        .expect("ingest");
+    ingest_all(
+        &mut asm,
+        reasoning_delta_events("corr_cot", None, "visible thoughts"),
+    );
     asm.ingest(&completed_reasoning(
         "corr_enc",
         Some("rd_1"),
@@ -533,8 +582,7 @@ fn delta_only_part_survives_alongside_a_completed_block() {
 #[test]
 fn a_same_correlator_completion_replaces_the_completed_part() {
     let mut asm = assembler();
-    asm.ingest(&reasoning_delta("corr_a", None, "think"))
-        .expect("ingest");
+    ingest_all(&mut asm, reasoning_delta_events("corr_a", None, "think"));
     asm.ingest(&completed_reasoning("corr_a", None, "think", None))
         .expect("ingest");
     asm.ingest(&completed_reasoning("corr_a", None, "think", Some("sig")))
@@ -559,8 +607,10 @@ fn a_same_correlator_completion_replaces_the_completed_part() {
 #[test]
 fn a_same_correlator_completion_with_a_provider_id_does_not_double_extend() {
     let mut asm = assembler();
-    asm.ingest(&reasoning_delta("corr_a", Some("rs_1"), "think"))
-        .expect("ingest");
+    ingest_all(
+        &mut asm,
+        reasoning_delta_events("corr_a", Some("rs_1"), "think"),
+    );
     asm.ingest(&completed_reasoning("corr_a", Some("rs_1"), "think", None))
         .expect("ingest");
     asm.ingest(&completed_reasoning(
@@ -583,8 +633,10 @@ fn a_same_correlator_completion_with_a_provider_id_does_not_double_extend() {
 #[test]
 fn completed_block_supersedes_its_deltas_by_correlator() {
     let mut asm = assembler();
-    asm.ingest(&reasoning_delta("corr_a", None, "streamed text"))
-        .expect("ingest");
+    ingest_all(
+        &mut asm,
+        reasoning_delta_events("corr_a", None, "streamed text"),
+    );
     asm.ingest(&completed_reasoning(
         "corr_a",
         None,
@@ -609,8 +661,10 @@ fn completed_block_supersedes_its_deltas_by_correlator() {
 #[test]
 fn completed_block_supersedes_its_deltas_by_provider_id() {
     let mut asm = assembler();
-    asm.ingest(&reasoning_delta("corr_a", Some("rs_1"), "streamed text"))
-        .expect("ingest");
+    ingest_all(
+        &mut asm,
+        reasoning_delta_events("corr_a", Some("rs_1"), "streamed text"),
+    );
     // A completed restatement whose correlator does not match (e.g. a
     // whole-block event minted its own) still supersedes via the
     // durable provider handle.
@@ -676,10 +730,14 @@ fn completed_blocks_without_ids_stay_separate_parts() {
 #[test]
 fn each_delta_part_keeps_its_own_provider_id() {
     let mut asm = assembler();
-    asm.ingest(&reasoning_delta("corr_a", Some("rs_a"), "alpha"))
-        .expect("ingest");
-    asm.ingest(&reasoning_delta("corr_b", Some("rs_b"), "beta"))
-        .expect("ingest");
+    ingest_all(
+        &mut asm,
+        reasoning_delta_events("corr_a", Some("rs_a"), "alpha"),
+    );
+    ingest_all(
+        &mut asm,
+        reasoning_delta_events("corr_b", Some("rs_b"), "beta"),
+    );
 
     let reasoning = assembled_reasoning_of(&asm);
     assert_eq!(reasoning.len(), 2, "{reasoning:?}");
@@ -690,8 +748,7 @@ fn each_delta_part_keeps_its_own_provider_id() {
 #[test]
 fn canonical_choice_and_partial_turn_agree_on_multi_part_reasoning() {
     let mut asm = assembler();
-    asm.ingest(&reasoning_delta("corr_a", None, "visible"))
-        .expect("ingest");
+    ingest_all(&mut asm, reasoning_delta_events("corr_a", None, "visible"));
     asm.ingest(&completed_reasoning(
         "corr_b",
         Some("rd_1"),
@@ -770,7 +827,7 @@ fn streamed_run_completes_a_tool_roundtrip() {
         panic!("expected CallTools");
     };
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].internal_call_id, Some(iid_for("tc_1")));
+    assert_eq!(calls[0].block_id, iid_for("tc_1"));
     run.tool_results(vec![UserContent::tool_result(
         "tc_1",
         "add",
@@ -831,7 +888,7 @@ fn streamed_invalid_tool_call_retry_rolls_back_with_partial_turn() {
     let context = run.streamed_invalid_tool_call_context(&partial, &invalid);
     assert!(context.is_streaming);
     assert_eq!(context.tool_name, "default_api");
-    assert_eq!(context.internal_call_id, Some(iid_for("tc_1")));
+    assert_eq!(context.block_id, Some(iid_for("tc_1")));
 
     let resolution = run
         .resolve_streamed_invalid_tool_call(
@@ -1003,15 +1060,19 @@ fn streamed_invalid_name_delta_repair_replays_buffered_arguments() {
     let contents: Vec<_> = events
         .iter()
         .map(|event| match event {
-            StreamedTurnEvent::EmitToolCallDelta { content, .. } => content.clone(),
+            StreamedTurnEvent::EmitToolCallDelta { delta, .. } => delta.clone(),
             other => panic!("expected EmitToolCallDelta, got {other:?}"),
         })
         .collect();
     assert_eq!(
         contents,
         vec![
-            ToolCallDeltaContent::Name("add".to_string()),
-            ToolCallDeltaContent::Delta("{\"x\":1}".to_string()),
+            Delta::ToolName {
+                name: "add".to_string()
+            },
+            Delta::ToolArguments {
+                arguments: "{\"x\":1}".to_string()
+            },
         ]
     );
 }
@@ -1026,7 +1087,7 @@ fn streamed_turn_rejects_unknown_tool_calls_fail_fast() {
         choice: vec![AssistantContent::ToolCall(tool_call("tc_1", "unknown"))],
         executable_tool_names: tool_names(&["add"]),
         allowed_tool_names: tool_names(&["add"]),
-        internal_call_ids: Vec::new(),
+        block_ids: Vec::new(),
         finish_reason: None,
     };
     let err = run
@@ -1070,16 +1131,10 @@ fn duplicate_tool_call_ids_keep_distinct_internal_ids_through_the_run() {
     run.next_step().expect("next_step");
 
     let mut asm = assembler();
-    asm.ingest(&StreamedAssistantContent::ToolCall {
-        tool_call: tool_call("tc_1", "add"),
-        internal_call_id: iid_for("a"),
-    })
-    .expect("ingest should succeed");
-    asm.ingest(&StreamedAssistantContent::ToolCall {
-        tool_call: tool_call("tc_1", "add"),
-        internal_call_id: iid_for("b"),
-    })
-    .expect("ingest should succeed");
+    asm.ingest(&completed_tool_call(tool_call("tc_1", "add"), iid_for("a")))
+        .expect("ingest should succeed");
+    asm.ingest(&completed_tool_call(tool_call("tc_1", "add"), iid_for("b")))
+        .expect("ingest should succeed");
     run.record_streamed_completion_call(
         Usage::new(),
         rig_core::completion::ResponseIdentity::default(),
@@ -1103,8 +1158,8 @@ fn duplicate_tool_call_ids_keep_distinct_internal_ids_through_the_run() {
         panic!("expected CallTools");
     };
     assert_eq!(calls.len(), 2);
-    assert_eq!(calls[0].internal_call_id, Some(iid_for("a")));
-    assert_eq!(calls[1].internal_call_id, Some(iid_for("b")));
+    assert_eq!(calls[0].block_id, iid_for("a"));
+    assert_eq!(calls[1].block_id, iid_for("b"));
 }
 
 #[test]
@@ -1180,4 +1235,42 @@ fn streamed_run_serde_round_trips_while_tools_pend() {
         restored.next_step().expect("next turn"),
         AgentRunStep::CallModel { turn: 2, .. }
     ));
+}
+
+/// An invalid call ignored at its name delta: the block's later argument
+/// deltas and its end are swallowed, the turn finishes without the call,
+/// and the call is neither re-surfaced nor buffered as a pending delta.
+#[test]
+fn an_ignored_name_delta_swallows_the_rest_of_its_block() {
+    let mut asm = assembler();
+    let surfaced = asm
+        .ingest(&name_delta("c1", "multiply"))
+        .expect("ingest should succeed");
+    assert!(
+        matches!(surfaced.as_slice(), [StreamedTurnEvent::InvalidToolCall(_)]),
+        "{surfaced:?}"
+    );
+    let replayed = asm.resolve_pending_invalid(&StreamedResolution::Ignored);
+    assert!(replayed.is_empty(), "{replayed:?}");
+    let args = asm
+        .ingest(&args_delta("c1", "{\"x\": 1}"))
+        .expect("an ignored call's arguments are swallowed");
+    assert!(args.is_empty(), "{args:?}");
+    let end = asm
+        .ingest(&completed_tool_call(
+            tool_call("c1", "multiply"),
+            iid_for("c1"),
+        ))
+        .expect("an ignored call's end is swallowed");
+    assert!(end.is_empty(), "{end:?}");
+    assert!(asm.pending_delta_error().is_none());
+    asm.ingest(&final_item()).expect("the turn finishes");
+    let turn = asm.finish(None, &[]);
+    assert!(
+        turn.choice
+            .iter()
+            .all(|content| !matches!(content, AssistantContent::ToolCall(_))),
+        "{:?}",
+        turn.choice
+    );
 }

@@ -1,0 +1,7 @@
+{
+  "files": {
+    "greeting.txt": "Hello, Rig!\n"
+  },
+  "writes": 1,
+  "result": "The typo in greeting.txt was fixed. The file now says \"Hello, Rig!\"."
+}

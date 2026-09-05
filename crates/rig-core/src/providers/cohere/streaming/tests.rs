@@ -55,7 +55,7 @@ fn classify_known_event_with_defective_payload_is_corrupt() {
 async fn stream_terminal_record_is_normalized() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::StreamEvent;
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -80,9 +80,7 @@ async fn stream_terminal_record_is_normalized() {
 
     let mut terminal = None;
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::Final(final_response) =
-            item.expect("stream item should be Ok")
-        {
+        if let StreamEvent::Final(final_response) = item.expect("stream item should be Ok") {
             terminal = Some(final_response);
         }
     }
@@ -106,7 +104,7 @@ async fn stream_terminal_record_is_normalized() {
 async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -133,8 +131,11 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     let mut saw_terminal = false;
     while let Some(item) = stream.next().await {
         match item.expect("stream item should be Ok") {
-            StreamedAssistantContent::Text(text) => texts.push(text.text),
-            StreamedAssistantContent::Final(_) => saw_terminal = true,
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => texts.push(text),
+            StreamEvent::Final(_) => saw_terminal = true,
             _ => {}
         }
     }
@@ -151,7 +152,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
 async fn malformed_frame_is_surfaced_and_the_terminal_still_arrives() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -183,8 +184,11 @@ async fn malformed_frame_is_surfaced_and_the_terminal_still_arrives() {
     let mut terminal = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
-            Ok(StreamedAssistantContent::Final(final_response)) => {
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            }) => texts.push(text),
+            Ok(StreamEvent::Final(final_response)) => {
                 terminal = Some(final_response);
             }
             Ok(_) => {}
@@ -203,7 +207,7 @@ async fn malformed_frame_is_surfaced_and_the_terminal_still_arrives() {
 async fn known_event_with_malformed_field_is_surfaced_as_an_error() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::StreamEvent;
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -232,13 +236,13 @@ async fn known_event_with_malformed_field_is_surfaced_as_an_error() {
     let mut terminal = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::Final(final_response)) => {
+            Ok(StreamEvent::Final(final_response)) => {
                 terminal = Some(final_response);
             }
             Ok(_) => {}
             Err(err) => {
                 assert!(
-                    matches!(err, CompletionError::JsonError(_)),
+                    err.kind == crate::error::ErrorKind::Json,
                     "expected a JSON parse error item, got {err:?}"
                 );
                 saw_error = true;
@@ -258,7 +262,7 @@ async fn known_event_with_malformed_field_is_surfaced_as_an_error() {
 async fn unknown_event_type_is_skipped_and_the_terminal_still_arrives() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -288,8 +292,11 @@ async fn unknown_event_type_is_skipped_and_the_terminal_still_arrives() {
     let mut terminal = None;
     while let Some(item) = stream.next().await {
         match item.expect("unknown event types must not surface errors") {
-            StreamedAssistantContent::Text(text) => texts.push(text.text),
-            StreamedAssistantContent::Final(final_response) => terminal = Some(final_response),
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => texts.push(text),
+            StreamEvent::Final(final_response) => terminal = Some(final_response),
             _ => {}
         }
     }
@@ -303,7 +310,7 @@ async fn unknown_event_type_is_skipped_and_the_terminal_still_arrives() {
 async fn message_end_without_delta_still_emits_the_terminal_record() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -332,8 +339,11 @@ async fn message_end_without_delta_still_emits_the_terminal_record() {
     let mut terminal = None;
     while let Some(item) = stream.next().await {
         match item.expect("stream item should be Ok") {
-            StreamedAssistantContent::Text(text) => texts.push(text.text),
-            StreamedAssistantContent::Final(final_response) => terminal = Some(final_response),
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => texts.push(text),
+            StreamEvent::Final(final_response) => terminal = Some(final_response),
             _ => {}
         }
     }
@@ -350,7 +360,7 @@ async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::message::AssistantContent;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -381,15 +391,17 @@ async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
 
     let mut reasoning_deltas = Vec::new();
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::ReasoningDelta { reasoning, .. } =
-            item.expect("stream item should be Ok")
+        if let StreamEvent::BlockDelta {
+            delta: Delta::Reasoning { text },
+            ..
+        } = item.expect("stream item should be Ok")
         {
-            reasoning_deltas.push(reasoning);
+            reasoning_deltas.push(text);
         }
     }
     assert_eq!(reasoning_deltas, ["step one, ", "step two"]);
 
-    let parts: Vec<_> = stream.choice.clone();
+    let parts = stream.snapshot();
     assert_eq!(parts.len(), 2, "one reasoning part, one text part");
     assert!(matches!(
         parts.first(),
@@ -410,7 +422,7 @@ async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
 async fn errored_stream_does_not_synthesize_a_terminal_record() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::StreamEvent;
     use crate::test_utils::HttpErrorStreamingClient;
     use futures::StreamExt;
 
@@ -429,7 +441,7 @@ async fn errored_stream_does_not_synthesize_a_terminal_record() {
     let mut saw_terminal = false;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::Final(_)) => saw_terminal = true,
+            Ok(StreamEvent::Final(_)) => saw_terminal = true,
             Ok(_) => {}
             Err(_) => saw_error = true,
         }

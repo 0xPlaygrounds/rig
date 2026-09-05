@@ -11,10 +11,7 @@ use mongodb::bson::{self, Bson, Document, doc, to_bson};
 
 use rig_core::{
     Embed,
-    embeddings::{
-        EmbeddingModelHandle,
-        embedding::{Embedding, EmbeddingModel},
-    },
+    embeddings::embedding::{Embedding, EmbeddingModel},
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
@@ -112,21 +109,21 @@ struct Field {
 /// # let _ = example();
 /// ```
 ///
-/// The embedding model's concrete type is erased at construction into an
-/// [`EmbeddingModelHandle`]; the handle is fixed for the store's lifetime (an index
-/// populated under one model is only meaningful under that same model).
-pub struct MongoDbVectorIndex<C>
+/// The store is generic over its embedding model `M`, which is fixed for the
+/// store's lifetime: an index populated under one model is only meaningful under
+/// that same model.
+pub struct MongoDbVectorIndex<C, M>
 where
     C: Send + Sync,
 {
     collection: mongodb::Collection<C>,
-    model: EmbeddingModelHandle,
+    model: M,
     index_name: String,
     embedded_field: String,
     search_params: SearchParams,
 }
 
-impl<C> MongoDbVectorIndex<C>
+impl<C, M: EmbeddingModel> MongoDbVectorIndex<C, M>
 where
     C: Send + Sync,
 {
@@ -234,7 +231,7 @@ where
     }
 }
 
-impl<C> MongoDbVectorIndex<C>
+impl<C, M: EmbeddingModel> MongoDbVectorIndex<C, M>
 where
     C: Send + Sync,
 {
@@ -244,7 +241,7 @@ where
     /// See the MongoDB [documentation](https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-type/) for more information on creating indexes.
     pub async fn new(
         collection: mongodb::Collection<C>,
-        model: impl EmbeddingModel + 'static,
+        model: M,
         index_name: &str,
         search_params: SearchParams,
     ) -> Result<Self, VectorStoreError> {
@@ -269,7 +266,7 @@ where
 
         Ok(Self {
             collection,
-            model: EmbeddingModelHandle::new(model),
+            model,
             index_name: index_name.to_string(),
             embedded_field,
             search_params,
@@ -398,7 +395,7 @@ impl DynamicSearchFilter for MongoDbSearchFilter {
     }
 }
 
-impl<C> VectorStoreIndex for MongoDbVectorIndex<C>
+impl<C, M: EmbeddingModel> VectorStoreIndex for MongoDbVectorIndex<C, M>
 where
     C: Sync + Send,
 {
@@ -448,7 +445,7 @@ where
     }
 }
 
-impl<C> InsertDocuments for MongoDbVectorIndex<C>
+impl<C, M: EmbeddingModel> InsertDocuments for MongoDbVectorIndex<C, M>
 where
     C: Send + Sync,
 {

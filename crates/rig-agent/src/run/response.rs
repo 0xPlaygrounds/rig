@@ -240,6 +240,11 @@ pub enum PromptError {
     #[error("CompletionError: {0}")]
     CompletionError(#[from] CompletionError),
 
+    /// An effect failed on the agent's bus — a bus or handler failure, a
+    /// hook's denial, a stream item's error — as the wire reports it.
+    #[error("{0}")]
+    Report(#[from] rig_core::error::ErrorReport),
+
     /// Conversation memory failed to load or persist history.
     #[error("MemoryError: {0}")]
     MemoryError(#[from] MemoryError),
@@ -283,12 +288,13 @@ pub enum PromptError {
 /// Forwards the `provider_response_*` accessor trio through the variant that
 /// wraps an error which itself exposes them.
 macro_rules! forward_provider_response_helpers {
-    ($err:ident, $variant:ident, $inner:literal) => {
+    ($err:ident, $variant:ident, $inner:literal $(, report = $report:ident)?) => {
         impl $err {
             #[doc = concat!("Returns the provider response body exposed by a wrapped ", $inner, ".")]
             pub fn provider_response_body(&self) -> Option<&str> {
                 match self {
                     Self::$variant(error) => error.provider_response_body(),
+                    $(Self::$report(report) => report.provider_response_body(),)?
                     _ => None,
                 }
             }
@@ -299,22 +305,27 @@ macro_rules! forward_provider_response_helpers {
             ) -> Result<Option<serde_json::Value>, serde_json::Error> {
                 match self {
                     Self::$variant(error) => error.provider_response_json(),
+                    $(Self::$report(report) => report.provider_response_json(),)?
                     _ => Ok(None),
                 }
             }
 
-            #[doc = concat!("Returns the provider transport request id exposed by a wrapped ", $inner, " (rig#2314).")]
+            #[doc = concat!("Returns the provider transport request id exposed by a wrapped ", $inner, " (rig#2314), or carried by a wire report.")]
             pub fn provider_request_id(&self) -> Option<&str> {
                 match self {
                     Self::$variant(error) => error.provider_request_id(),
+                    $(Self::$report(report) => report.request_id.as_deref(),)?
                     _ => None,
                 }
             }
 
-            #[doc = concat!("Returns the HTTP status exposed by a wrapped ", $inner, ".")]
+            #[doc = concat!("Returns the HTTP status exposed by a wrapped ", $inner, ", or carried by a wire report.")]
             pub fn provider_response_status(&self) -> Option<http::StatusCode> {
                 match self {
                     Self::$variant(error) => error.provider_response_status(),
+                    $(Self::$report(report) => report
+                        .http_status
+                        .and_then(|status| http::StatusCode::from_u16(status).ok()),)?
                     _ => None,
                 }
             }
@@ -323,6 +334,7 @@ macro_rules! forward_provider_response_helpers {
             pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
                 match self {
                     Self::$variant(error) => error.provider_response_headers(),
+                    $(Self::$report(report) => report.provider_response_headers(),)?
                     _ => None,
                 }
             }
@@ -330,7 +342,12 @@ macro_rules! forward_provider_response_helpers {
     };
 }
 
-forward_provider_response_helpers!(PromptError, CompletionError, "completion error");
+forward_provider_response_helpers!(
+    PromptError,
+    CompletionError,
+    "completion error",
+    report = Report
+);
 
 impl PromptError {
     /// Build a [`PromptError::PromptCancelled`] from the history available at

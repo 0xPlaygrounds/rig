@@ -71,7 +71,7 @@ use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
-use rig::streaming::RawStreamingChoice;
+use rig::streaming::StreamEvent;
 use serde_json::json;
 
 use super::super::support::with_anthropic_stop_sequence_cassette;
@@ -122,18 +122,17 @@ async fn raw_terminal(
     request: CompletionRequest,
 ) -> StreamingCompletionResponse {
     let mut stream = model
-        .raw_stream(request)
+        .stream(request)
         .await
         .expect("stop-sequence stream should open");
     let mut terminal = None;
     while let Some(item) = stream.next().await {
-        if let RawStreamingChoice::FinalResponse(record) =
-            item.expect("stream item should not error")
-        {
+        if let StreamEvent::Final(record) = item.expect("stream item should not error") {
             terminal = Some(record);
         }
     }
-    terminal.expect("stream should yield a terminal record")
+    let record = terminal.expect("stream should yield a terminal record");
+    serde_json::from_value(record.raw).expect("the terminal's raw is the provider record")
 }
 
 /// Assert the terminal record a streamed cell produced.

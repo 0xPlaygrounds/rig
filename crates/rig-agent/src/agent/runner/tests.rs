@@ -7,7 +7,7 @@ use futures::StreamExt;
 use serde_json::json;
 
 use crate::{
-    agent::{AgentBuilder, AgentHook, HookContext, ToolResultAction, ToolResultEvent},
+    agent::{AgentBuilder, AgentHook, HookContext, OutcomeAction, OutcomeEvent},
     completion::{CompletionModel, Document},
     test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
     tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError},
@@ -16,19 +16,27 @@ use rig_core::message::ToolChoice;
 
 struct MetadataFailingTool;
 
+#[derive(serde::Serialize, serde::Deserialize)]
 struct SnapshotValue {
     value: usize,
-    clones: Arc<AtomicUsize>,
 }
 
-impl Clone for SnapshotValue {
-    fn clone(&self) -> Self {
-        self.clones.fetch_add(1, Ordering::SeqCst);
-        Self {
-            value: self.value,
-            clones: self.clones.clone(),
-        }
-    }
+impl rig_core::tool::ContextValue for SnapshotValue {
+    const KEY: &'static str = "test.snapshot_value";
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SnapshotResult(usize);
+
+impl rig_core::tool::ContextValue for SnapshotResult {
+    const KEY: &'static str = "test.snapshot_result";
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ResultMetadata(String);
+
+impl rig_core::tool::ContextValue for ResultMetadata {
+    const KEY: &'static str = "test.result_metadata";
 }
 
 #[derive(Clone, Default)]
@@ -55,14 +63,9 @@ impl Tool for SnapshotMutatingTool {
     ) -> Result<Self::Output, ToolExecutionError> {
         let initial = context.require::<SnapshotValue>()?.value;
         self.0.lock().expect("observed values").push(initial);
-        let updated = {
-            let value = context
-                .get_mut::<SnapshotValue>()
-                .expect("required snapshot value");
-            value.value += 1;
-            value.value
-        };
-        context.insert_result(updated);
+        let updated = initial + 1;
+        context.insert(SnapshotValue { value: updated })?;
+        context.insert_result(SnapshotResult(updated))?;
         Ok(updated.to_string())
     }
 }
@@ -71,18 +74,17 @@ impl Tool for SnapshotMutatingTool {
 struct SnapshotResults(Arc<Mutex<Vec<usize>>>);
 
 impl AgentHook for SnapshotResults {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let Some(context) = event.tool_context() else {
+            return OutcomeAction::proceed();
+        };
         self.0.lock().expect("result values").push(
-            *event
-                .tool_context
-                .require_result::<usize>()
-                .expect("per-dispatch result metadata"),
+            context
+                .require_result::<SnapshotResult>()
+                .expect("per-dispatch result metadata")
+                .0,
         );
-        ToolResultAction::keep()
+        OutcomeAction::proceed()
     }
 }
 
@@ -105,7 +107,7 @@ impl Tool for MetadataFailingTool {
         context: &mut ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, ToolExecutionError> {
-        context.insert_result("shared-result-metadata".to_string());
+        context.insert_result(ResultMetadata("shared-result-metadata".to_string()))?;
         Err(ToolExecutionError::timeout("raw timeout failure"))
     }
 }
@@ -114,23 +116,24 @@ impl Tool for MetadataFailingTool {
 struct Results(Arc<Mutex<Vec<(ToolErrorKind, String, String)>>>);
 
 impl AgentHook for Results {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if let Some(error) = event.raw_result.error() {
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let Some(result) = event.tool_result() else {
+            return OutcomeAction::proceed();
+        };
+        if let Some(error) = result.error() {
             self.0.lock().expect("results").push((
                 error.kind(),
-                event.raw_result.output().render(),
+                result.output().render(),
                 event
-                    .tool_context
-                    .result::<String>()
+                    .tool_context()
+                    .expect("tool outcome carries its context")
+                    .result::<ResultMetadata>()
+                    .expect("tool result metadata decodes")
                     .expect("tool result metadata")
-                    .clone(),
+                    .0,
             ));
         }
-        ToolResultAction::rewrite("rewritten for model")
+        OutcomeAction::rewrite_tool_result(&event, "rewritten for model")
     }
 }
 
@@ -395,13 +398,9 @@ async fn blocking_and_streaming_preserve_raw_failure_while_rewriting_presentatio
 }
 
 #[tokio::test]
-async fn agent_dispatch_snapshot_clones_once_and_isolates_tool_mutations() {
-    let clones = Arc::new(AtomicUsize::new(0));
+async fn agent_dispatch_snapshot_isolates_tool_mutations() {
     let mut context = ToolContext::new();
-    context.insert(SnapshotValue {
-        value: 0,
-        clones: clones.clone(),
-    });
+    context.insert(SnapshotValue { value: 0 }).unwrap();
     let tool = SnapshotMutatingTool::default();
     let results = SnapshotResults::default();
 
@@ -422,9 +421,4 @@ async fn agent_dispatch_snapshot_clones_once_and_isolates_tool_mutations() {
 
     assert_eq!(*tool.0.lock().expect("observed values"), vec![0, 0]);
     assert_eq!(*results.0.lock().expect("result values"), vec![1, 1]);
-    assert_eq!(
-        clones.load(Ordering::SeqCst),
-        2,
-        "each of the two agent dispatches should clone inbound context once"
-    );
 }

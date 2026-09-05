@@ -1,0 +1,164 @@
+{
+  "header": {
+    "run_spec": 10072942899351225430,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "host/note",
+        "family": {
+          "family": "custom",
+          "kind": "corpus:note"
+        },
+        "layers": [
+          "DenyAllLayer"
+        ]
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [
+      "NoteDeniedAtStart",
+      "DenyAllLayer"
+    ],
+    "required": {
+      "golden/model:default": "completion"
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reply with the single word: ready."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "ready"
+            }
+          ],
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 1,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": null,
+          "finish_reason": null,
+          "provider": "mock",
+          "model": null,
+          "raw": {
+            "usage": {
+              "input_tokens": 0,
+              "output_tokens": 0,
+              "total_tokens": 1,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "tool_use_prompt_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "finish_reason": null,
+            "message_id": null,
+            "response_id": null,
+            "provider": "mock",
+            "model": null
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "ready"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 1,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": null,
+          "message_id": null,
+          "response_id": null,
+          "provider": "mock",
+          "model": null,
+          "raw": {
+            "usage": {
+              "input_tokens": 0,
+              "output_tokens": 0,
+              "total_tokens": 1,
+              "cached_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "tool_use_prompt_tokens": 0,
+              "reasoning_tokens": 0
+            },
+            "finish_reason": null,
+            "message_id": null,
+            "response_id": null,
+            "provider": "mock",
+            "model": null
+          }
+        }
+      ]
+    }
+  ]
+}

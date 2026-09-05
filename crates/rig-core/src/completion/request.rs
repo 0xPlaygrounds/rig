@@ -263,8 +263,9 @@ impl FinishReason {
     ///
     /// This is the single place the upgrade happens. Construct normalized
     /// responses through [`CompletionResponse::with_finish_reason`] or
-    /// [`CompletionResponse::with_optional_finish_reason`] (and, for streams,
-    /// [`crate::streaming::normalize_stream`]) so it is always applied.
+    /// [`CompletionResponse::with_optional_finish_reason`] (streams apply it
+    /// in [`crate::streaming::StreamingCompletionResponse`] against the tool
+    /// calls the accumulator actually saw) so it is always applied.
     pub fn reconcile_with_output(self, has_tool_call: bool) -> Self {
         if has_tool_call && matches!(self, Self::Stop) {
             Self::ToolCalls
@@ -624,7 +625,7 @@ impl AddAssign for Usage {
 /// enabling flags with the `with_*` methods: that form keeps external
 /// implementations compiling when new capabilities are added, where a struct
 /// literal does not.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ProviderCapabilities {
     /// Whether this provider's native structured output (`output_schema` ->
     /// `format`/`response_format`) composes with tool calls in the same
@@ -1039,7 +1040,7 @@ fn merge_provider_tools_into_additional_params(
 ///
 /// Note: It is usually unnecessary to create a completion request builder directly.
 /// Instead, use the [CompletionModel::completion_request] method.
-pub struct CompletionRequestBuilder<M: CompletionModel> {
+pub struct CompletionRequestBuilder<M = Unbound> {
     model: M,
     prompt: Message,
     request_model: Option<String>,
@@ -1056,7 +1057,20 @@ pub struct CompletionRequestBuilder<M: CompletionModel> {
     record_telemetry_content: bool,
 }
 
-impl<M: CompletionModel> CompletionRequestBuilder<M> {
+/// The model slot of a request under assembly that has no model attached:
+/// the request is built with [`CompletionRequestBuilder::build`] and
+/// dispatched elsewhere (an agent dispatches it through its bus).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Unbound;
+
+impl CompletionRequestBuilder<Unbound> {
+    /// A builder with no model attached; `build` produces the request.
+    pub fn unbound(prompt: impl Into<Message>) -> Self {
+        Self::new(Unbound, prompt)
+    }
+}
+
+impl<M> CompletionRequestBuilder<M> {
     pub fn new(model: M, prompt: impl Into<Message>) -> Self {
         Self {
             model,
@@ -1302,7 +1316,9 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         };
         (model, request)
     }
+}
 
+impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// Sends the completion request to the completion model provider and returns the completion response.
     pub async fn send(self) -> Result<CompletionResponse, CompletionError> {
         let (model, request) = self.into_model_and_request();

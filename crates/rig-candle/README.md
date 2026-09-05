@@ -74,9 +74,9 @@ schemas, arguments, and results containing reserved chat-template delimiters
 are rejected before rendering so they cannot create structural prompt content.
 
 Qwen tool syntax can cross token boundaries, so streaming buffers one model
-turn, parses it, then emits ordered text/reasoning items and complete
-`RawStreamingChoice::ToolCall` values followed by `FinalResponse`. It does not
-currently emit tool-call deltas. This keeps model XML out of user-visible text
+turn, parses it, then emits ordered text/reasoning items and whole tool calls
+(a `BlockStart`/`BlockEnd` pair per call on the stream) followed by the
+terminal record. It does not currently emit tool-call deltas. This keeps model XML out of user-visible text
 while preserving cancellation, bounded backpressure, and the same parsed result
 as buffered completion.
 

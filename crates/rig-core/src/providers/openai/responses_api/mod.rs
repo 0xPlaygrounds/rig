@@ -682,7 +682,7 @@ pub(crate) fn reasoning_content_blocks(
 
 fn openai_reasoning_from_core(reasoning: &crate::message::Reasoning) -> Option<OpenAIReasoning> {
     // Only wire-genuine ids exist in durable histories: the streaming layer
-    // populates `Reasoning::id` exclusively from `StreamPartId::Wire`, so an
+    // populates `Reasoning::id` exclusively from `BlockId::Wire`, so an
     // id-less (rig-keyed) reasoning item arrives here as `None` and drops
     // from request input, mirroring main's handling. No provenance gate is
     // needed — a fabricated id structurally cannot reach this function.
@@ -1161,7 +1161,7 @@ impl<'de> Deserialize<'de> for ResponseStatus {
 /// [`completion::FinishReason::ToolCalls`] for a turn that emitted function
 /// calls is applied once, centrally, by
 /// [`completion::CompletionResponse::with_optional_finish_reason`] (and, for
-/// streams, by [`crate::streaming::normalize_stream`]).
+/// streams, by [`crate::streaming::StreamingCompletionResponse`]).
 ///
 /// Anything unrecognized — a new `incomplete_details.reason`, or a terminal
 /// status such as `failed`/`cancelled` that has no normalized counterpart — is

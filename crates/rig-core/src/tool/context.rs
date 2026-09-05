@@ -1,15 +1,17 @@
 //! Typed per-call context passed through tool execution.
 //!
-//! A runtime hands every tool call a [`ToolContext`]: a bag of typed inbound
-//! values (auth tokens, session ids, request metadata the model never sees)
-//! plus a typed result map a tool can publish host-only data into. rig-agent's
+//! A runtime hands every tool call a [`ToolContext`]: a serde map of typed
+//! inbound values (auth tokens, session ids, request metadata the model never
+//! sees) plus a serde result map a tool can publish host-only data into. rig-agent's
 //! contextual tools, context-aware [`PortableDynamicTool`](super::PortableDynamicTool)s,
 //! and companion adapters (e.g. MCP `_meta` passthrough in `rig-rmcp`) all
 //! share this one type, so the same values flow regardless of runtime.
 
-use std::any::{Any, TypeId, type_name};
-use std::collections::HashMap;
+use std::any::{Any, TypeId};
+use std::collections::{BTreeMap, HashMap};
 use std::hash::{BuildHasherDefault, Hasher};
+
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use super::ToolExecutionError;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -40,7 +42,6 @@ trait AnyClone: Any + WasmCompatSend + WasmCompatSync {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
     fn into_any(self: Box<Self>) -> Box<dyn Any>;
-    fn type_name(&self) -> &'static str;
 }
 
 impl<T> AnyClone for T
@@ -62,10 +63,6 @@ where
     fn into_any(self: Box<Self>) -> Box<dyn Any> {
         self
     }
-
-    fn type_name(&self) -> &'static str {
-        type_name::<T>()
-    }
 }
 
 impl Clone for Box<dyn AnyClone> {
@@ -74,18 +71,16 @@ impl Clone for Box<dyn AnyClone> {
     }
 }
 
-/// Internal type map shared by tool contexts and hook scratchpads.
-/// A clone-on-dispatch map of values keyed by type, the storage behind
-/// [`ToolContext`]. Public so runtimes can build related per-call state on the
-/// same primitive (rig-agent's hook state does).
+/// A clone-on-dispatch map of live values keyed by type. Not the storage
+/// behind [`ToolContext`] (which is serde data); runtimes use it for
+/// in-process per-run state that never crosses a wire (rig-agent's hook state
+/// does).
 #[derive(Default, Clone)]
 pub struct TypeMap {
     map: Option<Box<AnyMap>>,
 }
 
 impl TypeMap {
-    pub(crate) const EMPTY: Self = Self { map: None };
-
     pub fn insert<T>(&mut self, value: T) -> Option<T>
     where
         T: Clone + WasmCompatSend + WasmCompatSync + 'static,
@@ -146,13 +141,6 @@ impl TypeMap {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-
-    fn type_names(&self) -> Vec<&'static str> {
-        self.map
-            .as_ref()
-            .map(|map| map.values().map(|value| (**value).type_name()).collect())
-            .unwrap_or_default()
-    }
 }
 
 /// Context passed to every tool execution.
@@ -163,157 +151,344 @@ impl TypeMap {
 /// hooks inspect that metadata through [`result`](Self::result). Neither inbound
 /// values nor result metadata are sent to the model.
 ///
+/// Every value is **data**: inserting serializes it, reading deserializes it,
+/// and the whole context is itself `Serialize + Deserialize`. Explicit scene
+/// serialization can therefore contain sensitive inbound values and must be
+/// protected by the host. Effect logs record only [`ToolResultContext`]:
+/// values explicitly published through `insert_result`, never inbound slots
+/// or runtime scopes. Replay uses the current dispatch's inbound context;
+/// code must not treat mutations to inbound slots as durable output. Values with
+/// interior sharing (`Arc<Mutex<_>>`, atomics, channels) do not belong here;
+/// they belong to the tool instance.
+///
 /// Registry, server, and agent dispatch clone inbound values once per call.
 /// Map-level mutations (inserting, replacing, or removing typed slots) affect
-/// only that execution. Value-level isolation follows each value's [`Clone`]
-/// semantics, so intentionally shared values such as `Arc<Mutex<_>>` continue
-/// to share their referent across dispatches. The dispatch surface returns
-/// result metadata without replacing the caller's inbound slots.
-#[derive(Default, Clone)]
+/// only that execution. The dispatch surface returns result metadata without
+/// replacing the caller's inbound slots.
+///
+/// Slots are keyed by the value's type name, so the accessors stay keyless:
+/// one value per type per map.
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct ToolContext {
-    inbound: TypeMap,
-    result: TypeMap,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    inbound: BTreeMap<String, serde_json::Value>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    result: BTreeMap<String, serde_json::Value>,
+    /// The driver's scopes for the call — not data: never on the wire, not
+    /// part of equality, dropped by the adapter before the result is
+    /// resolved. The adapter copies them from the sink it serves
+    /// (`OutcomeSink::scopes`) so a tool can reach its runtime by type —
+    /// rig-agent's bus hands a `Dispatcher` whose every dispatch, and every agent
+    /// built over it, descends from this call. Empty for an inline call.
+    #[serde(skip)]
+    scopes: Vec<std::sync::Arc<dyn Any + Send + Sync>>,
+}
+
+/// Explicitly published, durable tool-result metadata. Unlike [`ToolContext`],
+/// this contains no inbound credentials or live runtime scopes. Values are
+/// keyed by [`ContextValue::KEY`]; applications own their schema versions.
+#[derive(Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ToolResultContext(BTreeMap<String, serde_json::Value>);
+
+impl std::fmt::Debug for ToolResultContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("ToolResultContext")
+            .field(&self.0.keys().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
+impl ToolResultContext {
+    /// Read a published value without exposing ambient execution inputs.
+    pub fn get<T: ContextValue>(&self) -> Result<Option<T>, ToolContextError> {
+        get_slot(&self.0)
+    }
+}
+
+impl PartialEq for ToolContext {
+    fn eq(&self, other: &Self) -> bool {
+        self.inbound == other.inbound && self.result == other.result
+    }
+}
+
+impl Eq for ToolContext {}
+
+/// A value that may be stored in a [`ToolContext`]: serde data under a key
+/// the type declares. The key is what survives a refactor, a persisted
+/// an effect log (`rig_effect_log`), or a different toolchain —
+/// unlike `std::any::type_name`, which changes with a rename or a module
+/// move and is not stable across compiler versions.
+///
+/// Derive it (`#[derive(ContextValue)]`, key defaults to the type's name;
+/// `#[context(key = "…")]` overrides) or write the one-line impl. Two
+/// value types must not share a key.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` declares no `ToolContext` key",
+    label = "not a `ContextValue`",
+    note = "derive it (`#[derive(rig::ContextValue)]`, optionally `#[context(key = \"…\")]`) or write `impl ContextValue for {Self} {{ const KEY: &'static str = \"…\"; }}`; a bare `String`, integer or `serde_json::Value` cannot be stored — wrap it in a newtype"
+)]
+pub trait ContextValue: Serialize + DeserializeOwned + 'static {
+    /// The slot this value lives under.
+    const KEY: &'static str;
+}
+
+fn encode<T: ContextValue>(value: &T) -> Result<serde_json::Value, ToolContextError> {
+    serde_json::to_value(value).map_err(|error| ToolContextError::Encode {
+        key: T::KEY,
+        message: error.to_string(),
+    })
+}
+
+fn decode<T: ContextValue>(value: &serde_json::Value) -> Result<T, ToolContextError> {
+    serde_json::from_value(value.clone()).map_err(|error| ToolContextError::Decode {
+        key: T::KEY,
+        message: error.to_string(),
+    })
+}
+
+/// Store `value`; the value it displaced when that decodes as `T`. A slot
+/// holding something that does not decode as `T` is simply replaced: the
+/// write succeeded, and a shape mismatch is a defect at the writer, not a
+/// reason to unwind the caller after the fact.
+fn insert_slot<T: ContextValue>(
+    map: &mut BTreeMap<String, serde_json::Value>,
+    value: T,
+) -> Result<Option<T>, ToolContextError> {
+    let encoded = encode(&value)?;
+    Ok(map
+        .insert(T::KEY.to_owned(), encoded)
+        .and_then(|previous| decode(&previous).ok()))
+}
+
+/// `Ok(None)` when the slot is empty, `Err(Decode)` when it holds something
+/// that is not a `T`: absence and a shape mismatch are different facts.
+fn get_slot<T: ContextValue>(
+    map: &BTreeMap<String, serde_json::Value>,
+) -> Result<Option<T>, ToolContextError> {
+    map.get(T::KEY).map(decode).transpose()
+}
+
+fn require_slot<T: ContextValue>(
+    map: &BTreeMap<String, serde_json::Value>,
+) -> Result<T, ToolContextError> {
+    get_slot(map)?.ok_or(ToolContextError::Missing(T::KEY))
 }
 
 impl ToolContext {
     /// Create an empty context.
     pub const fn new() -> Self {
         Self {
-            inbound: TypeMap::EMPTY,
-            result: TypeMap::EMPTY,
+            inbound: BTreeMap::new(),
+            result: BTreeMap::new(),
+            scopes: Vec::new(),
         }
     }
 
     /// Insert an inbound typed value, returning the displaced value if present.
-    pub fn insert<T>(&mut self, value: T) -> Option<T>
-    where
-        T: Clone + WasmCompatSend + WasmCompatSync + 'static,
-    {
-        self.inbound.insert(value)
+    ///
+    /// Fails only when `value` cannot be represented as JSON (a map with
+    /// non-string keys, a float `NaN`).
+    pub fn insert<T: ContextValue>(&mut self, value: T) -> Result<Option<T>, ToolContextError> {
+        insert_slot(&mut self.inbound, value)
     }
 
-    /// Read an inbound typed value.
-    pub fn get<T>(&self) -> Option<&T>
-    where
-        T: 'static,
-    {
-        self.inbound.get::<T>()
+    /// Read an inbound typed value. `None` when absent or not decodable as `T`.
+    pub fn get<T: ContextValue>(&self) -> Result<Option<T>, ToolContextError> {
+        get_slot(&self.inbound)
     }
 
     /// Require an inbound typed value.
-    pub fn require<T>(&self) -> Result<&T, MissingToolContext>
-    where
-        T: 'static,
-    {
-        self.get::<T>().ok_or(MissingToolContext(type_name::<T>()))
-    }
-
-    /// Mutably access an inbound typed value.
-    pub fn get_mut<T>(&mut self) -> Option<&mut T>
-    where
-        T: 'static,
-    {
-        self.inbound.get_mut::<T>()
+    pub fn require<T: ContextValue>(&self) -> Result<T, ToolContextError> {
+        require_slot(&self.inbound)
     }
 
     /// Remove an inbound typed value.
-    pub fn remove<T>(&mut self) -> Option<T>
-    where
-        T: 'static,
-    {
-        self.inbound.remove::<T>()
+    pub fn remove<T: ContextValue>(&mut self) -> Result<Option<T>, ToolContextError> {
+        self.inbound
+            .remove(T::KEY)
+            .map(|value| decode(&value))
+            .transpose()
     }
 
     /// Attach host-only metadata to this execution's result.
-    pub fn insert_result<T>(&mut self, value: T) -> Option<T>
-    where
-        T: Clone + WasmCompatSend + WasmCompatSync + 'static,
-    {
-        self.result.insert(value)
+    pub fn insert_result<T: ContextValue>(
+        &mut self,
+        value: T,
+    ) -> Result<Option<T>, ToolContextError> {
+        insert_slot(&mut self.result, value)
     }
 
     /// Read host-only result metadata.
-    pub fn result<T>(&self) -> Option<&T>
-    where
-        T: 'static,
-    {
-        self.result.get::<T>()
+    pub fn result<T: ContextValue>(&self) -> Result<Option<T>, ToolContextError> {
+        get_slot(&self.result)
     }
 
     /// Require host-only result metadata.
-    pub fn require_result<T>(&self) -> Result<&T, MissingToolContext>
-    where
-        T: 'static,
-    {
-        self.result::<T>()
-            .ok_or(MissingToolContext(type_name::<T>()))
+    pub fn require_result<T: ContextValue>(&self) -> Result<T, ToolContextError> {
+        require_slot(&self.result)
     }
 
     /// Whether this context contains the inbound type `T`.
-    pub fn contains<T>(&self) -> bool
-    where
-        T: 'static,
-    {
-        self.inbound.contains::<T>()
+    pub fn contains<T: ContextValue>(&self) -> bool {
+        self.inbound.contains_key(T::KEY)
     }
 
-    /// Build a fresh execution context with the same inbound values and no
-    /// result metadata.
-    ///
-    /// Dispatch always runs against this snapshot. Mutating its typed slots does
-    /// not change the run-wide or caller-owned map. Values with shared/interior
-    /// state remain shared according to their [`Clone`] implementation.
-    /// Build the snapshot one dispatch runs against. Runtimes call this per
-    /// tool call so map-level mutations inside the call cannot leak into the
-    /// caller's context.
+    /// Whether both maps are empty.
+    pub fn is_empty(&self) -> bool {
+        self.inbound.is_empty() && self.result.is_empty()
+    }
+
+    /// Build the snapshot one dispatch runs against: the same inbound values
+    /// and no result metadata. Runtimes call this per tool call so map-level
+    /// mutations inside the call cannot leak into the caller's context.
     pub fn for_dispatch(&self) -> Self {
         Self {
             inbound: self.inbound.clone(),
-            result: TypeMap::EMPTY,
+            result: BTreeMap::new(),
+            scopes: self.scopes.clone(),
         }
     }
 
-    /// Publish metadata produced by one dispatch while preserving the caller's
-    /// inbound values.
+    /// Attach one of the driver's scopes for the call (see the field).
+    pub fn with_scope(mut self, scope: std::sync::Arc<dyn Any + Send + Sync>) -> Self {
+        self.scopes.push(scope);
+        self
+    }
+
+    /// Attach the driver's scopes for the call, as the sink carries them.
+    pub fn with_scopes(mut self, scopes: Vec<std::sync::Arc<dyn Any + Send + Sync>>) -> Self {
+        self.scopes.extend(scopes);
+        self
+    }
+
+    /// The driver's scope of type `T` for the call, if the driver attached
+    /// one; `None` inline, or under another runtime.
+    pub fn scope<T: Any + Send + Sync>(&self) -> Option<std::sync::Arc<T>> {
+        self.scopes
+            .iter()
+            .find_map(|scope| std::sync::Arc::downcast::<T>(scope.clone()).ok())
+    }
+
+    /// Drop the scopes: the call is over and the context is data again.
+    pub fn clear_scope(&mut self) {
+        self.scopes.clear();
+    }
+
     /// Publish the result metadata a dispatch produced (see
     /// [`Self::for_dispatch`]) while keeping the caller's inbound values.
     pub fn accept_dispatch_result(&mut self, dispatched: Self) {
         self.result = dispatched.result;
     }
 
-    /// Clear metadata from the previous dispatch before starting another one.
+    /// Snapshot only the values explicitly published with `insert_result`.
+    pub fn result_context(&self) -> ToolResultContext {
+        ToolResultContext(self.result.clone())
+    }
+
+    /// Restore durable output while preserving this dispatch's inbound values.
+    pub fn with_result_context(mut self, result: ToolResultContext) -> Self {
+        self.result = result.0;
+        self
+    }
+
     /// Drop the previous dispatch's result metadata before starting another.
     pub fn clear_dispatch_result(&mut self) {
-        self.result = TypeMap::EMPTY;
+        self.result.clear();
     }
 }
 
 impl std::fmt::Debug for ToolContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ToolContext")
-            .field("inbound_entries", &self.inbound.len())
-            .field("inbound_types", &self.inbound.type_names())
-            .field("result_entries", &self.result.len())
-            .field("result_types", &self.result.type_names())
+            .field("inbound_types", &self.inbound.keys().collect::<Vec<_>>())
+            .field("result_types", &self.result.keys().collect::<Vec<_>>())
             .finish()
     }
 }
 
-/// A required typed value was missing from a [`ToolContext`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[error("required tool context value of type `{0}` was not found")]
-pub struct MissingToolContext(pub &'static str);
+/// What a tool published into its dispatch context, handed back beside the
+/// sink rather than on the wire: the driver attaches an empty one to the
+/// sink's scope (`OutcomeSink::with_scope`), the adapter fills it once the
+/// tool ran, the driver reads it after the outcome. One per dispatch; a
+/// second publish replaces the first.
+#[derive(Debug, Default)]
+pub struct PublishedContext(std::sync::Mutex<Option<ToolContext>>);
 
-impl From<MissingToolContext> for ToolExecutionError {
-    fn from(error: MissingToolContext) -> Self {
+impl PublishedContext {
+    /// An empty one, shared between the driver and the sink.
+    pub fn new() -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self::default())
+    }
+
+    /// The recorder's non-consuming snapshot. Publish before resolving the
+    /// sink; values published after resolution are not part of that outcome.
+    pub fn result_context(&self) -> Option<ToolResultContext> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(ToolContext::result_context)
+    }
+
+    /// The adapter's write: the context after the tool ran, scopes cleared.
+    /// All publication must finish before resolving the sink. Publishing
+    /// afterward violates the delivery contract: consumers and recorders may
+    /// observe different versions. The slot does not enforce this ordering.
+    pub fn publish(&self, mut context: ToolContext) {
+        context.clear_scope();
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(context);
+    }
+
+    /// The driver's read: what was published, if anything, leaving nothing.
+    pub fn take(&self) -> Option<ToolContext> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+    }
+}
+
+/// A [`ToolContext`] slot could not be read or written.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ToolContextError {
+    /// A required typed value was absent.
+    #[error("required tool context value `{0}` was not found")]
+    Missing(&'static str),
+    /// A value could not be represented as JSON.
+    #[error("tool context value `{key}` could not be encoded: {message}")]
+    Encode {
+        /// The slot's type name.
+        key: &'static str,
+        /// The serializer's message.
+        message: String,
+    },
+    /// A stored value could not be decoded as the requested type.
+    #[error("tool context value `{key}` could not be decoded: {message}")]
+    Decode {
+        /// The slot's type name.
+        key: &'static str,
+        /// The deserializer's message.
+        message: String,
+    },
+}
+
+impl From<ToolContextError> for ToolExecutionError {
+    fn from(error: ToolContextError) -> Self {
         ToolExecutionError::other(error.to_string()).with_source(error)
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+// The context crosses the effect wire: it must serialize and cross threads on
+// every target, browser wasm included.
 const _: fn() = || {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<ToolContext>();
+    fn assert_wire<T: Send + Sync + 'static + Serialize + DeserializeOwned>() {}
+    assert_wire::<ToolContext>();
+    fn assert_shared<T: Send + Sync + 'static>() {}
+    assert_shared::<PublishedContext>();
 };
 
 #[cfg(test)]

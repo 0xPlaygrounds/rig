@@ -20,7 +20,7 @@ use rig::completion::{CompletionModel, ProviderToolDefinition};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
-use rig::streaming::RawStreamingChoice;
+use rig::streaming::{BlockKind, StreamEvent};
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
@@ -76,7 +76,7 @@ async fn streamed_web_search_preserves_server_tool_blocks() {
                 .build();
 
             let mut stream = model
-                .raw_stream(request)
+                .stream(request)
                 .await
                 .expect("streaming web-search request should open");
 
@@ -84,10 +84,7 @@ async fn streamed_web_search_preserves_server_tool_blocks() {
             let mut terminal_seen = false;
             while let Some(item) = stream.next().await {
                 match item.expect("stream item should not error") {
-                    RawStreamingChoice::TextStart {
-                        additional_params: Some(params),
-                        ..
-                    } => {
+                    StreamEvent::BlockStart { kind: BlockKind::Text { additional_params: Some(params) }, .. } => {
                         if let Some(raw) = params
                             .get("anthropic_content")
                             .and_then(|raw| raw.get("type"))
@@ -96,7 +93,7 @@ async fn streamed_web_search_preserves_server_tool_blocks() {
                             raw_types.push(raw.to_string());
                         }
                     }
-                    RawStreamingChoice::FinalResponse(_) => terminal_seen = true,
+                    StreamEvent::Final(_) => terminal_seen = true,
                     _ => {}
                 }
             }
