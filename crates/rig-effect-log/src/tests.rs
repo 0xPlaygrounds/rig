@@ -613,3 +613,53 @@ fn program_identity_is_per_scope_and_absent_by_default() {
         })
     );
 }
+
+#[tokio::test]
+async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earlier() {
+    use rig_core::serve::{Origin, OutcomeSink, Recorder, Serve};
+    let recorder = EffectLogRecorder::new();
+    let key = HandlerKey::from("ordered");
+    let kind = |label: &str| EffectKind::Custom {
+        kind: "ordered".into(),
+        payload: serde_json::json!(label),
+    };
+    // Dispatch futures reserve A=1, B=2, but the executor serves B first.
+    for (id, label) in [(2, "B"), (1, "A")] {
+        let id = EffectId::from_raw(id);
+        recorder.begin(id, key.clone(), kind(label), Origin::default());
+        recorder.resolve(
+            id,
+            Ok(Outcome::Custom {
+                payload: serde_json::json!(label),
+            }),
+        );
+    }
+    let log = recorder.log();
+    assert_eq!(
+        log.records
+            .iter()
+            .map(|record| record.id)
+            .collect::<Vec<_>>(),
+        vec![EffectId::from_raw(2), EffectId::from_raw(1)]
+    );
+    let positional = EffectLogReplayer::for_key(&log, &key).unwrap();
+    for (id, label) in [(10, "B"), (11, "A")] {
+        let (tx, rx) = futures::channel::oneshot::channel();
+        positional
+            .serve(kind(label), OutcomeSink::unary(EffectId::from_raw(id), tx))
+            .await;
+        assert!(
+            matches!(rx.await.unwrap().unwrap(), Outcome::Custom { payload } if payload == serde_json::json!(label))
+        );
+    }
+    let by_id = EffectLogReplayer::for_key_by_id(&log, &key).unwrap();
+    for (id, label) in [(1, "A"), (2, "B")] {
+        let (tx, rx) = futures::channel::oneshot::channel();
+        by_id
+            .serve(kind(label), OutcomeSink::unary(EffectId::from_raw(id), tx))
+            .await;
+        assert!(
+            matches!(rx.await.unwrap().unwrap(), Outcome::Custom { payload } if payload == serde_json::json!(label))
+        );
+    }
+}
