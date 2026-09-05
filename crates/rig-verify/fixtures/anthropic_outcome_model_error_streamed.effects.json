@@ -1,5 +1,26 @@
 {
   "header": {
+    "stream_errors": {
+      "1": [
+        {
+          "item": 0,
+          "error": {
+            "kind": "provider_response",
+            "retryable": false,
+            "message": "ProviderResponseError: status 401 Unauthorized: {\"error\":{\"message\":\"API key is invalid.\",\"type\":\"authentication_error\"},\"request_id\":null,\"type\":\"error\"}",
+            "code": null,
+            "http_status": 401,
+            "refusal": false,
+            "source_chain": [],
+            "provider_response": {
+              "status": 401,
+              "body": "{\"error\":{\"message\":\"API key is invalid.\",\"type\":\"authentication_error\"},\"request_id\":null,\"type\":\"error\"}",
+              "provider_request_id": null
+            }
+          }
+        }
+      ]
+    },
     "run_spec": 10072942899351225430,
     "handlers": [
       {
