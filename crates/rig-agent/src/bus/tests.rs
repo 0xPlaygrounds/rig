@@ -2633,6 +2633,72 @@ fn a_parent_cancel_reaches_a_child_in_flight_whose_pending_lives_elsewhere() {
 }
 
 #[test]
+fn a_detached_child_cannot_answer_success_after_its_parent_is_cancelled() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let mailbox = Arc::new(Mutex::new(Vec::new()));
+    driver
+        .register(
+            "world",
+            Detaching {
+                mailbox: mailbox.clone(),
+            },
+        )
+        .expect("register");
+    let held = Arc::new(Mutex::new(Vec::new()));
+    driver
+        .register(
+            "parent",
+            Parent {
+                key: HandlerKey::from("parent"),
+                child: HandlerKey::from("world"),
+                from_another_thread: false,
+                held: Some(held.clone()),
+                await_child: false,
+            },
+        )
+        .expect("register");
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let mut outer = dispatcher.dispatch(&HandlerKey::from("parent"), custom(json!("outer")));
+    assert!(outer.poll_unpin(&mut cx).is_pending());
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert_eq!(driver.in_flight(), 2);
+    let mut child = held
+        .lock()
+        .expect("held")
+        .pop()
+        .expect("child retained by host");
+    let sink = mailbox
+        .lock()
+        .expect("mailbox")
+        .pop()
+        .expect("sink retained by host");
+    drop(outer);
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert!(sink.is_closed(), "driver published ancestor cancellation");
+    assert_eq!(
+        driver.in_flight(),
+        1,
+        "host still owns the cancelled child's sink"
+    );
+    let mut resolve = sink.resolve(Ok(Outcome::Custom {
+        payload: json!("late success"),
+    }));
+    assert!(resolve.poll_unpin(&mut cx).is_ready());
+    let report = drive_to_outcome(&mut driver, &mut child)
+        .expect("resolved")
+        .expect_err("late host success cannot override ancestor cancellation");
+    assert_eq!(report.kind, ErrorKind::Cancelled);
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert_eq!(driver.in_flight(), 0);
+}
+
+#[test]
 fn a_parent_cancel_reaches_a_child_still_queued() {
     // Serial serving, the child's key busy with another consumer's dispatch:
     // the child is queued when its parent is cancelled. It is never served —
