@@ -877,11 +877,20 @@ pub fn assemble(
 
         // The turn's patch (CONTRACT §9.3), folded in as `prepare_request`
         // folded a completion-call hook's.
-        let tools: Vec<&Bound> = links_in_order(turn, &children, &adverts)
+        let mut tool_links: Vec<_> = children
+            .get(turn)
             .into_iter()
-            .filter_map(|Advert(tool)| bound.get(*tool).ok())
-            .filter(|bound| {
-                match (
+            .flat_map(|children| children.iter())
+            .filter_map(|link| {
+                let (Advert(tool), order) = adverts.get(link).ok()?;
+                Some((*order, link, bound.get(*tool).ok()?))
+            })
+            .collect();
+        tool_links.sort_by_key(|(order, _, _)| *order);
+        let tools: Vec<&Bound> = tool_links
+            .into_iter()
+            .filter_map(|(_, link, bound)| {
+                let allowed = match (
                     patch.and_then(|p| p.active_tools.as_ref()),
                     &bound.descriptor.family,
                 ) {
@@ -893,6 +902,15 @@ pub fn assemble(
                     | (Some(_), FamilyDescriptor::Retrieve { .. })
                     | (Some(_), FamilyDescriptor::Custom { .. })
                     | (None, _) => true,
+                };
+                if allowed {
+                    Some(bound)
+                } else {
+                    // The request and executable grant set must agree. Keep
+                    // that decision on the turn so materialisation, invalid
+                    // call repair and scene continuation see the same surface.
+                    commands.entity(link).despawn();
+                    None
                 }
             })
             .collect();
