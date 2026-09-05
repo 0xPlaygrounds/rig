@@ -5,6 +5,46 @@ use crate::{embeddings::embedding::Embedding, vector_store::IndexStrategy};
 use super::{InMemoryVectorStore, RankingItem};
 
 #[test]
+fn equal_score_cutoff_is_independent_of_candidate_order() {
+    let query = Embedding {
+        document: "query".into(),
+        vec: vec![1.0, 1.0],
+    };
+    let store =
+        InMemoryVectorStore::from_documents_with_ids(["a", "b", "c"].into_iter().map(|id| {
+            (
+                id,
+                id.to_owned(),
+                vec![Embedding {
+                    document: id.into(),
+                    vec: query.vec.clone(),
+                }],
+            )
+        }));
+    for order in [
+        ["a", "b", "c"],
+        ["c", "b", "a"],
+        ["b", "a", "c"],
+        ["a", "c", "b"],
+    ] {
+        for n in 0..=3 {
+            let ranking = store
+                .rank_candidates(order, &query, n, None, None)
+                .expect("ranked");
+            let selected: Vec<_> = super::ranked(ranking)
+                .into_iter()
+                .map(|item| item.1.as_str())
+                .collect();
+            assert_eq!(
+                selected,
+                ["a", "b", "c"][..n],
+                "cutoff {n}, input {order:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn test_auto_ids() {
     let mut vector_store = InMemoryVectorStore::builder()
         .index_strategy(IndexStrategy::LSH {
