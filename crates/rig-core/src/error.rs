@@ -555,8 +555,11 @@ impl From<&VectorStoreError> for ErrorReport {
     fn from(error: &VectorStoreError) -> Self {
         let (kind, http_status) = match error {
             VectorStoreError::EmbeddingError(inner) => {
-                let report = ErrorReport::from(inner);
-                (report.kind, report.http_status)
+                return Self {
+                    message: error.to_string(),
+                    source_chain: source_chain(error),
+                    ..Self::from(inner)
+                };
             }
             VectorStoreError::JsonError(_) => (ErrorKind::Json, None),
             VectorStoreError::DatastoreError(_) => (ErrorKind::Provider, None),
