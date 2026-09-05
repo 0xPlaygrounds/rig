@@ -514,6 +514,10 @@ fn aggregated_reasoning_delta_uses_a_new_pending_part_after_completion() {
         asm.aggregated_reasoning(&BlockId::wire("corr_a")),
         Some("new")
     );
+    assert_eq!(
+        asm.reasoning_provider_id(&BlockId::wire("corr_a")),
+        Some("rs_new")
+    );
 }
 
 #[test]
@@ -576,9 +580,9 @@ fn delta_only_part_survives_alongside_a_completed_block() {
     assert_eq!(reasoning[1].id.as_deref(), Some("rd_1"));
 }
 
-/// A later completion restating the SAME correlator is the same part's
-/// authoritative whole (the unsigned-close-then-signed-restatement
-/// shape): it replaces the completed slot, never appends a duplicate.
+/// Trailing signature metadata under the same correlator updates its unsigned
+/// completed part. This helper's end has no explicit whole-block restatement;
+/// an explicit whole block under a closed key is a sibling, tested separately.
 #[test]
 fn a_same_correlator_completion_replaces_the_completed_part() {
     let mut asm = assembler();
@@ -601,9 +605,8 @@ fn a_same_correlator_completion_replaces_the_completed_part() {
     ));
 }
 
-/// Same shape with a provider id: the exact-correlator match must win
-/// BEFORE the shared-provider-id extend fallback, or the signed
-/// restatement doubles its own text.
+/// The same trailing-metadata shape with a provider id must update its exact
+/// unsigned part before provider-item grouping, without doubling the text.
 #[test]
 fn a_same_correlator_completion_with_a_provider_id_does_not_double_extend() {
     let mut asm = assembler();
@@ -1273,4 +1276,257 @@ fn an_ignored_name_delta_swallows_the_rest_of_its_block() {
         "{:?}",
         turn.choice
     );
+}
+
+#[test]
+fn ignored_name_keeps_the_late_durable_id_out_of_the_final_snapshot() {
+    use rig_core::streaming::MintKind;
+    for block in [
+        BlockId::minted(MintKind::Tool, 0),
+        BlockId::wire("output-item-0"),
+    ] {
+        let mut asm = assembler();
+        let surfaced = asm
+            .ingest(&StreamEvent::BlockDelta {
+                id: block.clone(),
+                delta: Delta::ToolName {
+                    name: "multiply".into(),
+                },
+            })
+            .expect("invalid call surfaces");
+        assert!(matches!(
+            surfaced.as_slice(),
+            [StreamedTurnEvent::InvalidToolCall(_)]
+        ));
+        asm.resolve_pending_invalid(&StreamedResolution::Ignored);
+        let call = tool_call("provider-call-late", "multiply");
+        assert_ne!(call.id, rig_core::message::ToolCallId::from_block(&block));
+        asm.ingest(&completed_tool_call(call.clone(), block))
+            .expect("ignored end");
+        // Also prove the durable tombstone survives checkpoint serialization.
+        let asm: StreamedTurnAssembler =
+            serde_json::from_str(&serde_json::to_string(&asm).unwrap()).unwrap();
+        let turn = asm.finish(None, &[AssistantContent::ToolCall(call)]);
+        assert!(
+            turn.choice.is_empty(),
+            "ignored call resurrected: {:?}",
+            turn.choice
+        );
+    }
+}
+
+fn reasoning_close(restatement: Option<Reasoning>, signature: Option<&str>) -> StreamEvent {
+    StreamEvent::BlockEnd {
+        id: BlockId::wire("reasoning-0"),
+        end: BlockClose::Reasoning {
+            reasoning: restatement,
+            signature: signature.map(str::to_string),
+            wire_sent: true,
+        },
+        block: None,
+    }
+}
+
+fn assert_reasoning_matches_core(events: Vec<StreamEvent>, expected_parts: usize) {
+    let mut core = rig_core::streaming::BlockAccumulator::new();
+    let mut asm = assembler();
+    for mut event in events {
+        let completed = core.apply(&event).expect("valid provider event");
+        if let StreamEvent::BlockEnd { id, block, .. } = &mut event {
+            *block = completed.map(|(completed_id, content)| {
+                *id = completed_id;
+                content
+            });
+        }
+        asm.ingest(&event).expect("normalized event");
+    }
+    let choice = core.finish();
+    assert_eq!(choice.len(), expected_parts);
+    let partial = asm.partial_turn(None).reasoning;
+    let finished = asm.finish(None, &choice);
+    assert_eq!(
+        finished.choice, choice,
+        "agent history must retain core-normalized parts"
+    );
+    let partial: Vec<_> = partial
+        .into_iter()
+        .map(AssistantContent::Reasoning)
+        .collect();
+    assert_eq!(partial, choice, "partial history must agree");
+}
+
+#[test]
+fn same_key_authoritative_reasoning_siblings_survive_in_history() {
+    assert_reasoning_matches_core(
+        vec![
+            reasoning_close(Some(Reasoning::new("A").with_id("rs".into())), None),
+            reasoning_close(Some(Reasoning::new("B").with_id("rs".into())), None),
+        ],
+        2,
+    );
+}
+
+#[test]
+fn reopening_reasoning_preserves_the_completed_signed_sibling() {
+    assert_reasoning_matches_core(
+        vec![
+            StreamEvent::BlockDelta {
+                id: BlockId::wire("reasoning-0"),
+                delta: Delta::Reasoning { text: "A".into() },
+            },
+            reasoning_close(None, Some("sig-A")),
+            StreamEvent::BlockDelta {
+                id: BlockId::wire("reasoning-0"),
+                delta: Delta::Reasoning { text: "B".into() },
+            },
+            reasoning_close(None, Some("sig-B")),
+        ],
+        2,
+    );
+}
+
+#[test]
+fn a_second_same_key_signature_survives_in_its_own_history_part() {
+    assert_reasoning_matches_core(
+        vec![
+            StreamEvent::BlockDelta {
+                id: BlockId::wire("reasoning-0"),
+                delta: Delta::Reasoning { text: "A".into() },
+            },
+            reasoning_close(None, Some("sig-A")),
+            reasoning_close(None, Some("sig-B")),
+        ],
+        2,
+    );
+}
+
+#[test]
+fn a_completed_key_takes_precedence_over_another_keys_pending_provider_id() {
+    assert_reasoning_matches_core(
+        vec![
+            reasoning_close(Some(Reasoning::new("A").with_id("rs".into())), None),
+            StreamEvent::BlockStart {
+                id: BlockId::wire("other"),
+                kind: BlockKind::Reasoning {
+                    provider_id: Some("rs".into()),
+                },
+            },
+            StreamEvent::BlockDelta {
+                id: BlockId::wire("other"),
+                delta: Delta::Reasoning {
+                    text: "pending".into(),
+                },
+            },
+            reasoning_close(Some(Reasoning::new("B").with_id("rs".into())), None),
+        ],
+        3,
+    );
+}
+
+#[test]
+fn a_silent_reasoning_close_still_separates_reopened_history() {
+    let mut silent_close = reasoning_close(None, None);
+    if let StreamEvent::BlockEnd {
+        end: BlockClose::Reasoning { wire_sent, .. },
+        ..
+    } = &mut silent_close
+    {
+        *wire_sent = false;
+    }
+    assert_reasoning_matches_core(
+        vec![
+            StreamEvent::BlockDelta {
+                id: BlockId::wire("reasoning-0"),
+                delta: Delta::Reasoning { text: "A".into() },
+            },
+            silent_close,
+            StreamEvent::BlockDelta {
+                id: BlockId::wire("reasoning-0"),
+                delta: Delta::Reasoning { text: "B".into() },
+            },
+            reasoning_close(None, Some("sig-B")),
+        ],
+        2,
+    );
+}
+
+#[test]
+fn trailing_signature_updates_a_grouped_provider_part_without_duplication() {
+    let mut asm = assembler();
+    let mut core = rig_core::streaming::BlockAccumulator::new();
+    for (key, text, signature) in [
+        ("a", Some("A"), None),
+        ("b", Some("B"), None),
+        ("b", None, Some("sig-B")),
+    ] {
+        let mut event = StreamEvent::BlockEnd {
+            id: BlockId::wire(key),
+            end: BlockClose::Reasoning {
+                reasoning: text.map(|text| Reasoning::new(text).with_id("rs".into())),
+                signature: signature.map(str::to_string),
+                wire_sent: true,
+            },
+            block: None,
+        };
+        let completed = core.apply(&event).unwrap();
+        if let StreamEvent::BlockEnd { block, .. } = &mut event {
+            *block = completed.map(|(_, block)| block);
+        }
+        asm.ingest(&event).unwrap();
+    }
+    let choice = core.finish();
+    let expected: Vec<_> = choice
+        .iter()
+        .flat_map(|item| match item {
+            AssistantContent::Reasoning(reasoning) => reasoning.content.clone(),
+            _ => unreachable!(),
+        })
+        .collect();
+    let reasoning = asm.partial_turn(None).reasoning;
+    assert_eq!(
+        reasoning.len(),
+        1,
+        "keep the established provider-item grouping"
+    );
+    assert_eq!(
+        reasoning[0].content, expected,
+        "metadata must replace just B, never repeat its text"
+    );
+    let finished = asm.finish(None, &choice);
+    assert_eq!(
+        finished.choice,
+        vec![AssistantContent::Reasoning(reasoning[0].clone())]
+    );
+}
+
+#[test]
+fn a_provider_id_matched_completion_retains_its_new_correlator_for_metadata() {
+    for metadata_key in ["delta", "whole"] {
+        let mut asm = assembler();
+        ingest_all(
+            &mut asm,
+            reasoning_delta_events("delta", Some("rs"), "think"),
+        );
+        asm.ingest(&completed_reasoning("whole", Some("rs"), "think", None))
+            .unwrap();
+        let mut asm: StreamedTurnAssembler =
+            serde_json::from_str(&serde_json::to_string(&asm).unwrap()).unwrap();
+        asm.ingest(&completed_reasoning(
+            metadata_key,
+            Some("rs"),
+            "think",
+            Some("sig"),
+        ))
+        .unwrap();
+        let reasoning = asm.partial_turn(None).reasoning;
+        assert_eq!(reasoning.len(), 1);
+        assert_eq!(
+            reasoning[0].content,
+            Reasoning::new_with_signature("think", Some("sig".into())).content
+        );
+        assert_eq!(
+            asm.finish(None, &[]).choice,
+            vec![AssistantContent::Reasoning(reasoning[0].clone())]
+        );
+    }
 }

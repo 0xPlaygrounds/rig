@@ -354,8 +354,16 @@ struct ToolCallDeltaState {
 #[derive(Clone, Serialize, Deserialize)]
 struct ReasoningPart {
     correlator: Option<BlockId>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    aliases: Vec<BlockId>,
     provider_id: Option<String>,
     state: ReasoningPartState,
+}
+
+impl ReasoningPart {
+    fn matches_key(&self, key: &BlockId) -> bool {
+        self.correlator.as_ref() == Some(key) || self.aliases.contains(key)
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -384,6 +392,38 @@ fn reasoning_from_part(
         }
         ReasoningPartState::Pending(_) => None,
     }
+}
+
+// Keep independently addressable blocks internally so a trailing signature
+// replaces only its own content. Group completed provider-item parts only when
+// exposing history, preserving the established grouping of distinct keys while
+// keeping repeated-key siblings separate.
+fn group_reasoning(parts: impl Iterator<Item = ReasoningPart>) -> Vec<Reasoning> {
+    let mut groups: Vec<(Reasoning, Vec<BlockId>, bool)> = Vec::new();
+    for part in parts {
+        let completed = matches!(part.state, ReasoningPartState::Completed(_));
+        let keys: Vec<_> = part.correlator.into_iter().chain(part.aliases).collect();
+        let Some(reasoning) = reasoning_from_part(part.state, part.provider_id) else {
+            continue;
+        };
+        if completed
+            && reasoning.id.is_some()
+            && let Some((existing, existing_keys, _)) = groups
+                .iter_mut()
+                .rev()
+                .find(|(existing, _, completed)| *completed && existing.id == reasoning.id)
+            && keys.iter().all(|key| !existing_keys.contains(key))
+        {
+            existing.content.extend(reasoning.content);
+            existing_keys.extend(keys);
+            continue;
+        }
+        groups.push((reasoning, keys, completed));
+    }
+    groups
+        .into_iter()
+        .map(|(reasoning, _, _)| reasoning)
+        .collect()
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -499,11 +539,13 @@ impl StreamedTurnAssembler {
     /// correlator after a completed restatement, in which case ingestion opens
     /// a new pending part and this returns that new part's aggregate.
     /// The provider-issued id of the reasoning part identified by
-    /// `correlator`, when its block start carried one.
+    /// `correlator`, when its block start carried one. Reused keys refer to
+    /// their newest part, including a pending part with no provider id.
     pub fn reasoning_provider_id(&self, correlator: &BlockId) -> Option<&str> {
         self.reasoning_parts
             .iter()
-            .find(|part| part.correlator.as_ref() == Some(correlator))
+            .rev()
+            .find(|part| part.matches_key(correlator))
             .and_then(|part| part.provider_id.as_deref())
     }
 
@@ -544,32 +586,34 @@ impl StreamedTurnAssembler {
         }
     }
 
-    /// Record a completed reasoning block. It supersedes the same part —
-    /// matched by the stream correlator first, regardless of whether that
-    /// part is still pending or already completed (the stream restates one
-    /// correlator per part, so a later same-correlator completion is the
-    /// same part's authoritative whole, e.g. a signed restatement after an
-    /// unsigned close), then by the durable provider id for pending parts —
-    /// because the completed block restates the delta text plus payloads
-    /// (signatures, encrypted content) the deltas lacked. A block matching
-    /// no part by correlator merges with an earlier completed block sharing
-    /// its provider id, else occupies a new slot; unmatched pending buffers
-    /// are never dropped (a delta-only visible part and a completed
-    /// encrypted block can coexist in one stream).
-    fn ingest_completed_reasoning(&mut self, reasoning: &Reasoning, correlator: &BlockId) {
-        // An exact correlator match IS the part, whatever its state:
-        // replace wholesale (pydantic-ai's replace-part semantics — the
-        // completed block always carries the whole content, the
-        // accumulator having merged signatures before yielding). Checked
-        // before the provider-id fallbacks so a signed restatement can
-        // never double-extend its own part. Failing that, the block
-        // supersedes a pending part sharing its durable provider id.
+    /// A completed block replaces its pending deltas. After a key closes,
+    /// an explicit whole block or a second signature opens a sibling; only
+    /// trailing metadata for an unsigned close updates that completed part.
+    /// The normalized end retains this distinction in its original payload.
+    fn ingest_completed_reasoning(
+        &mut self,
+        reasoning: &Reasoning,
+        correlator: &BlockId,
+        restatement: bool,
+    ) {
         let replace_at = self
             .reasoning_parts
             .iter()
-            .position(|part| part.correlator.as_ref() == Some(correlator))
+            .rposition(|part| {
+                part.matches_key(correlator) && matches!(part.state, ReasoningPartState::Pending(_))
+            })
             .or_else(|| {
-                self.reasoning_parts.iter().position(|part| {
+                // A known block key is more specific than a shared provider
+                // item id. Its next whole block must not consume a different
+                // key's still-pending content.
+                if self
+                    .reasoning_parts
+                    .iter()
+                    .any(|part| part.matches_key(correlator))
+                {
+                    return None;
+                }
+                self.reasoning_parts.iter().rposition(|part| {
                     matches!(part.state, ReasoningPartState::Pending(_))
                         && matches!(
                             (&part.provider_id, &reasoning.id),
@@ -581,51 +625,60 @@ impl StreamedTurnAssembler {
             if reasoning.id.is_some() {
                 part.provider_id.clone_from(&reasoning.id);
             }
+            if !part.matches_key(correlator) {
+                part.aliases.push(correlator.clone());
+            }
             part.state = ReasoningPartState::Completed(reasoning.clone());
             return;
         }
 
-        // Completed blocks sharing a provider-issued id extend one
-        // another (the multi-part same-id reasoning item shape).
-        let extends = self.reasoning_parts.iter_mut().rev().find(|part| {
-            matches!(part.state, ReasoningPartState::Completed(_))
-                && matches!(
-                    (&part.provider_id, &reasoning.id),
-                    (Some(existing_id), Some(incoming_id)) if existing_id == incoming_id
-                )
-        });
-        if let Some(part) = extends {
-            if let ReasoningPartState::Completed(existing) = &mut part.state {
-                existing.content.extend(reasoning.content.clone());
+        if let Some(part) = self
+            .reasoning_parts
+            .iter_mut()
+            .rev()
+            .find(|part| part.matches_key(correlator))
+        {
+            let signed = matches!(&part.state, ReasoningPartState::Completed(existing)
+                if existing.content.iter().any(|content| matches!(content,
+                    rig_core::message::ReasoningContent::Text { signature: Some(_), .. })));
+            if !restatement && !signed {
+                if reasoning.id.is_some() {
+                    part.provider_id.clone_from(&reasoning.id);
+                }
+                part.state = ReasoningPartState::Completed(reasoning.clone());
+                return;
             }
+            // Keep this completed sibling separately addressable. History
+            // grouping recognizes key reuse and preserves both parts.
+            self.reasoning_parts.push(ReasoningPart {
+                aliases: Vec::new(),
+                correlator: Some(correlator.clone()),
+                provider_id: reasoning.id.clone(),
+                state: ReasoningPartState::Completed(reasoning.clone()),
+            });
             return;
         }
 
         self.reasoning_parts.push(ReasoningPart {
+            aliases: Vec::new(),
             correlator: Some(correlator.clone()),
             provider_id: reasoning.id.clone(),
             state: ReasoningPartState::Completed(reasoning.clone()),
         });
     }
 
-    /// The turn's reasoning in first-arrival order: completed blocks as-is,
-    /// non-empty pending delta buffers each assembled into their own block
-    /// carrying only the part's provider-issued id.
+    /// The turn's reasoning in first-arrival order. Completed parts from
+    /// distinct keys sharing a provider item are grouped; repeated-key siblings
+    /// and pending delta buffers retain their separate slots.
     fn assembled_reasoning(&self) -> Vec<Reasoning> {
-        self.reasoning_parts
-            .iter()
-            .filter_map(|part| reasoning_from_part(part.state.clone(), part.provider_id.clone()))
-            .collect()
+        group_reasoning(self.reasoning_parts.iter().cloned())
     }
 
     /// [`Self::assembled_reasoning`], consuming the parts — the finish path
     /// owns the assembler, and reasoning blocks can carry large encrypted
     /// payloads that should move rather than clone.
     fn drain_reasoning(&mut self) -> Vec<Reasoning> {
-        std::mem::take(&mut self.reasoning_parts)
-            .into_iter()
-            .filter_map(|part| reasoning_from_part(part.state, part.provider_id))
-            .collect()
+        group_reasoning(std::mem::take(&mut self.reasoning_parts).into_iter())
     }
 
     /// Ingest one provider stream item and return what the driver must do.
@@ -679,8 +732,7 @@ impl StreamedTurnAssembler {
                 // The block's durable provider id arrives at its start; the
                 // part opens here (or on its first delta) and keeps it.
                 let pending = self.reasoning_parts.iter_mut().find(|part| {
-                    part.correlator.as_ref() == Some(id)
-                        && matches!(part.state, ReasoningPartState::Pending(_))
+                    part.matches_key(id) && matches!(part.state, ReasoningPartState::Pending(_))
                 });
                 match pending {
                     Some(part) => {
@@ -689,6 +741,7 @@ impl StreamedTurnAssembler {
                         }
                     }
                     None => self.reasoning_parts.push(ReasoningPart {
+                        aliases: Vec::new(),
                         correlator: Some(id.clone()),
                         provider_id: provider_id.clone(),
                         state: ReasoningPartState::Pending(String::new()),
@@ -698,13 +751,31 @@ impl StreamedTurnAssembler {
             }
             StreamEvent::BlockEnd {
                 id,
-                end: BlockClose::Reasoning { .. },
+                end:
+                    BlockClose::Reasoning {
+                        reasoning: restatement,
+                        ..
+                    },
                 block,
             } => {
-                // An authoritative close carries the completed block; a
-                // synthesized silent boundary carries nothing to fold.
                 if let Some(AssistantContent::Reasoning(reasoning)) = block {
-                    self.ingest_completed_reasoning(reasoning, id);
+                    self.ingest_completed_reasoning(reasoning, id, restatement.is_some());
+                } else if let Some(part) = self.reasoning_parts.iter_mut().rev().find(|part| {
+                    part.matches_key(id) && matches!(part.state, ReasoningPartState::Pending(_))
+                }) && let ReasoningPartState::Pending(text) = &part.state
+                {
+                    // A synthesized silent close publishes no whole block,
+                    // but still ends this part. Later deltas reopen the key;
+                    // they must not extend or overwrite the completed text.
+                    let content = if text.is_empty() {
+                        Vec::new()
+                    } else {
+                        Reasoning::new(text).content
+                    };
+                    part.state = ReasoningPartState::Completed(Reasoning {
+                        id: part.provider_id.clone(),
+                        content,
+                    });
                 }
                 Ok(vec![StreamedTurnEvent::EmitIngested])
             }
@@ -724,11 +795,11 @@ impl StreamedTurnAssembler {
                     .reasoning_parts
                     .iter()
                     .position(|part| {
-                        part.correlator.as_ref() == Some(id)
-                            && matches!(part.state, ReasoningPartState::Pending(_))
+                        part.matches_key(id) && matches!(part.state, ReasoningPartState::Pending(_))
                     })
                     .unwrap_or_else(|| {
                         self.reasoning_parts.push(ReasoningPart {
+                            aliases: Vec::new(),
                             correlator: Some(id.clone()),
                             provider_id: None,
                             state: ReasoningPartState::Pending(String::new()),
@@ -759,6 +830,11 @@ impl StreamedTurnAssembler {
                 {
                     // The ignored call's end: the call was dropped at its
                     // name, so it is neither pending nor re-validated.
+                    // Its durable id may arrive only now and differ from
+                    // the stream block key used at the name delta.
+                    if let Some(AssistantContent::ToolCall(call)) = block {
+                        self.ignored_calls.push(call.id.clone());
+                    }
                     self.delta_states.remove(block_id);
                     return Ok(Vec::new());
                 }
