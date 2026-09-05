@@ -15,6 +15,19 @@ pub const CHECKPOINT_FORMAT: u32 = 6;
 /// the program has outgrown before the first dispatch diverges.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LogHeader {
+    /// Consumer-visible deliveries, in observation order, when the runtime
+    /// records schedule boundaries. `None` supplies no delivery guarantee.
+    /// A batch groups transitions observed in one pass; it is not a clock.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deliveries: Option<Vec<rig_core::effect::Delivery>>,
+    /// Reasons this recording cannot establish policy-visible delivery.
+    /// Exchange replay remains possible; exact policy mode must refuse it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub delivery_limitations: Vec<String>,
+    /// Error items omitted from `EffectRecord::events`, at their original
+    /// positions among all stream items. Empty for streams without errors.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub stream_errors: BTreeMap<EffectId, Vec<RecordedStreamError>>,
     /// A hash of the run spec the run was recorded under, when an agent
     /// recorded it (`None` for a bare-bus record). An agent that replays
     /// compares it with its own.
@@ -65,9 +78,21 @@ pub struct ProgramIdentity {
     pub policy: u64,
 }
 
+/// An error's place in a kept stream, including errors after a terminal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordedStreamError {
+    /// Zero-based position among successful events and error items together.
+    pub item: usize,
+    /// The original error item; it need not be the stream's folded outcome.
+    pub error: ErrorReport,
+}
+
 impl Default for LogHeader {
     fn default() -> Self {
         Self {
+            deliveries: None,
+            delivery_limitations: Vec::new(),
+            stream_errors: BTreeMap::new(),
             run_spec: None,
             handlers: Vec::new(),
             signature: EffectRow::new(),
@@ -106,9 +131,22 @@ impl EffectLog {
     /// The records from `at` on, under a copy of this header — the
     /// continuation a resumed run replays.
     pub fn tail(&self, at: usize) -> Self {
-        Self {
+        let mut tail = Self {
             header: self.header.clone(),
             records: self.records.get(at..).unwrap_or_default().to_vec(),
+        };
+        tail.retain_recorded_deliveries();
+        tail
+    }
+
+    /// Drop delivery entries outside this log's records, preserving order and
+    /// batch identities. Used for snapshots and tails of a shared recorder.
+    pub(crate) fn retain_recorded_deliveries(&mut self) {
+        let ids: std::collections::BTreeSet<_> =
+            self.records.iter().map(|record| record.id).collect();
+        self.header.stream_errors.retain(|id, _| ids.contains(id));
+        if let Some(deliveries) = &mut self.header.deliveries {
+            deliveries.retain(|delivery| ids.contains(&delivery.id));
         }
     }
 

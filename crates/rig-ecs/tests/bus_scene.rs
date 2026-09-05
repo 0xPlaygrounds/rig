@@ -47,6 +47,127 @@ fn golden(name: &str) -> EffectLog {
 }
 
 #[test]
+fn completed_stream_survives_json_scene_without_serving_again() {
+    let counters = Arc::new(Counters::default());
+    let mut live = app();
+    register(&mut live, "model", MockModel::new(&counters));
+    let effect = live
+        .world_mut()
+        .spawn(PendingEffect::new("model", streaming()))
+        .id();
+    tick_until(&mut live, "stream complete", |world| {
+        world.get::<EffectOutcome>(effect).is_some()
+    });
+    let before = serde_json::to_value(live.world().get::<Streamed>(effect).unwrap()).unwrap();
+    assert_eq!(before["events"].as_array().unwrap().len(), STREAM_CAP + 3);
+    let scene = Scene::save(live.world_mut());
+    let scene: Scene = serde_json::from_str(&serde_json::to_string(&scene).unwrap()).unwrap();
+    let counters = Arc::new(Counters::default());
+    let mut restored = app();
+    register(&mut restored, "model", MockModel::new(&counters));
+    let loaded = scene.load(restored.world_mut()).unwrap()[0];
+    tick(&mut restored, 3);
+    let after = serde_json::to_value(
+        restored
+            .world()
+            .get::<Streamed>(loaded)
+            .expect("completed stream restored"),
+    )
+    .unwrap();
+    assert_eq!(before, after);
+    assert_eq!(counters.stream_sends.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        serde_json::to_value(&restored.world().get::<EffectOutcome>(loaded).unwrap().0).unwrap(),
+        before["outcome"]
+    );
+}
+
+#[test]
+fn unfinished_stream_with_observed_progress_is_refused_before_spawning() {
+    let counters = Arc::new(Counters::default());
+    let mut live = app();
+    register(&mut live, "model", MockModel::endless(&counters));
+    let effect = live
+        .world_mut()
+        .spawn(PendingEffect::new("model", streaming()))
+        .id();
+    tick_until(&mut live, "partial stream", |world| {
+        world
+            .get::<Streamed>(effect)
+            .is_some_and(|streamed| !streamed.text.is_empty())
+    });
+    assert!(live.world().get::<EffectOutcome>(effect).is_none());
+    let scene = Scene::save(live.world_mut());
+    let scene: Scene = serde_json::from_str(&serde_json::to_string(&scene).unwrap()).unwrap();
+    let mut restored = app();
+    let before = restored.world().entities().len();
+    let error = scene
+        .load(restored.world_mut())
+        .expect_err("no cursor to prevent duplicate delivery");
+    assert!(error.message.contains("unfinished stream"));
+    assert_eq!(restored.world().entities().len(), before);
+    assert!(
+        scene.effects[0]
+            .streamed
+            .as_ref()
+            .is_some_and(|streamed| !streamed.text.is_empty())
+    );
+}
+
+#[test]
+fn an_unfinished_stream_without_progress_restarts_under_its_saved_id() {
+    let counters = Arc::new(Counters::default());
+    counters.hold.hold();
+    let mut live = app();
+    register(&mut live, "model", MockModel::new(&counters));
+    let effect = live
+        .world_mut()
+        .spawn(PendingEffect::new("model", streaming()))
+        .id();
+    tick_until(&mut live, "stream dispatched", |world| {
+        world.get::<InFlight>(effect).is_some()
+    });
+    assert_eq!(counters.stream_sends.load(Ordering::SeqCst), 0);
+    let id = live.world().get::<Issued>(effect).unwrap().0;
+    let scene = Scene::save(live.world_mut());
+    let scene: Scene = serde_json::from_slice(&serde_json::to_vec(&scene).unwrap()).unwrap();
+    let resumed_counters = Arc::new(Counters::default());
+    let mut resumed = app();
+    register(&mut resumed, "model", MockModel::new(&resumed_counters));
+    let loaded = scene.load(resumed.world_mut()).unwrap()[0];
+    tick_until(&mut resumed, "restarted stream completed", |world| {
+        world.get::<EffectOutcome>(loaded).is_some()
+    });
+    assert_eq!(resumed.world().get::<Issued>(loaded).unwrap().0, id);
+    assert_eq!(
+        resumed_counters.stream_sends.load(Ordering::SeqCst),
+        STREAM_CAP
+    );
+    assert_eq!(
+        resumed.world().get::<Streamed>(loaded).unwrap().text,
+        "tick ".repeat(STREAM_CAP)
+    );
+    drop(live);
+    counters.hold.release();
+}
+
+#[test]
+fn scene_wire_requires_explicit_stream_state_even_when_null() {
+    let mut live = app();
+    live.world_mut()
+        .spawn(PendingEffect::new("model", streaming()));
+    let mut wire = serde_json::to_value(Scene::save(live.world_mut())).unwrap();
+    assert!(wire["effects"][0]["streamed"].is_null());
+    serde_json::from_value::<Scene>(wire.clone()).unwrap();
+    wire["effects"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("streamed");
+    let error = serde_json::from_value::<Scene>(wire).unwrap_err();
+    assert!(error.to_string().contains("streamed"));
+}
+
+#[test]
 fn a_scene_saves_intent_and_a_loaded_world_reissues_what_was_unanswered() {
     let counters = Arc::new(Counters::default());
     counters.hold.hold();
@@ -106,7 +227,7 @@ fn a_scene_saves_intent_and_a_loaded_world_reissues_what_was_unanswered() {
     let counters = Arc::new(Counters::default());
     let mut app = bus_support::app();
     register(&mut app, "model", MockModel::saying(&counters, "again"));
-    let loaded = scene.load(app.world_mut());
+    let loaded = scene.load(app.world_mut()).unwrap();
     assert_eq!(loaded.len(), 4);
     tick_until(&mut app, "all answered", |world| {
         loaded
@@ -419,6 +540,7 @@ fn a_loaded_scene_never_collides_with_minted_ids() {
         handlers: Vec::new(),
         effects: (0..3)
             .map(|n| rig_ecs::bus::SceneEffect {
+                streamed: None,
                 seq: rig_ecs::bus::Seq(n),
                 key: HandlerKey::from("model"),
                 kind: completion(),
@@ -436,7 +558,7 @@ fn a_loaded_scene_never_collides_with_minted_ids() {
             })
             .collect(),
     };
-    let loaded = scene.load(app.world_mut());
+    let loaded = scene.load(app.world_mut()).unwrap();
     let fresh = app
         .world_mut()
         .spawn(PendingEffect::new("model", completion()))

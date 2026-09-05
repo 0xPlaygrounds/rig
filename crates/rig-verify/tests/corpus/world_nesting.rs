@@ -237,25 +237,27 @@ fn finish_relay(
         let ack = ack(&note.0);
         commands
             .entity(entity)
-            .insert(EffectOutcome(Ok(Outcome::Custom(
-                serde_json::to_value(NoteAck {
+            .insert(rig_ecs::bus::WorldOutcome::new(Ok(Outcome::Custom {
+                payload: serde_json::to_value(NoteAck {
                     accepted: ack.accepted,
                     at: ack.at,
                 })
                 .expect("an ack serializes"),
-            ))));
+            })));
     }
 }
 
 fn ack(outcome: &Result<Outcome, rig_core::error::ErrorReport>) -> NoteAck {
     match outcome {
-        Ok(Outcome::Custom(value)) => serde_json::from_value(value.clone()).expect("an ack"),
+        Ok(Outcome::Custom { payload: value }) => {
+            serde_json::from_value(value.clone()).expect("an ack")
+        }
         other => panic!("an acknowledgement: {other:?}"),
     }
 }
 
-fn tool_text(text: String) -> EffectOutcome {
-    EffectOutcome(Ok(Outcome::ToolResult {
+fn tool_text(text: String) -> rig_ecs::bus::WorldOutcome {
+    rig_ecs::bus::WorldOutcome::new(Ok(Outcome::ToolResult {
         result: ToolResult::success(ToolOutput::text(text)),
     }))
 }

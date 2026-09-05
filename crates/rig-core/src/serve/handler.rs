@@ -47,7 +47,7 @@ pub type HandlerFuture<'a> = WasmBoxedFuture<'a, ()>;
 ///     }
 ///     async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
 ///         let answer = self.ask(kind).await;
-///         sink.resolve(Ok(Outcome::Custom(answer))).await;
+///         sink.resolve(Ok(Outcome::Custom { payload: answer })).await;
 ///     }
 /// }
 /// ```
@@ -360,6 +360,8 @@ pub trait Observe: Send + Sync {
     fn keep_events(&self) -> bool;
     /// One streamed event, as it is sent.
     fn event(&mut self, event: &StreamEvent);
+    /// An error item in a kept stream, including errors after `Final`.
+    fn stream_error(&mut self, _error: &ErrorReport) {}
     /// The dispatch was decided before any handler served it: the record
     /// it opened is forgotten.
     fn discard(&mut self);
@@ -620,6 +622,11 @@ impl OutcomeSink {
             && seen.observer.keep_events()
         {
             seen.observer.event(event);
+        }
+        if let Err(error) = item
+            && seen.observer.keep_events()
+        {
+            seen.observer.stream_error(error);
         }
         if let Some(outcome) = seen.stream.observe(item) {
             seen.outcome(&outcome);

@@ -33,6 +33,33 @@
 //! Legacy header `format` fields are ignored and are never written. The
 //! separate [`Checkpoint`] envelope still has its own [`CHECKPOINT_FORMAT`].
 //!
+//! Custom outcomes use an explicit `payload` field beneath the `outcome`
+//! tag, so strings, numbers, booleans, null, arrays and objects retain their
+//! original JSON value. The previous flattened custom outcome form is not
+//! emitted; regenerate affected fixtures through their owning producers.
+//!
+//! A replayer preserves a recorded handler's semantic family, including model
+//! identity and capabilities, even when that key has records. Required keys
+//! include every scoped [`ProgramIdentity`] row. Conflicting declarations are
+//! refused. Executable middleware is reapplied by the caller; replayers do not
+//! claim to have executed the recorded descriptor's layers. Descriptor-less
+//! legacy exchanges may infer a fallback description, which cannot establish
+//! verified semantic compatibility for a program.
+//!
+//! [`LogHeader::deliveries`] optionally records consumer-visible outcome and
+//! stream batches. rig-ecs records and enforces these schedule boundaries;
+//! the shared replayer alone only supplies exchanges and event sequences.
+//! rig-agent's bus does not record ECS schedule boundaries. A log without
+//! this metadata, or a folded stream without event bytes, cannot prove exact
+//! partial-state or first-visible-answer policy replay. Batch numbers are
+//! not a clock, a whole-world snapshot, or an external-side-effect guarantee.
+//! Kept streams also retain error items in [`LogHeader::stream_errors`], with
+//! positions among all items. Errors before or after `Final` remain in their
+//! original order; the folded outcome alone cannot reconstruct them. Empty
+//! metadata is omitted on the wire. Historical logs lacking error positions
+//! can replay their successful events and a folded error, but cannot prove
+//! the original sequence of error items.
+//!
 //! The vocabulary is rig-core's, the runtimes are rig-agent's bus and rig-ecs; this crate is
 //! the persistence story over both, and what a host that saves and restores
 //! in-flight effects (a scene, a durable run) depends on.
@@ -41,9 +68,12 @@ mod log;
 mod recorder;
 mod replay;
 
-pub use log::{CHECKPOINT_FORMAT, Checkpoint, EffectLog, LogHeader, ProgramIdentity, stable_hash};
+pub use log::{
+    CHECKPOINT_FORMAT, Checkpoint, EffectLog, LogHeader, ProgramIdentity, RecordedStreamError,
+    stable_hash,
+};
 pub use recorder::EffectLogRecorder;
-pub use replay::{EffectLogReplayer, RequestCheck};
+pub use replay::{EffectLogReplayer, ReplayRefusals, RequestCheck};
 
 #[cfg(test)]
 mod tests;

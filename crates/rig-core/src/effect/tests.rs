@@ -355,7 +355,12 @@ fn every_outcome_round_trips() {
             Outcome::Documents(RetrievedDocuments::Ids(vec![(0.9, "d1".into())])),
             EffectFamily::Retrieve,
         ),
-        (Outcome::Custom(json!({"ok": true})), EffectFamily::Custom),
+        (
+            Outcome::Custom {
+                payload: json!({"ok": true}),
+            },
+            EffectFamily::Custom,
+        ),
     ];
     for (outcome, family) in outcomes {
         assert_eq!(outcome.family(), family);
@@ -523,12 +528,16 @@ fn a_custom_effect_travels_as_its_declared_kind_and_answer() {
         }
         other => panic!("expected a custom kind, got {other:?}"),
     }
-    let answer = family::Custom::<AskUser>::unwrap(Outcome::Custom(json!({"text": "Ada"})))
-        .expect("the declared answer");
+    let answer = family::Custom::<AskUser>::unwrap(Outcome::Custom {
+        payload: json!({"text": "Ada"}),
+    })
+    .expect("the declared answer");
     assert_eq!(answer, Reply { text: "Ada".into() });
 
-    let report = family::Custom::<AskUser>::unwrap(Outcome::Custom(json!({"nope": 1})))
-        .expect_err("not a Reply");
+    let report = family::Custom::<AskUser>::unwrap(Outcome::Custom {
+        payload: json!({"nope": 1}),
+    })
+    .expect_err("not a Reply");
     assert_eq!(report.kind, ErrorKind::Internal);
     assert!(report.message.contains(AskUser::KIND), "{}", report.message);
 

@@ -33,37 +33,76 @@ impl EffectLogResource {
 /// Replay a log through a world: register a replayer per key that answers
 /// each dispatch **by its id** (the record with that id, or a divergence),
 /// and load the log's records as effect entities under their recorded ids.
-/// The order the world dispatches them in is then free — `Seq` still
-/// orders the intake, but a record is found by id, never by position —
-/// which is what lets a scene re-issue a subset of a log.
+/// Saved ids let a scene re-issue a subset without positional lookup. A
+/// program that mints new ids must reproduce its causal dispatch order.
+/// Recorded delivery batches pace collection across schedule passes; equal
+/// batch numbers deliver together, in trace order. This records observable
+/// collection boundaries, not elapsed time or arbitrary world state.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Replay {
     /// How each replayer compares a request with its record.
     pub check: RequestCheck,
+    /// Require recorded policy-visible delivery boundaries and kept events
+    /// for observed streams. Otherwise available boundaries are honored, but
+    /// a folded recording supplies only a final stream answer.
+    pub require_delivery: bool,
 }
 
 impl Replay {
     /// A replay comparing requests as `check` says.
     pub fn checking(check: RequestCheck) -> Self {
-        Self { check }
+        Self {
+            check,
+            ..Self::default()
+        }
     }
 
-    /// Register a by-id replayer for every key in `log`. Refuses a log of
-    /// another format, and one whose signature names a family its records
-    /// do not answer.
+    /// Replay policies that observe answer order or partial stream state.
+    /// Refuses recordings without the delivery boundaries or kept stream
+    /// events that guarantee needs. The same policy must reproduce recorded
+    /// cancellations: a cancelled effect is not given a synthetic answer.
+    /// A missing cancellation or inconsistent trace produces [`super::ReplayFailure`].
+    ///
+    /// Observe `On<Add, EffectOutcome>` or run policy after the entire
+    /// `BusSet::Collect`, with the same relevant ordering live and on replay.
+    /// Intermediate collector state and handler inboxes are not covered.
+    /// World handlers submit [`super::WorldOutcome`] or typed [`super::Answer`];
+    /// direct in-flight outcome insertions make this mode refuse the recording.
+    ///
+    /// Default replay honors available batches but supplies recorded
+    /// cancellation errors to exchange consumers and folds streams whose
+    /// events were omitted. It does not promise identical policy decisions.
+    pub fn policy_visible() -> Self {
+        Self {
+            require_delivery: true,
+            ..Self::default()
+        }
+    }
+
+    /// Register a by-id replayer for every recorded or required key in `log`,
+    /// including all scoped required rows. Refuses conflicting families,
+    /// descriptors and inconsistent delivery metadata. Recorded semantic
+    /// descriptors are preserved; reapply executable middleware separately.
     pub fn register(
         &self,
         handlers: &mut Handlers<'_, '_>,
         log: &EffectLog,
     ) -> Result<(), ErrorReport> {
         EffectLogReplayer::check_header(log)?;
+        let delivery = super::delivery::ReplayDelivery::new(log, self.require_delivery)?;
         for replayer in EffectLogReplayer::for_log_by_id(log)? {
             let key = replayer.key().clone();
+            let replayer = if let Some(delivery) = &delivery {
+                replayer.reporting_refusals(delivery.refusals())
+            } else {
+                replayer
+            };
             handlers.register_erased(
                 key,
                 rig_core::serve::ErasedHandler::new(replayer.checking(self.check)),
             )?;
         }
+        handlers.replay_delivery(delivery);
         Ok(())
     }
 

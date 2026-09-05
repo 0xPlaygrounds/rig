@@ -1,5 +1,12 @@
 //! Registered application state is durable; omitted state is explicitly host-owned.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
+
+mod bus_support;
 
 use bevy_ecs::prelude::*;
 use rig_ecs::agent::{
@@ -121,4 +128,85 @@ fn names_must_be_nonempty_and_unique() {
             .register_component::<RetryBudget>("budget/v1")
             .is_err()
     );
+}
+
+#[test]
+fn paired_graph_stream_scene_restores_completed_state_and_refuses_an_unfinished_prefix() {
+    use rig_ecs::bus::{EffectOutcome, PendingEffect, Streamed};
+    use std::sync::{Arc, atomic::Ordering};
+
+    for completed in [false, true] {
+        let mut live = bus_support::app();
+        register(live.world_mut());
+        let counters = Arc::new(bus_support::Counters::default());
+        let model = if completed {
+            bus_support::MockModel::new(&counters)
+        } else {
+            bus_support::MockModel::endless(&counters)
+        };
+        bus_support::register(&mut live, "model", model);
+        let agent = live.world_mut().spawn(Owner("test".into())).id();
+        let run = live
+            .world_mut()
+            .spawn((Run, RunOf(agent), ChildOf(agent), RetryBudget(2)))
+            .id();
+        let effect = live
+            .world_mut()
+            .spawn((
+                PendingEffect::new("model", bus_support::streaming()),
+                ChildOf(run),
+            ))
+            .id();
+        bus_support::tick_until(&mut live, "stream scene cut", |world| {
+            if completed {
+                world.get::<EffectOutcome>(effect).is_some()
+            } else {
+                world
+                    .get::<Streamed>(effect)
+                    .is_some_and(|streamed| !streamed.text.is_empty())
+            }
+        });
+        let expected = serde_json::to_value(live.world().get::<Streamed>(effect).unwrap()).unwrap();
+        let saved = save_world(live.world_mut()).unwrap();
+        let saved: WorldScene =
+            serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+        let mut restored = bus_support::app();
+        register(restored.world_mut());
+        let counters = Arc::new(bus_support::Counters::default());
+        bus_support::register(
+            &mut restored,
+            "model",
+            bus_support::MockModel::new(&counters),
+        );
+        let count = restored.world().entities().len();
+        let loaded = load_world(&saved, restored.world_mut());
+        if completed {
+            let loaded = loaded.unwrap();
+            restored.update();
+            assert_eq!(
+                serde_json::to_value(restored.world().get::<Streamed>(loaded.effects[0]).unwrap())
+                    .unwrap(),
+                expected
+            );
+            let budgets: Vec<_> = restored
+                .world_mut()
+                .query::<&RetryBudget>()
+                .iter(restored.world())
+                .map(|budget| budget.0)
+                .collect();
+            assert_eq!(budgets, [2]);
+            assert_eq!(counters.stream_sends.load(Ordering::SeqCst), 0);
+        } else {
+            assert!(loaded.unwrap_err().message.contains("unfinished stream"));
+            assert_eq!(restored.world().entities().len(), count);
+            assert_eq!(
+                restored
+                    .world_mut()
+                    .query::<&RetryBudget>()
+                    .iter(restored.world())
+                    .count(),
+                0
+            );
+        }
+    }
 }

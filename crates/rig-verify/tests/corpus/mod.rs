@@ -1740,13 +1740,13 @@ impl rig_core::serve::Serve for Relay {
             })
             .await
             .expect("acknowledged");
-        sink.resolve(Ok(rig_core::effect::Outcome::Custom(
-            serde_json::to_value(NoteAck {
+        sink.resolve(Ok(rig_core::effect::Outcome::Custom {
+            payload: serde_json::to_value(NoteAck {
                 accepted: ack.accepted,
                 at: ack.at,
             })
             .expect("an ack serializes"),
-        )))
+        }))
         .await;
     }
 }

@@ -86,7 +86,7 @@ pub type AssemblingView = (
     &'static RunOf,
     &'static RunSeq,
     &'static Streamed,
-    &'static UsesModel,
+    Option<&'static UsesModel>,
     &'static OutputToolName,
 );
 /// The request settings `assemble` resolves, the run's over the agent's.
@@ -715,6 +715,8 @@ pub fn select(
 /// — resolve the output mode, mint the output tool's name once per run,
 /// fold, and spawn the effect `ChildOf` the turn. The run is then
 /// `AwaitingModel`.
+/// A missing selected model or non-completion binding instead terminates the
+/// run with a provider `HandlerUnavailable` report; it never silently waits.
 #[allow(
     clippy::too_many_arguments,
     reason = "one system, one pass: every parameter is a distinct world access it needs"
@@ -754,12 +756,18 @@ pub fn assemble(
     turns.sort_by_key(|(_, _, seq, _, _)| *seq);
 
     for (turn, run, _, patch, is_retrieving) in turns {
-        let Ok((RunOf(agent), _, Streamed(stream), UsesModel(model), minted)) = runs.get(run)
-        else {
+        let Ok((RunOf(agent), _, Streamed(stream), model, minted)) = runs.get(run) else {
             continue;
         };
         let agent = *agent;
-        let Ok(model_bound) = bound.get(*model) else {
+        let model_bound = model.and_then(|UsesModel(model)| bound.get(*model).ok());
+        let Some(model_bound) = model_bound else {
+            commands.entity(run).remove::<Assembling>().insert(Failed(Failure::Provider(
+                rig_core::error::ErrorReport::new(rig_core::error::ErrorKind::HandlerUnavailable,
+                    "the run has no bound completion model; its selected model or its agent's binding was removed"),
+            )));
+            commands.entity(turn).remove::<Fresh>();
+            progress.mark();
             continue;
         };
         let composes = match &model_bound.descriptor.family {
@@ -771,7 +779,23 @@ pub fn assemble(
             | FamilyDescriptor::Rerank { .. }
             | FamilyDescriptor::Memory { .. }
             | FamilyDescriptor::Retrieve { .. }
-            | FamilyDescriptor::Custom { .. } => false,
+            | FamilyDescriptor::Custom { .. } => {
+                commands
+                    .entity(run)
+                    .remove::<Assembling>()
+                    .insert(Failed(Failure::Provider(
+                        rig_core::error::ErrorReport::new(
+                            rig_core::error::ErrorKind::HandlerUnavailable,
+                            format!(
+                                "selected model `{}` does not serve completions",
+                                model_bound.key
+                            ),
+                        ),
+                    )));
+                commands.entity(turn).remove::<Fresh>();
+                progress.mark();
+                continue;
+            }
         };
 
         let mut history: Vec<(&Order, &Parts)> = children
@@ -1172,15 +1196,17 @@ pub fn release_batch(
 pub fn land_batch(
     mut commands: Commands,
     turns: Query<(Entity, &ChildOf, &Batch, &Outputs)>,
-    runs: Query<&OutputToolName, With<ResolvingTools>>,
+    runs: Query<(&OutputToolName, &RunSeq), With<ResolvingTools>>,
     children: Query<&Children>,
     tools: Query<ToolChildView>,
     mut orders: ResMut<OrderCounter>,
     mut progress: ResMut<Progress>,
 ) {
-    for (turn, turn_of, batch, outs) in &turns {
+    let mut turns: Vec<_> = turns.iter().collect();
+    turns.sort_by_key(|(_, turn_of, _, _)| runs.get(turn_of.parent()).map(|(_, seq)| *seq).ok());
+    for (turn, turn_of, batch, outs) in turns {
         let run = turn_of.parent();
-        let Ok(minted) = runs.get(run) else {
+        let Ok((minted, _)) = runs.get(run) else {
             continue;
         };
         let calls = batch_children(turn, &children, &tools);
@@ -1324,7 +1350,7 @@ pub fn materialise(
     mut commands: Commands,
     mut turns: Query<(Entity, &ChildOf, &mut Outputs, &Folded, Option<&Retry>), Unread>,
     effects: Query<(&ChildOf, &EffectOutcome, Option<&BusStreamed>), NotRetrieval>,
-    runs: Query<AwaitingView, With<AwaitingModel>>,
+    runs: Query<(AwaitingView, &RunSeq), With<AwaitingModel>>,
     children: Query<&Children>,
     adverts: Query<(&Advert, &Order)>,
     bound: Query<&Bound>,
@@ -1338,9 +1364,12 @@ pub fn materialise(
     mut orders: ResMut<OrderCounter>,
     mut progress: ResMut<Progress>,
 ) {
-    for (turn, turn_of, mut outs, Folded(mode), retry) in &mut turns {
+    let mut turns: Vec<_> = turns.iter_mut().collect();
+    turns.sort_by_key(|(_, turn_of, _, _, _)| runs.get(turn_of.parent()).map(|(_, seq)| *seq).ok());
+    for (turn, turn_of, mut outs, Folded(mode), retry) in turns {
         let run = turn_of.parent();
-        let Ok((RunOf(agent), cursor, retries, invalid_retries, minted, usage)) = runs.get(run)
+        let Ok(((RunOf(agent), cursor, retries, invalid_retries, minted, usage), _)) =
+            runs.get(run)
         else {
             continue;
         };
