@@ -116,7 +116,10 @@
           "choice": [
             {
               "type": "toolcall",
-              "id": "tool-0",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
               "function": {
                 "name": "add",
                 "arguments": {

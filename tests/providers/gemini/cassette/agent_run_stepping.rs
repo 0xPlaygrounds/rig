@@ -143,16 +143,13 @@ async fn hand_driven_multi_turn_tool_run_completes() {
                         assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
                     }
                     AgentRunStep::CallTools { calls } => {
+                        assert_eq!(calls.iter().map(|call| &call.block_id).collect::<std::collections::HashSet<_>>().len(), calls.len(), "assembly keys are unique within the buffered turn");
                         for call in &calls {
                             assert!(
                                 call.preresolved_result.is_none(),
                                 "no recovery happened, so no call should be preresolved"
                             );
-                            assert_eq!(
-                                call.block_id,
-                                rig::streaming::BlockId::wire(call.tool_call.id.as_str()),
-                                "a buffered turn's call is keyed by its durable id"
-                            );
+                            assert!(matches!(call.block_id, rig::streaming::BlockId::Minted { kind: rig::streaming::MintKind::Tool, .. }), "buffered calls use independent assembly keys");
                             executed_tools.push(call.tool_call.function.name.clone());
                         }
                         run.tool_results(execute_pending_calls(&calls))

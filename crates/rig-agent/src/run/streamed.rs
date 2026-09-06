@@ -254,7 +254,7 @@ pub struct StreamedTurn {
     /// in emission order. Carried into the run state so a resumed process
     /// keeps the IDs consumers already saw in tool-call deltas.
     #[serde(default)]
-    pub block_ids: Vec<(String, BlockId)>,
+    pub block_ids: Vec<(rig_core::message::ToolCallId, BlockId)>,
     /// Why the provider stopped generating this turn, when it reported a
     /// reason — the streamed analogue of `ModelTurn::finish_reason`, so a
     /// driver that feeds turns through `streamed_turn` records the same
@@ -1057,9 +1057,9 @@ impl StreamedTurnAssembler {
     ) -> StreamedTurn {
         let reasoning = self.drain_reasoning();
         let pending_tool_calls = std::mem::take(&mut self.pending_tool_calls);
-        let block_ids: Vec<(String, BlockId)> = pending_tool_calls
+        let block_ids: Vec<(rig_core::message::ToolCallId, BlockId)> = pending_tool_calls
             .iter()
-            .map(|(tool_call, block_id)| (tool_call.id.as_str().to_owned(), block_id.clone()))
+            .map(|(tool_call, block_id)| (tool_call.id.clone(), block_id.clone()))
             .collect();
         // An ignored call is dropped from the turn: the provider's own view
         // of the turn still carries it, and the turn is re-validated.

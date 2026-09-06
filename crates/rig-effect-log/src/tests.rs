@@ -663,3 +663,150 @@ async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earli
         );
     }
 }
+
+/// Local namespace tags survive nested log payloads and replay request matching.
+/// This is a format/handler contract test; it does not simulate provider traffic.
+#[tokio::test]
+async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
+    use rig_core::{
+        message::{ToolCall, ToolCallId, ToolFunction, ToolResultContent, UserContent},
+        serve::{OutcomeSink, Serve},
+        streaming::{BlockClose, StreamEvent, SyntheticIds, ToolCallEnd},
+    };
+    let generated = ToolCall::new(
+        ToolCallId::minted(0),
+        ToolFunction::new("add".into(), serde_json::json!({"x": 1})),
+    );
+    let explicit = ToolCall::from_wire(
+        "tool-0",
+        ToolFunction::new("add".into(), serde_json::json!({"x": 2})),
+    );
+    assert_ne!(generated.id, explicit.id);
+    let calls = [generated, explicit];
+    let choice: Vec<_> = calls
+        .iter()
+        .cloned()
+        .map(AssistantContent::ToolCall)
+        .collect();
+    // This format-level fixture needs explicit durable identities and provider
+    // metadata; allocate its assembly keys with the shared stream minter.
+    let mut ids = SyntheticIds::tool();
+    let events: Vec<_> = calls
+        .iter()
+        .map(|call| {
+            let mut end =
+                ToolCallEnd::whole(call.function.name.clone(), call.function.arguments.clone())
+                    .with_durable_id(call.id.clone());
+            if let Some(provider) = &call.provider {
+                end = end.with_tool_id(provider.call_id.clone());
+            }
+            StreamEvent::BlockEnd {
+                id: ids.mint(),
+                end: BlockClose::ToolCall(end),
+                block: Some(AssistantContent::ToolCall(call.clone())),
+            }
+        })
+        .collect();
+    let mut next = request();
+    next.chat_history.push(Message::Assistant {
+        id: None,
+        content: choice.clone(),
+    });
+    next.chat_history.push(Message::User {
+        content: calls
+            .iter()
+            .rev()
+            .map(|call| {
+                UserContent::tool_result_for(
+                    call.id.clone(),
+                    call.provider.clone(),
+                    "add",
+                    vec![ToolResultContent::text("ok")],
+                )
+            })
+            .collect(),
+    });
+    let mut records = two_records().records;
+    records[0].kind = EffectKind::Completion {
+        request: request(),
+        stream: false,
+    };
+    records[0].outcome = Ok(Outcome::Completion(CompletionResponse::new(
+        choice,
+        Usage::new(),
+        "test",
+    )));
+    records[0].events = Some(events);
+    records[1].kind = EffectKind::Completion {
+        request: next,
+        stream: false,
+    };
+    records[1].outcome = Ok(Outcome::Completion(CompletionResponse::new(
+        vec![AssistantContent::text("done")],
+        Usage::new(),
+        "test",
+    )));
+    let log = EffectLog::from_records(records);
+    let json = serde_json::to_value(&log).unwrap();
+    let restored: EffectLog = serde_json::from_value(json.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&restored).unwrap(), json);
+    for check in [RequestCheck::Payload, RequestCheck::Hash] {
+        let replay = EffectLogReplayer::for_key(&restored, &HandlerKey::from("model"))
+            .unwrap()
+            .checking(check);
+        for record in &log.records {
+            let (tx, rx) = futures::channel::oneshot::channel();
+            replay
+                .serve(record.kind.clone(), OutcomeSink::unary(record.id, tx))
+                .await;
+            assert_eq!(
+                serde_json::to_value(rx.await.unwrap()).unwrap(),
+                serde_json::to_value(&record.outcome).unwrap()
+            );
+        }
+    }
+    // Both request-check modes must reject identity collapse, even though the
+    // generated and explicit handles have the same candidate wire spelling.
+    for check in [RequestCheck::Payload, RequestCheck::Hash] {
+        let replay = EffectLogReplayer::for_key_by_id(&restored, &HandlerKey::from("model"))
+            .unwrap()
+            .checking(check);
+        let mut changed = log.records[1].kind.clone();
+        let EffectKind::Completion { request, .. } = &mut changed else {
+            unreachable!()
+        };
+        let Message::User { content } = request.chat_history.last_mut().unwrap() else {
+            unreachable!()
+        };
+        let UserContent::ToolResult(result) = content.last_mut().unwrap() else {
+            unreachable!()
+        };
+        assert!(result.call.is_generated());
+        result.call = calls[1].id.clone();
+        let (tx, rx) = futures::channel::oneshot::channel();
+        replay
+            .serve(changed, OutcomeSink::unary(log.records[1].id, tx))
+            .await;
+        let error = rx
+            .await
+            .unwrap()
+            .expect_err("collapsed namespace must diverge");
+        assert!(error.message.contains("diverg"), "{error:?}");
+    }
+    // Replace every nested identity, including events and next-turn history,
+    // with the old ambiguous spelling: the persisted payload must be refused.
+    fn erase_tags(value: &mut serde_json::Value) -> usize {
+        if value.get("origin").is_some() && value.get("id").is_some() {
+            *value = serde_json::json!("tool-0");
+            return 1;
+        }
+        match value {
+            serde_json::Value::Array(values) => values.iter_mut().map(erase_tags).sum(),
+            serde_json::Value::Object(values) => values.values_mut().map(erase_tags).sum(),
+            _ => 0,
+        }
+    }
+    let mut legacy = json;
+    assert_eq!(erase_tags(&mut legacy), 10);
+    assert!(serde_json::from_value::<EffectLog>(legacy).is_err());
+}

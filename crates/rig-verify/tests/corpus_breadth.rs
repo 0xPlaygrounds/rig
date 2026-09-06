@@ -172,8 +172,8 @@ both_interpreters! {
     openai_memory_two_runs: OPENAI_MEMORY_TWO_RUNS,
 }
 
-/// The output tool's call carries each wire's id shape: gemini mints a
-/// `tool-<n>` handle, openai carries a `call_…` correlator.
+/// The output tool retains its identity origin: Gemini without a wire ID
+/// generates a local identity; OpenAI retains an explicit provider correlator.
 #[test]
 fn the_output_tool_call_carries_the_wires_ids() {
     for (fixture, minted) in [
@@ -193,11 +193,6 @@ fn the_output_tool_call_carries_the_wires_ids() {
             other => panic!("{fixture}: a completion, not {other:?}"),
         };
         assert_eq!(call.function.name, "final_result", "{fixture}");
-        assert_eq!(
-            call.id.as_str().starts_with("tool-"),
-            minted,
-            "{fixture}: {:?}",
-            call.id
-        );
+        assert_eq!(call.id.is_generated(), minted, "{fixture}: {:?}", call.id);
     }
 }

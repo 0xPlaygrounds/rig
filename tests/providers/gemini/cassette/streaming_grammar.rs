@@ -514,8 +514,8 @@ async fn parallel_function_calls_stay_distinct() {
             // two calls, in wire order, uncorrupted.
             assert!(aggregated[0].provider.is_none());
             assert!(aggregated[1].provider.is_none());
-            assert!(!aggregated[0].id.as_str().is_empty());
-            assert!(!aggregated[1].id.as_str().is_empty());
+            assert!(aggregated[0].id.is_generated());
+            assert!(aggregated[1].id.is_generated());
             assert_ne!(
                 aggregated[0].id, aggregated[1].id,
                 "each id-less call mints a unique durable id"
@@ -874,7 +874,7 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
             );
             for call in &add_calls {
                 assert_ne!(
-                    call.id, "add",
+                    call.id.explicit(), Some("add"),
                     "the tool name must never be fabricated into the durable id"
                 );
                 assert!(
@@ -889,9 +889,9 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
                     call.function.arguments
                 );
             }
-            let distinct_ids: std::collections::HashSet<&str> = add_calls
+            let distinct_ids: std::collections::HashSet<&rig::message::ToolCallId> = add_calls
                 .iter()
-                .map(|call| call.id.as_str())
+                .map(|call| &call.id)
                 .collect();
             assert_eq!(
                 distinct_ids.len(),

@@ -790,7 +790,7 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) {
             if matches!(
                 content.first(),
                 Some(AssistantContent::ToolCall(tool_call))
-                    if tool_call.id == "tool_call_1"
+                    if tool_call.id.explicit() == Some("tool_call_1")
                         && tool_call.provider.as_ref().is_some_and(
                             |provider| provider.call_id == "call_1"
                         )
@@ -803,7 +803,7 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) {
             if matches!(
                 content.first(),
                 Some(UserContent::ToolResult(tool_result))
-                    if tool_result.call == "tool_call_1"
+                    if tool_result.call.explicit() == Some("tool_call_1")
                         && tool_result.provider.as_ref().is_some_and(
                             |provider| provider.call_id == "call_1"
                         )
@@ -835,34 +835,31 @@ fn assert_retry_transcript_ids_pair(assistant: &Message, results: &Message) {
     let Message::Assistant { content, .. } = assistant else {
         panic!("expected the assistant tool-call turn, got {assistant:?}");
     };
-    let call_ids: Vec<&str> = content
+    let call_ids: Vec<&rig_core::message::ToolCallId> = content
         .iter()
         .filter_map(|item| match item {
-            AssistantContent::ToolCall(tool_call) => Some(tool_call.id.as_str()),
+            AssistantContent::ToolCall(tool_call) => Some(&tool_call.id),
             _ => None,
         })
         .collect();
     let Message::User { content } = results else {
         panic!("expected the user retry-result turn, got {results:?}");
     };
-    let result_ids: Vec<&str> = content
+    let result_ids: Vec<&rig_core::message::ToolCallId> = content
         .iter()
         .filter_map(|item| match item {
-            UserContent::ToolResult(result) => Some(result.call.as_str()),
+            UserContent::ToolResult(result) => Some(&result.call),
             _ => None,
         })
         .collect();
-    assert!(
-        call_ids.iter().all(|id| !id.is_empty()),
-        "every tool call carries a non-empty id: {call_ids:?}"
-    );
-    let unique_calls: BTreeSet<&str> = call_ids.iter().copied().collect();
+    let unique_calls: BTreeSet<&rig_core::message::ToolCallId> = call_ids.iter().copied().collect();
     assert_eq!(
         unique_calls.len(),
         call_ids.len(),
         "tool-call ids must be unique: {call_ids:?}"
     );
-    let unique_results: BTreeSet<&str> = result_ids.iter().copied().collect();
+    let unique_results: BTreeSet<&rig_core::message::ToolCallId> =
+        result_ids.iter().copied().collect();
     assert_eq!(
         unique_results.len(),
         result_ids.len(),
@@ -1020,12 +1017,12 @@ async fn invalid_tool_call_context_uses_completed_tool_call_provider_id() {
     assert_eq!(contexts.len(), 1);
     let context = &contexts[0];
     assert_eq!(context.tool_name, "default_api");
-    assert_eq!(context.tool_call_id.as_deref(), Some("tool_call_1"));
-    // A buffered turn's call is keyed by its durable id, like its pending call.
     assert_eq!(
-        context.block_id,
-        Some(rig_core::streaming::BlockId::wire("tool_call_1"))
+        context.tool_call_id.as_ref().and_then(|id| id.explicit()),
+        Some("tool_call_1")
     );
+    // No stream block was observed for this buffered model response.
+    assert_eq!(context.block_id, None);
     assert!(!context.is_streaming);
 }
 
@@ -1235,13 +1232,13 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
             if content.iter().any(|item| matches!(
                 item,
                 AssistantContent::ToolCall(tool_call)
-                    if tool_call.id == "tool_call_1"
+                    if tool_call.id.explicit() == Some("tool_call_1")
                         && tool_call.function.name == "add"
             ))
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id == "tool_call_2"
+                        if tool_call.id.explicit() == Some("tool_call_2")
                             && tool_call.function.name == "default_api"
                 ))
     ));
@@ -1252,7 +1249,7 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call == "tool_call_1"
+                        if result.call.explicit() == Some("tool_call_1")
                             && result.provider.as_ref().is_some_and(
                                 |provider| provider.call_id == "call_1"
                             )
@@ -1265,7 +1262,7 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call == "tool_call_2"
+                        if result.call.explicit() == Some("tool_call_2")
                             && result.provider.as_ref().is_some_and(
                                 |provider| provider.call_id == "call_2"
                             )
@@ -1327,7 +1324,7 @@ async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call == "tool_call_1"
+                        if result.call.explicit() == Some("tool_call_1")
                             && result.provider.as_ref().is_some_and(
                                 |provider| provider.call_id == "call_1"
                             )
@@ -1340,7 +1337,7 @@ async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call == "tool_call_2"
+                        if result.call.explicit() == Some("tool_call_2")
                             && result.provider.as_ref().is_some_and(
                                 |provider| provider.call_id == "call_2"
                             )
@@ -1458,7 +1455,7 @@ async fn skip_under_specific_tool_choice_returns_synthetic_feedback() {
                     matches!(
                         content,
                         UserContent::ToolResult(result)
-                            if result.call == "tool_call_1"
+                            if result.call.explicit() == Some("tool_call_1")
                                 && result.content.iter().any(|content| {
                                     matches!(
                                         content,
@@ -1789,7 +1786,7 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
             if matches!(
                 content.first(),
                 Some(AssistantContent::ToolCall(tool_call))
-                    if tool_call.id == "tool_call_1"
+                    if tool_call.id.explicit() == Some("tool_call_1")
                         && tool_call.provider.as_ref().is_some_and(
                             |provider| provider.call_id == "call_1"
                         )
@@ -1801,7 +1798,7 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
             if matches!(
                 content.first(),
                 Some(UserContent::ToolResult(tool_result))
-                    if tool_result.call == "tool_call_1"
+                    if tool_result.call.explicit() == Some("tool_call_1")
                         && tool_result.provider.as_ref().is_some_and(
                             |provider| provider.call_id == "call_1"
                         )

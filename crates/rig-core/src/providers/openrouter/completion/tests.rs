@@ -1864,7 +1864,7 @@ async fn streaming_encrypted_reasoning_detail_reaches_the_choice_and_replays() {
     // The tool call is *not* where the blob lives: decoration by the
     // detail's own id could never match the call's id.
     let tool_call = streamed_tool_calls.first().expect("streamed tool call");
-    assert_eq!(tool_call.id, "call_1");
+    assert_eq!(tool_call.id.explicit(), Some("call_1"));
     assert!(tool_call.signature.is_none());
     assert!(tool_call.additional_params.is_none());
 
@@ -3352,4 +3352,59 @@ fn refusal_fallback_keeps_raw_and_normalized_text_in_step() {
     let normalized = response.normalize(PROVIDER_NAME).unwrap();
 
     assert_eq!(text_parts(&normalized), vec![raw_text]);
+}
+
+/// Synthetic transcript tests required-ID request correlation without a paid call.
+#[test]
+fn full_request_preserves_typed_tool_pairs_across_turns() {
+    use crate::providers::internal::tool_call_ids::tests::{
+        adapter_requests, assert_adapter_pairs,
+    };
+    for request in adapter_requests() {
+        let wire = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "test",
+            request: request.clone(),
+            strict_tools: false,
+        })
+        .unwrap();
+        assert_adapter_pairs(serde_json::to_value(wire).unwrap());
+    }
+}
+
+/// Synthetic collision verifies derived signature references while preserving
+/// genuine reasoning IDs; a live model cannot reliably produce this history.
+#[test]
+fn request_signature_references_follow_planned_ids_only_when_derived() {
+    use crate::providers::internal::tool_call_ids::tests::adapter_request;
+    for params in [
+        None,
+        Some(json!({"format":"anthropic"})),
+        Some(json!({"id":"reasoning-real", "format":"anthropic"})),
+    ] {
+        let mut request = adapter_request();
+        let message::Message::Assistant { content, .. } = &mut request.chat_history[1] else {
+            panic!("call message");
+        };
+        let message::AssistantContent::ToolCall(call) = &mut content[0] else {
+            panic!("call content");
+        };
+        call.signature = Some("signature-exact".into());
+        call.additional_params = params.clone();
+        let wire = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "test",
+            request,
+            strict_tools: false,
+        })
+        .unwrap();
+        let wire = serde_json::to_value(wire).unwrap();
+        let call_id = &wire["messages"][1]["tool_calls"][0]["id"];
+        let detail = &wire["messages"][1]["reasoning_details"][0];
+        let explicit = params.as_ref().and_then(|params| params.get("id"));
+        assert_eq!(&detail["id"], explicit.unwrap_or(call_id));
+        assert_eq!(detail["data"], "signature-exact");
+        assert_ne!(
+            call_id.as_str().unwrap(),
+            message::ToolCallId::minted(0).wire_hint()
+        );
+    }
 }

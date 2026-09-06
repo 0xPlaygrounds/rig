@@ -90,7 +90,10 @@
           "choice": [
             {
               "type": "toolcall",
-              "id": "tool-0",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
               "function": {
                 "name": "final_result",
                 "arguments": {
@@ -161,7 +164,10 @@
           },
           "block": {
             "type": "toolcall",
-            "id": "tool-0",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:0"
+            },
             "function": {
               "name": "final_result",
               "arguments": {

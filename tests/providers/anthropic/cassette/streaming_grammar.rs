@@ -219,7 +219,10 @@ async fn parallel_tool_use_stays_distinct() {
                 "{name} id should aggregate"
             );
             assert!(
-                streamed.id.as_str().starts_with("toolu_"),
+                streamed
+                    .id
+                    .explicit()
+                    .is_some_and(|id| id.starts_with("toolu_")),
                 "{name} should carry the wire's toolu_* id, got {}",
                 streamed.id
             );

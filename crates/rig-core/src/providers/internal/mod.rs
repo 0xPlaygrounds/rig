@@ -28,6 +28,7 @@ pub(crate) mod schema;
 pub(crate) mod sequence_law;
 pub(crate) mod sse_transport;
 pub mod tool_call_bridge;
+pub mod tool_call_ids;
 pub(crate) mod transcription;
 pub mod wire;
 
@@ -49,54 +50,68 @@ pub mod wire;
 /// name-keyed tool-result wire (rig-vertexai, rig-gemini-grpc) carry the
 /// same contract; it is not part of rig-core's stable public API.
 pub fn resolve_empty_tool_result_names(history: &mut [crate::message::Message]) {
-    use std::collections::HashMap;
+    use crate::message::{AssistantContent, Message, ToolCall, UserContent};
 
-    let mut names_by_id: HashMap<String, String> = HashMap::new();
-    for message in history.iter() {
-        let crate::message::Message::Assistant { content, .. } = message else {
-            continue;
-        };
-        for item in content.iter() {
-            let crate::message::AssistantContent::ToolCall(call) = item else {
-                continue;
-            };
-            names_by_id.insert(call.id.as_str().to_owned(), call.function.name.clone());
-            if let Some(provider) = &call.provider {
-                names_by_id.insert(provider.call_id.clone(), call.function.name.clone());
-                if let Some(item_id) = &provider.item_id {
-                    names_by_id.insert(item_id.clone(), call.function.name.clone());
+    // IDs are completion-local. Resolve only against preceding outstanding
+    // calls, never a future turn that happens to reuse the same generated key.
+    let mut pending: Vec<ToolCall> = Vec::new();
+    for message in history {
+        match message {
+            Message::Assistant { content, .. } => {
+                pending.extend(content.iter().filter_map(|item| match item {
+                    AssistantContent::ToolCall(call) => Some(call.clone()),
+                    _ => None,
+                }));
+            }
+            Message::User { content } => {
+                for item in content {
+                    let UserContent::ToolResult(result) = item else {
+                        continue;
+                    };
+                    let local: Vec<_> = pending
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, call)| call.id == result.call)
+                        .map(|(index, _)| index)
+                        .collect();
+                    let mut candidates = if local.is_empty() {
+                        // Provider aliases are their own namespace, not strings
+                        // inserted alongside generated correlation keys.
+                        pending
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, call)| match (&call.provider, &result.provider) {
+                                (Some(call), Some(result)) => {
+                                    call.call_id == result.call_id
+                                        || call.item_id.as_ref().is_some_and(|id| {
+                                            id == &result.call_id
+                                                || result.item_id.as_ref() == Some(id)
+                                        })
+                                        || result.item_id.as_ref() == Some(&call.call_id)
+                                }
+                                _ => false,
+                            })
+                            .map(|(index, _)| index)
+                            .collect()
+                    } else {
+                        local
+                    };
+                    if candidates.len() > 1 && !result.name.is_empty() {
+                        candidates.retain(|index| {
+                            pending
+                                .get(*index)
+                                .is_some_and(|call| call.function.name == result.name)
+                        });
+                    }
+                    if let [index] = candidates.as_slice() {
+                        let call = pending.remove(*index);
+                        if result.name.is_empty() {
+                            result.name = call.function.name;
+                        }
+                    }
                 }
             }
-        }
-    }
-    if names_by_id.is_empty() {
-        return;
-    }
-
-    for message in history.iter_mut() {
-        let crate::message::Message::User { content } = message else {
-            continue;
-        };
-        for item in content.iter_mut() {
-            let crate::message::UserContent::ToolResult(result) = item else {
-                continue;
-            };
-            if !result.name.is_empty() {
-                continue;
-            }
-            let resolved = names_by_id.get(result.call.as_str()).or_else(|| {
-                result.provider.as_ref().and_then(|provider| {
-                    names_by_id.get(&provider.call_id).or_else(|| {
-                        provider
-                            .item_id
-                            .as_ref()
-                            .and_then(|item_id| names_by_id.get(item_id))
-                    })
-                })
-            });
-            if let Some(name) = resolved {
-                result.name = name.clone();
-            }
+            Message::System { .. } => {}
         }
     }
 }

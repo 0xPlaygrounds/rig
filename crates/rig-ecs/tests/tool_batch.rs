@@ -97,7 +97,11 @@ fn tool_results(request: &rig_core::completion::CompletionRequest) -> Vec<(Strin
                 .iter()
                 .filter_map(|part| match part {
                     UserContent::ToolResult(result) => Some((
-                        result.call.to_string(),
+                        result
+                            .call
+                            .explicit()
+                            .expect("explicit provider test ID")
+                            .to_owned(),
                         result
                             .content
                             .iter()
@@ -525,6 +529,140 @@ fn a_system_repairs_an_invalid_call_to_a_granted_tool() {
     );
 }
 
+struct PeerAdder(Adder);
+
+impl rig_core::serve::Serve for PeerAdder {
+    type Family = rig_core::effect::family::Tool;
+
+    fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+        let mut descriptor = rig_core::serve::Serve::descriptor(&self.0);
+        if let rig_core::effect::FamilyDescriptor::Tool { name, .. } = &mut descriptor.family {
+            *name = "peer_add".into();
+        }
+        descriptor
+    }
+
+    async fn serve(&self, kind: EffectKind, sink: rig_core::serve::OutcomeSink) {
+        rig_core::serve::Serve::serve(&self.0, kind, sink).await;
+    }
+}
+
+#[test]
+fn repair_keeps_same_spelling_identity_namespaces_distinct() {
+    use rig_core::message::{ToolCall, ToolCallId, ToolFunction};
+    for generated_invalid in [false, true] {
+        let generated = ToolCall::new(
+            ToolCallId::minted(0),
+            ToolFunction {
+                name: if generated_invalid {
+                    "multiply"
+                } else {
+                    "peer_add"
+                }
+                .into(),
+                arguments: serde_json::json!({"x": 2, "y": 3}),
+            },
+        );
+        let explicit = ToolCall::from_wire(
+            generated.id.wire_hint(),
+            ToolFunction {
+                name: if generated_invalid {
+                    "peer_add"
+                } else {
+                    "multiply"
+                }
+                .into(),
+                arguments: serde_json::json!({"x": 4, "y": 5}),
+            },
+        );
+        let original = [generated, explicit];
+        let (mut app, agent, _, requests) = tooling(vec![
+            original
+                .iter()
+                .cloned()
+                .map(AssistantContent::ToolCall)
+                .collect(),
+            vec![AssistantContent::text("done")],
+        ]);
+        let peer = register(
+            &mut app,
+            "t/tool:peer_add",
+            PeerAdder(Adder::new("t/tool:peer_add")),
+        );
+        app.world_mut()
+            .spawn((Grant(peer), Order(1), ChildOf(agent)));
+        add_system(&mut app, repair_to_add.in_set(RigSet::Judge));
+        let run = spawn_run(
+            app.world_mut(),
+            agent,
+            &[],
+            "repair only the invalid call",
+            false,
+            None,
+        );
+        ended(&mut app, run, "typed repair complete");
+        assert!(app.world().get::<Failed>(run).is_none());
+        let requests = requests.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        let calls: Vec<_> = requests[1]
+            .chat_history
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant { content, .. } => Some(content),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|part| match part {
+                AssistantContent::ToolCall(call) => Some(call),
+                _ => None,
+            })
+            .collect();
+        let results: Vec<_> = requests[1]
+            .chat_history
+            .iter()
+            .filter_map(|message| match message {
+                Message::User { content } => Some(content),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|part| match part {
+                UserContent::ToolResult(result) => Some(result),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(results.len(), 2);
+        for (index, original) in original.iter().enumerate() {
+            assert_eq!(calls[index].id, original.id);
+            assert_eq!(calls[index].provider, original.provider);
+            assert_eq!(calls[index].function.arguments, original.function.arguments);
+            let expected_name = if original.function.name == "multiply" {
+                "add"
+            } else {
+                "peer_add"
+            };
+            assert_eq!(calls[index].function.name, expected_name);
+            let result = results
+                .iter()
+                .find(|result| result.call == original.id)
+                .unwrap();
+            assert_eq!(result.provider, original.provider);
+            assert_eq!(result.name, expected_name);
+            assert!(
+                matches!(result.content.as_slice(), [rig_core::message::ToolResultContent::Json { value }] if value == &serde_json::json!(if index == 0 { 5 } else { 9 }))
+            );
+        }
+        let log = app.world().resource::<EffectLogResource>().log();
+        assert_eq!(
+            log.records
+                .iter()
+                .filter(|record| matches!(record.kind, EffectKind::ToolCall { .. }))
+                .count(),
+            2
+        );
+    }
+}
+
 fn retry_with_feedback(
     invalid: Query<(Entity, &InvalidCall), Without<Resolution>>,
     mut commands: Commands,
@@ -580,4 +718,88 @@ fn a_system_retries_an_invalid_call_with_feedback() {
         "the feedback for the invalid call, the notice for its peer"
     );
     let _ = HandlerKey::from(ADD);
+}
+
+#[test]
+fn retry_feedback_targets_only_the_invalid_identity_namespace() {
+    use rig_core::message::{ToolCall, ToolCallId, ToolFunction, ToolResultContent};
+    for generated_invalid in [false, true] {
+        let generated = ToolCall::new(
+            ToolCallId::minted(0),
+            ToolFunction {
+                name: if generated_invalid { "multiply" } else { "add" }.into(),
+                arguments: serde_json::json!({"x":2,"y":3}),
+            },
+        );
+        let explicit = ToolCall::from_wire(
+            generated.id.wire_hint(),
+            ToolFunction {
+                name: if generated_invalid { "add" } else { "multiply" }.into(),
+                arguments: serde_json::json!({"x":4,"y":5}),
+            },
+        );
+        let calls = [generated, explicit];
+        let (mut app, agent, _, requests) = tooling(vec![
+            calls
+                .iter()
+                .cloned()
+                .map(AssistantContent::ToolCall)
+                .collect(),
+            vec![AssistantContent::text("done")],
+        ]);
+        app.world_mut().entity_mut(agent).insert(InvalidCalls {
+            retries: 1,
+            unhandled: rig_ecs::agent::Unhandled::Fail,
+        });
+        add_system(&mut app, retry_with_feedback.in_set(RigSet::Judge));
+        let run = spawn_run(
+            app.world_mut(),
+            agent,
+            &[],
+            "retry invalid identity",
+            false,
+            None,
+        );
+        ended(&mut app, run, "typed retry complete");
+        assert!(app.world().get::<Failed>(run).is_none());
+        let log = app.world().resource::<EffectLogResource>().log();
+        assert!(
+            log.records
+                .iter()
+                .all(|record| !matches!(record.kind, EffectKind::ToolCall { .. })),
+            "neither invalid call nor its peer executes on retry"
+        );
+        let requests = requests.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        let results: Vec<_> = requests[1]
+            .chat_history
+            .iter()
+            .filter_map(|message| match message {
+                Message::User { content } => Some(content),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|part| match part {
+                UserContent::ToolResult(result) => Some(result),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(results.len(), 2);
+        for call in &calls {
+            let result = results
+                .iter()
+                .find(|result| result.call == call.id)
+                .unwrap();
+            assert_eq!(result.provider, call.provider);
+            assert_eq!(result.name, call.function.name);
+            let expected = if call.function.name == "multiply" {
+                "there is no tool named multiply; use add"
+            } else {
+                rig_ecs::policy::text::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
+            };
+            assert!(
+                matches!(result.content.as_slice(), [ToolResultContent::Text(text)] if text.text == expected)
+            );
+        }
+    }
 }

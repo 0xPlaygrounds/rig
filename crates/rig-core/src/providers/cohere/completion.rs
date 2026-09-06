@@ -418,7 +418,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                         content: vec![UserContent::Text { text }],
                     }),
                     message::UserContent::ToolResult(tool_result) => Ok(Message::Tool {
-                        tool_call_id: tool_result.wire_call_id().to_owned(),
+                        tool_call_id: tool_result.wire_call_id().into_owned(),
                         content: tool_result
                             .content
                             .into_iter()
@@ -469,7 +469,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                             tool_calls.push(ToolCall {
                                 id: Some(match provider {
                                     Some(provider) => provider.call_id,
-                                    None => id.into_string(),
+                                    None => id.wire_hint().into_owned(),
                                 }),
                                 r#type: Some(ToolType::Function),
                                 function: Some(ToolCallFunction {
@@ -664,14 +664,27 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
 
         let mut full_history: Vec<Message> = Vec::new();
 
-        full_history.extend(
-            partial_history
-                .into_iter()
-                .map(message::Message::try_into)
-                .collect::<Result<Vec<Vec<Message>>, _>>()?
-                .into_iter()
-                .flatten(),
-        );
+        let tool_ids =
+            crate::providers::internal::tool_call_ids::ToolCallIds::new(&partial_history)
+                .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+        for (position, message) in partial_history.into_iter().enumerate() {
+            let mut messages = Vec::<Message>::try_from(message)?;
+            let slots: Vec<&mut String> = messages
+                .iter_mut()
+                .flat_map(|message| match message {
+                    Message::Assistant { tool_calls, .. } => tool_calls
+                        .iter_mut()
+                        .filter_map(|call| call.id.as_mut())
+                        .collect(),
+                    Message::Tool { tool_call_id, .. } => vec![tool_call_id],
+                    _ => Vec::new(),
+                })
+                .collect();
+            tool_ids
+                .apply(position, slots)
+                .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+            full_history.extend(messages);
+        }
 
         let tool_choice = req
             .tool_choice

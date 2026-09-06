@@ -443,7 +443,7 @@ mod grammar_guards {
         // provider did not issue, and never leaves the id empty.
         for call in &calls {
             assert!(
-                !call.id.as_str().is_empty(),
+                call.id.is_generated(),
                 "id-less calls surface a minted durable id"
             );
             assert!(call.provider.is_none(), "no provider id was issued");
@@ -717,7 +717,7 @@ mod interleaved_constant_id_reasoning {
             {
                 assert_eq!(tool_call.function.name, "get_weather");
                 assert!(
-                    !tool_call.id.as_str().is_empty(),
+                    tool_call.id.is_generated(),
                     "id-less calls surface a minted durable id"
                 );
                 assert_eq!(tool_call.provider, None, "no fabricated provider id");
@@ -853,7 +853,7 @@ mod interleaved_constant_id_reasoning {
             {
                 assert_eq!(tool_call.function.name, "get_weather");
                 assert!(
-                    !tool_call.id.as_str().is_empty(),
+                    tool_call.id.is_generated(),
                     "id-less calls surface with a minted durable id"
                 );
                 assert_eq!(

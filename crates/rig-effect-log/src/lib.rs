@@ -63,6 +63,13 @@
 //! The vocabulary is rig-core's, the runtimes are rig-agent's bus and rig-ecs; this crate is
 //! the persistence story over both, and what a host that saves and restores
 //! in-flight effects (a scene, a durable run) depends on.
+//!
+//! Tool identities nested in requests, outcomes and events retain their explicit
+//! or generated origin tags. Legacy bare-string tool identities are rejected when
+//! decoding; a checkpoint envelope's format number does not convert its nested
+//! payloads. Regenerate derived logs through their owning replay producers when
+//! intentionally migrating this encoding, keeping genuine provider recordings
+//! unchanged and reviewing the semantic differences before replacing fixtures.
 
 mod log;
 mod recorder;

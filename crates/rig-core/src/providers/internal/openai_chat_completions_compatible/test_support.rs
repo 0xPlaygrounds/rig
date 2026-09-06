@@ -70,7 +70,7 @@ pub(crate) async fn assert_zero_arg_tool_call_is_emitted(
     }
 
     assert_eq!(collected_tool_calls.len(), 1);
-    assert_eq!(collected_tool_calls[0].id, expected_id);
+    assert_eq!(collected_tool_calls[0].id.explicit(), Some(expected_id));
     assert_eq!(collected_tool_calls[0].function.name, expected_name);
     assert_eq!(
         collected_tool_calls[0].function.arguments,

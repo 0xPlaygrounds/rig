@@ -165,14 +165,14 @@ fn aws_converse_output_preserves_parallel_tool_calls_in_completion_response() {
     let AssistantContent::ToolCall(first_tool) = &choice[1] else {
         panic!("expected first tool call");
     };
-    assert_eq!(first_tool.id, "call_1");
+    assert_eq!(first_tool.id.explicit(), Some("call_1"));
     assert_eq!(first_tool.function.name, "add");
     assert_eq!(first_tool.function.arguments, json!({"x": 1, "y": 2}));
 
     let AssistantContent::ToolCall(second_tool) = &choice[2] else {
         panic!("expected second tool call");
     };
-    assert_eq!(second_tool.id, "call_2");
+    assert_eq!(second_tool.id.explicit(), Some("call_2"));
     assert_eq!(second_tool.function.name, "subtract");
     assert_eq!(second_tool.function.arguments, json!({"x": 4, "y": 3}));
 }

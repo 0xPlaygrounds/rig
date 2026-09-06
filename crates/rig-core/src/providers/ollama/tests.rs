@@ -522,7 +522,9 @@ fn wire_message_conversion_preserves_the_daemon_tool_call_id() {
     let ids: Vec<String> = content
         .iter()
         .filter_map(|item| match item {
-            crate::message::AssistantContent::ToolCall(call) => Some(call.id.as_str().to_owned()),
+            crate::message::AssistantContent::ToolCall(call) => {
+                Some(call.id.explicit().expect("provider-issued ID").to_owned())
+            }
             _ => None,
         })
         .collect();
@@ -1680,6 +1682,6 @@ fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses_and_mess
         3
     );
     assert!(calls[0].provider.is_none());
-    assert_eq!(calls[1].id.as_str(), "tool-0");
+    assert_eq!(calls[1].id.explicit(), Some("tool-0"));
     assert!(calls[2].provider.is_none());
 }

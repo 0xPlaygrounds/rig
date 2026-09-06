@@ -262,21 +262,13 @@ fn round_trip_diff_recipe_detects_every_dropped_key() {
 }
 
 #[test]
-fn legacy_call_id_key_is_ignored_not_lifted() {
-    // The pre-provider-split lift is deleted: a legacy `call_id` key is
-    // an unknown field, so it deserializes with the key ignored — `id`
-    // is read as rig's handle and `provider` stays absent. Pinned so a
-    // future change (e.g. making the key a hard error) is a decision,
-    // not an accident; the hand-migration recipe lives in MIGRATING.
+fn legacy_call_id_key_cannot_recover_an_untagged_identity() {
     let legacy = serde_json::json!({
         "id": "fc_123",
         "call_id": "call_abc",
         "function": {"name": "add", "arguments": {"x": 1}},
     });
-
-    let call: super::ToolCall = serde_json::from_value(legacy).expect("deserialize");
-    assert_eq!(call.id, "fc_123");
-    assert_eq!(call.provider, None);
+    assert!(serde_json::from_value::<super::ToolCall>(legacy).is_err());
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -327,9 +319,9 @@ fn tool_result_content_decodes_structured_and_legacy_json() {
     }
 }
 
-/// Synthetic boundary coverage reserves future explicit handles without changing metadata.
+/// Generated positions occupy a namespace disjoint from explicit handles.
 #[test]
-fn missing_call_id_normalization_reserves_explicit_handles_and_preserves_metadata() {
+fn missing_call_id_normalization_separates_namespaces_and_preserves_metadata() {
     use super::{AssistantContent, ToolCall, ToolFunction, normalize_missing_tool_call_ids};
     use serde_json::json;
     let mut content = vec![
@@ -353,11 +345,14 @@ fn missing_call_id_normalization_reserves_explicit_handles_and_preserves_metadat
         })
         .collect();
     assert_eq!(
-        calls
-            .iter()
-            .map(|call| call.id.as_str())
-            .collect::<Vec<_>>(),
-        ["tool-2", "tool-0", "tool-1", "tool-3", "tool-0"]
+        calls.iter().map(|call| call.id.clone()).collect::<Vec<_>>(),
+        [
+            super::ToolCallId::minted(0),
+            super::ToolCallId::new("tool-0").expect("explicit"),
+            super::ToolCallId::new("tool-1").expect("explicit"),
+            super::ToolCallId::minted(3),
+            super::ToolCallId::new("tool-0").expect("explicit"),
+        ]
     );
     assert!(calls[0].provider.is_none());
     assert_eq!(calls[0].signature.as_deref(), Some("signed"));
@@ -366,4 +361,42 @@ fn missing_call_id_normalization_reserves_explicit_handles_and_preserves_metadat
     let first = content.clone();
     normalize_missing_tool_call_ids(&mut content);
     assert_eq!(content, first, "normalization is stable when repeated");
+}
+
+/// Internal identity law: provider text must not impersonate a generated key.
+#[test]
+fn typed_tool_identity_separates_generated_and_explicit_keys() {
+    use super::ToolCallId;
+    let generated = ToolCallId::minted(0);
+    let explicit = ToolCallId::new("tool-0").expect("nonempty explicit ID");
+    assert_ne!(generated, explicit);
+    let keys = std::collections::HashSet::from([generated.clone(), explicit.clone()]);
+    assert_eq!(keys.len(), 2);
+    let generated_json = serde_json::to_value(&generated).expect("serialize generated ID");
+    let explicit_json = serde_json::to_value(&explicit).expect("serialize explicit ID");
+    assert_ne!(generated_json, explicit_json);
+    for id in [generated, explicit] {
+        let json = serde_json::to_string(&id).expect("serialize ID");
+        assert_eq!(
+            serde_json::from_str::<ToolCallId>(&json).expect("decode ID"),
+            id
+        );
+    }
+}
+
+/// Assembly keys with equal display text still name different generated origins.
+#[test]
+fn typed_tool_identity_preserves_the_assembly_key_discriminant() {
+    use super::ToolCallId;
+    use crate::streaming::{BlockId, SyntheticIds};
+    assert_ne!(
+        ToolCallId::from_block(&BlockId::wire("tool-0")),
+        ToolCallId::from_block(&SyntheticIds::tool().mint()),
+    );
+}
+
+/// Legacy untagged IDs cannot tell generated handles from explicit handles.
+#[test]
+fn typed_tool_identity_rejects_legacy_untagged_serialization() {
+    assert!(serde_json::from_str::<super::ToolCallId>(r#""tool-0""#).is_err());
 }

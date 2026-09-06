@@ -27,7 +27,7 @@ pub enum TranscriptError {
         /// Index of the assistant message carrying the call.
         index: usize,
         /// The unanswered call id.
-        call_id: String,
+        call_id: ToolCallId,
     },
     /// A tool result that answers no call from the immediately preceding
     /// assistant message.
@@ -38,7 +38,7 @@ pub enum TranscriptError {
         /// Index of the user message carrying the result.
         index: usize,
         /// The orphan result's call id.
-        call_id: String,
+        call_id: ToolCallId,
     },
 }
 
@@ -50,7 +50,7 @@ pub enum TranscriptError {
 /// [`tool_result_message`]) and the shape it expects back when a driver
 /// resumes a run or loads history from memory.
 pub fn validate_canonical(messages: &[Message]) -> Result<(), TranscriptError> {
-    let mut prev_assistant_calls: Option<BTreeSet<String>> = None;
+    let mut prev_assistant_calls: Option<BTreeSet<ToolCallId>> = None;
     let mut prev_was_assistant = false;
     for (index, message) in messages.iter().enumerate() {
         match message {
@@ -67,10 +67,10 @@ pub fn validate_canonical(messages: &[Message]) -> Result<(), TranscriptError> {
                         call_id,
                     });
                 }
-                let calls: BTreeSet<String> = content
+                let calls: BTreeSet<ToolCallId> = content
                     .iter()
                     .filter_map(|c| match c {
-                        AssistantContent::ToolCall(call) => Some(call.id.to_string()),
+                        AssistantContent::ToolCall(call) => Some(call.id.clone()),
                         _ => None,
                     })
                     .collect();
@@ -81,7 +81,7 @@ pub fn validate_canonical(messages: &[Message]) -> Result<(), TranscriptError> {
                 let mut pending = prev_assistant_calls.take().unwrap_or_default();
                 for item in content.iter() {
                     if let UserContent::ToolResult(result) = item {
-                        let id = result.call.to_string();
+                        let id = result.call.clone();
                         if !pending.remove(&id) {
                             return Err(TranscriptError::OrphanToolResult { index, call_id: id });
                         }

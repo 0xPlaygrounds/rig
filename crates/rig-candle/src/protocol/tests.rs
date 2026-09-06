@@ -283,7 +283,7 @@ fn renderer_rejects_conflicting_tool_result_aliases() {
 
     assert!(matches!(
         render_prompt(&request(history), ConversationProtocol::Qwen3),
-        Err(CandleError::UnmatchedToolResult { result_id }) if result_id == "internal-a"
+        Err(CandleError::UnmatchedToolResult { result_id }) if result_id == "explicit:internal-a"
     ));
 }
 
@@ -299,7 +299,7 @@ fn qwen_parser_preserves_nested_optional_arguments_and_generates_ids() {
     let Some(AssistantContent::ToolCall(call)) = parsed.items.first() else {
         panic!("expected a tool call")
     };
-    assert!(!call.id.is_empty());
+    assert!(call.id.is_generated());
     assert_eq!(
         call.function.arguments["options"]["items"],
         serde_json::json!([1, 2])
@@ -416,7 +416,7 @@ fn qwen_missing_ids_are_deterministic_distinct_and_not_provider_issued() {
         3
     );
     assert!(calls[0].provider.is_none());
-    assert_eq!(calls[1].id.as_str(), "tool-0");
+    assert_eq!(calls[1].id.explicit(), Some("tool-0"));
     assert_eq!(
         calls[1]
             .provider
@@ -426,4 +426,132 @@ fn qwen_missing_ids_are_deterministic_distinct_and_not_provider_issued() {
         "tool-0"
     );
     assert!(calls[2].provider.is_none());
+}
+
+/// Qwen has no wire-ID field, but its renderer must retain typed correlation.
+#[test]
+fn renderer_correlates_generated_and_explicit_equal_spellings() {
+    let generated = ToolCall::new(
+        ToolCallId::minted(0),
+        ToolFunction::new("calculate".into(), serde_json::json!({"value": 1})),
+    );
+    let explicit = ToolCall::from_wire(
+        "tool-0",
+        ToolFunction::new("lookup".into(), serde_json::json!({"value": 2})),
+    );
+    let history = vec![
+        Message::Assistant {
+            id: None,
+            content: vec![
+                AssistantContent::ToolCall(generated.clone()),
+                AssistantContent::ToolCall(explicit.clone()),
+            ],
+        },
+        Message::User {
+            content: vec![
+                UserContent::tool_result_for(
+                    explicit.id,
+                    explicit.provider,
+                    "lookup",
+                    vec![ToolResultContent::text("second")],
+                ),
+                UserContent::tool_result_for(
+                    generated.id,
+                    generated.provider,
+                    "calculate",
+                    vec![ToolResultContent::text("first")],
+                ),
+            ],
+        },
+    ];
+    let prompt = render_prompt(&request(history), ConversationProtocol::Qwen3)
+        .expect("distinct typed calls render");
+    assert!(
+        prompt
+            .find("<tool_response>\nsecond")
+            .expect("second response")
+            < prompt
+                .find("<tool_response>\nfirst")
+                .expect("first response")
+    );
+}
+
+/// Completion-local IDs and their provider aliases may repeat after consumption.
+#[test]
+fn renderer_allows_identity_reuse_in_completed_turns() {
+    for provider_backed in [false, true] {
+        let mut history = Vec::new();
+        for name in ["calculate", "lookup"] {
+            let function = ToolFunction::new(name.into(), serde_json::json!({"value": 1}));
+            let call = if provider_backed {
+                ToolCall::from_wire("reused-provider-id", function)
+            } else {
+                ToolCall::new(ToolCallId::minted(0), function)
+            };
+            let result = UserContent::tool_result_for(
+                call.id.clone(),
+                call.provider.clone(),
+                name,
+                vec![ToolResultContent::text(name)],
+            );
+            history.push(Message::from(call));
+            history.push(Message::User {
+                content: vec![result],
+            });
+        }
+        let prompt = render_prompt(&request(history), ConversationProtocol::Qwen3)
+            .expect("completed turns may reuse IDs");
+        assert_eq!(prompt.matches("<tool_response>\n").count(), 2);
+    }
+}
+
+/// A reused provider handle must not redirect a completed call's stale result.
+#[test]
+fn renderer_rejects_stale_results_after_provider_handle_reuse() {
+    for result_alias in [false, true] {
+        let first_id = ToolCallId::new("first-local").expect("local ID");
+        let answered_id = if result_alias {
+            ToolCallId::new("first-result-alias").expect("result alias")
+        } else {
+            first_id.clone()
+        };
+        let provider = ProviderCallId::new("reused-provider").expect("provider ID");
+        let first = ToolCall::new(
+            first_id,
+            ToolFunction::new("calculate".into(), serde_json::json!({"value": 1})),
+        )
+        .with_provider(provider.clone());
+        let second = ToolCall::new(
+            ToolCallId::new("second-local").expect("local ID"),
+            ToolFunction::new("lookup".into(), serde_json::json!({"value": 2})),
+        )
+        .with_provider(provider.clone());
+        let answer = |id, name: &str, text: &str| Message::User {
+            content: vec![UserContent::tool_result_for(
+                id,
+                Some(provider.clone()),
+                name,
+                vec![ToolResultContent::text(text)],
+            )],
+        };
+        let mut history = vec![
+            Message::from(first),
+            answer(answered_id.clone(), "calculate", "first answer"),
+            Message::from(second.clone()),
+        ];
+        history.push(answer(answered_id.clone(), "calculate", "stale answer"));
+        assert!(
+            matches!(
+                render_prompt(&request(history.clone()), ConversationProtocol::Qwen3),
+                Err(CandleError::UnmatchedToolResult { result_id }) if result_id == answered_id.to_string()
+            ),
+            "stale local reference must not consume the later call"
+        );
+        history.pop();
+        history.push(answer(second.id, "lookup", "second answer"));
+        let prompt = render_prompt(&request(history), ConversationProtocol::Qwen3)
+            .expect("legitimate provider-handle reuse remains supported");
+        assert!(prompt.contains("<tool_response>\nfirst answer\n</tool_response>"));
+        assert!(prompt.contains("<tool_response>\nsecond answer\n</tool_response>"));
+    }
 }

@@ -4,7 +4,8 @@ use std::collections::{HashMap, HashSet};
 
 use rig_core::completion::{AssistantContent, CompletionRequest, ToolDefinition};
 use rig_core::message::{
-    Message, Reasoning, ToolCall, ToolChoice, ToolFunction, ToolResultContent, UserContent,
+    Message, Reasoning, ToolCall, ToolCallId, ToolChoice, ToolFunction, ToolResultContent,
+    UserContent,
 };
 use serde::Deserialize;
 
@@ -488,11 +489,17 @@ fn render_qwen3(request: &CompletionRequest) -> Result<String, CandleError> {
         first_message = 1;
     }
 
-    let mut aliases = HashMap::<String, String>::new();
-    let mut unresolved = HashSet::<String>::new();
+    let mut aliases = HashMap::<String, ToolCallId>::new();
+    let mut unresolved = HashSet::<ToolCallId>::new();
+    let mut answered = HashSet::<ToolCallId>::new();
     let mut rendered_messages = Vec::new();
     for message in messages.iter().skip(first_message) {
-        rendered_messages.push(render_qwen_message(message, &mut aliases, &mut unresolved)?);
+        rendered_messages.push(render_qwen_message(
+            message,
+            &mut aliases,
+            &mut unresolved,
+            &mut answered,
+        )?);
     }
     if let Some(call_id) = unresolved.iter().next() {
         return Err(CandleError::MalformedToolCall(format!(
@@ -546,8 +553,9 @@ fn render_qwen3(request: &CompletionRequest) -> Result<String, CandleError> {
 
 fn render_qwen_message(
     message: &Message,
-    aliases: &mut HashMap<String, String>,
-    unresolved: &mut HashSet<String>,
+    aliases: &mut HashMap<String, ToolCallId>,
+    unresolved: &mut HashSet<ToolCallId>,
+    answered: &mut HashSet<ToolCallId>,
 ) -> Result<RenderedMessage, CandleError> {
     match message {
         Message::System { content } => Ok(RenderedMessage::Normal {
@@ -565,14 +573,13 @@ fn render_qwen_message(
                         // final answer and tool calls remain in history.
                     }
                     AssistantContent::ToolCall(call) => {
-                        let call_key = call.id.as_str().to_owned();
-                        if aliases.contains_key(&call_key) || !unresolved.insert(call_key.clone()) {
+                        let call_key = call.id.clone();
+                        if !unresolved.insert(call_key.clone()) {
                             return Err(CandleError::MalformedToolCall(format!(
                                 "duplicate historical tool-call ID `{}`",
                                 call.id
                             )));
                         }
-                        aliases.insert(call_key.clone(), call_key.clone());
                         if let Some(provider) = &call.provider {
                             let call_id = &provider.call_id;
                             if aliases
@@ -622,7 +629,15 @@ fn render_qwen_message(
                 match item {
                     UserContent::Text(value) => text.push(value.text.clone()),
                     UserContent::ToolResult(result) => {
-                        let canonical_by_id = aliases.get(result.call.as_str());
+                        let canonical_by_id = unresolved.get(&result.call);
+                        // A recycled provider handle must not redirect a stale
+                        // local result to a different outstanding occurrence.
+                        // Direct local matches still permit completed-turn reuse.
+                        if canonical_by_id.is_none() && answered.contains(&result.call) {
+                            return Err(CandleError::UnmatchedToolResult {
+                                result_id: result.call.to_string(),
+                            });
+                        }
                         let canonical_by_call_id = result
                             .provider
                             .as_ref()
@@ -632,20 +647,25 @@ fn render_qwen_message(
                             && by_id != by_call_id
                         {
                             return Err(CandleError::UnmatchedToolResult {
-                                result_id: result.call.as_str().to_owned(),
+                                result_id: result.call.to_string(),
                             });
                         }
                         let canonical = canonical_by_id
                             .or(canonical_by_call_id)
                             .cloned()
                             .ok_or_else(|| CandleError::UnmatchedToolResult {
-                                result_id: result.call.as_str().to_owned(),
+                                result_id: result.call.to_string(),
                             })?;
                         if !unresolved.remove(&canonical) {
                             return Err(CandleError::UnmatchedToolResult {
-                                result_id: result.call.as_str().to_owned(),
+                                result_id: result.call.to_string(),
                             });
                         }
+                        // Provider aliases name only outstanding occurrences.
+                        // A later completed turn may legitimately reuse its IDs.
+                        aliases.retain(|_, id| id != &canonical);
+                        answered.insert(canonical);
+                        answered.insert(result.call.clone());
                         let mut items = Vec::new();
                         for item in result.content.iter() {
                             match item {

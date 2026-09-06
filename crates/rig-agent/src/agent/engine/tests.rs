@@ -2485,7 +2485,13 @@ mod structured_tool_results {
                 crate::completion::Message::User { content } => content
                     .iter()
                     .filter_map(|c| match c {
-                        UserContent::ToolResult(result) => Some(result.call.to_string()),
+                        UserContent::ToolResult(result) => Some(
+                            result
+                                .call
+                                .explicit()
+                                .expect("explicit provider ID")
+                                .to_owned(),
+                        ),
                         _ => None,
                     })
                     .collect::<Vec<_>>(),
@@ -3566,7 +3572,13 @@ async fn run_preserves_tool_call_order_under_out_of_order_completion() {
             Message::User { content } => content
                 .iter()
                 .filter_map(|item| match item {
-                    UserContent::ToolResult(result) => Some(result.call.to_string()),
+                    UserContent::ToolResult(result) => Some(
+                        result
+                            .call
+                            .explicit()
+                            .expect("explicit provider ID")
+                            .to_owned(),
+                    ),
                     _ => None,
                 })
                 .collect::<Vec<_>>(),
@@ -3601,7 +3613,13 @@ fn tool_result_ids(messages: &[Message]) -> Vec<String> {
             Message::User { content } => content
                 .iter()
                 .filter_map(|item| match item {
-                    UserContent::ToolResult(result) => Some(result.call.to_string()),
+                    UserContent::ToolResult(result) => Some(
+                        result
+                            .call
+                            .explicit()
+                            .expect("explicit provider ID")
+                            .to_owned(),
+                    ),
                     _ => None,
                 })
                 .collect::<Vec<_>>(),
@@ -3748,7 +3766,13 @@ async fn stream_emits_tool_results_in_call_order_after_batch_settles_under_concu
                 MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                     tool_result,
                     ..
-                }) => streamed_result_ids.push(tool_result.call.into_string()),
+                }) => streamed_result_ids.push(
+                    tool_result
+                        .call
+                        .explicit()
+                        .expect("explicit provider ID")
+                        .to_owned(),
+                ),
                 MultiTurnStreamItem::FinalResponse(resp) => final_response = Some(resp),
                 _ => {}
             }
@@ -7728,7 +7752,7 @@ async fn initial_output_tool_collision_uses_a_unique_synthetic_name() {
                 if content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call == "real"
+                        if result.call.explicit() == Some("real")
                             && result.content.iter().any(|content| matches!(
                                 content,
                                 rig_core::message::ToolResultContent::Text(text)

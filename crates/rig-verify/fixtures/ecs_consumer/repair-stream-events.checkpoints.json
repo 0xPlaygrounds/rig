@@ -211,7 +211,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_list_files",
                       "arguments": {}
@@ -221,7 +224,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-1",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:1"
+                    },
                     "function": {
                       "name": "repo_validate",
                       "arguments": {
@@ -247,7 +253,10 @@
                 "content": [
                   {
                     "type": "toolresult",
-                    "call": "tool-0",
+                    "call": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "name": "repo_list_files",
                     "content": [
                       {
@@ -267,7 +276,10 @@
                   },
                   {
                     "type": "toolresult",
-                    "call": "tool-1",
+                    "call": {
+                      "origin": "generated",
+                      "id": "minted:tool:1"
+                    },
                     "name": "repo_validate",
                     "content": [
                       {
@@ -352,7 +364,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_read_file",
                       "arguments": {
@@ -364,7 +379,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-1",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:1"
+                    },
                     "function": {
                       "name": "repo_read_file",
                       "arguments": {
@@ -376,7 +394,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-2",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:2"
+                    },
                     "function": {
                       "name": "repo_read_file",
                       "arguments": {
@@ -402,7 +423,10 @@
                 "content": [
                   {
                     "type": "toolresult",
-                    "call": "tool-0",
+                    "call": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "name": "repo_read_file",
                     "content": [
                       {
@@ -417,7 +441,10 @@
                   },
                   {
                     "type": "toolresult",
-                    "call": "tool-1",
+                    "call": {
+                      "origin": "generated",
+                      "id": "minted:tool:1"
+                    },
                     "name": "repo_read_file",
                     "content": [
                       {
@@ -432,7 +459,10 @@
                   },
                   {
                     "type": "toolresult",
-                    "call": "tool-2",
+                    "call": {
+                      "origin": "generated",
+                      "id": "minted:tool:2"
+                    },
                     "name": "repo_read_file",
                     "content": [
                       {
@@ -466,7 +496,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_propose_patch",
                       "arguments": {
@@ -494,7 +527,10 @@
                 "content": [
                   {
                     "type": "toolresult",
-                    "call": "tool-0",
+                    "call": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "name": "repo_propose_patch",
                     "content": [
                       {
@@ -553,7 +589,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_apply_patch",
                       "arguments": {
@@ -579,7 +618,10 @@
                 "content": [
                   {
                     "type": "toolresult",
-                    "call": "tool-0",
+                    "call": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "name": "repo_apply_patch",
                     "content": [
                       {
@@ -620,7 +662,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_validate",
                       "arguments": {
@@ -646,7 +691,10 @@
                 "content": [
                   {
                     "type": "toolresult",
-                    "call": "tool-0",
+                    "call": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "name": "repo_validate",
                     "content": [
                       {
@@ -727,7 +775,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_propose_patch",
                       "arguments": {
@@ -755,7 +806,10 @@
                 "content": [
                   {
                     "type": "toolresult",
-                    "call": "tool-0",
+                    "call": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "name": "repo_propose_patch",
                     "content": [
                       {
@@ -814,7 +868,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_apply_patch",
                       "arguments": {
@@ -842,7 +899,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_list_files",
                       "arguments": {}
@@ -852,7 +912,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-1",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:1"
+                    },
                     "function": {
                       "name": "repo_validate",
                       "arguments": {
@@ -884,7 +947,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_read_file",
                       "arguments": {
@@ -896,7 +962,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-1",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:1"
+                    },
                     "function": {
                       "name": "repo_read_file",
                       "arguments": {
@@ -908,7 +977,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-2",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:2"
+                    },
                     "function": {
                       "name": "repo_read_file",
                       "arguments": {
@@ -940,7 +1012,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_propose_patch",
                       "arguments": {
@@ -970,7 +1045,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_apply_patch",
                       "arguments": {
@@ -998,7 +1076,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_validate",
                       "arguments": {
@@ -1026,7 +1107,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_propose_patch",
                       "arguments": {
@@ -1056,7 +1140,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_apply_patch",
                       "arguments": {
@@ -2052,7 +2139,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_list_files",
                       "arguments": {}
@@ -2062,7 +2152,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-1",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:1"
+                    },
                     "function": {
                       "name": "repo_validate",
                       "arguments": {
@@ -2178,7 +2271,10 @@
                     },
                     {
                       "type": "toolcall",
-                      "id": "tool-0",
+                      "id": {
+                        "origin": "generated",
+                        "id": "minted:tool:0"
+                      },
                       "function": {
                         "name": "repo_list_files",
                         "arguments": {}
@@ -2188,7 +2284,10 @@
                     },
                     {
                       "type": "toolcall",
-                      "id": "tool-1",
+                      "id": {
+                        "origin": "generated",
+                        "id": "minted:tool:1"
+                      },
                       "function": {
                         "name": "repo_validate",
                         "arguments": {
@@ -2367,7 +2466,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_list_files",
                           "arguments": {}
@@ -2377,7 +2479,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-1",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "function": {
                           "name": "repo_validate",
                           "arguments": {
@@ -2394,7 +2499,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_list_files",
                         "content": [
                           {
@@ -2414,7 +2522,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "tool-1",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "name": "repo_validate",
                         "content": [
                           {
@@ -2612,7 +2723,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_read_file",
                       "arguments": {
@@ -2624,7 +2738,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-1",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:1"
+                    },
                     "function": {
                       "name": "repo_read_file",
                       "arguments": {
@@ -2636,7 +2753,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-2",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:2"
+                    },
                     "function": {
                       "name": "repo_read_file",
                       "arguments": {
@@ -2773,7 +2893,10 @@
                     },
                     {
                       "type": "toolcall",
-                      "id": "tool-0",
+                      "id": {
+                        "origin": "generated",
+                        "id": "minted:tool:0"
+                      },
                       "function": {
                         "name": "repo_read_file",
                         "arguments": {
@@ -2785,7 +2908,10 @@
                     },
                     {
                       "type": "toolcall",
-                      "id": "tool-1",
+                      "id": {
+                        "origin": "generated",
+                        "id": "minted:tool:1"
+                      },
                       "function": {
                         "name": "repo_read_file",
                         "arguments": {
@@ -2797,7 +2923,10 @@
                     },
                     {
                       "type": "toolcall",
-                      "id": "tool-2",
+                      "id": {
+                        "origin": "generated",
+                        "id": "minted:tool:2"
+                      },
                       "function": {
                         "name": "repo_read_file",
                         "arguments": {
@@ -2951,7 +3080,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_list_files",
                           "arguments": {}
@@ -2961,7 +3093,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-1",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "function": {
                           "name": "repo_validate",
                           "arguments": {
@@ -2978,7 +3113,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_list_files",
                         "content": [
                           {
@@ -2998,7 +3136,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "tool-1",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "name": "repo_validate",
                         "content": [
                           {
@@ -3074,7 +3215,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_read_file",
                           "arguments": {
@@ -3086,7 +3230,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-1",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "function": {
                           "name": "repo_read_file",
                           "arguments": {
@@ -3098,7 +3245,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-2",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:2"
+                        },
                         "function": {
                           "name": "repo_read_file",
                           "arguments": {
@@ -3115,7 +3265,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_read_file",
                         "content": [
                           {
@@ -3130,7 +3283,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "tool-1",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "name": "repo_read_file",
                         "content": [
                           {
@@ -3145,7 +3301,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "tool-2",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:2"
+                        },
                         "name": "repo_read_file",
                         "content": [
                           {
@@ -3292,7 +3451,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_propose_patch",
                       "arguments": {
@@ -3395,7 +3557,10 @@
                     },
                     {
                       "type": "toolcall",
-                      "id": "tool-0",
+                      "id": {
+                        "origin": "generated",
+                        "id": "minted:tool:0"
+                      },
                       "function": {
                         "name": "repo_propose_patch",
                         "arguments": {
@@ -3518,7 +3683,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_list_files",
                           "arguments": {}
@@ -3528,7 +3696,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-1",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "function": {
                           "name": "repo_validate",
                           "arguments": {
@@ -3545,7 +3716,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_list_files",
                         "content": [
                           {
@@ -3565,7 +3739,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "tool-1",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "name": "repo_validate",
                         "content": [
                           {
@@ -3641,7 +3818,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_read_file",
                           "arguments": {
@@ -3653,7 +3833,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-1",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "function": {
                           "name": "repo_read_file",
                           "arguments": {
@@ -3665,7 +3848,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-2",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:2"
+                        },
                         "function": {
                           "name": "repo_read_file",
                           "arguments": {
@@ -3682,7 +3868,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_read_file",
                         "content": [
                           {
@@ -3697,7 +3886,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "tool-1",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "name": "repo_read_file",
                         "content": [
                           {
@@ -3712,7 +3904,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "tool-2",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:2"
+                        },
                         "name": "repo_read_file",
                         "content": [
                           {
@@ -3737,7 +3932,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_propose_patch",
                           "arguments": {
@@ -3756,7 +3954,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_propose_patch",
                         "content": [
                           {
@@ -3928,7 +4129,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_apply_patch",
                       "arguments": {
@@ -4001,7 +4205,10 @@
                   "choice": [
                     {
                       "type": "toolcall",
-                      "id": "tool-0",
+                      "id": {
+                        "origin": "generated",
+                        "id": "minted:tool:0"
+                      },
                       "function": {
                         "name": "repo_apply_patch",
                         "arguments": {
@@ -4114,7 +4321,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_list_files",
                           "arguments": {}
@@ -4124,7 +4334,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-1",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "function": {
                           "name": "repo_validate",
                           "arguments": {
@@ -4141,7 +4354,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_list_files",
                         "content": [
                           {
@@ -4161,7 +4377,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "tool-1",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "name": "repo_validate",
                         "content": [
                           {
@@ -4237,7 +4456,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_read_file",
                           "arguments": {
@@ -4249,7 +4471,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-1",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "function": {
                           "name": "repo_read_file",
                           "arguments": {
@@ -4261,7 +4486,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-2",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:2"
+                        },
                         "function": {
                           "name": "repo_read_file",
                           "arguments": {
@@ -4278,7 +4506,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_read_file",
                         "content": [
                           {
@@ -4293,7 +4524,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "tool-1",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "name": "repo_read_file",
                         "content": [
                           {
@@ -4308,7 +4542,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "tool-2",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:2"
+                        },
                         "name": "repo_read_file",
                         "content": [
                           {
@@ -4333,7 +4570,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_propose_patch",
                           "arguments": {
@@ -4352,7 +4592,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_propose_patch",
                         "content": [
                           {
@@ -4402,7 +4645,10 @@
                     "content": [
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_apply_patch",
                           "arguments": {
@@ -4419,7 +4665,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_apply_patch",
                         "content": [
                           {
@@ -4573,7 +4822,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_validate",
                       "arguments": {
@@ -4646,7 +4898,10 @@
                   "choice": [
                     {
                       "type": "toolcall",
-                      "id": "tool-0",
+                      "id": {
+                        "origin": "generated",
+                        "id": "minted:tool:0"
+                      },
                       "function": {
                         "name": "repo_validate",
                         "arguments": {
@@ -4789,7 +5044,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_list_files",
                           "arguments": {}
@@ -4799,7 +5057,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-1",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "function": {
                           "name": "repo_validate",
                           "arguments": {
@@ -4816,7 +5077,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_list_files",
                         "content": [
                           {
@@ -4836,7 +5100,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "tool-1",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "name": "repo_validate",
                         "content": [
                           {
@@ -4912,7 +5179,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_read_file",
                           "arguments": {
@@ -4924,7 +5194,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-1",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "function": {
                           "name": "repo_read_file",
                           "arguments": {
@@ -4936,7 +5209,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-2",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:2"
+                        },
                         "function": {
                           "name": "repo_read_file",
                           "arguments": {
@@ -4953,7 +5229,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_read_file",
                         "content": [
                           {
@@ -4968,7 +5247,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "tool-1",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "name": "repo_read_file",
                         "content": [
                           {
@@ -4983,7 +5265,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "tool-2",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:2"
+                        },
                         "name": "repo_read_file",
                         "content": [
                           {
@@ -5008,7 +5293,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_propose_patch",
                           "arguments": {
@@ -5027,7 +5315,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_propose_patch",
                         "content": [
                           {
@@ -5077,7 +5368,10 @@
                     "content": [
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_apply_patch",
                           "arguments": {
@@ -5094,7 +5388,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_apply_patch",
                         "content": [
                           {
@@ -5126,7 +5423,10 @@
                     "content": [
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_validate",
                           "arguments": {
@@ -5143,7 +5443,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_validate",
                         "content": [
                           {
@@ -5337,7 +5640,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_propose_patch",
                       "arguments": {
@@ -5414,7 +5720,10 @@
                   "choice": [
                     {
                       "type": "toolcall",
-                      "id": "tool-0",
+                      "id": {
+                        "origin": "generated",
+                        "id": "minted:tool:0"
+                      },
                       "function": {
                         "name": "repo_propose_patch",
                         "arguments": {
@@ -5537,7 +5846,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_list_files",
                           "arguments": {}
@@ -5547,7 +5859,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-1",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "function": {
                           "name": "repo_validate",
                           "arguments": {
@@ -5564,7 +5879,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_list_files",
                         "content": [
                           {
@@ -5584,7 +5902,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "tool-1",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "name": "repo_validate",
                         "content": [
                           {
@@ -5660,7 +5981,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_read_file",
                           "arguments": {
@@ -5672,7 +5996,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-1",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "function": {
                           "name": "repo_read_file",
                           "arguments": {
@@ -5684,7 +6011,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-2",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:2"
+                        },
                         "function": {
                           "name": "repo_read_file",
                           "arguments": {
@@ -5701,7 +6031,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_read_file",
                         "content": [
                           {
@@ -5716,7 +6049,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "tool-1",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:1"
+                        },
                         "name": "repo_read_file",
                         "content": [
                           {
@@ -5731,7 +6067,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "tool-2",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:2"
+                        },
                         "name": "repo_read_file",
                         "content": [
                           {
@@ -5756,7 +6095,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_propose_patch",
                           "arguments": {
@@ -5775,7 +6117,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_propose_patch",
                         "content": [
                           {
@@ -5825,7 +6170,10 @@
                     "content": [
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_apply_patch",
                           "arguments": {
@@ -5842,7 +6190,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_apply_patch",
                         "content": [
                           {
@@ -5874,7 +6225,10 @@
                     "content": [
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_validate",
                           "arguments": {
@@ -5891,7 +6245,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_validate",
                         "content": [
                           {
@@ -5963,7 +6320,10 @@
                     "content": [
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "repo_propose_patch",
                           "arguments": {
@@ -5982,7 +6342,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "repo_propose_patch",
                         "content": [
                           {
@@ -6154,7 +6517,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_apply_patch",
                       "arguments": {
@@ -6227,7 +6593,10 @@
                   "choice": [
                     {
                       "type": "toolcall",
-                      "id": "tool-0",
+                      "id": {
+                        "origin": "generated",
+                        "id": "minted:tool:0"
+                      },
                       "function": {
                         "name": "repo_apply_patch",
                         "arguments": {
@@ -6316,7 +6685,10 @@
           1,
           {
             "index": 0,
-            "id": "tool-0",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:0"
+            },
             "provider": null,
             "name": "repo_list_files"
           }
@@ -6325,7 +6697,10 @@
           2,
           {
             "index": 1,
-            "id": "tool-1",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:1"
+            },
             "provider": null,
             "name": "repo_validate"
           }
@@ -6334,7 +6709,10 @@
           4,
           {
             "index": 0,
-            "id": "tool-0",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:0"
+            },
             "provider": null,
             "name": "repo_read_file"
           }
@@ -6343,7 +6721,10 @@
           5,
           {
             "index": 1,
-            "id": "tool-1",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:1"
+            },
             "provider": null,
             "name": "repo_read_file"
           }
@@ -6352,7 +6733,10 @@
           6,
           {
             "index": 2,
-            "id": "tool-2",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:2"
+            },
             "provider": null,
             "name": "repo_read_file"
           }
@@ -6361,7 +6745,10 @@
           8,
           {
             "index": 0,
-            "id": "tool-0",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:0"
+            },
             "provider": null,
             "name": "repo_propose_patch"
           }
@@ -6370,7 +6757,10 @@
           10,
           {
             "index": 0,
-            "id": "tool-0",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:0"
+            },
             "provider": null,
             "name": "repo_apply_patch"
           }
@@ -6379,7 +6769,10 @@
           12,
           {
             "index": 0,
-            "id": "tool-0",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:0"
+            },
             "provider": null,
             "name": "repo_validate"
           }
@@ -6388,7 +6781,10 @@
           14,
           {
             "index": 0,
-            "id": "tool-0",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:0"
+            },
             "provider": null,
             "name": "repo_propose_patch"
           }
@@ -6397,7 +6793,10 @@
           16,
           {
             "index": 0,
-            "id": "tool-0",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:0"
+            },
             "provider": null,
             "name": "repo_apply_patch"
           }
@@ -6497,7 +6896,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_list_files",
                       "arguments": {}
@@ -6507,7 +6909,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-1",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:1"
+                    },
                     "function": {
                       "name": "repo_validate",
                       "arguments": {
@@ -6746,7 +7151,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_read_file",
                       "arguments": {
@@ -6758,7 +7166,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-1",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:1"
+                    },
                     "function": {
                       "name": "repo_read_file",
                       "arguments": {
@@ -6770,7 +7181,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-2",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:2"
+                    },
                     "function": {
                       "name": "repo_read_file",
                       "arguments": {
@@ -6937,7 +7351,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_propose_patch",
                       "arguments": {
@@ -7057,7 +7474,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_apply_patch",
                       "arguments": {
@@ -7182,7 +7602,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_validate",
                       "arguments": {
@@ -7331,7 +7754,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_propose_patch",
                       "arguments": {
@@ -7451,7 +7877,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "repo_apply_patch",
                       "arguments": {

@@ -120,7 +120,10 @@
           "choice": [
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_1",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_1"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_1"
               },
@@ -234,7 +237,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_1",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -255,7 +261,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_1",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },

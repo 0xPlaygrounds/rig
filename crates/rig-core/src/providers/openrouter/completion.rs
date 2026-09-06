@@ -1130,7 +1130,7 @@ fn user_contents_to_messages(
                 // assistant echo (shared From<message::ToolCall>);
                 // provider-less results fall back to rig's minted
                 // handle — never empty.
-                let tool_call_id = tool_result.wire_call_id().to_owned();
+                let tool_call_id = tool_result.wire_call_id().into_owned();
                 let content = tool_result
                     .content
                     .into_iter()
@@ -1196,15 +1196,36 @@ enum ToolCallAdditionalParams {
 fn assistant_contents_to_messages(
     value: Vec<message::AssistantContent>,
 ) -> Result<Vec<Message>, message::MessageError> {
+    assistant_contents_with_tool_ids(value, None)
+}
+
+fn assistant_contents_with_tool_ids(
+    value: Vec<message::AssistantContent>,
+    plan: Option<(
+        usize,
+        &crate::providers::internal::tool_call_ids::ToolCallIds,
+    )>,
+) -> Result<Vec<Message>, message::MessageError> {
     let mut text_content = Vec::new();
     let mut tool_calls = Vec::new();
     let mut reasoning = None;
     let mut reasoning_details = Vec::new();
 
-    for content in value.into_iter() {
+    for (position, content) in value.into_iter().enumerate() {
         match content {
             message::AssistantContent::Text(text) => text_content.push(text),
             message::AssistantContent::ToolCall(tool_call) => {
+                let wire_id = match plan {
+                    Some((message, ids)) => ids
+                        .get(message, position)
+                        .ok_or_else(|| {
+                            message::MessageError::ConversionError(
+                                "missing planned OpenRouter tool identity".into(),
+                            )
+                        })?
+                        .to_owned(),
+                    None => tool_call.wire_call_id().into_owned(),
+                };
                 // We usually want to provide back the reasoning to OpenRouter since some
                 // providers require it.
                 // 1. Full reasoning details passed back the user
@@ -1223,14 +1244,7 @@ fn assistant_contents_to_messages(
                             // Correlate with the id the wire tool call will
                             // carry (provider call id when present, else
                             // rig's handle).
-                            let id = id
-                                .or_else(|| {
-                                    tool_call
-                                        .provider
-                                        .as_ref()
-                                        .map(|provider| provider.call_id.clone())
-                                })
-                                .unwrap_or_else(|| tool_call.id.as_str().to_owned());
+                            let id = id.unwrap_or_else(|| wire_id.clone());
                             if let Some(signature) = &tool_call.signature {
                                 reasoning_details.push(ReasoningDetails::Encrypted {
                                     id: Some(id),
@@ -1243,16 +1257,15 @@ fn assistant_contents_to_messages(
                     }
                 } else if let Some(signature) = &tool_call.signature {
                     reasoning_details.push(ReasoningDetails::Encrypted {
-                        id: Some(tool_call.provider.as_ref().map_or_else(
-                            || tool_call.id.as_str().to_owned(),
-                            |provider| provider.call_id.clone(),
-                        )),
+                        id: Some(wire_id.clone()),
                         format: None,
                         index: None,
                         data: signature.clone(),
                     });
                 }
-                tool_calls.push(tool_call.into());
+                let mut call = openai::completion::ToolCall::from(tool_call);
+                call.id = wire_id;
+                tool_calls.push(call);
             }
             message::AssistantContent::Reasoning(r) => {
                 if r.content.is_empty() {
@@ -1464,15 +1477,30 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
 
         let mut full_history: Vec<Message> = vec![];
 
-        let chat_history: Vec<Message> = chat_history
-            .into_iter()
-            .map(messages_from_rig_message)
-            .collect::<Result<Vec<Vec<Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        full_history.extend(chat_history);
+        let tool_ids = crate::providers::internal::tool_call_ids::ToolCallIds::new(&chat_history)
+            .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+        for (position, message) in chat_history.into_iter().enumerate() {
+            let mut messages = match message {
+                message::Message::Assistant { content, .. } => {
+                    assistant_contents_with_tool_ids(content, Some((position, &tool_ids)))?
+                }
+                message => messages_from_rig_message(message)?,
+            };
+            let slots: Vec<&mut String> = messages
+                .iter_mut()
+                .flat_map(|message| match message {
+                    Message::Assistant { tool_calls, .. } => {
+                        tool_calls.iter_mut().map(|call| &mut call.id).collect()
+                    }
+                    Message::ToolResult { tool_call_id, .. } => vec![tool_call_id],
+                    _ => Vec::new(),
+                })
+                .collect();
+            tool_ids
+                .apply(position, slots)
+                .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+            full_history.extend(messages);
+        }
 
         let tool_choice = req
             .tool_choice

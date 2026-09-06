@@ -2104,3 +2104,94 @@ mod raw_capture {
         assert_eq!(normalized.provider_request_id.as_deref(), Some(REQUEST_ID));
     }
 }
+/// Synthetic history exercises a collision and result order that cannot be
+/// reliably elicited from a live provider; assertions inspect the request wire.
+#[test]
+fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
+    use crate::message::{AssistantContent, ToolCallId, ToolFunction, UserContent};
+    let generated = message::ToolCall {
+        id: ToolCallId::minted(0),
+        provider: None,
+        function: ToolFunction {
+            name: "test".into(),
+            arguments: serde_json::json!({}),
+        },
+        signature: None,
+        additional_params: None,
+    };
+    let hint = generated.id.wire_hint().into_owned();
+    let real = message::ToolCall::from_wire(&hint, generated.function.clone());
+    let history = vec![
+        message::Message::Assistant {
+            id: None,
+            content: vec![
+                AssistantContent::ToolCall(generated.clone()),
+                AssistantContent::ToolCall(real.clone()),
+            ],
+        },
+        message::Message::User {
+            content: vec![
+                UserContent::tool_result_for(
+                    real.id.clone(),
+                    real.provider.clone(),
+                    "test",
+                    vec![],
+                ),
+                UserContent::text("between results"),
+                UserContent::tool_result_for(
+                    generated.id.clone(),
+                    generated.provider.clone(),
+                    "test",
+                    vec![],
+                ),
+            ],
+        },
+        message::Message::Assistant {
+            id: None,
+            content: vec![AssistantContent::ToolCall(generated.clone())],
+        },
+        message::Message::User {
+            content: vec![UserContent::tool_result_for(
+                generated.id.clone(),
+                generated.provider.clone(),
+                "test",
+                vec![],
+            )],
+        },
+    ];
+    let request = CoreCompletionRequest {
+        model: None,
+        chat_history: history,
+        documents: vec![],
+        tools: vec![],
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+        additional_params: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    };
+    let wire = CompletionRequest::try_from(OpenAIRequestParams {
+        model: "test".into(),
+        request,
+        strict_tools: false,
+        tool_result_array_content: true,
+        supports_response_format: true,
+        supports_image_tool_results: false,
+        supports_tools: true,
+    })
+    .unwrap();
+    let wire = serde_json::to_value(wire).unwrap();
+    let messages = wire["messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 6);
+    let first = &messages[0]["tool_calls"][0]["id"];
+    let genuine = &messages[0]["tool_calls"][1]["id"];
+    let later = &messages[4]["tool_calls"][0]["id"];
+    assert_eq!(genuine, &serde_json::json!(hint));
+    assert_ne!(first, genuine);
+    assert_ne!(later, first);
+    assert_ne!(later, genuine);
+    assert_eq!(&messages[1]["tool_call_id"], genuine);
+    assert_eq!(&messages[3]["tool_call_id"], first);
+    assert_eq!(&messages[5]["tool_call_id"], later);
+}

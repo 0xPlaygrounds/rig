@@ -700,7 +700,7 @@ impl BlockAccumulator {
             crate::message::ProviderCallId::from_optional_wire(end.call_id, wire_tool_id);
         // No provider id: the block that assembled the call names it, so a
         // re-run of the same wire mints the same handle.
-        let durable_id = end.durable_id.unwrap_or_else(|| {
+        let durable_id = end.durable_id.map(|id| *id).unwrap_or_else(|| {
             crate::message::ToolCallId::for_provider_or(
                 provider.as_ref(),
                 crate::message::ToolCallId::from_block(&published),

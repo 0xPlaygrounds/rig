@@ -462,7 +462,10 @@
             },
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_1",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_1"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_1"
               },
@@ -475,7 +478,10 @@
             },
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_2",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_2"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_2"
               },
@@ -695,7 +701,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_1",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -708,7 +717,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_2",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_2"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_2"
                   },
@@ -728,7 +740,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_1",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -751,7 +766,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_2",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_2"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_2"
                   },
@@ -945,7 +963,10 @@
           "choice": [
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_3",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_3"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_3"
               },
@@ -960,7 +981,10 @@
             },
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_4",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_4"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_4"
               },
@@ -975,7 +999,10 @@
             },
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_5",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_5"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_5"
               },
@@ -1174,7 +1201,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_1",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -1187,7 +1217,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_2",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_2"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_2"
                   },
@@ -1207,7 +1240,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_1",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -1230,7 +1266,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_2",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_2"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_2"
                   },
@@ -1305,7 +1344,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_3",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_3"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_3"
                   },
@@ -1320,7 +1362,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_4",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_4"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_4"
                   },
@@ -1335,7 +1380,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_5",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_5"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_5"
                   },
@@ -1355,7 +1403,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_3",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_3"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_3"
                   },
@@ -1373,7 +1424,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_4",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_4"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_4"
                   },
@@ -1391,7 +1445,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_5",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_5"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_5"
                   },
@@ -1551,7 +1608,10 @@
             },
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_6",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_6"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_6"
               },
@@ -1718,7 +1778,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_1",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -1731,7 +1794,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_2",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_2"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_2"
                   },
@@ -1751,7 +1817,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_1",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -1774,7 +1843,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_2",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_2"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_2"
                   },
@@ -1849,7 +1921,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_3",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_3"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_3"
                   },
@@ -1864,7 +1939,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_4",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_4"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_4"
                   },
@@ -1879,7 +1957,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_5",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_5"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_5"
                   },
@@ -1899,7 +1980,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_3",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_3"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_3"
                   },
@@ -1917,7 +2001,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_4",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_4"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_4"
                   },
@@ -1935,7 +2022,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_5",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_5"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_5"
                   },
@@ -1976,7 +2066,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_6",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_6"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_6"
                   },
@@ -1998,7 +2091,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_6",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_6"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_6"
                   },
@@ -2170,7 +2266,10 @@
           "choice": [
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_7",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_7"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_7"
               },
@@ -2313,7 +2412,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_1",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -2326,7 +2428,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_2",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_2"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_2"
                   },
@@ -2346,7 +2451,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_1",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -2369,7 +2477,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_2",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_2"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_2"
                   },
@@ -2444,7 +2555,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_3",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_3"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_3"
                   },
@@ -2459,7 +2573,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_4",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_4"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_4"
                   },
@@ -2474,7 +2591,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_5",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_5"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_5"
                   },
@@ -2494,7 +2614,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_3",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_3"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_3"
                   },
@@ -2512,7 +2635,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_4",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_4"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_4"
                   },
@@ -2530,7 +2656,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_5",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_5"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_5"
                   },
@@ -2571,7 +2700,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_6",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_6"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_6"
                   },
@@ -2593,7 +2725,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_6",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_6"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_6"
                   },
@@ -2646,7 +2781,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_7",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_7"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_7"
                   },
@@ -2666,7 +2804,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_7",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_7"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_7"
                   },
@@ -2820,7 +2961,10 @@
           "choice": [
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_8",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_8"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_8"
               },
@@ -2996,7 +3140,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_1",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -3009,7 +3156,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_2",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_2"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_2"
                   },
@@ -3029,7 +3179,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_1",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -3052,7 +3205,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_2",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_2"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_2"
                   },
@@ -3127,7 +3283,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_3",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_3"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_3"
                   },
@@ -3142,7 +3301,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_4",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_4"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_4"
                   },
@@ -3157,7 +3319,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_5",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_5"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_5"
                   },
@@ -3177,7 +3342,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_3",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_3"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_3"
                   },
@@ -3195,7 +3363,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_4",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_4"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_4"
                   },
@@ -3213,7 +3384,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_5",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_5"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_5"
                   },
@@ -3254,7 +3428,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_6",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_6"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_6"
                   },
@@ -3276,7 +3453,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_6",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_6"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_6"
                   },
@@ -3329,7 +3509,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_7",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_7"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_7"
                   },
@@ -3349,7 +3532,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_7",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_7"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_7"
                   },
@@ -3384,7 +3570,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_8",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_8"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_8"
                   },
@@ -3404,7 +3593,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_8",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_8"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_8"
                   },
@@ -3602,7 +3794,10 @@
             },
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_9",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_9"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_9"
               },
@@ -3764,7 +3959,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_1",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -3777,7 +3975,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_2",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_2"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_2"
                   },
@@ -3797,7 +3998,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_1",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -3820,7 +4024,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_2",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_2"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_2"
                   },
@@ -3895,7 +4102,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_3",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_3"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_3"
                   },
@@ -3910,7 +4120,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_4",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_4"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_4"
                   },
@@ -3925,7 +4138,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_5",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_5"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_5"
                   },
@@ -3945,7 +4161,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_3",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_3"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_3"
                   },
@@ -3963,7 +4182,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_4",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_4"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_4"
                   },
@@ -3981,7 +4203,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_5",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_5"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_5"
                   },
@@ -4022,7 +4247,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_6",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_6"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_6"
                   },
@@ -4044,7 +4272,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_6",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_6"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_6"
                   },
@@ -4097,7 +4328,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_7",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_7"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_7"
                   },
@@ -4117,7 +4351,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_7",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_7"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_7"
                   },
@@ -4152,7 +4389,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_8",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_8"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_8"
                   },
@@ -4172,7 +4412,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_8",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_8"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_8"
                   },
@@ -4251,7 +4494,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_9",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_9"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_9"
                   },
@@ -4273,7 +4519,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_9",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_9"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_9"
                   },
@@ -4445,7 +4694,10 @@
           "choice": [
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_10",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_10"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_10"
               },
@@ -4588,7 +4840,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_1",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -4601,7 +4856,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_2",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_2"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_2"
                   },
@@ -4621,7 +4879,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_1",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -4644,7 +4905,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_2",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_2"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_2"
                   },
@@ -4719,7 +4983,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_3",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_3"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_3"
                   },
@@ -4734,7 +5001,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_4",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_4"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_4"
                   },
@@ -4749,7 +5019,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_5",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_5"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_5"
                   },
@@ -4769,7 +5042,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_3",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_3"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_3"
                   },
@@ -4787,7 +5063,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_4",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_4"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_4"
                   },
@@ -4805,7 +5084,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_5",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_5"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_5"
                   },
@@ -4846,7 +5128,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_6",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_6"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_6"
                   },
@@ -4868,7 +5153,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_6",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_6"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_6"
                   },
@@ -4921,7 +5209,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_7",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_7"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_7"
                   },
@@ -4941,7 +5232,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_7",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_7"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_7"
                   },
@@ -4976,7 +5270,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_8",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_8"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_8"
                   },
@@ -4996,7 +5293,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_8",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_8"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_8"
                   },
@@ -5075,7 +5375,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_9",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_9"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_9"
                   },
@@ -5097,7 +5400,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_9",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_9"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_9"
                   },
@@ -5150,7 +5456,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_10",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_10"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_10"
                   },
@@ -5170,7 +5479,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_10",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_10"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_10"
                   },
@@ -5324,7 +5636,10 @@
           "choice": [
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_11",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_11"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_11"
               },
@@ -5575,7 +5890,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_1",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -5588,7 +5906,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_2",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_2"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_2"
                   },
@@ -5608,7 +5929,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_1",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_1"
                   },
@@ -5631,7 +5955,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_2",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_2"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_2"
                   },
@@ -5706,7 +6033,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_3",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_3"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_3"
                   },
@@ -5721,7 +6051,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_4",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_4"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_4"
                   },
@@ -5736,7 +6069,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_5",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_5"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_5"
                   },
@@ -5756,7 +6092,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_3",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_3"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_3"
                   },
@@ -5774,7 +6113,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_4",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_4"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_4"
                   },
@@ -5792,7 +6134,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_5",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_5"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_5"
                   },
@@ -5833,7 +6178,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_6",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_6"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_6"
                   },
@@ -5855,7 +6203,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_6",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_6"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_6"
                   },
@@ -5908,7 +6259,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_7",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_7"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_7"
                   },
@@ -5928,7 +6282,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_7",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_7"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_7"
                   },
@@ -5963,7 +6320,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_8",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_8"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_8"
                   },
@@ -5983,7 +6343,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_8",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_8"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_8"
                   },
@@ -6062,7 +6425,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_9",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_9"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_9"
                   },
@@ -6084,7 +6450,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_9",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_9"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_9"
                   },
@@ -6137,7 +6506,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_10",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_10"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_10"
                   },
@@ -6157,7 +6529,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_10",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_10"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_10"
                   },
@@ -6192,7 +6567,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "toolu_REDACTED_11",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_11"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_11"
                   },
@@ -6212,7 +6590,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "toolu_REDACTED_11",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "toolu_REDACTED_11"
+                  },
                   "provider": {
                     "call_id": "toolu_REDACTED_11"
                   },

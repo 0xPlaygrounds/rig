@@ -860,19 +860,17 @@ pub(crate) fn events_from_response(
                         .with_durable_id(call.id.clone())
                         .with_signature(call.signature.clone())
                         .with_additional_params(call.additional_params.clone());
-                let id = match &call.provider {
-                    Some(provider) => {
-                        end = match &provider.item_id {
-                            Some(item_id) => end
-                                .with_call_id(provider.call_id.clone())
-                                .with_tool_id(item_id.clone()),
-                            None => end.with_tool_id(provider.call_id.clone()),
-                        };
-                        BlockId::wire(call.id.as_str())
-                    }
-                    None => BlockId::minted(MintKind::Tool, index),
-                };
-                out.tool_call(id, end);
+                if let Some(provider) = &call.provider {
+                    end = match &provider.item_id {
+                        Some(item_id) => end
+                            .with_call_id(provider.call_id.clone())
+                            .with_tool_id(item_id.clone()),
+                        None => end.with_tool_id(provider.call_id.clone()),
+                    };
+                }
+                // Re-emission creates a fresh assembly occurrence; durable
+                // identity and provider handles are preserved on `end`.
+                out.tool_call(BlockId::minted(MintKind::Tool, index), end);
             }
         }
     }

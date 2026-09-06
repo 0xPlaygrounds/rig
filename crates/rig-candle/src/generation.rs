@@ -662,16 +662,17 @@ fn emit_parsed_items(
         match item {
             AssistantContent::Text(text) => emit(GenerationEvent::Text(text.text))?,
             AssistantContent::ToolCall(call) => {
-                let id = if call.provider.is_some() {
-                    BlockId::wire(call.id.as_str())
+                let id = if let Some(provider) = &call.provider {
+                    BlockId::wire(provider.call_id.clone())
                 } else {
-                    BlockId::from_minted_name(call.id.as_str()).ok_or_else(|| {
+                    call.id.generated().cloned().ok_or_else(|| {
                         CandleError::Inference(
                             "id-less parsed call has no normalized block identity".into(),
                         )
                     })?
                 };
                 let mut end = ToolCallEnd::whole(call.function.name, call.function.arguments)
+                    .with_durable_id(call.id)
                     .with_signature(call.signature)
                     .with_additional_params(call.additional_params);
                 if let Some(provider) = call.provider {

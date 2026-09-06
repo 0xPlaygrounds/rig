@@ -821,7 +821,7 @@ async fn tool_call_turns_effect_log_is_the_golden_fixture() {
             }
             assert!(saw_final, "the stream must yield a FinalResponse");
             let log = agent.take_effect_log().expect("recording");
-            let tool_ids: Vec<String> = log
+            let tool_ids: Vec<&rig::message::ToolCallId> = log
                 .records
                 .iter()
                 .filter_map(|record| match &record.outcome {
@@ -830,13 +830,13 @@ async fn tool_call_turns_effect_log_is_the_golden_fixture() {
                 })
                 .flat_map(|response| response.choice.iter())
                 .filter_map(|content| match content {
-                    rig::message::AssistantContent::ToolCall(call) => Some(call.id.to_string()),
+                    rig::message::AssistantContent::ToolCall(call) => Some(&call.id),
                     _ => None,
                 })
                 .collect();
             assert!(!tool_ids.is_empty(), "the program calls tools");
             assert!(
-                tool_ids.iter().all(|id| id.starts_with("tool-")),
+                tool_ids.iter().all(|id| id.is_generated()),
                 "every id-less wire call is named by its block: {tool_ids:?}"
             );
             crate::goldens::golden_effects("gemini_tool_call_turns", &log);

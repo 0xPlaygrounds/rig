@@ -205,7 +205,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "read",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "read"
+                    },
                     "provider": {
                       "call_id": "read"
                     },
@@ -218,7 +221,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "search",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "search"
+                    },
                     "provider": {
                       "call_id": "search"
                     },
@@ -247,7 +253,10 @@
                 "content": [
                   {
                     "type": "toolresult",
-                    "call": "read",
+                    "call": {
+                      "origin": "explicit",
+                      "id": "read"
+                    },
                     "provider": {
                       "call_id": "read"
                     },
@@ -264,7 +273,10 @@
                   },
                   {
                     "type": "toolresult",
-                    "call": "search",
+                    "call": {
+                      "origin": "explicit",
+                      "id": "search"
+                    },
                     "provider": {
                       "call_id": "search"
                     },
@@ -300,7 +312,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "proposal",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "proposal"
+                    },
                     "provider": {
                       "call_id": "proposal"
                     },
@@ -329,7 +344,10 @@
                 "content": [
                   {
                     "type": "toolresult",
-                    "call": "proposal",
+                    "call": {
+                      "origin": "explicit",
+                      "id": "proposal"
+                    },
                     "provider": {
                       "call_id": "proposal"
                     },
@@ -361,7 +379,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "write",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "write"
+                    },
                     "provider": {
                       "call_id": "write"
                     },
@@ -386,7 +407,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "read",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "read"
+                    },
                     "provider": {
                       "call_id": "read"
                     },
@@ -399,7 +423,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "search",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "search"
+                    },
                     "provider": {
                       "call_id": "search"
                     },
@@ -430,7 +457,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "proposal",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "proposal"
+                    },
                     "provider": {
                       "call_id": "proposal"
                     },
@@ -461,7 +491,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "write",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "write"
+                    },
                     "provider": {
                       "call_id": "write"
                     },
@@ -1140,7 +1173,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "read",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "read"
+                    },
                     "provider": {
                       "call_id": "read"
                     },
@@ -1153,7 +1189,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "search",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "search"
+                    },
                     "provider": {
                       "call_id": "search"
                     },
@@ -1277,7 +1316,10 @@
                     "content": [
                       {
                         "type": "toolcall",
-                        "id": "read",
+                        "id": {
+                          "origin": "explicit",
+                          "id": "read"
+                        },
                         "provider": {
                           "call_id": "read"
                         },
@@ -1290,7 +1332,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "search",
+                        "id": {
+                          "origin": "explicit",
+                          "id": "search"
+                        },
                         "provider": {
                           "call_id": "search"
                         },
@@ -1310,7 +1355,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "read",
+                        "call": {
+                          "origin": "explicit",
+                          "id": "read"
+                        },
                         "provider": {
                           "call_id": "read"
                         },
@@ -1327,7 +1375,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "search",
+                        "call": {
+                          "origin": "explicit",
+                          "id": "search"
+                        },
                         "provider": {
                           "call_id": "search"
                         },
@@ -1429,7 +1480,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "proposal",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "proposal"
+                    },
                     "provider": {
                       "call_id": "proposal"
                     },
@@ -1519,7 +1573,10 @@
                     "content": [
                       {
                         "type": "toolcall",
-                        "id": "read",
+                        "id": {
+                          "origin": "explicit",
+                          "id": "read"
+                        },
                         "provider": {
                           "call_id": "read"
                         },
@@ -1532,7 +1589,10 @@
                       },
                       {
                         "type": "toolcall",
-                        "id": "search",
+                        "id": {
+                          "origin": "explicit",
+                          "id": "search"
+                        },
                         "provider": {
                           "call_id": "search"
                         },
@@ -1552,7 +1612,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "read",
+                        "call": {
+                          "origin": "explicit",
+                          "id": "read"
+                        },
                         "provider": {
                           "call_id": "read"
                         },
@@ -1569,7 +1632,10 @@
                       },
                       {
                         "type": "toolresult",
-                        "call": "search",
+                        "call": {
+                          "origin": "explicit",
+                          "id": "search"
+                        },
                         "provider": {
                           "call_id": "search"
                         },
@@ -1596,7 +1662,10 @@
                     "content": [
                       {
                         "type": "toolcall",
-                        "id": "proposal",
+                        "id": {
+                          "origin": "explicit",
+                          "id": "proposal"
+                        },
                         "provider": {
                           "call_id": "proposal"
                         },
@@ -1616,7 +1685,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "proposal",
+                        "call": {
+                          "origin": "explicit",
+                          "id": "proposal"
+                        },
                         "provider": {
                           "call_id": "proposal"
                         },
@@ -1714,7 +1786,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "write",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "write"
+                    },
                     "provider": {
                       "call_id": "write"
                     },
@@ -1792,7 +1867,10 @@
           8,
           {
             "index": 0,
-            "id": "read",
+            "id": {
+              "origin": "explicit",
+              "id": "read"
+            },
             "provider": {
               "call_id": "read"
             },
@@ -1803,7 +1881,10 @@
           9,
           {
             "index": 1,
-            "id": "search",
+            "id": {
+              "origin": "explicit",
+              "id": "search"
+            },
             "provider": {
               "call_id": "search"
             },
@@ -1814,7 +1895,10 @@
           11,
           {
             "index": 0,
-            "id": "proposal",
+            "id": {
+              "origin": "explicit",
+              "id": "proposal"
+            },
             "provider": {
               "call_id": "proposal"
             },
@@ -1825,7 +1909,10 @@
           13,
           {
             "index": 0,
-            "id": "write",
+            "id": {
+              "origin": "explicit",
+              "id": "write"
+            },
             "provider": {
               "call_id": "write"
             },
@@ -1961,7 +2048,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "read",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "read"
+                    },
                     "provider": {
                       "call_id": "read"
                     },
@@ -1974,7 +2064,10 @@
                   },
                   {
                     "type": "toolcall",
-                    "id": "search",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "search"
+                    },
                     "provider": {
                       "call_id": "search"
                     },
@@ -2080,7 +2173,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "proposal",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "proposal"
+                    },
                     "provider": {
                       "call_id": "proposal"
                     },
@@ -2147,7 +2243,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "write",
+                    "id": {
+                      "origin": "explicit",
+                      "id": "write"
+                    },
                     "provider": {
                       "call_id": "write"
                     },

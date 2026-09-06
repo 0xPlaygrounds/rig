@@ -112,7 +112,10 @@
           "choice": [
             {
               "type": "toolcall",
-              "id": "read",
+              "id": {
+                "origin": "explicit",
+                "id": "read"
+              },
               "provider": {
                 "call_id": "read"
               },
@@ -125,7 +128,10 @@
             },
             {
               "type": "toolcall",
-              "id": "search",
+              "id": {
+                "origin": "explicit",
+                "id": "search"
+              },
               "provider": {
                 "call_id": "search"
               },
@@ -231,7 +237,10 @@
           "choice": [
             {
               "type": "toolcall",
-              "id": "proposal",
+              "id": {
+                "origin": "explicit",
+                "id": "proposal"
+              },
               "provider": {
                 "call_id": "proposal"
               },
@@ -298,7 +307,10 @@
           "choice": [
             {
               "type": "toolcall",
-              "id": "write",
+              "id": {
+                "origin": "explicit",
+                "id": "write"
+              },
               "provider": {
                 "call_id": "write"
               },
@@ -380,7 +392,10 @@
           "choice": [
             {
               "type": "toolcall",
-              "id": "validation",
+              "id": {
+                "origin": "explicit",
+                "id": "validation"
+              },
               "provider": {
                 "call_id": "validation"
               },

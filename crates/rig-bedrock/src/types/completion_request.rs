@@ -202,10 +202,26 @@ impl AwsCompletionRequest {
                 .filter(|message| !matches!(message, Message::System { .. })),
         );
 
-        let mut messages: Vec<aws_bedrock::Message> = full_history
-            .into_iter()
-            .map(|message| RigMessage(message).try_into())
-            .collect::<Result<Vec<aws_bedrock::Message>, _>>()?;
+        let tool_ids =
+            rig_core::providers::internal::tool_call_ids::ToolCallIds::new(&full_history)
+                .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+        let mut messages = Vec::new();
+        for (position, message) in full_history.into_iter().enumerate() {
+            let mut message: aws_bedrock::Message = RigMessage(message).try_into()?;
+            tool_ids
+                .apply(
+                    position,
+                    message.content.iter_mut().filter_map(|part| match part {
+                        aws_bedrock::ContentBlock::ToolUse(call) => Some(&mut call.tool_use_id),
+                        aws_bedrock::ContentBlock::ToolResult(result) => {
+                            Some(&mut result.tool_use_id)
+                        }
+                        _ => None,
+                    }),
+                )
+                .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+            messages.push(message);
+        }
 
         // Bedrock rejects cache points placed after reasoning blocks
         // ("Cache point cannot be inserted after reasoning block"). When the

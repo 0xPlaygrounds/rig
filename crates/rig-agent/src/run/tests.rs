@@ -271,7 +271,7 @@ fn expect_continue(outcome: ModelTurnOutcome) -> bool {
 
 fn expect_needs_resolution(outcome: ModelTurnOutcome) -> InvalidToolCallContext {
     match outcome {
-        ModelTurnOutcome::NeedsResolution(context) => context,
+        ModelTurnOutcome::NeedsResolution(context) => *context,
         outcome => panic!("expected NeedsResolution, got {outcome:?}"),
     }
 }
@@ -493,8 +493,8 @@ fn parallel_tool_calls_surface_in_emission_order() {
 
     let calls = expect_call_tools(&mut run);
     assert_eq!(calls.len(), 2);
-    assert_eq!(calls[0].tool_call.id, "call_1");
-    assert_eq!(calls[1].tool_call.id, "call_2");
+    assert_eq!(calls[0].tool_call.id.explicit(), Some("call_1"));
+    assert_eq!(calls[1].tool_call.id.explicit(), Some("call_2"));
 
     // Results fed out of order still land in one user message.
     run.tool_results(vec![tool_result("call_2", "b"), tool_result("call_1", "a")])
@@ -787,7 +787,7 @@ fn id_less_calls_keep_distinct_skip_results() {
     assert!(
         calls
             .iter()
-            .all(|call| !call.tool_call.id.is_empty() && call.tool_call.provider.is_none()),
+            .all(|call| call.tool_call.id.is_generated() && call.tool_call.provider.is_none()),
         "minted handles are non-empty and record the provider's absence"
     );
     let results: Vec<String> = calls
@@ -937,7 +937,14 @@ fn serialized_run_alone_carries_pending_tool_calls() {
     // Answer using only IDs learned from the re-emitted step.
     let results = calls
         .iter()
-        .map(|call| tool_result(&call.tool_call.id, "2"))
+        .map(|call| {
+            UserContent::tool_result_for(
+                call.tool_call.id.clone(),
+                call.tool_call.provider.clone(),
+                call.tool_call.function.name.clone(),
+                vec![ToolResultContent::text("2")],
+            )
+        })
         .collect::<Vec<_>>();
     resumed
         .tool_results(results)
@@ -993,7 +1000,17 @@ fn agent_run_deserializes_suspended_state() {
     // A suspended run persisted mid-`ExecutingTools` restores and resumes:
     // the recorded call's usage loads, the pending tool call is re-issued,
     // and the run advances to the next model call after results arrive.
-    let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"type":"toolcall","id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"block_id":"wire:call_1"}]}}"#;
+    let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"type":"toolcall","id":{"origin":"explicit","id":"call_1"},"function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":{"origin":"explicit","id":"call_1"},"function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"block_id":"wire:call_1"}]}}"#;
+
+    let legacy = fixture.replace(
+        r#""id":{"origin":"explicit","id":"call_1"}"#,
+        r#""id":"call_1""#,
+    );
+    assert_ne!(legacy, fixture);
+    assert!(
+        serde_json::from_str::<AgentRun>(&legacy).is_err(),
+        "legacy bare IDs must not be silently reinterpreted"
+    );
 
     let mut restored: AgentRun =
         serde_json::from_str(fixture).expect("suspended run should deserialize");
@@ -1101,10 +1118,14 @@ fn pending_invalid_tool_call_survives_serde_round_trip() {
         restored_context.chat_history.len(),
         context.chat_history.len()
     );
-    // A buffered turn's call is keyed by its durable id, live and resumed
-    // alike — the same key its pending call would carry.
-    assert_eq!(context.block_id, Some(BlockId::wire("call_1")));
-    assert_eq!(restored_context.block_id, context.block_id);
+    // Buffered calls have durable identity but no observed stream block.
+    assert_eq!(context.block_id, None);
+    assert_eq!(restored_context.block_id, None);
+    assert_eq!(
+        context.tool_call_id.as_ref().and_then(|id| id.explicit()),
+        Some("call_1")
+    );
+    assert_eq!(restored_context.tool_call_id, context.tool_call_id);
 }
 
 /// A turn calling `name`, advertising it as an allowed-but-not-executable
@@ -1135,29 +1156,33 @@ fn output_tool_turn_with_args(id: &str, name: &str, arguments: serde_json::Value
 /// Every assistant tool call in `messages` must have a matching user tool
 /// result — an unanswered tool_use is rejected by providers on replay.
 fn assert_no_orphan_tool_use(messages: &[Message]) {
-    let mut answered = BTreeSet::new();
+    let mut pending = Vec::new();
     for message in messages {
-        if let Message::User { content } = message {
-            for item in content.iter() {
-                if let UserContent::ToolResult(result) = item {
-                    answered.insert(result.call.to_string());
+        match message {
+            Message::Assistant { content, .. } => {
+                pending.extend(content.iter().filter_map(|item| match item {
+                    AssistantContent::ToolCall(call) => Some(&call.id),
+                    _ => None,
+                }));
+            }
+            Message::User { content } => {
+                for item in content {
+                    if let UserContent::ToolResult(result) = item {
+                        let index = pending
+                            .iter()
+                            .position(|id| *id == &result.call)
+                            .expect("result must answer a preceding pending call");
+                        pending.remove(index);
+                    }
                 }
             }
+            Message::System { .. } => {}
         }
     }
-    for message in messages {
-        if let Message::Assistant { content, .. } = message {
-            for item in content.iter() {
-                if let AssistantContent::ToolCall(call) = item {
-                    assert!(
-                        answered.contains(call.id.as_str()),
-                        "assistant tool_call {:?} has no matching tool_result in history",
-                        call.id
-                    );
-                }
-            }
-        }
-    }
+    assert!(
+        pending.is_empty(),
+        "unanswered tool call occurrences: {pending:?}"
+    );
 }
 
 #[test]
@@ -1452,8 +1477,8 @@ fn durable_human_in_the_loop_approval_survives_serialize_resume() {
     // The resumed run re-emits the pending calls purely from its own state.
     let calls = expect_call_tools(&mut resumed);
     assert_eq!(calls.len(), 2);
-    assert_eq!(calls[0].tool_call.id, "c1");
-    assert_eq!(calls[1].tool_call.id, "c2");
+    assert_eq!(calls[0].tool_call.id.explicit(), Some("c1"));
+    assert_eq!(calls[1].tool_call.id.explicit(), Some("c2"));
 
     // The human decision lands only after the resume: approve c1 (real
     // result), deny c2 (the reason becomes the tool result the model sees).

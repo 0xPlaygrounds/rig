@@ -1791,7 +1791,10 @@ pub(crate) async fn run_single_tool(
 
     let tool_span = tracing::Span::current();
     tool_span.record("gen_ai.tool.name", tool_name);
-    tool_span.record("gen_ai.tool.call.id", tool_call.id.as_str());
+    tool_span.record(
+        "gen_ai.tool.call.id",
+        tracing::field::display(&tool_call.id),
+    );
     if record_content {
         tool_span.record("gen_ai.tool.call.arguments", &args);
     }

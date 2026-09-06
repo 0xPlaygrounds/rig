@@ -818,7 +818,7 @@ fn test_response_function_call_preserves_correlation_id() {
     let Some(message::AssistantContent::ToolCall(tool_call)) = converted.choice.first() else {
         panic!("expected a tool call");
     };
-    assert_eq!(tool_call.id, "call-123");
+    assert_eq!(tool_call.id.explicit(), Some("call-123"));
     assert_eq!(
         tool_call.provider.as_ref().expect("wire id").call_id,
         "call-123"
@@ -1358,11 +1358,12 @@ fn echoed_minted_handle_never_reaches_the_function_response_id() {
     );
 
     let message = message::Message::User {
-        content: vec![message::UserContent::tool_result(
-            call.id.as_str(),
-            "lookup",
-            vec![ToolResultContent::text("out")],
-        )],
+        content: vec![message::UserContent::ToolResult(message::ToolResult {
+            call: call.id.clone(),
+            provider: None,
+            name: "lookup".into(),
+            content: vec![ToolResultContent::text("out")],
+        })],
     };
     let content: Content = message.try_into().expect("tool result should convert");
     let PartKind::FunctionResponse(response) = &content.parts[0].part else {

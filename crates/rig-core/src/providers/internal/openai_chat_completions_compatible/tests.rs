@@ -336,7 +336,7 @@ async fn evicted_tool_call_emits_object_input_end_to_end() {
     // Pin the evicted call specifically: its unparseable partial string is
     // normalized to `{}` (not forwarded as a string, not dropped).
     let evicted = &collected_tool_calls[0];
-    assert_eq!(evicted.id, "call_aaa");
+    assert_eq!(evicted.id.explicit(), Some("call_aaa"));
     assert_eq!(evicted.function.arguments, serde_json::json!({}));
 }
 
@@ -432,13 +432,13 @@ async fn distinct_same_name_tool_calls_evict_by_id_when_a_new_call_starts() {
     }
 
     assert_eq!(collected_tool_calls.len(), 2);
-    assert_eq!(collected_tool_calls[0].id, "call_aaa");
+    assert_eq!(collected_tool_calls[0].id.explicit(), Some("call_aaa"));
     assert_eq!(collected_tool_calls[0].function.name, "search");
     assert_eq!(
         collected_tool_calls[0].function.arguments,
         serde_json::json!({"query":"one"})
     );
-    assert_eq!(collected_tool_calls[1].id, "call_bbb");
+    assert_eq!(collected_tool_calls[1].id.explicit(), Some("call_bbb"));
     assert_eq!(collected_tool_calls[1].function.name, "search");
     assert_eq!(
         collected_tool_calls[1].function.arguments,
@@ -899,7 +899,7 @@ async fn transport_error_still_flushes_fully_delivered_tool_calls() {
         1,
         "the fully-delivered tool call must flush despite the transport error"
     );
-    assert_eq!(collected_tool_calls[0].id, "call_123");
+    assert_eq!(collected_tool_calls[0].id.explicit(), Some("call_123"));
     assert_eq!(collected_tool_calls[0].function.name, "ping");
     assert_eq!(
         collected_tool_calls[0].function.arguments,

@@ -165,8 +165,8 @@ async fn thinking_and_tool_call_in_one_stream() {
                 .as_ref()
                 .expect("the daemon-issued call id must be preserved");
             assert_eq!(
-                streamed.id,
-                provider.call_id.as_str(),
+                streamed.id.explicit(),
+                Some(provider.call_id.as_str()),
                 "the durable id adopts the daemon's call id"
             );
         },
@@ -242,8 +242,8 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
             // streamed call is its own aggregated part, asserted above) and
             // by the daemon-issued ids, which are preserved and pairwise
             // distinct — nothing is fabricated, nothing collides.
-            let distinct_ids: std::collections::HashSet<&str> =
-                run.tool_calls.iter().map(|call| call.id.as_str()).collect();
+            let distinct_ids: std::collections::HashSet<&rig::message::ToolCallId> =
+                run.tool_calls.iter().map(|call| &call.id).collect();
             assert_eq!(
                 distinct_ids.len(),
                 run.tool_calls.len(),
@@ -316,8 +316,8 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
             argument_sets.len() >= 2,
             "the two same-name calls must keep distinct argument payloads, got {argument_sets:?}"
         );
-        let distinct_ids: std::collections::HashSet<&str> =
-            add_calls.iter().map(|call| call.id.as_str()).collect();
+        let distinct_ids: std::collections::HashSet<&rig::message::ToolCallId> =
+            add_calls.iter().map(|call| &call.id).collect();
         assert_eq!(
             distinct_ids.len(),
             add_calls.len(),

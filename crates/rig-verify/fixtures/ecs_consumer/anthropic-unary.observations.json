@@ -14,7 +14,10 @@
             },
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_1",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_1"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_1"
               },
@@ -27,7 +30,10 @@
             },
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_2",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_2"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_2"
               },
@@ -176,7 +182,10 @@
             },
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_3",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_3"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_3"
               },
@@ -280,7 +289,10 @@
             },
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_4",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_4"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_4"
               },
@@ -397,7 +409,10 @@
             },
             {
               "type": "toolcall",
-              "id": "toolu_REDACTED_5",
+              "id": {
+                "origin": "explicit",
+                "id": "toolu_REDACTED_5"
+              },
               "provider": {
                 "call_id": "toolu_REDACTED_5"
               },

@@ -150,7 +150,10 @@
             },
             {
               "type": "toolcall",
-              "id": "tool-0",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
               "function": {
                 "name": "read_file",
                 "arguments": {}
@@ -160,7 +163,10 @@
             },
             {
               "type": "toolcall",
-              "id": "tool-1",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:1"
+              },
               "function": {
                 "name": "search_file",
                 "arguments": {
@@ -315,7 +321,10 @@
             },
             {
               "type": "toolcall",
-              "id": "tool-0",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
               "function": {
                 "name": "propose_edit",
                 "arguments": {
@@ -431,7 +440,10 @@
             },
             {
               "type": "toolcall",
-              "id": "tool-0",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
               "function": {
                 "name": "apply_edit",
                 "arguments": {}
@@ -562,7 +574,10 @@
             },
             {
               "type": "toolcall",
-              "id": "tool-0",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
               "function": {
                 "name": "validate_file",
                 "arguments": {}

@@ -294,17 +294,22 @@ pub struct ToolResult {
 }
 
 impl ToolResult {
-    /// The identifier for a wire whose call-id slot is *required*: the
-    /// provider-issued `call_id` when the provider issued one, else rig's
-    /// minted handle — always non-empty.
+    /// A non-empty candidate for a required wire call-ID slot: the exact
+    /// provider handle when present, otherwise the local identity's wire hint.
+    ///
+    /// This single-item helper cannot reserve future provider IDs or pair
+    /// repeated turns. Full request adapters must use
+    /// [`ToolCallIds`](crate::providers::internal::tool_call_ids::ToolCallIds)
+    /// to assign collision-free synthetic references consistently to both legs.
     ///
     /// Wires whose id slot is *optional* (Gemini REST, gRPC) must read
     /// [`ToolResult::provider`] directly instead: minted handles never
     /// travel upstream there.
-    pub fn wire_call_id(&self) -> &str {
-        self.provider
-            .as_ref()
-            .map_or(self.call.as_str(), |provider| provider.call_id.as_str())
+    pub fn wire_call_id(&self) -> std::borrow::Cow<'_, str> {
+        self.provider.as_ref().map_or_else(
+            || self.call.wire_hint(),
+            |provider| std::borrow::Cow::Borrowed(provider.call_id.as_str()),
+        )
     }
 }
 
@@ -368,126 +373,149 @@ impl ToolResultContent {
 #[error("a tool-call identifier cannot be the empty string; absence is `None` or a minted id")]
 pub struct EmptyToolCallId;
 
-/// Rig's tool-call correlation handle: non-empty by construction, minted at
-/// the provider boundary when the provider issued no identifier.
+/// Rig's correlation identity for a tool call within one assistant completion.
 ///
-/// Like the streaming layer's [`non_empty_id`](crate::streaming::non_empty_id)
-/// rule — an empty string is never an id — except that it is *required and
-/// minted* rather than optional: correlation
-/// must always work, since a [`ToolResult`] must always name the call it
-/// answers. Provider provenance lives on [`ToolCall::provider`], so a
-/// consumer can still see that the provider issued nothing.
+/// Explicit handles and generated assembly keys occupy disjoint namespaces:
+/// an explicit `tool-0` never equals a generated tool key at index zero. Provider
+/// provenance is separate and lives only on [`ToolCall::provider`]. Applications
+/// may also choose explicit handles without claiming provider provenance.
+///
+/// Generated positions restart for each completion. State spanning completions
+/// must pair this identity with the owning turn or effect, or match call/result
+/// occurrences chronologically. Results copy their answered call's identity.
+///
+/// Serialization preserves an explicit origin tag and rejects legacy bare
+/// strings. Display is diagnostic text, not a provider handle or lookup key.
+///
+/// Keep the typed value as a map key and copy it into the corresponding result.
+/// Use [`Self::explicit`] or [`Self::generated`] to inspect its origin; outbound
+/// adapters separately assign protocol handles for complete call/result histories.
+///
+/// ```
+/// use rig_core::message::ToolCallId;
+///
+/// let explicit = ToolCallId::new("tool-0").expect("nonempty handle");
+/// let generated = ToolCallId::minted(0);
+/// assert_ne!(explicit, generated);
+/// assert_eq!(explicit.explicit(), Some("tool-0"));
+/// assert!(generated.is_generated());
+/// assert_eq!(
+///     serde_json::to_value(&generated)?,
+///     serde_json::json!({"origin": "generated", "id": "minted:tool:0"}),
+/// );
+/// let restored: ToolCallId = serde_json::from_value(serde_json::to_value(&generated)?)?;
+/// assert_eq!(restored, generated);
+/// assert!(serde_json::from_value::<ToolCallId>(serde_json::json!("tool-0")).is_err());
+/// # Ok::<(), serde_json::Error>(())
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(try_from = "String", into = "String")]
-pub struct ToolCallId(String);
+#[serde(try_from = "ToolCallIdWire", into = "ToolCallIdWire")]
+pub struct ToolCallId(ToolCallIdWire);
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(tag = "origin", content = "id", rename_all = "snake_case")]
+enum ToolCallIdWire {
+    Explicit(String),
+    Generated(crate::streaming::BlockId),
+}
 
 impl ToolCallId {
-    /// Adopt a provider-issued identifier. `None` for the empty string:
-    /// absence is not an id.
+    /// Adopt a nonempty explicit correlation handle. This constructor alone
+    /// does not claim that any provider issued it; see [`ToolCall::provider`].
     pub fn new(id: impl Into<String>) -> Option<Self> {
         let id = id.into();
-        if id.is_empty() { None } else { Some(Self(id)) }
+        (!id.is_empty()).then_some(Self(ToolCallIdWire::Explicit(id)))
     }
 
-    /// The handle for a call a wire delivered without an id: derived from
-    /// its position (`tool-<index>`, the same spelling as
-    /// [`BlockId::minted`](crate::streaming::BlockId::minted) for the tool
-    /// kind), never from randomness — a run replays only if every id it
-    /// mints is a function of what it received.
+    /// Generate a deterministic tool identity at a completion-local position.
     pub fn minted(index: u64) -> Self {
-        Self(format!(
-            "{}-{index}",
-            crate::streaming::MintKind::Tool.as_str()
+        Self::from_block(&crate::streaming::BlockId::minted(
+            crate::streaming::MintKind::Tool,
+            index,
         ))
     }
 
-    /// The handle for a streamed call whose wire carried no id: the block
-    /// that assembled it names it, deterministically.
+    /// Derive an identity from the complete typed assembly key. A wire-shaped
+    /// assembly key and a minted key with the same display text stay distinct.
     pub fn from_block(block: &crate::streaming::BlockId) -> Self {
-        Self(block.to_string())
+        Self(ToolCallIdWire::Generated(block.clone()))
     }
 
-    /// Adopt `id` when non-empty, else `minted(index)` — the boundary guard
-    /// for wires that may omit the identifier.
+    /// Adopt a nonempty explicit handle, otherwise generate at `index`.
     pub fn new_or_minted(id: impl Into<String>, index: u64) -> Self {
         Self::new(id).unwrap_or_else(|| Self::minted(index))
     }
 
-    /// The correlation handle for the given provider identity: the
-    /// provider's `call_id` when the provider issued one, minted when it
-    /// did not. The single derivation the message and streaming layers
-    /// share — a result correlates with its call because both derive the
-    /// handle from the same provider identity.
-    ///
-    /// (`ProviderCallId`'s constructors reject the empty string, but its
-    /// fields are public, so an empty `call_id` from a literal
-    /// construction still mints rather than producing an empty handle.)
+    /// Derive an explicit handle from provider metadata, or retain the supplied
+    /// generated identity when no nonempty provider call identifier exists.
     pub fn for_provider_or(provider: Option<&ProviderCallId>, minted: Self) -> Self {
         provider
             .and_then(|provider| Self::new(provider.call_id.clone()))
             .unwrap_or(minted)
     }
 
-    /// Borrow the identifier.
-    pub fn as_str(&self) -> &str {
-        &self.0
+    /// Whether this identity was generated from an assembly key.
+    pub fn is_generated(&self) -> bool {
+        matches!(self.0, ToolCallIdWire::Generated(_))
     }
 
-    /// Consume into the underlying string.
-    pub fn into_string(self) -> String {
-        self.0
+    /// The explicitly chosen handle, if any. This is not proof of provider
+    /// provenance and must not be used to compare differently typed identities.
+    pub fn explicit(&self) -> Option<&str> {
+        match &self.0 {
+            ToolCallIdWire::Explicit(id) => Some(id),
+            ToolCallIdWire::Generated(_) => None,
+        }
+    }
+
+    /// The typed assembly origin of a generated identity, if any. Explicit
+    /// identities have no generated origin, even when their text resembles one.
+    pub fn generated(&self) -> Option<&crate::streaming::BlockId> {
+        match &self.0 {
+            ToolCallIdWire::Generated(block) => Some(block),
+            ToolCallIdWire::Explicit(_) => None,
+        }
+    }
+
+    /// A candidate spelling for protocols requiring string handles. It is not
+    /// unique across namespaces: request adapters must reserve actual provider
+    /// handles and allocate aliases for colliding call/result occurrences.
+    pub fn wire_hint(&self) -> std::borrow::Cow<'_, str> {
+        match &self.0 {
+            ToolCallIdWire::Explicit(id) => std::borrow::Cow::Borrowed(id),
+            ToolCallIdWire::Generated(block) => std::borrow::Cow::Owned(block.to_string()),
+        }
     }
 }
 
 impl std::fmt::Display for ToolCallId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+        match &self.0 {
+            ToolCallIdWire::Explicit(id) => write!(f, "explicit:{id}"),
+            ToolCallIdWire::Generated(crate::streaming::BlockId::Wire(id)) => {
+                write!(f, "generated:wire:{id}")
+            }
+            ToolCallIdWire::Generated(crate::streaming::BlockId::Minted { kind, index }) => {
+                write!(f, "generated:minted:{}:{index}", kind.as_str())
+            }
+        }
     }
 }
 
-impl AsRef<str> for ToolCallId {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::ops::Deref for ToolCallId {
-    type Target = str;
-
-    fn deref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::borrow::Borrow<str> for ToolCallId {
-    fn borrow(&self) -> &str {
-        &self.0
-    }
-}
-
-impl TryFrom<String> for ToolCallId {
+impl TryFrom<ToolCallIdWire> for ToolCallId {
     type Error = EmptyToolCallId;
 
-    fn try_from(id: String) -> Result<Self, Self::Error> {
-        Self::new(id).ok_or(EmptyToolCallId)
+    fn try_from(id: ToolCallIdWire) -> Result<Self, Self::Error> {
+        match id {
+            ToolCallIdWire::Explicit(id) => Self::new(id).ok_or(EmptyToolCallId),
+            generated @ ToolCallIdWire::Generated(_) => Ok(Self(generated)),
+        }
     }
 }
 
-impl From<ToolCallId> for String {
+impl From<ToolCallId> for ToolCallIdWire {
     fn from(id: ToolCallId) -> Self {
         id.0
-    }
-}
-
-impl PartialEq<str> for ToolCallId {
-    fn eq(&self, other: &str) -> bool {
-        self.0 == other
-    }
-}
-
-impl PartialEq<&str> for ToolCallId {
-    fn eq(&self, other: &&str) -> bool {
-        self.0 == *other
     }
 }
 
@@ -610,25 +638,14 @@ pub struct ToolCall {
     pub additional_params: Option<serde_json::Value>,
 }
 
-/// Assign deterministic handles to id-less calls at an inbound provider boundary.
+/// Assign deterministic completion-local handles to id-less provider calls.
 ///
-/// Pass the complete response or assistant-message content, before exposing it
-/// to a caller. Explicit provider handles are reserved first, including handles
-/// appearing later in the response. Missing handles use the call's position,
-/// advancing to the next unused `tool-N` on collision. Provider metadata and
-/// explicit duplicate handles are preserved; generated handles acquire no
-/// provider provenance.
-///
-/// This is not for arbitrary application messages: locally chosen handles from
-/// [`ToolCall::new`] must not be renumbered, and streaming has its own block IDs.
+/// A missing handle uses its tool-call position. Generated and explicit handles
+/// occupy separate namespaces, so a later explicit provider string never forces
+/// renumbering. Provider metadata and the existing explicit-duplicate policy are
+/// preserved. Use only at inbound provider boundaries, not on application
+/// messages with chosen local IDs or already-published streaming identities.
 pub fn normalize_missing_tool_call_ids(content: &mut [AssistantContent]) {
-    let mut used: std::collections::HashSet<ToolCallId> = content
-        .iter()
-        .filter_map(|item| match item {
-            AssistantContent::ToolCall(call) if call.provider.is_some() => Some(call.id.clone()),
-            _ => None,
-        })
-        .collect();
     for (position, call) in content
         .iter_mut()
         .filter_map(|item| match item {
@@ -637,17 +654,8 @@ pub fn normalize_missing_tool_call_ids(content: &mut [AssistantContent]) {
         })
         .enumerate()
     {
-        if call.provider.is_some() {
-            continue;
-        }
-        let mut index = position as u64;
-        loop {
-            let id = ToolCallId::minted(index);
-            if used.insert(id.clone()) {
-                call.id = id;
-                break;
-            }
-            index += 1;
+        if call.provider.is_none() {
+            call.id = ToolCallId::minted(position as u64);
         }
     }
 }
@@ -708,17 +716,22 @@ impl ToolCall {
         self
     }
 
-    /// The identifier for a wire whose call-id slot is *required*: the
-    /// provider-issued `call_id` when the provider issued one, else rig's
-    /// minted handle — always non-empty.
+    /// A non-empty candidate for a required wire call-ID slot: the exact
+    /// provider handle when present, otherwise the local identity's wire hint.
+    ///
+    /// This single-item helper cannot reserve future provider IDs or pair
+    /// repeated turns. Full request adapters must use
+    /// [`ToolCallIds`](crate::providers::internal::tool_call_ids::ToolCallIds)
+    /// to assign collision-free synthetic references consistently to both legs.
     ///
     /// Wires whose id slot is *optional* (Gemini REST, gRPC) must read
     /// [`ToolCall::provider`] directly instead: minted handles never travel
     /// upstream there.
-    pub fn wire_call_id(&self) -> &str {
-        self.provider
-            .as_ref()
-            .map_or(self.id.as_str(), |provider| provider.call_id.as_str())
+    pub fn wire_call_id(&self) -> std::borrow::Cow<'_, str> {
+        self.provider.as_ref().map_or_else(
+            || self.id.wire_hint(),
+            |provider| std::borrow::Cow::Borrowed(provider.call_id.as_str()),
+        )
     }
 
     pub fn with_signature(mut self, signature: Option<String>) -> Self {
@@ -1378,10 +1391,10 @@ impl Message {
     }
 
     /// Helper constructor to make creating tool result messages easier.
-    /// `call` is the answered call's correlation handle — echo
-    /// [`ToolCall::id`]; it is never recorded as a provider-issued
-    /// identifier (see [`UserContent::tool_result`]). `name` is the
-    /// executed tool's name.
+    /// `call` is an explicit local handle and does not establish provider
+    /// provenance. To answer an existing call while preserving its typed identity
+    /// and provider metadata, use [`UserContent::tool_result_for`] inside a user
+    /// message. `name` is the executed tool's name.
     pub fn tool_result(
         call: impl Into<String>,
         name: impl Into<String>,

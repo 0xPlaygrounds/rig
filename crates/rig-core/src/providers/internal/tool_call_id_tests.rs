@@ -30,7 +30,7 @@ fn assert_normalization(convert: impl Fn() -> CompletionResponse) {
             .len(),
         3
     );
-    assert_eq!(calls[1].id.as_str(), "tool-0");
+    assert_eq!(calls[1].id.explicit(), Some("tool-0"));
     assert_eq!(calls[1].provider.as_ref().unwrap().call_id, "tool-0");
     for index in [0, 2] {
         assert!(calls[index].provider.is_none());
