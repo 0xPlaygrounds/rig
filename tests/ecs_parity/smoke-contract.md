@@ -1,9 +1,8 @@
 # Native smoke observation contract
 
-This is a scoped review of the nine native `ecs_parity` smoke cases for
-OpenAI, Anthropic, and Gemini. It supplements the manifest; it does not mark
-its incomplete assertion mappings as complete or prove the full programme.
-The original source remains pinned to `805fb18e6135c9050ee7ca4295d96ddf08cb223f`.
+The nine native smoke cases for OpenAI, Anthropic and Gemini retain the following
+original observations. The scenario catalog records their correspondences; current
+tests establish their results.
 
 | Original case, in each provider's cassette module | Original observable obligations | Native observation |
 | --- | --- | --- |
@@ -19,8 +18,8 @@ streaming smoke cases, not a general multi-turn collector.
 
 `Streamed.outcome` retains the first folded terminal/error. Consequently,
 checking only successful settlement would miss an error after a terminal.
-The native helper installs `EffectLogRecorder::keeping_stream_events` and
-checks its `stream_errors` at settlement. `collect_streams` records every
+The native helper checks public `Streamed.errors` at settlement, including when
+event retention is disabled. `collect_streams` records every
 received error and publishes the outcome only after channel closure. The
 recorder is an observer of native execution, not an input oracle. This
 success-only helper checks the whole fresh application's record; expected
@@ -28,7 +27,7 @@ failure and independent multi-run support will need scoped observations.
 
 Two synthetic controls in `tests/common/ecs_agent/tests.rs` exercise clean
 success and a final followed by an error. The latter requires the specific
-recorder-assertion panic. Disabling that assertion makes the control fail
+stream-error assertion panic. Disabling that assertion makes the control fail
 because the expected panic does not occur. These controls do not establish
 delayed EOF, backpressure, cancellation, or policy-visible timing fidelity.
 
@@ -39,26 +38,10 @@ counts. Strict cassette interaction checks supply additional request evidence,
 whose recorder boundary and normalization limitations still apply. A final
 answer alone must not be presented as independent tool-count evidence.
 
-The manifest's `configuration_mapping` records each smoke case's settings.
+The catalog's `configuration_mapping` records each smoke case's settings.
 Gemini's tools case leaves the agent's default at one turn and overrides
 only the run to three turns. `prompt_with_max_turns` forwards that override
 to native `spawn_run`; it does not change the agent. A third synthetic
 control completes a two-turn unary tool workflow with a run override and
 checks that both agent budget components remain at one. That control does
-not exercise a subsequent default-budget run. The original 22-test evidence
-below predates this additional control and the configuration correction;
-retain it as historical evidence, not verification of the updated source.
-
-## Execution provenance
-
-`evidence/stream-obligation-candidate.json` reconciles the exact 16 native
-cases and six registrations of the two synthetic controls, with source,
-fixture and log hashes. It is candidate regression evidence, not a new
-paired baseline run or the complete CI coverage gate.
-
-Keep baseline and candidate Cargo target directories separate. A run during
-this batch reused a baseline Anthropic binary from a shared target directory
-and selected only six native tests overall. It was rejected as incomplete.
-Rebuilding the candidate Anthropic target restored its ten native cases;
-the final run reconciled all expected IDs. Never accept cached compilation,
-an exit code or a total count without checking the selected registrations.
+not exercise a subsequent default-budget run.

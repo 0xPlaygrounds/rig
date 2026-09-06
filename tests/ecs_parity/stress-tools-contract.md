@@ -1,11 +1,7 @@
 # Gemini tool stress parity
 
-Scope: all six hook_stress_tools cases at baseline
-805fb18e6135c9050ee7ca4295d96ddf08cb223f, root default features, native host.
-The batch freezes original producers, support, tools and six provider cassettes.
-Original source and fixtures are unchanged. There are no original effect goldens
-for these cases: strict requests, interaction exhaustion and original assertions
-are the oracle. Thirteen other Gemini stress cases remain outside this batch.
+Scope: the six hook_stress_tools cases. These have no original effect goldens;
+strict requests, interaction exhaustion and original assertions are the oracle.
 
 Native execution uses the real Gemini2.5Flash adapter, original tools and counters,
 original prompts/preambles, owner stress-agent, temperature0, empty starting
@@ -50,9 +46,4 @@ remain. This is a model-driven extra turn, not policy retry of a tool-bearing tu
 The application systems are scoped to these single-active-run test Apps. They
 are not a compatibility runtime or a general HookStack replacement. No streaming,
 invalid-call or general cancellation/drain guarantees are inferred from these six
-blocking cases. No production ECS changes, paid calls or cassette recaptures.
-
-Negative control: remove retained utterances from the cancellation projection.
-The original shared cancellation validator must reject the missing assistant
-call despite an otherwise correct reason and execution count. Restore exact
-source before final paired replay; retain the failed run and hashes as evidence.
+blocking cases.

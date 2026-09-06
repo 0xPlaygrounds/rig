@@ -1,7 +1,6 @@
 # Gemini streaming stress parity
 
-Scope: all six hook_stress_streaming executable tests at baseline
-805fb18e6135c9050ee7ca4295d96ddf08cb223f, root default features, native host.
+Scope: all six hook_stress_streaming executable tests on the native host.
 The blocking/streaming comparison test contains two workflows under one test ID;
 all seven original cassettes are frozen and executed. Original producers and
 support remain unchanged. No original effect golden exists for this family.
@@ -45,13 +44,6 @@ The comparison test reuses assert_mentions_expected_number12, including its
 nonempty check and case-insensitive substring matching; it does not assert exact
 equality of the two answer strings or parse an integer.
 
-Negative control misclassifies actual text deltas as tool-call deltas. The real
-text-only cassette must fail its original TextDelta-presence assertion. Exact
-source is restored before paired replay. Existing native consumer controls cover
-EOF/error-after-Final separately; this negative control does not prove delivery
-grouping or all observer ordering.
-
 Scope is one active run per App with these valid calls. No original AgentHook or
-agent orchestration executes. No production ECS changes, paid calls or recapture.
-Seven main stress cases and the full inventory/feature/network/interruption/
-capability/performance/aggregate/review/publication/CI obligations remain open.
+agent orchestration executes. Broader concurrency, interruption and capability guarantees remain outside this
+single-active-run scope.

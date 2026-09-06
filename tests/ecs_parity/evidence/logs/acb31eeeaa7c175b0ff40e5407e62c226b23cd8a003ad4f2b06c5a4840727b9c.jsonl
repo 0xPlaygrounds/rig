@@ -1,6 +1,0 @@
-{"type":"suite","event":"started","test_count":2,"nextest":{"crate":"rig","test_binary":"anthropic","kind":"test"}}
-{"type":"test","event":"started","name":"rig::anthropic$anthropic::cassette::agent::completion_smoke_effect_log_is_the_golden_fixture"}
-{"type":"test","event":"started","name":"rig::anthropic$anthropic::cassette::agent::memory_conversation_effect_log_is_the_golden_fixture"}
-{"type":"test","event":"ok","name":"rig::anthropic$anthropic::cassette::agent::memory_conversation_effect_log_is_the_golden_fixture","exec_time":0.11705175}
-{"type":"test","event":"ok","name":"rig::anthropic$anthropic::cassette::agent::completion_smoke_effect_log_is_the_golden_fixture","exec_time":0.11738225}
-{"type":"suite","event":"ok","passed":2,"failed":0,"ignored":0,"measured":0,"filtered_out":537,"exec_time":0.234434,"nextest":{"crate":"rig","test_binary":"anthropic","kind":"test"}}

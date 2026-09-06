@@ -4,4 +4,4 @@
 - `release-notes.sh [PREVIOUS_TAG] [OUT_DIR]` — collects the commit log, merged PR notes and public API diffs since the previous tag into one directory for the release editorial pass.
 - `release-notes-prompt.md` — the editorial pass that writes `CHANGELOG.md` and `MIGRATING.md` on the release PR, from the output of `release-notes.sh`.
 
-- Provider parity tooling lives in Rust under `xtask`: `parity-manifest` validates source/fixture inventories and `parity-batch` executes exact original/native test pairs. See `tests/README.md`.
+- `cargo xtask check-ecs-scenarios` checks maintained ECS scenario references and an optional current nextest listing. Run the ordinary provider regression tests for execution results; see `tests/README.md`.

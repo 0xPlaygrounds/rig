@@ -1,9 +1,6 @@
 # Native causal completion parity
 
-Scope: all three corpus_causal cells, pinned baseline
-805fb18e6135c9050ee7ca4295d96ddf08cb223f, default root features/native host.
-`batches/causal.json` retains six original fixtures and original sources;
-`evidence/causal-report.json` pairs exact original/native execution.
+Scope: the three corpus_causal scenarios on the native host.
 
 The original agent's Lookup dispatches a nested completion through its scoped
 sink dispatcher. Native execution registers the same neutral descriptor as an
@@ -11,7 +8,6 @@ open world handler and reuses `crates/rig-verify/tests/corpus/world_nesting.rs`'
 existing graph-producing systems. Original Lookup Serve/nest, legacy ToolServer,
 AgentBuilder, runner and bus driver do not execute. No record supplies an answer:
 all three model requests reach the actual Anthropic adapter and strict cassette.
-The shared systems' model/handler source is included in candidate source identity.
 
 The world nests a PendingEffect ChildOf the actual issued tool, submits its real
 child completion through the model handler, and publishes a WorldOutcome built
@@ -38,8 +34,8 @@ actual EOF/fold and rejects all item errors through the shared native consumer.
 Original producer changes are only sibling visibility of two neutral constants.
 
 Existing full comparator rules apply unchanged: nominal IDs/parents,
-native-only programs/scopes comparison separation and separately retained raw
-native delivery scheduling. Original requests, outputs, raw response metadata,
+native-only programs/scopes comparison separation and exclusion of scheduling-
+dependent delivery batches. Original requests, outputs, raw response metadata,
 headers, events, outcomes and causal positions remain compared. Existing negative
 controls protect the shared comparator and stream consumer; this family does not
 claim a new dedicated causal mutation test.
@@ -49,6 +45,4 @@ interruption and cancellation variants remain separate obligations. The reused
 baseline installer leaks one model-key string per installation; these tests use
 three bounded Apps and make no resource-lifetime or performance superiority claim.
 Native intake defaults are used, not the effect-replay world's capacity1000 or
-recorded leaf replayers. No production runtime changes, paid calls or cassette
-recapture were needed. Full inventory/feature/WASM/network/performance/aggregate,
-capability comparisons, final review/publication/CI remain unfinished.
+recorded leaf replayers.

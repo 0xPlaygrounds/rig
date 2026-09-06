@@ -1,13 +1,13 @@
 # Extractor usage parity
 
-The batch `batches/extractor-usage.json` pairs 30 recorded tests across Copilot,
+This family pairs 30 recorded tests across Copilot,
 DeepSeek, llama.cpp, OpenAI, OpenRouter, and xAI. Each provider contributes five
 scenarios and seven extraction calls. These are blocking, zero-retry cases;
 they do not prove retry usage accumulation or streaming extraction.
 
 ## Independent execution
 
-Original tests run from the immutable baseline. Native counterparts use the
+Original tests retain their independent runtime. Native counterparts use the
 same provider cassette wrappers, models, literal prompts, and neutral Person
 and Address schemas and profession validators. `EcsExtractor` constructs native
 components and invokes `spawn_run`; it never invokes a legacy extractor or
@@ -18,7 +18,7 @@ type. The existing host bridge enters Tokio on every handler poll while ECS
 owns the future. Public stream errors remain failures.
 
 The exact baseline extractor preamble is a Rust string constant, including its
-trailing whitespace, and participates in source hashing. llama.cpp retains its
+trailing whitespace. llama.cpp retains its
 required schema fields, original extra instructions (including the two-newline
 append separator), and additional JSON temperature 0.0. The other providers
 use their original default preamble and model. All use required tool choice,
@@ -32,7 +32,7 @@ These recorded histories contain ordinary user messages.
 
 Every original anyhow::ensure expression and compatible-profession validator
 is retained in its native counterpart. Original tests only widen visibility
-of shared data definitions and validators. The batch rejects other AST changes.
+of shared data definitions and validators.
 
 | Scenario in each provider | Required observations |
 | --- | --- |
@@ -66,11 +66,5 @@ naming. Scene persistence and replay identity include the configuration.
 The native tests exercise actual requests, results, refusal, schedule-boundary
 changes, and restoration into a fresh world.
 
-## Evidence limits
-
-`evidence/extractor-usage-report.json` indexes exact original/native run records,
-source indices, logs, fixture hashes, and execution outcomes. Execution alone is
-not an assertion-review verdict. Ignored live extractor cases remain supplemental
-and unexecuted. The 246-pair regression passed after the production change; 24 older mapped
-cases lack batch definitions (the 246-pair run also includes 12 shared-provider cells) and remain outside that run. Global feature coverage,
-network isolation, full inventory, performance and publication remain programme work.
+Ignored live cases are not exercised by ordinary cassette replay. These
+scenarios do not establish exhaustive extraction or provider capability coverage.

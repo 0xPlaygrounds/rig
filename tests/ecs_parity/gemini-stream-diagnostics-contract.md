@@ -1,9 +1,8 @@
 # Gemini streamed failure diagnostics
 
-The two `gemini-stream-diagnostics` batch cells cover the original built-in
-streaming max-turn and tool-dispatch cancellation cases. Four other cases in
-`agent_run_streamed.rs` remain unported, including three requiring early
-invalid-call decisions. They must not inherit these verdicts.
+The native streamed max-turn and tool-dispatch cancellation scenarios preserve
+the diagnostic observations below. The other streamed-run cases are described
+in `gemini-stream-access-contract.md`.
 
 ## Configuration and observations
 
@@ -35,29 +34,6 @@ The original loops stop at the expected prompt error and reject other errors;
 they do not require draining the remainder after that error. Both paths retain
 the original strict ordered cassette wrapper and consumption teardown.
 
-## Historical timing gap and current production work
-
-`crates/rig-ecs/tests/run_stream_boundary.rs` began as a failing regression
-for a required native behavior. It publishes a tool block start and invalid
-name, then waits on a live oneshot gate. The test observes the delivered name,
-allows a subsequent full schedule pass, and requires zero EffectOutcome before
-checking that invalid policy can act. Its failure is not a timeout and cannot
-be explained by the provider having already finished.
-
-At that evidence revision, fold exposed only text before outcome. Materialise created
-InvalidCall after Outputs.done. `partial_turn_at` reconstructs diagnostics from
-completed content and retained events; that cannot establish early intervention.
-Injecting an early repair alone is also insufficient: final folding would
-overwrite the edit. Skip needs an actual retained prefix and abandoned usage
-accounting. A production fix and further timing/identity/history tests remain
-required; this two-case batch does not resolve that gap.
-
-The subsequent native implementation publishes early invalid names, retains
-their delivered prefixes and resolves final identities through core assembly.
-Six gated regressions now cover early policy access, persistent repair, skip
-prefix/usage, exhausted retry, later failure after repair, and Ignore with block
-reuse. These are synthetic native evidence, not provider cassette coverage.
-The original failure artifacts remain historical evidence. The four remaining
-Gemini streamed-run scenarios still need native counterparts, including an
-independent allowed-tool set. This batch's historical paired results do not
-verify the later production edits; affected provider batches must be rerun.
+Synthetic gated stream-boundary tests separately check policy intervention before
+EOF, persistent repair, skipped prefixes and usage, retries, later failures and
+block reuse. Cassette scheduling alone does not establish before-EOF timing.

@@ -1,6 +1,6 @@
 # Complex tool-session parity
 
-The batch covers all27 scenarios in the baseline DeepSeek, xAI and OpenRouter
+This family covers the 27 scenarios in the original DeepSeek, xAI and OpenRouter
 agent_tool_sessions files:14 invoke agent orchestration and13 call provider
 models directly. The latter execute unchanged in both revisions and are shared
 provider coverage, not migrated agent behavior. The xAI image case is agent
@@ -53,8 +53,7 @@ xAI's image case retains VISION_MODEL, original preamble, original JPEG bytes,
 media type and base64 helper. Before scheduling, the fresh native user utterance
 is assigned the actual text-image-text parts in the original order. Native
 settlement must succeed and its output must pass the original trim-nonempty
-check. The JPEG is explicitly in the batch fixture hashes; it is not silently
-omitted because the generic source index does not enumerate image extensions.
+check. The original JPEG remains a consumed fixture in Git.
 
 ## Shared provider partition
 
@@ -66,15 +65,6 @@ history. These construct requests directly; definitions do not execute tools.
 Raw parsing/normalization, metadata helpers, stream drainage and their original
 assertions execute unchanged in both checkouts. No ECS mapping is invented.
 
-## Evidence and limits
-
-`evidence/tool-sessions-report.json` indexes exact selected/executed IDs and
-content-addressed logs, source identity and fixture checks for both runners.
-The source guard protects all three original files, common support/cassettes,
-provider wrappers and original typed decoder. Assertions are mapped to original
-source and unambiguous free-call helper anchors; manual review covers Tool impls,
-collectors, typed recovery and teardown that the free-call scan cannot establish.
 The same result wrappers require complete strict ordered cassette consumption.
-
-Full programme classification, capability/feature coverage, interruption and
-performance proof, aggregate verification and publication remain unfinished.
+These scenarios do not establish exhaustive capability, concurrency, feature or
+interruption coverage.

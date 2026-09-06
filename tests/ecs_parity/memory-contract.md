@@ -1,7 +1,6 @@
 # Memory family contract
 
-Scope: all eleven Anthropic corpus_memory producers at immutable baseline
-805fb18e6135c9050ee7ca4295d96ddf08cb223f. Native execution uses the original HTTP
+Scope: all eleven Anthropic corpus_memory producers using the original scenarios. Native execution uses the original HTTP
 cassettes, real provider adapters and real ConversationMemory backends through
 MemoryAdapter. Original prompts, bypass history, memory_ops and loaded_lengths
 are shared through visibility-only edits. No recorded memory answers or legacy
@@ -51,25 +50,17 @@ The native host owns the App/World and its bus independently of the agent entity
 It registers the model first, then memory, matching the original host registrar.
 The original host producer leaves header.bus undeclared, so this test explicitly
 sets declare_bus_policy=false for the interoperability stamp. Actual native
-Policy remains at its ordinary defaults and is bound by configuration/source
-provenance; no runtime policy is changed to make header comparison pass.
+Policy remains at its ordinary defaults; no runtime policy is changed to make
+header comparison pass.
 The consumer waits for append, requires no unfinished PendingEffect before host
 teardown, then drops the App. There is no detached legacy driver to await.
 
-## Assertions and proof
+## Assertions
 
 All original direct assertions and helper obligations remain, including nonempty
 outputs, exact memory operation ordering, first/second loaded lengths, event
 retention, required-row inclusion despite bypass, host policy declaration, and
 serial append message count. Full original golden comparison retains every
 original header/request/outcome/usage/event/tool-output field under the documented
-request-shape-contract.md nominal-ID and native-only representation rules. Raw
-native artifacts retain delivery traces; stable native goldens retain both scopes
-and program identities. No new normalization masks memory contents or errors.
-
-Batch memory.json selects eleven exact baseline and eleven exact native IDs,
-checks all22 original fixture bytes and complete original corpus/helper source
-ASTs, disables regeneration and uses separate build directories. Shared method
-implementations and clear helper assertions are source-frozen and reviewed in
-addition to free-function discovery. Scope remains host/default-root-features;
-full feature/WASM inventory and full-programme parity are incomplete.
+request-shape-contract.md nominal-ID and native-only representation rules. Stable native goldens retain both scopes
+and program identities; scheduling-dependent delivery traces are not compared. No new normalization masks memory contents or errors.

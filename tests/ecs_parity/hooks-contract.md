@@ -1,7 +1,6 @@
 # Hook family contract
 
-Scope: all eleven Anthropic corpus_hooks producers at immutable baseline
-805fb18e6135c9050ee7ca4295d96ddf08cb223f. Native tests share original prompts and
+Scope: all eleven Anthropic corpus_hooks scenarios. Native tests share original prompts and
 request/tool-record/transcript assertion helpers via visibility-only edits. They
 use real provider and tool adapters, ordinary native systems and unchanged
 original HTTP cassettes. No legacy hook executes in the native runner.
@@ -40,8 +39,7 @@ not claimed as per-run gating for arbitrary multi-run worlds. It does not await
 an invented answer, replay an effect, or create a second agent interpreter.
 
 Semantic hook names accompany installed native systems in stamp_header. Native
-PolicyVersion identifies the ordered policy declaration, and source provenance
-binds evidence to concrete implementations. Builder identity is computed from the
+PolicyVersion identifies the ordered policy declaration. Builder identity is computed from the
 actual graph; it is not claimed to hash application code.
 
 ## Memory response boundary
@@ -54,8 +52,7 @@ that an append error also permits the legacy answer; the consumer accepts that
 recorded terminal error, while these successful-backend hook cases receive Appended.
 It neither changes native phases nor manufactures outcomes. A gated synthetic
 memory handler demonstrates that an unreleased append keeps the response pending
-and that release permits success. A temporary bypass mutation is rejected by the
-early-response assertion; source is restored byte-for-byte. These are consumer
+and that release permits success. These are consumer
 boundary controls, not a claim that native Settled itself means durable append.
 
 ## Assertions and evidence
@@ -67,13 +64,5 @@ unchanged builder preamble and the awaited startup result. Original full goldens
 compare with the unchanged request-shape-contract.md normalization: nominal effect
 IDs/parents and native-only scope/program/delivery representation only. No original
 request, outcome, usage, event, header or causal relationship is removed.
-Native stable goldens retain scoped identity; immutable raw artifacts retain
-native poll delivery traces.
-
-The hooks batch selects eleven exact original and eleven exact native IDs with
-separate build directories, original-source AST checks and all22 original fixture
-byte checks. Source checking includes tests/common/goldens.rs so legacy hook
-implementations and their non-free-function assertions remain frozen. Method
-obligations are additionally source-reviewed; free-function inventory alone does
-not discover them. Scoped host/default-feature results do not complete the full
-feature/WASM inventory or whole-programme parity claim.
+Native stable goldens retain scoped identity; scheduling-dependent poll delivery
+traces are excluded from stable equality.

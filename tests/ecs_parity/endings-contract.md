@@ -1,7 +1,6 @@
 # Hook-ended runs contract
 
-Ten Anthropic corpus_endings producers at immutable baseline
-805fb18e6135c9050ee7ca4295d96ddf08cb223f execute through native provider adapters,
+Ten Anthropic corpus_endings scenarios execute through native provider adapters,
 agent systems and ordinary application policies. Original neutral inputs,
 last_outcome_kind, real Adder/WriteNote implementations and assertion tails remain.
 Original hook implementations are read as contracts and never execute natively.
@@ -34,8 +33,7 @@ The application has one run; arbitrary transport scheduling is not proven.
 The Ending enum selects concrete system installation only. It is neither an
 agent hook dispatcher nor an effect interpreter. PolicyVersion names native
 policy composition; original semantic hook names and RecordSettled are explicitly
-declared for legacy header interoperability. Source provenance binds actual
-implementation; a policy name alone is not proof of its behavior.
+declared for legacy header interoperability. A policy name alone is not proof of its behavior.
 
 ## Terminal observations and collectors
 
@@ -56,7 +54,7 @@ streamed helper's yield64 and subsequent terminal observation are retained in
 meaning: terminal observation is required before return; yields follow actual
 termination. A timeout is a failure, not a cancellation result.
 
-## Inputs, assertions and evidence
+## Inputs and assertions
 
 Owner golden, Sonnet4.6, temperature zero, original prompts/preambles and tools,
 handler registration order and recorder event choices remain unchanged. Unary
@@ -70,24 +68,9 @@ All direct and helper assertions remain: expected cancellation and exact reason,
 required RecordSettled error observation, exact effect families, successful real
 outcome records where required, cancelled partial-stream records, and full original
 goldens. Neutral helper expect/unwrap obligations and original wrapper matching,
-interaction exhaustion and teardown are source-frozen and independently reviewed.
+interaction exhaustion and teardown are retained and independently reviewed.
 Comparison uses the existing full-log contract; no additional normalization.
-Native goldens keep scopes/program identities; raw logs retain actual deliveries.
+Native goldens keep scopes/program identities; delivery grouping is not compared.
 
-Batch endings.json selects ten exact original and native tests, checks twenty
-original fixtures and original producer/helper source ASTs, strips credentials
-and regeneration, and uses independent build directories. Evidence is scoped to
-default root features/native host/explicit replay. Network isolation, complete
-feature inventory, supplemental empty-effect endings and the comprehensive
-interruption matrix remain separate unfinished programme obligations.
-
-## Negative control
-
-The retained endings-drop-mutation.json records a temporary removal of the single
-world.despawn(effect) call in policies::stop_stream. Both exact delta-stop tests
-failed at the assertion that every retained effect has finished. Source hashes
-before and after restoration are equal. The artifact retains the selection,
-mutated source hash, exit status and full diagnostic log; the mutation is not
-present in the implementation. This checks that stopping the run alone cannot
-satisfy the consumer-drop contract. It does not prove every transport cancellation
-or asynchronous cleanup guarantee.
+Network isolation, supplemental empty-effect endings and comprehensive
+interruption guarantees remain outside these scenarios.

@@ -1,8 +1,8 @@
 # Gemini streamed invalid-call access and repair
 
-Baseline: `805fb18e6135c9050ee7ca4295d96ddf08cb223f`. Original source is
+Original source is
 `tests/providers/gemini/cassette/agent_run_streamed.rs`; the native counterparts
-are in `ecs_agent_run_streamed.rs`. The batch now covers all six original
+are in `ecs_agent_run_streamed.rs`. The native module covers all six original
 streamed-run cases: four explicit streamed-machine scenarios and the two
 built-in diagnostic cases described in `gemini-stream-diagnostics-contract.md`.
 
@@ -71,11 +71,5 @@ not an inferred assertion added to the fail/repair originals.
   effect and zero usage before scheduling. This is an explicit API-contract
   mapping, not a claim that calling a nonexistent native method was tested.
 
-## Evidence and limits
-
-`batches/gemini-stream-access.json` selects exact original/native IDs and fixture
-paths. Pair-run artifacts bind results to their own source indexes. A successful
-pair result is execution evidence, not by itself an approved semantic verdict.
-Final independent family review and manifest integration remain required.
-Subsequent source changes must not be attributed to an earlier
-pair run. No network-barrier claim follows from credential removal alone.
+These cases do not establish a network barrier or arbitrary provider scheduling
+equivalence. Current regression runs determine their result.

@@ -1,7 +1,6 @@
 # Outcome family contract
 
-Seven Anthropic corpus_outcome cases at baseline
-805fb18e6135c9050ee7ca4295d96ddf08cb223f use native ECS execution with the real
+Seven Anthropic corpus_outcome scenarios use native ECS execution with the real
 provider adapters and original HTTP cassettes. Original constants and the neutral
 tool_outcome assertion helper are shared through visibility-only changes.
 FailingAdd and WriteNote remain the original tool implementations. No legacy
@@ -40,7 +39,7 @@ truncate an event list, inspect a transport inbox, or invoke legacy cancellation
 There is only one run in this application. Original completion-only family and
 Cancelled record assertions remain. Additional checks require actual native
 Failure::Cancelled and no Settled/RunResult. The full original golden pins the
-partial event prefix; native raw logs also retain real publication batches.
+partial event prefix. Scheduling-dependent delivery batches are not compared.
 These fixtures do not prove arbitrary transport scheduling equivalence.
 
 The cancellation case now applies test-owned backpressure after the first real
@@ -60,12 +59,8 @@ The existing nominal dispatch-ID mapping now also maps header.stream_errors keys
 through the same bijection. References outside the recorded effects fail. Error
 item positions and all report fields remain unchanged and compare exactly.
 Separate negative controls change an item's position and attach it to a missing
-effect, requiring rejection. Native scope identities and delivery artifacts
+effect, requiring rejection. Native scope identities and delivery normalization
 follow the existing request-shape contract; no new payload normalization exists.
 
-The outcome batch checks seven exact original/native IDs, fourteen unchanged
-original fixtures, original producer/helper source ASTs, replay-only execution
-and separate build directories. Full shared tool method implementations, wrapper
-teardown and helper obligations require independent review in addition to AST
-hashes. This is default-root-feature native-host evidence; the full feature matrix,
-network barrier, comprehensive cancellation matrix and programme remain open.
+The comprehensive cancellation matrix, network isolation and exhaustive
+functional-superset comparison remain outside this family.

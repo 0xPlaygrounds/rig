@@ -17,8 +17,7 @@
 //! cargo xtask check-test-layout   # fail on inline `mod tests { }`
 //! ```
 
-mod parity;
-mod scenario_inventory;
+mod scenarios;
 mod test_layout;
 
 use std::path::{Path, PathBuf};
@@ -30,24 +29,9 @@ fn main() -> ExitCode {
 
     let result = match task.as_deref() {
         Some("check-test-layout") => test_layout::check(&workspace_root()),
-        Some("parity-batch") => {
-            parity::batch::run(&workspace_root(), args.collect()).map_err(|e| e.to_string())
+        Some("check-ecs-scenarios") => {
+            scenarios::run(&workspace_root(), args.collect()).map_err(|e| e.to_string())
         }
-        Some("parity-manifest") => parity::manifest::run(args.collect()).map_err(|e| e.to_string()),
-        Some("parity-queue") => parity::queue::run(args.collect()).map_err(|e| e.to_string()),
-        Some("parity-review") => parity::review::run(args.collect()).map_err(|e| e.to_string()),
-        Some("parity-targets") => parity::targets::run(args.collect()).map_err(|e| e.to_string()),
-        Some("inventory-provider-tests") => match args.next() {
-            Some(list) => {
-                let root = args
-                    .next()
-                    .map(PathBuf::from)
-                    .unwrap_or_else(workspace_root);
-                let registrations = args.next().map(PathBuf::from);
-                scenario_inventory::run(&root, Path::new(&list), registrations.as_deref())
-            }
-            None => Err("inventory-provider-tests requires a nextest JSON list path".into()),
-        },
         Some(other) => Err(format!("unknown task {other:?}\n{USAGE}")),
         None => Err(format!("no task given\n{USAGE}")),
     };
@@ -65,13 +49,7 @@ const USAGE: &str = "\
 usage: cargo xtask <task>
 
 tasks:
-  parity-batch <batch.json> <baseline-root>  replay exact original/native pairs and retain evidence
-  parity-manifest <init|report> [options]   validate provider inventory and mappings
-  parity-queue <manifest.json> <requirements.json> <output.json>  generate remaining family and delivery work
-  parity-review <manifest.json> <review.json> <source-root> <evidence-root>  apply explicit reviewed decisions after integrity checks
-  parity-targets inventory <root> <output>  enumerate workspace targets independently of test listings
-  parity-targets check <root> <package> <listing> <output>  require every package test target to be listed
-  inventory-provider-tests <nextest.json> [source-root] [registration-map.json]  reconcile provider source with compiled tests
+  check-ecs-scenarios [nextest.json]  validate current scenario files and compiled mappings
   check-test-layout           fail if any crates/*/src file has an inline
                               test-gated `mod x { }` instead of `mod x;`
 ";

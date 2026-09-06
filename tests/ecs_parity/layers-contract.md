@@ -1,9 +1,6 @@
 # Native handler-layer parity
 
-Scope: all seven `corpus_layers` registrations at pinned baseline
-805fb18e6135c9050ee7ca4295d96ddf08cb223f, default root features, native host.
-`batches/layers.json` freezes the original sources and twelve distinct original
-provider/effect fixtures. `evidence/layers-report.json` pairs exact executed IDs.
+Scope: the seven corpus_layers scenarios on the native host.
 
 The native producer uses App, BusPlugin, AgentPlugin, native handler registration,
 Grant and real provider/ToolAdapter/MemoryAdapter handlers. Shared rig-core
@@ -28,13 +25,13 @@ actual handler descriptor order. No original fixture is regenerated.
 
 Shared neutral original constants and tool-record extraction helpers have only
 sibling visibility changes. Original producer bodies, all assertion expressions,
-layer methods and golden helpers are source-frozen. The manifest records direct
+layer methods and golden helpers are retained. The catalog records direct
 assertions plus helper and method obligations, because free-function discovery
 alone does not inventory assertions inside AgentHook implementations.
 
 The existing full-log comparator permits only its documented nominal ID mapping,
 removal of native-only scope/program fields from the comparison copy (retained in
-native goldens), and native delivery schedule separation (raw logs retain it).
+native goldens), and native delivery schedule separation (delivery batches are excluded from stable equality).
 No request, inner result, outer-result-bearing follow-up request, handler layer,
 builder fingerprint, terminal item, error, or legacy header field is omitted.
 Its existing negative controls remain applicable. Native policy versions declare
@@ -43,5 +40,4 @@ the two application systems; they do not assert automatic code hashing.
 The history observer is scoped to this single-turn cassette, not a general
 multi-turn on_run_start API. This family does not establish arbitrary concurrent
 host scheduling, WASM execution, full feature/inventory coverage, network isolation,
-performance, or the whole functional-superset programme. Those remain separate
-required work. No paid provider call or cassette recapture was needed.
+performance, or the whole functional-superset programme. Those remain separate work.

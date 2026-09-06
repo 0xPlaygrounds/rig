@@ -1,6 +1,6 @@
 # Recorded extraction and provider validation
 
-`batches/extractor-smoke.json` pairs ten original/native cases across nine
+This family pairs ten original/native cases across nine
 providers: Gemini contributes two; OpenAI, llama.cpp, Copilot, DeepSeek, xAI,
 OpenRouter, Doubleword, and Venice contribute one each. Original fixtures,
 provider wrappers and assertions remain shared. Only Gemini's Person type and
@@ -47,12 +47,6 @@ closures await finish_after_test and ReplayServer::assert_consumed; a mismatch,
 miss, error, or unconsumed interaction fails. Full option/expect/helper/teardown
 closure is reviewed separately from direct macro source anchors.
 
-## Evidence and limits
-
-`evidence/extractor-smoke-report.json` retains exact original/native IDs, run
-results, source identity, fixture hashes and raw logs. Shared helper usage-loss
-fault injection from `evidence/extractor-usage-mutation.json` remains applicable
-to the unchanged helper; it is not a new mutation execution for these ten cases.
 These scenarios establish their original provider request, typed result and
 usage obligations. They do not establish extraction retry, streaming, effect-log
 equality, or policy timing fidelity. Ignored/live cases and the full programme

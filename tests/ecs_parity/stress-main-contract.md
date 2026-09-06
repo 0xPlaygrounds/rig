@@ -1,7 +1,6 @@
 # Gemini main stress parity
 
-Scope: all seven executable hook_stress tests at baseline
-805fb18e6135c9050ee7ca4295d96ddf08cb223f, root default features, native host.
+Scope: all seven executable hook_stress tests on the native host.
 Six genuine provider cassettes and the original gemini_tool_call_turns effect
 golden are frozen. The golden producer and streaming taxonomy test share one
 cassette but remain separate executed IDs. Original producer/support bodies are
@@ -22,13 +21,11 @@ indices reaching>=2, exact call/result pairing and actual-counter equality,
 both-tools-execute, nonempty/monotone/final-tally assertions remain. Per-turn
 pairing uses actual observed breadcrumbs, not expected event counts.
 
-This batch improves the shared context observer: CompletionResponse now observes
+The shared context observer separates response and turn boundaries: CompletionResponse now observes
 published successful outcomes after bus Collect/before bus Judge; a separate
 ModelTurnFinished system observes actual done Outputs after agent Fold/before
 agent Judge and marks the turn once. It also exposes read-only breadcrumbs and
-an explicit stream-mode argument. All twelve earlier context/patch cases receive
-paired revalidation in stress-main-context-regression; their historical evidence
-is retained rather than rewritten. These are valid accepted turns, not a proof
+an explicit stream-mode argument. These are valid accepted turns, not a proof
 of invalid-call/retry lifecycle timing.
 
 Context steering installs a native RequestPatch with the exact vault Document,
@@ -74,17 +71,10 @@ Original nonempty tool-ID list and every ID is_generated assertions remain.
 The unchanged shared full comparator now also compiles in the Gemini target.
 It preserves every original request/outcome/handler/fingerprint/error/event field
 under its existing nominal effect-ID and native scope/program/delivery comparison
-rules. Complete native logs retain scope/program/delivery metadata separately,
+rules. Complete native logs retain scope/program metadata separately; delivery grouping is not compared,
 and the ECS golden is generated only by this real producer after original full
 comparison passes. Original effect golden and transport cassettes are unchanged.
 
-Negative control surfaces the actual committed tool result before its execution
-commit. Exactly the original ordering assertion must reject this fault; exact
-runtime source is restored before paired replay. This is one ordering control,
-not a universal concurrency/interrupt/delivery proof. Earlier context tally and
-stream delta controls remain source-bound historical evidence.
-
-No production ECS change, paid provider calls or cassette recapture. All31 Gemini
-stress cases now have native implementations, subject to their respective scoped
-execution/review records. Full inventory/feature matrix, capability/supplemental,
-network/interruption/performance/aggregate/review/publication and CI remain open.
+All 31 Gemini stress cases have native counterparts with their respective
+behavioral contracts. They do not establish exhaustive capability, concurrency
+or interruption guarantees.

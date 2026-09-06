@@ -1,11 +1,8 @@
 # OpenAI Chat tool-lifecycle matrix
 
-Scope: all24 original registrations at baseline
-805fb18e6135c9050ee7ca4295d96ddf08cb223f, default root features/native host.
-Twelve Agent cells migrate to native ECS. Twelve Model cells remain unchanged
-shared provider coverage, executed in both revisions but credited zero migrated
-agent cases. `batches/chat-tools.json` and `evidence/chat-tools-report.json` retain
-that full24-cell pair. No original effect golden exists for this family.
+Scope: 24 original registrations. Twelve agent cases have native counterparts;
+twelve model cases remain shared provider coverage and count as zero migrated
+agent cases. No original effect golden exists for this family.
 
 Both transports, gpt-4o-mini/gpt-4.1-mini and Zero/Nested/Parallel shapes retain
 original literal fixtures, Chat Completions route, preamble/prompts, unset
@@ -39,20 +36,9 @@ legacy error string or relabel the run as a successful final answer. Native
 supplemental graph checks inspect actual ToolCallSlot IDs/names and PendingEffect
 arguments in call-index order; they do not replace the original invocation log.
 
-Only sibling visibility of original enums, structs/fields, constants/functions
-changes; all bodies/variants/schema/macro tokens remain frozen. The batch guard
-now allows pub(super) enum visibility alongside existing const/fn/struct rules.
-Its new control permits only that visibility and rejects changed variants,
-payload types, attributes, discriminants and broader visibility. Existing guard
-controls preserve all other source assertions and fixtures. The change does not
-allow arbitrary original-source edits or broaden visibility normalization into
-macro bodies.
-
 Helper source anchors retain whole selected shared functions. assert_cell's
 common branch plus Agent or Model branch is the applicable obligation, not every
 branch for every cell. Only selected transport helpers are in each call chain.
-Default-feature passing is scoped separately from the inventory's other feature
-obligations. Source/compiled/full-feature inventory, network/interruption/WASM,
-capability comparisons/performance/aggregate and publication/CI remain required.
-Observed parallel start order is not a proof for arbitrary task scheduling.
-No production rig-ecs runtime change, provider call or cassette recapture needed.
+Observed parallel start order does not establish arbitrary task scheduling
+guarantees. The shared wire assertions remain distinct from actual runtime
+invocation assertions.

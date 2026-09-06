@@ -3,9 +3,8 @@
 This family covers 16 original blocking agent scenarios across 11 providers:
 Bedrock (4), Cohere (1), Copilot (1), DeepSeek (1), Doubleword (1), llama.cpp (1),
 Ollama (2), OpenRouter (1), Perplexity (2), Venice (1), and xAI (1). Exact original
-and native executable IDs and immutable fixture paths are in
-`batches/provider-completions.json`. These were already classified agent rows;
-this batch does not classify unrelated provider tests or ignored live tests.
+and native executable IDs and fixture paths are in `scenarios.json`. Unrelated
+provider and ignored live tests are outside this family.
 
 ## Independent execution and settings
 
@@ -71,24 +70,7 @@ same strict server and original AWS SDK configuration with explicit dummy
 credentials, fixed region and loopback endpoint. Copilot uses its cassette
 API-key constructor, not the ignored live all-model/OAuth workflow. Ollama and
 llama.cpp do not require a local model server during replay. These facts do not
-substitute for the programme's still-pending OS network barrier verification.
-
-Original producer files, shared assertion/tool implementations, provider support
-files and all 16 fixtures are protected by the paired batch's source/byte
-checks. Copilot support resides in its provider `mod.rs`; the only change there
-is the two-line native module registration. Review separately compares removal
-of that exact insertion with the immutable original module. Its entire current
-content is also captured in each candidate run's source index.
-
-## Evidence and limits
-
-`evidence/provider-completions-report.json` links exact original and native
-runs, compiled/selected IDs, source indexes, fixture hashes, toolchain, features,
-structured outcomes and full logs. `evidence/provider-completions-review.json`
-records the independent review and final verification when available. The
-request mutation changes the actual Ollama token budget to 25 while retaining
-the original recording; strict request matching must reject it. The original
-source bytes are restored before the final paired replay.
+establish operating-system network isolation.
 
 The claim is scoped provider request/response and actual final-result fidelity
 for these recorded blocking workflows, with root default features plus
@@ -96,4 +78,4 @@ for these recorded blocking workflows, with root default features plus
 collectors, hooks or raw-response/usage assertions in this family. It does not
 prove stream terminal counts, policy delivery grouping, general tool scheduling,
 all feature combinations, ignored live behavior, or all provider agent scenarios.
-Other agent families and the full programme remain required.
+Other agent families remain outside this scope.

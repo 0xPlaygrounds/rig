@@ -1,6 +1,0 @@
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.37s
-    Starting 2 tests across 1 binary (601 skipped)
-        PASS [   1.342s] rig::anthropic cassette_safety::cassette_files_match_registered_scenarios
-        PASS [   6.809s] rig::anthropic cassette_safety::cassettes_do_not_contain_obvious_secrets
-------------
-     Summary [   6.810s] 2 tests run: 2 passed, 601 skipped

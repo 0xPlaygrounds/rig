@@ -1,7 +1,0 @@
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.33s
-    Starting 3 tests across 1 binary (675 skipped)
-        PASS [   0.350s] rig::anthropic anthropic::cassette::ecs_causal::completion_concurrent_effect_log_is_the_golden_fixture
-        PASS [   0.350s] rig::anthropic anthropic::cassette::ecs_causal::completion_serial_effect_log_is_the_golden_fixture
-        PASS [   0.541s] rig::anthropic anthropic::cassette::ecs_causal::completion_streamed_effect_log_is_the_golden_fixture
-------------
-     Summary [   0.541s] 3 tests run: 3 passed, 675 skipped

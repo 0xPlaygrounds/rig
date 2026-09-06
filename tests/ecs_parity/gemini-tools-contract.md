@@ -1,10 +1,7 @@
 # Gemini tool execution conformance
 
-`batches/gemini-tools.json` pairs all six original `agent_tools_e2e` cases with
-native `ecs_tools_e2e` cases. Original tests and helpers remain unchanged. The
-six adjacent `agent_run_streamed` cases are separately classified as agent
-scenarios and remain unported; this batch does not cover their midstream
-recovery, assembler, failure-history or cancellation contracts.
+All six original `agent_tools_e2e` cases have native `ecs_tools_e2e` counterparts.
+The adjacent streamed-run cases have separate access and diagnostics contracts.
 
 ## Independent execution and configuration
 
@@ -28,7 +25,7 @@ successful cases have no rejected attempts; failure and multi-run counting
 would require broader observations.
 
 The conformance module copies neutral tool definitions and assertion helpers
-from pinned model_conformance.rs while replacing execution with native ECS.
+from model_conformance.rs while replacing execution with native ECS.
 It imports only neutral ScenarioError/ScenarioReport and the pure protocol
 validator from rig-agent; it never calls the legacy conformance runner. The
 local contract error constructor preserves the original error data. Duration
@@ -62,7 +59,5 @@ StreamObservation does not itself store. Fields unused by the original
 assertions remain unobserved; no stronger event-uniqueness claim is made.
 
 Both runtimes use unchanged strict ordered cassette wrappers and complete
-consumption/teardown. Exact paired execution disables regeneration and removes
-provider credentials. This is provider/effect behavior evidence, not an OS
-network barrier, universal concurrent scheduling proof, performance result or
-complete programme verdict.
+consumption/teardown. Replay uses the committed fixtures. This family does not establish OS-level
+network isolation, universal scheduling behavior or a complete superset verdict.

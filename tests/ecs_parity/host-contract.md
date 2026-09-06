@@ -1,7 +1,6 @@
 # Host custom-effect family contract
 
-Ten corpus_host Anthropic producers at baseline
-805fb18e6135c9050ee7ca4295d96ddf08cb223f use native ECS execution, real provider
+Ten corpus_host Anthropic scenarios use native ECS execution, real provider
 adapters and the original neutral Note, NoteAck, NoteTaker and Adder implementations.
 Original prompts, note_ats helper and all assertion tails remain. No AgentHook,
 AgentBuilder, legacy driver or recorded answer executes on the native path.
@@ -14,8 +13,7 @@ requested. Original serial policy, event choice, temperature0, preamble, prompt,
 owner golden and run max3 remain. Host policy is not agent-owned header metadata:
 declare_bus_policy=false maps original header.bus=None without altering actual
 native Policy. Full original golden comparison retains handlers and ordered
-semantic hook names; PolicyVersion names the native composition and source hashes
-bind its implementation.
+semantic hook names; PolicyVersion names the native composition without fingerprinting implementation code.
 
 A NotePending component identifies each actual custom-effect entity and its
 expected acknowledgement. Payload is serialized from the original Note type;
@@ -67,10 +65,7 @@ identical internal operations. No expected refusal is synthesized in the test.
 
 All direct and helper assertions remain, including note_ats kind/at checks, real
 acknowledgements inside original hook methods, answer42 for tool runs, exact effect
-families, event retention, unserved error and complete original logs. Batch host.json
-selects ten exact baseline/native cases, freezes original corpus/goldens/support
-source ASTs, checks twenty original fixtures and forces replay with independent
-build directories. No new golden normalization is introduced.
+families, event retention, unserved error and complete original logs. No new golden normalization is introduced.
 
 A separate synthetic control replaces the note handler with a gated wrapper around
 the real NoteTaker. Across six policy configurations (startup, completion-call,
@@ -82,11 +77,7 @@ expected response. This tests continuation timing independently of fast cassette
 responses; it is separately counted from the ten provider cells.
 The combined startup/settled configuration releases two permits together; its
 second acknowledgement is independently held only by the standalone settled
-configuration. The retained host-gate-mutation.json removes all three run
-conditions temporarily. The control rejects that fault when a model is issued
-while the startup acknowledgement is held; exact source bytes are restored.
-This is one combined-fault check, not an independent mutation of every boundary.
+configuration.
 
-Scope remains default root features/native host/replay. Complete feature inventory,
-network isolation, arbitrary multi-run scheduling and interruption/capability
-programme remain unfinished requirements.
+Scope remains default root features/native host/replay. These cases do not establish complete feature coverage, network isolation,
+arbitrary multi-run scheduling or interruption/capability guarantees.

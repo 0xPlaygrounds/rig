@@ -1,9 +1,0 @@
-   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.45s
-    Starting 3 tests across 1 binary (379 skipped)
-        PASS [   0.135s] rig::gemini gemini::cassette::streaming_tools::streaming_tools_surface_two_distinct_tool_calls_before_final_answer
-        PASS [   0.237s] rig::gemini gemini::cassette::ecs_ordering::streaming_tools_surface_two_distinct_tool_calls_before_final_answer
-        PASS [   1.271s] rig::gemini cassette_safety::cassette_files_match_registered_scenarios
-------------
-     Summary [   1.271s] 3 tests run: 3 passed, 379 skipped
-

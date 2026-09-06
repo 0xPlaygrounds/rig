@@ -1,7 +1,6 @@
 # Per-turn shaping family contract
 
-Scope: all 12 Anthropic corpus_shaping producer cells at baseline
-805fb18e6135c9050ee7ca4295d96ddf08cb223f, using the unchanged original HTTP cassettes
+Scope: all 12 Anthropic corpus_shaping producer scenarios using the unchanged original HTTP cassettes
 and original full effect goldens. The native module shares original prompt
 constants, request extraction, schemas, and assertion helpers. Every runtime
 operation uses native ECS plugins, real provider adapters and real Adder execution.
@@ -32,8 +31,7 @@ Native stamp_header computes the builder identity from the actual graph. The
 legacy hook names are explicit semantic declarations accompanying the installed
 native systems; they are not evidence that a builder hash fingerprints system
 code. Native PolicyVersion declares `ecs-shaping/v1:<ordered-system-names>` and
-stamp_run records that declaration in scoped identity. Source-index provenance
-binds execution to the concrete system implementation.
+stamp_run records that declaration in scoped identity. The declaration does not fingerprint the system implementation.
 
 ## Assertions and comparison
 
@@ -47,14 +45,5 @@ The full original golden comparison uses the previously reviewed
 `tests/common/ecs_goldens.rs` rules described in request-shape-contract.md: only
 nominal effect IDs/parents and native-only scope/program/delivery representations
 are normalized. No original header, request, response, event or tool-output field
-is dropped. Complete raw native logs retain poll delivery traces in immutable
-content-addressed artifacts. Stable native goldens retain native scoped identity
+is dropped. Stable native goldens retain native scoped identity
 and normalize only nondeterministic delivery grouping.
-
-Original policies in tests/common/goldens.rs remain unchanged; the original
-producer changes only shared constant/helper visibility. The batch runner checks
-source AST fidelity and all 24 original fixture hashes before executing exact
-original/native test IDs in separate build directories with regeneration disabled.
-This is scoped provider-integrated evidence, not an all-feature or whole-programme
-completion claim. Execution and independent review results are recorded with the
-batch artifacts and manifest.

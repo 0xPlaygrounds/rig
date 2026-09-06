@@ -1,8 +1,7 @@
 # Turn-termination family contract
 
 Scope: eight existing scenarios for each of Anthropic, OpenAI Chat Completions,
-and Gemini, at baseline `805fb18e6135c9050ee7ca4295d96ddf08cb223f`.
-The batch specification lists every original/native ID and all 24 fixture files.
+and Gemini. The catalog lists original/native correspondences and fixtures.
 
 ## Independent execution and observation
 
@@ -56,32 +55,8 @@ simulate a run override.
 
 ## Evidence and limits
 
-Run `cargo xtask parity-batch tests/ecs_parity/batches/turn-termination.json
-/path/to/immutable/baseline` from the candidate worktree (one shell line).
-The command checks original-source equivalence with `syn`, permitting only sibling
-visibility and formatting differences, byte-identical fixtures, exact compiled IDs, terminal outcomes,
-and unchanged inputs during each surface's run. It retains full logs and shared
-content-addressed provenance. Baseline and candidate use separate target paths.
-
 This establishes the scoped family only. It does not establish all hook semantics,
 all finish-reason variants, every provider, multi-run resource isolation, WASM,
 or full-programme parity. A replay environment with credential variables removed
-is not by itself an operating-system network-denial proof. Full-programme network
-barrier and architecture gates remain separate obligations.
-
-## Shared negative control and review
-
-Temporarily replacing the observer's actual `request.max_tokens` with `Some(64)`
-made all 24 native cases fail. Exact source bytes were restored in a `finally`
-cleanup before rerunning the positive batch. The historical control logs are
-`evidence/turn-termination-cap-mutation.jsonl` and `.log`; this control predates
-the Rust tooling migration and is supplemental evidence, not a current execution
-verdict. It demonstrates that the shared cap observation cannot silently report
-the agent baseline instead of each attempt's effective request cap.
-
-Independent batch review confirmed all 24 post-wrapper assertion sections,
-provider configuration, native observation/retry semantics, and original source
-preservation. Evidence-persistence findings were fixed and covered by Rust tests:
-failed attempts update the latest report, retain historical evidence, and retain
-log references even when post-run source inspection fails. Final scoped review
-found no remaining actionable issues; full-programme approval remains separate.
+is not by itself an operating-system network-denial proof. These cases do not establish a network barrier or comprehensive architecture
+equivalence.

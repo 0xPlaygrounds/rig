@@ -396,118 +396,45 @@ Check each integration module for required environment variables. For example, V
 `VECTORIZE_INDEX_NAME`, and Bedrock tests require AWS credentials plus access to the configured
 Bedrock models.
 
-## Agent/ECS parity inventory
+## Agent/ECS regression scenarios
 
-Enumerate the workspace independently of a compiled listing before choosing
-packages or targets:
+Native ECS tests execute real provider adapters against the same cassettes as
+rig-agent tests. Original and native golden comparisons retain their complete
+assertions. The [scenario catalog](ecs_parity/scenarios.json) records current
+correspondences, classifications, configuration and behavioral obligations;
+family contracts describe differences and limitations. It is not a passing
+result or proof of an exhaustive functional superset.
 
-```bash
-cargo xtask parity-targets inventory /path/to/immutable/baseline tests/ecs_parity/workspace-target-inventory.json
-cargo nextest list --locked -p rig --features bedrock --message-format json > nextest.json
-cargo xtask parity-targets check . rig nextest.json tests/ecs_parity/root-target-registration.json
-```
+The catalog includes unmapped and unclassified cases. Further migration and
+broader capability comparisons remain follow-up work. Shared-provider tests do
+not count as native agent migrations, and live or capability-gated cases must
+not be reported as exercised merely because the test runner lists them.
 
-The inventory retains all workspace members, targets, declared features and
-target feature requirements, including non-default members and examples. The
-package guard requires every Cargo test-enabled target (including explicitly
-test-enabled examples and benches), rejects filtered/skipped target listings,
-and retains ignored test counts. Enable required target features before using
-the guard to establish full package target registration. Both commands preserve
-the raw metadata; the check also preserves the supplied raw listing.
+Check maintained files and a fresh compiled listing:
 
-This guard establishes target registration only. It does not authenticate the
-listing's original command/source contents or prove feature combinations,
-conditional source tests, assertions, execution or parity. Those remain separate
-source-discovery and run-evidence obligations. A zero-test compiled binary is
-not evidence that its conditionally excluded tests executed.
-
-The functional-superset inventory is partial. This change delivers the implemented
-native scenario families and runtime corrections; it does not establish an
-exhaustive functional superset. Further scenario migration, the remaining
-classification and companion-crate inventory, broader capability comparisons,
-interruption/performance experiments and an OS-level replay network barrier are
-follow-up work. The generated queue retains those original requirements without
-claiming them complete. Discovery output is
-source evidence, not a passing coverage report. To reconcile a nextest JSON
-listing with an immutable source checkout, use:
-
-```bash
-cargo xtask inventory-provider-tests nextest.json /path/to/baseline tests/ecs_parity/generated-registrations.json > discovery.json
-```
-
-Record the exact command that produced `nextest.json`, including packages,
-features, targets, and filters. Source discovery includes provider targets
-independently of that listing; unlisted targets and source-only cases remain
-visible. It does not cover companion crates or resolve every helper call.
-
-`ecs_parity/generated-registrations.json` contains reviewed mappings for tests
-created by macros. Each mapping pins its invocation, macro definition, and
-assertion sources by SHA-256; changes require reviewing and updating the mapping.
-The tool still reconciles mapped names with the independently compiled listing.
-Omitting the optional mapping file leaves generated registrations unresolved.
-A mapped or compiled name does not establish execution or assertion coverage.
-
-Bedrock's mapped wire-conformance tests exercise typed provider events directly,
-so they are shared provider coverage rather than migrated agent scenarios.
-Capability-gated cases can emit named `skipped` outcomes while the Rust test
-passes. Preserve these semantic outcomes separately from test-runner results;
-never count them as exercised capabilities.
-
-The versioned baseline inventory is
-[`ecs_parity/provider-baseline.json`](ecs_parity/provider-baseline.json), with a
-[generated report](ecs_parity/provider-baseline-report.md). Every baseline
-registration remains visible, including unclassified and source-only cases.
-Mappings cover the implemented families; an existing mapping does not count as
-passing parity or a complete assertion trace.
-
-Regenerate the report using fresh discovery from the pinned clean baseline and
-source/compiled discovery from the candidate checkout:
-
-```bash
-cargo xtask parity-manifest report \
-  --discovery baseline-discovery.json \
-  --manifest tests/ecs_parity/provider-baseline.json \
-  --configuration-evidence tests/ecs_parity/configuration-evidence.json \
-  --baseline-root /path/to/baseline --candidate-root . \
-  --candidate-discovery candidate-discovery.json \
-  --output inventory-report.json \
-  --markdown-output tests/ecs_parity/provider-baseline-report.md
+```sh
+cargo xtask check-ecs-scenarios
+cargo nextest list --locked -p rig --features bedrock --message-format json > target/ecs-tests.json
+cargo xtask check-ecs-scenarios target/ecs-tests.json
 cargo test --locked -p xtask
 ```
 
-Execute a reviewed family with exact original/native IDs and separate baseline
-and candidate build directories:
+The checker rejects duplicate mappings, missing source/fixture/contract files,
+missing compiled mapped original/native tests, and filtered listings. Unmapped
+source-only or feature-gated scenarios outside the listing are counted explicitly.
+Ignored registrations are not execution results. The checker does not
+validate every behavioral claim in the catalog or certify execution. Maintain
+those obligations alongside the corresponding tests; current test runs and CI
+establish which tests pass.
 
-```bash
-cargo xtask parity-batch tests/ecs_parity/batches/turn-termination.json /path/to/immutable/baseline
+Run a native family using its catalog binary and test module, for example:
+
+```sh
+cargo test --locked -p rig --test anthropic ecs_outcome -- --nocapture
 ```
 
-This Rust command retains per-case outcomes, full logs, and content-addressed
-source/fixture provenance under `tests/ecs_parity/evidence`. The latest report
-records failed and incomplete attempts as well as successes; historical run
-artifacts remain immutable. Execution results require the family's separate
-assertion review before being treated as parity evidence.
-
-Apply an explicit accepted independent review and generate the remaining queue:
-
-```bash
-cargo xtask parity-review tests/ecs_parity/provider-baseline.json review.json . tests/ecs_parity/evidence
-cargo xtask parity-queue tests/ecs_parity/provider-baseline.json tests/ecs_parity/programme-requirements.json tests/ecs_parity/remaining-work-queue.json
-```
-
-For baseline classification reviews, replace `.` with the immutable baseline
-root. Review application validates declared source hashes and, for parity,
-paired run provenance and exact successful test IDs before updating the manifest.
-It consumes a review decision; passing execution alone cannot establish semantic
-equivalence. Queue counts distinguish native mappings from historical reviewed
-verdicts. Programme gates come from the explicit requirements file, whose
-completeness must itself be reviewed against the original objective.
-
-The reporter rejects missing/duplicate baseline rows, changed configuration or
-source evidence, drift in mapped baseline fixtures, and missing/stale native
-registrations. It prints unresolved inventory counts; an incomplete inventory
-is an ordinary development report, not a successful completion gate. It does
-not yet enforce candidate-wide additions, execution evidence, or the full
-package/feature matrix. The `init` action requires explicit configuration
-evidence, rejects unresolved generated registrations, and refuses to overwrite
-a manifest, protecting reviewed annotations during subsequent discovery runs.
+Historical execution logs, proof snapshots, review-application commands and
+archive infrastructure are intentionally not maintained. No historical download
+or cache is required for regression tests. Consumed cassettes and goldens remain
+in Git. Removing proof files from the current tree does not remove the old blobs
+from published Git history.

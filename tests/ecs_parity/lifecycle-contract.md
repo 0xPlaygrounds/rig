@@ -1,9 +1,6 @@
 # Native lifecycle provider parity
 
-Scope: fifteen lifecycle_matrix cells (five each Anthropic/OpenAI/Gemini) at
-805fb18e6135c9050ee7ca4295d96ddf08cb223f, default root features/native host.
-Original producer/support files are unchanged. `batches/lifecycle.json` freezes
-fifteen genuine provider fixtures, pairs exact IDs and preserves source identity.
+Scope: fifteen lifecycle_matrix cases, five each for Anthropic, OpenAI and Gemini.
 These cells have no original effect golden; the oracle is strict original
 provider cassette matching/exhaustion plus every original direct/helper assertion.
 
@@ -49,13 +46,3 @@ provider Final. Only middleware_streaming requires usage>0; the entry-log case
 requires Final existence. WireProbe's named test asserts final phase counts; it
 does not itself timestamp response-vs-consumption, so no extra timing guarantee
 is claimed from that test name.
-
-`evidence/lifecycle-turn-mutation.json` temporarily increments completion-entry
-turn stamps. One real Anthropic entry-log replay must fail the unchanged original
-per-entry assertion; exact source bytes are restored before final paired replay.
-This protects the shared three-provider observer without claiming independent
-mutation execution for each provider. Existing stream-error controls also apply.
-
-No provider calls/recapture or production runtime changes are required. Full
-inventory/feature/WASM/network/interruption/capability/performance/aggregate and
-publication/CI obligations remain unfinished.

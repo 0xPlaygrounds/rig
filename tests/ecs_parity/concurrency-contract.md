@@ -14,7 +14,7 @@ ordinary concurrent serving. Distinct tool keys must remain concurrently runnabl
 Native EcsAgent drives ordinary plugins and real CompletionAdapter/ToolAdapter
 handlers. It does not replay effect answers or invoke the legacy runner. Original
 helper/tool visibility is widened only to the sibling module. All tool fields and
-implementation methods remain unchanged and are source-frozen by the batch check.
+implementation methods remain unchanged .
 
 The original collector drains through EOF, records errors and requires a final
 response via assertions. Native success waits for settlement, rejects stream
@@ -39,9 +39,4 @@ native history/publication assertions and replay request matching provide the
 runtime evidence. No new effect golden or builder-identity equivalence is claimed
 for these two original non-golden producer cases.
 
-The batch spec selects exactly two original and two native IDs against immutable
-baseline 805fb18e6135c9050ee7ca4295d96ddf08cb223f. Source AST checks permit only
-sibling visibility and optional signature trailing commas; full implementation,
-assertions and fixture bytes remain frozen. Shared observer negative controls
-remain supplemental evidence. This bounded pair does not establish all concurrency
-or interruption guarantees in the full programme.
+These two cases do not establish all concurrency or interruption guarantees.

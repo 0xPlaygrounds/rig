@@ -1,9 +1,0 @@
-{
-  "assertion_review": "required separately",
-  "batch": "shaping",
-  "cells": 12,
-  "error": "original source changed beyond sibling visibility: tests/providers/anthropic/cassette/corpus_shaping.rs",
-  "runs": {},
-  "schema": 2,
-  "status": "incomplete"
-}

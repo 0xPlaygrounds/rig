@@ -1,7 +1,6 @@
 # Output-mode family contract
 
-Scope: all ten Anthropic corpus_output producer cells at immutable baseline
-805fb18e6135c9050ee7ca4295d96ddf08cb223f. Each native case executes real provider
+Scope: all ten Anthropic corpus_output producer cells using the original scenarios. Each native case executes real provider
 adapters with ordinary ECS plugins against the unchanged original HTTP cassette.
 Original SUM_EVENT_PROMPT, request_at, tool_names and assert_event are shared by
 sibling visibility only. The exact original event schema is converted to JSON
@@ -29,12 +28,8 @@ request-shape-contract.md. Actual native stamp_header/stamp_run produce identity
 no golden header or outcome supplies execution. Every original header, request,
 response, event, usage and tool-output field compares; only the documented nominal
 IDs/parents and native-only scope/program/delivery representation differ. Native
-stable goldens retain scoped identity; raw logs retain delivery traces. Stable
+stable goldens retain scoped identity; delivery grouping is not compared. Stable
 native goldens are generated from provider replay, never handwritten.
 
-The output batch selects ten exact original and ten exact native IDs in separate
-build directories, checks all twenty original fixture bytes and original source
-AST fidelity, and disables regeneration during verification. Existing shared
-comparator negatives protect changed requests, reordered effects and missing
-builder identity. Scoped host/default-feature evidence does not establish the
-remaining feature/WASM matrix or full programme parity.
+Shared comparator negative tests reject changed requests, reordered effects and
+missing builder identity. This family does not establish exhaustive parity.

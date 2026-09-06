@@ -310,8 +310,11 @@ jobs:
       - name: Check test modules are sibling files
         run: cargo xtask check-test-layout
 
-      - name: Test inventory and parity tooling
+      - name: Test maintenance tooling
         run: cargo test --locked -p xtask
+
+      - name: Check ECS scenario file references
+        run: cargo xtask check-ecs-scenarios
 
   clippy:
     name: stable / clippy
@@ -421,6 +424,11 @@ jobs:
         run: >-
           cargo nextest run --locked --features bedrock --retries 2
           -E 'not binary(macro_hygiene)'
+
+      - name: Check ECS scenario registrations
+        run: |
+          cargo nextest list --locked -p rig --features bedrock --message-format json > "$RUNNER_TEMP/ecs-tests.json"
+          cargo xtask check-ecs-scenarios "$RUNNER_TEMP/ecs-tests.json"
 
       - name: Show sccache statistics
         if: always() && env.RUSTC_WRAPPER == 'sccache'

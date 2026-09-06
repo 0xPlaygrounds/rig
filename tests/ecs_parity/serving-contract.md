@@ -1,7 +1,6 @@
 # Serving family contract
 
-Ten Anthropic corpus_serving producers at baseline
-805fb18e6135c9050ee7ca4295d96ddf08cb223f run through native provider adapters,
+Ten Anthropic corpus_serving scenarios run through native provider adapters,
 native agent/bus systems and original tools. Original constants and complete
 assertion tails remain. No original AgentBuilder, runner or hook executes natively.
 
@@ -43,8 +42,7 @@ before a first completed model or unrelated retry/restore behavior. The default
 model handles the tool call, fast handles the answer. The unselected cell has no
 policy and still advertises fast in the required row. Original key-order, required
 row, answer42 and full log assertions remain. Declared RouteAfterFirstTurn and
-native PolicyVersion identify the interoperability composition; execution source
-is separately bound by provenance.
+native PolicyVersion identify the interoperability composition.
 
 ## Host-owned bus
 
@@ -62,19 +60,13 @@ preserve their original fixture and full EOF/failure obligations.
 
 ## Evidence and limits
 
-The batch selects ten exact baseline/native tests, freezes original corpus,
-goldens and support source ASTs, and checks sixteen distinct original fixtures
-(six HTTP cassettes shared by ten consumers, ten effect goldens). Original wrapper
-matching, interaction exhaustion, golden helper and tool method assertions require
-independent review in addition to hashes. Full original golden comparison uses
-existing nominal identity rules; there is no new normalization. Native scopes,
-program identities and raw delivery artifacts remain.
+Full original golden comparison uses the existing nominal identity rules. Native
+goldens retain scopes and program identities; delivery grouping is not compared.
 
-Scope is default root features/native host/replay. Full feature inventory,
-backpressure/concurrency capability matrix, network barrier, performance and full
-programme proof remain separate unfinished requirements.
+Scope is default root features/native host/replay. These cases do not establish complete feature coverage, backpressure/concurrency
+guarantees, network isolation, performance or exhaustive parity.
 
-## Reviewed runtime correction
+## Stream error observations
 
 Independent review identified that the shared success consumer's recorder-header
 check missed errors after Final when event recording was disabled. Native

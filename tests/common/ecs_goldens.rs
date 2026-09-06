@@ -12,24 +12,13 @@ pub(crate) fn golden_effects(name: &str, log: &rig_effect_log::EffectLog) {
         crate::goldens::golden_effects(name, log);
         return;
     }
-    use sha2::{Digest, Sha256};
-    let raw = serde_json::to_vec_pretty(log).expect("raw native log");
-    let directory =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/ecs_parity/evidence/runtime");
-    std::fs::create_dir_all(&directory).expect("runtime evidence directory");
-    let path = directory.join(format!("{:x}.json", Sha256::digest(&raw)));
-    if path.exists() {
-        assert_eq!(std::fs::read(&path).expect("existing evidence"), raw);
-    } else {
-        std::fs::write(path, &raw).expect("retain complete native log");
-    }
     let original: rig_effect_log::EffectLog = serde_json::from_str(
         &std::fs::read_to_string(crate::goldens::golden_path(name)).expect("original golden"),
     )
     .expect("original effect log");
     compare_original(name, log, &original);
-    // Poll batch numbers depend on transport scheduling. Retain them verbatim
-    // in the content-addressed raw artifact, outside the stable oracle.
+    // Poll batch numbers depend on transport scheduling and are excluded from
+    // stable equality. All original/native golden assertions remain below.
     let mut stable = log.clone();
     stable.header.deliveries = None;
     crate::goldens::golden_effects(&format!("ecs_parity/{name}"), &stable);

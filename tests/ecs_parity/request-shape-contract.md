@@ -1,7 +1,6 @@
 # Request-shape family contract
 
-Scope: the 13 Anthropic corpus_request_shape cassette producer tests at immutable
-baseline 805fb18e6135c9050ee7ca4295d96ddf08cb223f. The separate schema-literal unit
+Scope: the 13 Anthropic corpus_request_shape cassette producer scenarios. The separate schema-literal unit
 case stays in its original module and does not receive an agent mapping.
 
 ## Execution and configuration
@@ -51,9 +50,8 @@ Only these representation differences are normalized:
   must be nonempty. These native-only fields are omitted only from cross-runtime
   comparison and retained in the separate native stable golden.
 - Legacy producer headers lack delivery/poll-batch traces (asserted). Native
-  traces depend on transport polling. They are retained verbatim in immutable
-  SHA256-addressed raw logs under evidence/runtime, omitted from stable golden
-  comparison, and are not claimed as timing/batch-group equivalence evidence.
+  traces depend on transport polling and are omitted from stable golden
+  comparison. These tests do not claim timing or delivery-group equivalence.
 
 No request, response, event, original header field or causal relationship is
 removed to make the comparison pass. Shared negative controls demonstrate that
@@ -62,22 +60,9 @@ builder fingerprint. Each `ecs_parity/anthropic_request_shape_*.effects.json` is
 by the real native provider run through unchanged cassettes, never handwritten.
 It additionally checks stable native scope/program metadata and native IDs.
 
-## Recording and execution evidence
+## Recording
 
 Record mode follows the original golden helper: reject simultaneous golden
 regeneration, then allow the wrapper to scrub/save the cassette before comparing
 placeholder-bearing goldens on replay. Live raw logs are not written by this
-helper. Existing original fixtures/goldens remain immutable for this batch.
-
-`cargo xtask parity-batch tests/ecs_parity/batches/request-shape.json /path/to/baseline`
-selects 13 exact original and 13 exact native IDs, uses separate build directories,
-checks unchanged original source ASTs and all 26 original cassette/golden files,
-and retains results with source/toolchain/command provenance. The replay command
-removes RIG_REGENERATE_GOLDEN so ambient regeneration cannot bypass stable golden
-assertions. The batch report is execution evidence, not whole-programme approval.
-
-Independent review confirmed the 13 original configurations/assertions and bounded
-normalization. Its record-mode finding is fixed. Final review covered negative
-controls, manifest mappings and batch evidence with no remaining in-scope findings.
-The final replay after moving native goldens into their separate subdirectory
-passed all 13 original and 13 native cells; the stable report references both runs.
+helper. Ordinary regression runs use replay with golden regeneration disabled.
