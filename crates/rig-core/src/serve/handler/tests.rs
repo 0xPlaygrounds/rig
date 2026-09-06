@@ -282,3 +282,48 @@ fn cancellation_terminal_survives_a_full_stream_buffer() {
         ErrorKind::Cancelled
     );
 }
+
+#[test]
+fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
+    use crate::message::{AssistantContent, ToolCall, ToolCallId, ToolFunction};
+    let mut calls = ["local-call", "tool-00", "tool-0", "wire-call"]
+        .into_iter()
+        .map(|id| {
+            AssistantContent::ToolCall(ToolCall::new(
+                ToolCallId::new(id).expect("nonempty local id"),
+                ToolFunction::new("local".into(), serde_json::json!({"id": id})),
+            ))
+        })
+        .collect::<Vec<_>>();
+    let mut provider_call = ToolCall::new(
+        ToolCallId::new("local-provider").expect("local provider call id"),
+        ToolFunction::new("provider".into(), serde_json::json!({"x": 1})),
+    );
+    provider_call.provider = crate::message::ProviderCallId::new("wire-call")
+        .map(|provider| provider.with_item_id("wire-item"));
+    provider_call.signature = Some("signature".into());
+    provider_call.additional_params = Some(serde_json::json!({"metadata": true}));
+    calls.push(AssistantContent::ToolCall(provider_call));
+    let response = CompletionResponse::new(calls.clone(), Default::default(), "local");
+    let mut accumulator = crate::streaming::BlockAccumulator::new();
+    let mut published = Vec::new();
+    let events: Vec<Result<StreamEvent, ErrorReport>> = serde_json::from_value(
+        serde_json::to_value(events_from_response(&response)).expect("serialize events"),
+    )
+    .expect("deserialize events");
+    for event in events {
+        let event = event.expect("response reemits");
+        if let Some((_, content)) = accumulator.apply(&event).expect("event folds") {
+            published.push(content);
+        }
+    }
+    assert_eq!(
+        published, calls,
+        "completed events preserve local identities"
+    );
+    assert_eq!(
+        accumulator.finish(),
+        calls,
+        "final response preserves local identities"
+    );
+}

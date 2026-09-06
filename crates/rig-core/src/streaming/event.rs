@@ -168,6 +168,11 @@ pub enum BlockClose {
 /// wires leave them `None` and the assembled fragments are parsed instead.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolCallEnd {
+    /// An already assigned local correlation handle, when re-emitting a
+    /// completed response. This does not supply provider provenance; provider
+    /// handles remain in `tool_id` and `call_id`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub durable_id: Option<crate::message::ToolCallId>,
     /// Authoritative provider-issued tool id, when one exists (e.g. an id
     /// that arrived after the call opened id-less). The durable handle;
     /// absence is `None`, never an empty string (see
@@ -198,6 +203,7 @@ impl ToolCallEnd {
     /// unparseable-input policy.
     pub fn new(on_unparseable: UnparseableToolInput) -> Self {
         Self {
+            durable_id: None,
             tool_id: None,
             name: None,
             arguments: None,
@@ -216,6 +222,12 @@ impl ToolCallEnd {
             arguments: Some(arguments),
             ..Self::new(UnparseableToolInput::Error)
         }
+    }
+
+    /// Preserve an existing local correlation handle through stream folding.
+    pub fn with_durable_id(mut self, id: crate::message::ToolCallId) -> Self {
+        self.durable_id = Some(id);
+        self
     }
 
     /// Attach the authoritative provider tool id (empty means absent).

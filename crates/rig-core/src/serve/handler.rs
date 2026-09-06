@@ -852,14 +852,12 @@ pub(crate) fn events_from_response(
                 Err(error) => out.error(crate::completion::CompletionError::JsonError(error)),
             },
             AssistantContent::ToolCall(call) => {
-                // The call's ids travel verbatim, so the accumulator publishes
-                // the same durable id and the same `provider` the folded
-                // response held: a provider's single id as the wire's tool
-                // id, a dual (call id, item id) as both, and a minted
-                // `tool-<n>` as the minted block it names — no wire id at
-                // all, so no provider id is derived from it.
+                // The durable handle is separate from the assembly key and
+                // provider metadata. Local names are never inferred to be
+                // wire IDs merely because they do not look minted.
                 let mut end =
                     ToolCallEnd::whole(call.function.name.clone(), call.function.arguments.clone())
+                        .with_durable_id(call.id.clone())
                         .with_signature(call.signature.clone())
                         .with_additional_params(call.additional_params.clone());
                 let id = match &call.provider {
@@ -872,8 +870,7 @@ pub(crate) fn events_from_response(
                         };
                         BlockId::wire(call.id.as_str())
                     }
-                    None => BlockId::from_minted_name(call.id.as_str())
-                        .unwrap_or_else(|| BlockId::wire(call.id.as_str())),
+                    None => BlockId::minted(MintKind::Tool, index),
                 };
                 out.tool_call(id, end);
             }
