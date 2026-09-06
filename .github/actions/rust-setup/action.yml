@@ -34,10 +34,11 @@ inputs:
     default: "true"
   cache-save-if:
     description: >-
-      Additional rust-cache save gate. Cache writes are always restricted to
-      the default branch so pull-request merge refs can restore but cannot
-      evict the reusable caches they consume.
+      Additional rust-cache save gate. Only trusted upstream pushes can save.
     default: "true"
+  cache-development:
+    description: Allow the bounded development-base warming job to save caches
+    default: "false"
   sccache:
     description: >-
       Enable sccache with the GitHub Actions cache backend. Reserved for the
@@ -91,7 +92,7 @@ runs:
         components: ${{ inputs.components }}
         target: ${{ inputs.target }}
         cache: ${{ inputs.cache }}
-        cache-save-if: ${{ inputs.cache-save-if == 'true' && github.ref == 'refs/heads/main' }}
+        cache-save-if: ${{ inputs.cache-save-if == 'true' && github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || (inputs.cache-development == 'true' && github.ref == 'refs/heads/feat/effect-bus')) }}
 
     # rust-cache (inside setup-rust-toolchain above) persists *dependency*
     # artifacts but always recompiles the workspace's own crates; sccache
@@ -133,6 +134,8 @@ runs:
     - name: Enable sccache as the rustc wrapper
       if: inputs.sccache == 'true'
       shell: bash
+      env:
+        CACHE_WRITE_ALLOWED: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || (inputs.cache-development == 'true' && github.ref == 'refs/heads/feat/effect-bus')) }}
       run: |
         if [ "${{ steps.sccache.outcome }}" != "success" ]; then
           echo "::warning::sccache install failed; building without it"
@@ -141,7 +144,7 @@ runs:
         {
           echo "SCCACHE_GHA_ENABLED=true"
           echo "RUSTC_WRAPPER=sccache"
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+          if [ "$CACHE_WRITE_ALLOWED" != "true" ]; then
             # PR caches are scoped to their merge ref and cannot warm other
             # branches. Read the default branch's entries without creating
             # thousands of short-lived, quota-consuming PR entries.
@@ -164,4 +167,3 @@ runs:
       if: inputs.protoc == 'true'
       shell: bash
       run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-

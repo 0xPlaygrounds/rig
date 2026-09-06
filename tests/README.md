@@ -1,11 +1,13 @@
 # Test Suites
 
+For the fast edit/check loop, run `cargo xtask verify --changed`. Before publishing, run `cargo xtask verify --pr --base <intended-base-ref>` and complete independent review and committed-head CI. See [development verification](../DEVELOPING.md) for modes, prerequisites, result invalidation, and measurements.
+
 Rig's root crate uses integration test targets under `tests/`.
 
 - `tests/<provider>.rs` are provider-specific test targets.
 - `tests/providers/<provider>/cassette/` contains provider tests backed by committed HTTP cassettes.
 - `tests/providers/<provider>/live/` contains provider tests that still require a real service.
-- `tests/integrations.rs` is the vector-store and external-service integration target.
+- `test-support/service-tests/integrations.rs` runs the vector-store suites from `tests/integrations/` as the unpublished `rig-service-tests` package. `tests/integrations.rs` retains the root Bedrock integrations.
 - `tests/core.rs` contains provider-agnostic core behavior tests.
 - `tests/ecs_consumer.rs` exercises the real headless ECS maintenance consumer;
   its [recording, golden and repair workflow](consumer/README.md) is also runnable
@@ -372,15 +374,15 @@ feature flags.
 Run all enabled non-ignored integration tests with:
 
 ```bash
-cargo test -p rig --all-features --test integrations
+cargo test -p rig-service-tests --all-features --test integrations
 ```
 
 Run one feature-gated integration group with:
 
 ```bash
-cargo test -p rig --features qdrant --test integrations qdrant -- --nocapture
-cargo test -p rig --features mongodb --test integrations mongodb -- --nocapture
-cargo test -p rig --features sqlite --test integrations sqlite -- --nocapture
+cargo test -p rig-service-tests --features qdrant --test integrations qdrant -- --nocapture
+cargo test -p rig-service-tests --features mongodb --test integrations mongodb -- --nocapture
+cargo test -p rig-service-tests --features sqlite --test integrations sqlite -- --nocapture
 ```
 
 Some integration tests start Docker containers through `testcontainers`; Docker must be running.
@@ -389,7 +391,7 @@ Run ignored integration tests explicitly:
 
 ```bash
 cargo test -p rig --features bedrock --test integrations bedrock -- --ignored --nocapture --test-threads=1
-cargo test -p rig --features vectorize --test integrations vectorize -- --ignored --nocapture --test-threads=1
+cargo test -p rig-service-tests --features vectorize --test integrations vectorize -- --ignored --nocapture --test-threads=1
 ```
 
 Check each integration module for required environment variables. For example, Vectorize requires

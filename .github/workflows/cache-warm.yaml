@@ -1,0 +1,31 @@
+name: Development cache warm
+
+on:
+  push:
+    branches: [feat/effect-bus]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cache-warm-effect-bus
+  cancel-in-progress: true
+
+jobs:
+  # One configuration and one base branch, not every matrix leg. PR merge
+  # refs can restore their base's cache but cannot warm other PRs themselves.
+  # Match ci.yaml's test job ID and setup so rust-cache keys stay compatible.
+  test:
+    if: github.repository == '0xPlaygrounds/rig' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: bash .github/scripts/setup-consumer-sandbox.sh
+      - uses: ./.github/actions/rust-setup
+        with:
+          nextest: "true"
+          protoc: "true"
+          components: rustfmt
+          sccache: "true"
+          cache-development: "true"
+      - run: cargo xtask verify --check default-tests
