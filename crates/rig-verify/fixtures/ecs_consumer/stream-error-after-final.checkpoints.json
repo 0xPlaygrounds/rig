@@ -376,6 +376,22 @@
           {
             "kind": "turn",
             "components": {
+              "tool_access": {
+                "executable": {
+                  "apply_edit": "maintenance/tool:apply_edit",
+                  "propose_edit": "maintenance/tool:propose_edit",
+                  "read_file": "maintenance/tool:read_file",
+                  "search_file": "maintenance/tool:search_file",
+                  "validate_file": "maintenance/tool:validate_file"
+                },
+                "allowed": [
+                  "apply_edit",
+                  "propose_edit",
+                  "read_file",
+                  "search_file",
+                  "validate_file"
+                ]
+              },
               "order": 1,
               "turn": null,
               "outputs": {
@@ -414,7 +430,9 @@
                   }
                 ],
                 "message_id": null,
-                "done": true
+                "done": true,
+                "usage_recorded": true,
+                "stream_validated": 8
               },
               "folded": "native",
               "materialised": true
@@ -424,6 +442,22 @@
           {
             "kind": "turn",
             "components": {
+              "tool_access": {
+                "executable": {
+                  "apply_edit": "maintenance/tool:apply_edit",
+                  "propose_edit": "maintenance/tool:propose_edit",
+                  "read_file": "maintenance/tool:read_file",
+                  "search_file": "maintenance/tool:search_file",
+                  "validate_file": "maintenance/tool:validate_file"
+                },
+                "allowed": [
+                  "apply_edit",
+                  "propose_edit",
+                  "read_file",
+                  "search_file",
+                  "validate_file"
+                ]
+              },
               "order": 9,
               "turn": null,
               "outputs": {
@@ -449,7 +483,9 @@
                   }
                 ],
                 "message_id": null,
-                "done": true
+                "done": true,
+                "usage_recorded": true,
+                "stream_validated": 6
               },
               "folded": "native",
               "materialised": true
@@ -459,6 +495,22 @@
           {
             "kind": "turn",
             "components": {
+              "tool_access": {
+                "executable": {
+                  "apply_edit": "maintenance/tool:apply_edit",
+                  "propose_edit": "maintenance/tool:propose_edit",
+                  "read_file": "maintenance/tool:read_file",
+                  "search_file": "maintenance/tool:search_file",
+                  "validate_file": "maintenance/tool:validate_file"
+                },
+                "allowed": [
+                  "apply_edit",
+                  "propose_edit",
+                  "read_file",
+                  "search_file",
+                  "validate_file"
+                ]
+              },
               "order": 17,
               "turn": null,
               "outputs": {
@@ -482,7 +534,9 @@
                   }
                 ],
                 "message_id": null,
-                "done": true
+                "done": true,
+                "usage_recorded": true,
+                "stream_validated": 6
               },
               "batch": {
                 "calls": 1
@@ -966,6 +1020,20 @@
               }
             },
             "streamed": {
+              "errors": [
+                [
+                  8,
+                  {
+                    "kind": "provider",
+                    "retryable": false,
+                    "message": "controlled stream error",
+                    "code": null,
+                    "http_status": null,
+                    "refusal": false,
+                    "source_chain": []
+                  }
+                ]
+              ],
               "events": [
                 {
                   "event": "block_start",
@@ -1374,6 +1442,20 @@
               }
             },
             "streamed": {
+              "errors": [
+                [
+                  6,
+                  {
+                    "kind": "provider",
+                    "retryable": false,
+                    "message": "controlled stream error",
+                    "code": null,
+                    "http_status": null,
+                    "refusal": false,
+                    "source_chain": []
+                  }
+                ]
+              ],
               "events": [
                 {
                   "event": "block_start",
@@ -1763,6 +1845,20 @@
               }
             },
             "streamed": {
+              "errors": [
+                [
+                  6,
+                  {
+                    "kind": "provider",
+                    "retryable": false,
+                    "message": "controlled stream error",
+                    "code": null,
+                    "http_status": null,
+                    "refusal": false,
+                    "source_chain": []
+                  }
+                ]
+              ],
               "events": [
                 {
                   "event": "block_start",

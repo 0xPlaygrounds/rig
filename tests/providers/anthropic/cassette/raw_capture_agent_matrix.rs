@@ -184,7 +184,7 @@ async fn drain(mut stream: rig::agent::StreamingResult) -> StreamedRun {
 
 /// Message ids of every recorded interaction, in wire order — from the
 /// blocking body's `id`, or from the stream's `message_start`.
-fn recorded_message_ids(scenario: &str, streamed: bool) -> Vec<Option<String>> {
+pub(super) fn recorded_message_ids(scenario: &str, streamed: bool) -> Vec<Option<String>> {
     crate::cassettes::recorded_interaction_bodies(ANTHROPIC_PROVIDER, scenario)
         .iter()
         .map(|(_, response)| {
@@ -205,7 +205,7 @@ fn recorded_message_ids(scenario: &str, streamed: bool) -> Vec<Option<String>> {
 }
 
 /// Stop reasons of every recorded interaction, in wire order.
-fn recorded_stop_reasons(scenario: &str, streamed: bool) -> Vec<Option<String>> {
+pub(super) fn recorded_stop_reasons(scenario: &str, streamed: bool) -> Vec<Option<String>> {
     crate::cassettes::recorded_interaction_bodies(ANTHROPIC_PROVIDER, scenario)
         .iter()
         .map(|(_, response)| {
@@ -225,7 +225,7 @@ fn recorded_stop_reasons(scenario: &str, streamed: bool) -> Vec<Option<String>> 
         .collect()
 }
 
-fn ids_of(raws: &[Value], key: &str) -> Vec<Option<String>> {
+pub(super) fn ids_of(raws: &[Value], key: &str) -> Vec<Option<String>> {
     raws.iter()
         .map(|raw| raw[key].as_str().map(str::to_string))
         .collect()
@@ -233,14 +233,14 @@ fn ids_of(raws: &[Value], key: &str) -> Vec<Option<String>> {
 
 /// Every payload in `raws` has a provider response behind it — none is the
 /// hand-built `Value::Null`.
-fn assert_all_populated(raws: &[Value], context: &str) {
+pub(super) fn assert_all_populated(raws: &[Value], context: &str) {
     assert!(
         raws.iter().all(|raw| !raw.is_null()),
         "{context}: every call carries raw, got {raws:?}"
     );
 }
 
-fn assert_distinct_msg_ids(ids: &[Option<String>], context: &str) {
+pub(super) fn assert_distinct_msg_ids(ids: &[Option<String>], context: &str) {
     assert!(
         ids.iter()
             .all(|id| id.as_deref().is_some_and(|id| id.starts_with("msg_"))),

@@ -19,6 +19,30 @@ mod cassette {
     mod corpus_serving;
     mod document_ordering;
     mod dynamic_tools;
+    mod ecs_agent_run_streamed;
+    mod ecs_code_execution;
+    mod ecs_extractor;
+    mod ecs_lifecycle;
+    mod ecs_ordering;
+    mod ecs_parity;
+    mod ecs_prompt_caching;
+    mod ecs_stress_context;
+    mod ecs_stress_main;
+    #[path = "ecs_stress/main_golden.rs"]
+    mod ecs_stress_main_golden;
+    #[path = "ecs_stress/main.rs"]
+    mod ecs_stress_main_runtime;
+    mod ecs_stress_patch;
+    #[path = "ecs_stress/runtime.rs"]
+    mod ecs_stress_runtime;
+    mod ecs_stress_streaming;
+    #[path = "ecs_stress/streaming.rs"]
+    mod ecs_stress_streaming_runtime;
+    mod ecs_stress_tools;
+    #[path = "ecs_stress/tools.rs"]
+    mod ecs_stress_tools_runtime;
+    mod ecs_termination;
+    mod ecs_tools_e2e;
     mod embedding_matrix;
     mod embeddings;
     mod error_envelope;

@@ -511,6 +511,10 @@ fn deliver_stream(world: &mut World, entity: Entity, id: EffectId, count: usize)
     let mut progress = false;
     if let Some(mut streamed) = world.get_mut::<Streamed>(entity) {
         for item in items.drain(..count) {
+            if let Err(error) = &item {
+                let position = streamed.events.len() + streamed.errors.len();
+                streamed.errors.push((position, error.clone()));
+            }
             if let (Some(recording), false) = (&recording, observed)
                 && recording.keep_events()
             {

@@ -23,10 +23,11 @@ use crate::goldens::{
 };
 use crate::support::{BASIC_PREAMBLE, TOOLS_PREAMBLE};
 
-const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
-const NAME_PROMPT: &str = "What is my name? Reply with just the name.";
+pub(super) const ADD_PROMPT: &str =
+    "Use the add tool to add 17 and 25, then reply with just the number.";
+pub(super) const NAME_PROMPT: &str = "What is my name? Reply with just the name.";
 
-fn tool_record_args(log: &rig::effect_log::EffectLog) -> Vec<String> {
+pub(super) fn tool_record_args(log: &rig::effect_log::EffectLog) -> Vec<String> {
     log.records
         .iter()
         .filter_map(|record| match &record.kind {
@@ -36,7 +37,7 @@ fn tool_record_args(log: &rig::effect_log::EffectLog) -> Vec<String> {
         .collect()
 }
 
-fn tool_record_outputs(log: &rig::effect_log::EffectLog) -> Vec<String> {
+pub(super) fn tool_record_outputs(log: &rig::effect_log::EffectLog) -> Vec<String> {
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {

@@ -395,3 +395,46 @@ cargo test -p rig --features vectorize --test integrations vectorize -- --ignore
 Check each integration module for required environment variables. For example, Vectorize requires
 `VECTORIZE_INDEX_NAME`, and Bedrock tests require AWS credentials plus access to the configured
 Bedrock models.
+
+## Agent/ECS regression scenarios
+
+Native ECS tests execute real provider adapters against the same cassettes as
+rig-agent tests. Original and native golden comparisons retain their complete
+assertions. The [scenario catalog](ecs_parity/scenarios.json) records current
+correspondences, classifications, configuration and behavioral obligations;
+family contracts describe differences and limitations. It is not a passing
+result or proof of an exhaustive functional superset.
+
+The catalog includes unmapped and unclassified cases. Further migration and
+broader capability comparisons remain follow-up work. Shared-provider tests do
+not count as native agent migrations, and live or capability-gated cases must
+not be reported as exercised merely because the test runner lists them.
+
+Check maintained files and a fresh compiled listing:
+
+```sh
+cargo xtask check-ecs-scenarios
+cargo nextest list --locked -p rig --features bedrock --message-format json > target/ecs-tests.json
+cargo xtask check-ecs-scenarios target/ecs-tests.json
+cargo test --locked -p xtask
+```
+
+The checker rejects duplicate mappings, missing source/fixture/contract files,
+missing compiled mapped original/native tests, and filtered listings. Unmapped
+source-only or feature-gated scenarios outside the listing are counted explicitly.
+Ignored registrations are not execution results. The checker does not
+validate every behavioral claim in the catalog or certify execution. Maintain
+those obligations alongside the corresponding tests; current test runs and CI
+establish which tests pass.
+
+Run a native family using its catalog binary and test module, for example:
+
+```sh
+cargo test --locked -p rig --test anthropic ecs_outcome -- --nocapture
+```
+
+Historical execution logs, proof snapshots, review-application commands and
+archive infrastructure are intentionally not maintained. No historical download
+or cache is required for regression tests. Consumed cassettes and goldens remain
+in Git. Removing proof files from the current tree does not remove the old blobs
+from published Git history.

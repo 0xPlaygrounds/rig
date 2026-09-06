@@ -9,6 +9,7 @@ const CASSETTE_MODEL: &str = rig::providers::cohere::COMMAND_A_03_2025;
 mod cassette {
     mod agent;
     mod context;
+    mod ecs_completion;
     mod embedding_matrix;
     mod embeddings;
     mod errors;

@@ -25,10 +25,11 @@ use super::super::support::{
 use crate::goldens::{BROKEN_ADD, FailingAdd, WriteNote, families};
 use crate::support::{Adder, BASIC_PREAMBLE, BASIC_PROMPT, TOOLS_PREAMBLE};
 
-const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
-const NOTE_PREAMBLE: &str =
+pub(super) const ADD_PROMPT: &str =
+    "Use the add tool to add 17 and 25, then reply with just the number.";
+pub(super) const NOTE_PREAMBLE: &str =
     "You are a note-taking assistant. Use the write_note tool to save notes.";
-const NOTE_PROMPT: &str = "Save a note titled 'Rust' whose body is a 400-word essay on the history of the Rust programming language, then reply with just the word saved.";
+pub(super) const NOTE_PROMPT: &str = "Save a note titled 'Rust' whose body is a 400-word essay on the history of the Rust programming language, then reply with just the word saved.";
 
 async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     let mut output = None;
@@ -40,7 +41,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     output.expect("a final response")
 }
 
-fn tool_outcome(log: &rig::effect_log::EffectLog) -> &rig::tool::ToolResult {
+pub(super) fn tool_outcome(log: &rig::effect_log::EffectLog) -> &rig::tool::ToolResult {
     log.records
         .iter()
         .find_map(|record| match &record.outcome {

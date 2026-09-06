@@ -3,6 +3,14 @@ mod agent_tool_sessions;
 #[cfg(feature = "audio")]
 mod audio_generation;
 mod context;
+#[path = "cassette/ecs_completion.rs"]
+mod ecs_completion;
+#[path = "cassette/ecs_extractor.rs"]
+mod ecs_extractor;
+#[path = "cassette/ecs_extractor_usage.rs"]
+mod ecs_extractor_usage;
+#[path = "cassette/ecs_tool_sessions.rs"]
+mod ecs_tool_sessions;
 mod extractor;
 mod extractor_usage;
 #[cfg(feature = "image")]

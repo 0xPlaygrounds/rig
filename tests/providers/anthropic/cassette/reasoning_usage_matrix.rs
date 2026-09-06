@@ -113,7 +113,7 @@ type AnthropicModel = anthropic::CompletionModel;
 const REDACTED_THINKING_MAGIC_STRING: &str = "ANTHROPIC_MAGIC_STRING_TRIGGER_REDACTED_THINKING_46C9A13E193C177646C7398A98432ECCCE4C1253D5E2D82641AC0E52CC2876CB";
 
 /// A prompt that costs a few thinking tokens without a long answer.
-const THINKING_PROMPT: &str = "What is 17 * 23? Reply with just the number.";
+pub(super) const THINKING_PROMPT: &str = "What is 17 * 23? Reply with just the number.";
 
 /// A prompt whose *answer* is long enough to run into a `max_tokens` ceiling
 /// set just above the thinking budget, so the turn is cut off after thinking
@@ -129,7 +129,7 @@ const LONG_REASONING_PROMPT: &str = "A farmer has 17 sheep. All but 9 run away. 
      he has left, and sells 5. Work through it step by step, then give the \
      final count on its own line.";
 
-fn budget_thinking(budget: u64) -> serde_json::Value {
+pub(super) fn budget_thinking(budget: u64) -> serde_json::Value {
     json!({ "thinking": { "type": "enabled", "budget_tokens": budget } })
 }
 
@@ -157,14 +157,14 @@ fn multiply_tool() -> ToolDefinition {
 /// in record mode the fixture is written on the way out, so an in-body read
 /// would assert against the previous recording.
 #[derive(Clone, Default)]
-struct Observed(Arc<Mutex<Option<Usage>>>);
+pub(super) struct Observed(Arc<Mutex<Option<Usage>>>);
 
 impl Observed {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self::default()
     }
 
-    fn record(&self, usage: Usage) {
+    pub(super) fn record(&self, usage: Usage) {
         *self.0.lock().expect("observed usage lock") = Some(usage);
     }
 
@@ -176,7 +176,7 @@ impl Observed {
     /// A thinking cell: the parsed `reasoning_tokens` must equal the fixture's
     /// own recorded breakdown, be non-zero, and stay inside `output_tokens`
     /// without inflating the total.
-    fn assert_matches(&self, scenario: &str, recorded: Option<u64>) {
+    pub(super) fn assert_matches(&self, scenario: &str, recorded: Option<u64>) {
         let usage = self.take(scenario);
         let recorded = recorded.unwrap_or_else(|| {
             panic!("{scenario}: the recorded turn reports no output_tokens_details")
@@ -251,7 +251,7 @@ impl Observed {
 }
 
 /// The `thinking_tokens` a blocking cassette's recorded response body reports.
-fn recorded_blocking_thinking_tokens(scenario: &str) -> Option<u64> {
+pub(super) fn recorded_blocking_thinking_tokens(scenario: &str) -> Option<u64> {
     let body = recorded_response_body(scenario);
     match &body["usage"]["output_tokens_details"]["thinking_tokens"] {
         serde_json::Value::Null => None,

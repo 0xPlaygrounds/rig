@@ -6,6 +6,10 @@
     clippy::unreachable
 )]
 
+#[allow(dead_code)]
+#[path = "common/ecs_agent.rs"]
+mod ecs_agent;
+
 #[path = "common/cache_conformance.rs"]
 mod cache_conformance;
 #[path = "common/cache_prefix.rs"]

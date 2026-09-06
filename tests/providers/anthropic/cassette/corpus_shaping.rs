@@ -23,19 +23,23 @@ use crate::goldens::{
 };
 use crate::support::{Adder, BASIC_PREAMBLE, TOOLS_PREAMBLE};
 
-const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
-const CONTEXT_PROMPT: &str = "What is a glarb-glarb? Answer in one sentence.";
-const NAME_PROMPT: &str = "What is my name? Reply with just the name.";
-const SUM_EVENT_PROMPT: &str = "Use the add tool to add 17 and 25, then return a concise event object for a Rust meetup in Seattle whose summary states the sum.";
+pub(super) const ADD_PROMPT: &str =
+    "Use the add tool to add 17 and 25, then reply with just the number.";
+pub(super) const CONTEXT_PROMPT: &str = "What is a glarb-glarb? Answer in one sentence.";
+pub(super) const NAME_PROMPT: &str = "What is my name? Reply with just the name.";
+pub(super) const SUM_EVENT_PROMPT: &str = "Use the add tool to add 17 and 25, then return a concise event object for a Rust meetup in Seattle whose summary states the sum.";
 
-fn request_at(log: &rig::effect_log::EffectLog, at: usize) -> &rig::completion::CompletionRequest {
+pub(super) fn request_at(
+    log: &rig::effect_log::EffectLog,
+    at: usize,
+) -> &rig::completion::CompletionRequest {
     match &log.records[at].kind {
         EffectKind::Completion { request, .. } => request,
         other => panic!("record {at} is a completion, not {other:?}"),
     }
 }
 
-const TOOL_TURN: [EffectFamily; 3] = [
+pub(super) const TOOL_TURN: [EffectFamily; 3] = [
     EffectFamily::Completion,
     EffectFamily::Tool,
     EffectFamily::Completion,

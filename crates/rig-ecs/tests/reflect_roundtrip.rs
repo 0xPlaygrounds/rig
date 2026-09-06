@@ -65,6 +65,7 @@ fn populated() -> bevy_app::App {
     let world = app.world_mut();
     world.entity_mut(agent).insert((
         rig_ecs::agent::MaxTurns(2),
+        rig_ecs::agent::OutputToolConfig::default(),
         ToolChoiceSpec(Some(ToolChoice::Auto)),
         ToolContextSpec(rig_core::tool::ToolContext::new()),
         ToolPolicy { concurrency: 2 },
@@ -95,6 +96,11 @@ fn populated() -> bevy_app::App {
         world.get::<rig_ecs::agent::Settled>(run).is_some()
     });
     // What that run did not produce, on one entity.
+    app.world_mut().spawn(rig_ecs::agent::Outputs {
+        usage_recorded: true,
+        stream_validated: 5,
+        ..Default::default()
+    });
     app.world_mut().spawn((
         Cancelled("why".to_owned()),
         Retry {
@@ -109,6 +115,11 @@ fn populated() -> bevy_app::App {
             id: ToolCallId::new("i").unwrap(),
             name: "nope".to_owned(),
             arguments: serde_json::json!({"z": true}),
+            prefix: vec![
+                AssistantContent::text("delivered prefix"),
+                call("i", "nope", serde_json::json!({"z": true})),
+            ],
+            stream_offset: Some(3),
         },
         Resolution::Skip {
             reason: "no".to_owned(),
@@ -146,6 +157,7 @@ fn populated() -> bevy_app::App {
         }),
         rig_ecs::agent::Role::User,
         Streamed {
+            errors: vec![(0, ErrorReport::new(ErrorKind::Cancelled, "stopped"))],
             events: Vec::new(),
             text: "so far".to_owned(),
             outcome: Some(Err(ErrorReport::new(ErrorKind::Cancelled, "stopped"))),

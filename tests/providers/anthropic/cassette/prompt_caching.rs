@@ -1572,7 +1572,7 @@ use crate::cache_conformance::{
 /// Dividing by `input_tokens` alone would make the ratio look enormous on a warm
 /// turn (where `input_tokens` is only the uncached tail) and the assertion
 /// vacuous.
-const ANTHROPIC_CACHE_SUPPORT: CacheSupport = CacheSupport {
+pub(super) const ANTHROPIC_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "anthropic",
     accounting: CacheAccounting::Alongside,
     explicit_breakpoints: true,
@@ -1584,7 +1584,7 @@ const ANTHROPIC_CACHE_SUPPORT: CacheSupport = CacheSupport {
     hit_ratio_floor: 0.80,
 };
 
-fn conformance_probe() -> CacheProbe {
+pub(super) fn conformance_probe() -> CacheProbe {
     CacheProbe::new("anthropic cache conformance")
 }
 

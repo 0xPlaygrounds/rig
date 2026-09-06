@@ -10,6 +10,7 @@ mod support;
 mod cassette {
     mod agent;
     mod agentic;
+    mod ecs_completion;
     mod models;
     mod raw_capture_agent_matrix;
     mod raw_capture_matrix;

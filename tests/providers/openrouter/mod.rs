@@ -5,6 +5,11 @@ mod cassette {
     mod agent_tool_sessions;
     mod document_file_data;
     mod document_ordering;
+    mod ecs_completion;
+    mod ecs_extractor;
+    mod ecs_extractor_usage;
+    mod ecs_prompt_caching;
+    mod ecs_tool_sessions;
     mod embedding_matrix;
     mod extractor;
     mod extractor_usage;

@@ -15,7 +15,7 @@ use rig_core::{
     transcript::{tool_result_message, tool_result_output},
 };
 
-use crate::agent::{Failure, MessageParts, OutputKind};
+use crate::agent::{Failure, MessageParts, OutputKind, OutputToolConfig};
 
 /// The strings the goldens pin, written once. Each has a test in
 /// `policy::tests` that compares it to the golden that pins it, cited by
@@ -191,6 +191,8 @@ pub struct RequestGraph<'a> {
     pub schema: Option<&'a serde_json::Value>,
     /// The output tool's name, when the mode is `Tool`.
     pub output_tool: Option<&'a str>,
+    /// Optional custom description and preamble behavior of the output tool.
+    pub output_tool_config: Option<&'a OutputToolConfig>,
 }
 
 /// The one fold: the wire request from the graph. The only constructor of
@@ -213,7 +215,11 @@ pub fn fold_request(graph: &RequestGraph<'_>) -> CompletionRequest {
     {
         tools.push(ToolDefinition {
             name: name.to_owned(),
-            description: text::OUTPUT_TOOL_DESCRIPTION.to_owned(),
+            description: graph
+                .output_tool_config
+                .and_then(|config| config.description.as_deref())
+                .unwrap_or(text::OUTPUT_TOOL_DESCRIPTION)
+                .to_owned(),
             parameters: schema.clone(),
         });
     }
@@ -242,7 +248,10 @@ pub fn fold_request(graph: &RequestGraph<'_>) -> CompletionRequest {
 /// or none when the program has no preamble and nothing to add.
 fn system_message(graph: &RequestGraph<'_>) -> Option<String> {
     let augmentation = match (graph.output, graph.output_tool, graph.schema) {
-        (OutputKind::Tool, Some(name), _) => Some(text::output_tool_augmentation(name)),
+        (OutputKind::Tool, Some(name), _) => graph
+            .output_tool_config
+            .is_none_or(|config| config.augment_preamble)
+            .then(|| text::output_tool_augmentation(name)),
         (OutputKind::Prompted, _, Some(schema)) => {
             Some(text::prompted_augmentation(&to_canonical_string(schema)))
         }

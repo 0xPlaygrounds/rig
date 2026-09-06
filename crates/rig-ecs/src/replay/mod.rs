@@ -9,8 +9,8 @@ use crate::{
     agent::{
         AdditionalParams, Context, Conversation, DefaultMaxTurns, DocumentId, DocumentProps,
         DocumentText, Grant, InvalidCalls, MaxTokens, MaxTurns, Order, Output, OutputKind,
-        PolicyVersion, Preamble, Remembers, Retrievable, Retrieval, Retrieves, Route, RunOf,
-        Streamed, Temperature, ToolChoiceSpec, ToolPolicy, UsesModel,
+        OutputToolConfig, PolicyVersion, Preamble, Remembers, Retrievable, Retrieval, Retrieves,
+        Route, RunOf, Streamed, Temperature, ToolChoiceSpec, ToolPolicy, UsesModel,
     },
     bus::{Bound, Scope},
 };
@@ -32,6 +32,10 @@ fn builder_spec_json(world: &mut World, agent: Entity) -> serde_json::Value {
         .and_then(|c| c.0.clone())
         .map(|choice| serde_json::to_value(choice).unwrap_or(serde_json::Value::Null));
     let output = world.get::<Output>(agent).cloned().unwrap_or_default();
+    let output_tool = world
+        .get::<OutputToolConfig>(agent)
+        .cloned()
+        .unwrap_or_default();
     let max_turns = world
         .get::<DefaultMaxTurns>(agent)
         .and_then(|d| d.0)
@@ -81,9 +85,9 @@ fn builder_spec_json(world: &mut World, agent: Entity) -> serde_json::Value {
         "max_invalid_tool_call_retries": 0,
         "output_schema": output.schema,
         "output_mode": output_mode,
-        "output_tool_name": serde_json::Value::Null,
-        "output_tool_description": serde_json::Value::Null,
-        "augment_output_preamble": true,
+        "output_tool_name": output_tool.name,
+        "output_tool_description": output_tool.description,
+        "augment_output_preamble": output_tool.augment_preamble,
         "unhandled_invalid_tool_call": "fail",
     })
 }
@@ -102,6 +106,7 @@ fn effective<T: Component>(world: &World, subject: Entity) -> Option<&T> {
 /// Ambient tool inputs are not serialized or automatically fingerprinted.
 pub fn spec_json(world: &mut World, subject: Entity) -> serde_json::Value {
     let agent = world.get::<RunOf>(subject).map_or(subject, |run| run.0);
+    let access = effective::<crate::agent::ToolAccess>(world, subject).cloned();
     let mut spec = builder_spec_json(world, agent);
     if let Some(fields) = spec.as_object_mut() {
         fields.insert(
@@ -148,6 +153,21 @@ pub fn spec_json(world: &mut World, subject: Entity) -> serde_json::Value {
             .unwrap_or_default();
         fields.insert("output_mode".into(), serde_json::json!(output.mode));
         fields.insert("output_schema".into(), serde_json::json!(output.schema));
+        let output_tool = effective::<OutputToolConfig>(world, subject)
+            .cloned()
+            .unwrap_or_default();
+        fields.insert(
+            "output_tool_name".into(),
+            serde_json::json!(output_tool.name),
+        );
+        fields.insert(
+            "output_tool_description".into(),
+            serde_json::json!(output_tool.description),
+        );
+        fields.insert(
+            "augment_output_preamble".into(),
+            serde_json::json!(output_tool.augment_preamble),
+        );
         fields.insert(
             "tool_concurrency".into(),
             serde_json::json!(
@@ -189,6 +209,27 @@ pub fn spec_json(world: &mut World, subject: Entity) -> serde_json::Value {
             } else { None }
         }).collect();
         fields.insert("dependencies".into(), serde_json::json!(dependencies));
+        if let Some(access) = access.filter(|access| access != &crate::agent::ToolAccess::default())
+        {
+            let executable_dependencies: Vec<_> = access
+                .executable
+                .iter()
+                .flat_map(|map| map.values())
+                .map(|key| {
+                    let descriptor = world
+                        .query::<&Bound>()
+                        .iter(world)
+                        .find(|bound| &bound.key == key)
+                        .map(|bound| bound.descriptor.clone());
+                    serde_json::json!({"key": key, "descriptor": descriptor})
+                })
+                .collect();
+            fields.insert("tool_access".into(), serde_json::json!(access));
+            fields.insert(
+                "executable_dependencies".into(),
+                serde_json::json!(executable_dependencies),
+            );
+        }
     }
     spec
 }
@@ -205,6 +246,35 @@ pub fn required_row(world: &mut World, agent: Entity) -> EffectRow {
     let subject = agent;
     let agent = world.get::<RunOf>(subject).map_or(subject, |run| run.0);
     let mut row = EffectRow::new();
+    if let Some(executable) = effective::<crate::agent::ToolAccess>(world, subject)
+        .and_then(|access| access.executable.as_ref())
+    {
+        for key in executable.values() {
+            row.insert(key.clone(), EffectFamily::Tool);
+        }
+    }
+    // Persisted turn snapshots can still dispatch bindings from before a run
+    // policy change. They remain dependencies of a resumed run.
+    for (parent, access) in world
+        .query_filtered::<(&ChildOf, &crate::agent::ToolAccess), With<crate::agent::Turn>>()
+        .iter(world)
+    {
+        let run = parent.parent();
+        if run == subject
+            || (subject == agent
+                && world
+                    .get::<RunOf>(run)
+                    .is_some_and(|owner| owner.0 == agent))
+        {
+            for key in access
+                .executable
+                .iter()
+                .flat_map(|bindings| bindings.values())
+            {
+                row.insert(key.clone(), EffectFamily::Tool);
+            }
+        }
+    }
     let model = effective::<UsesModel>(world, subject).map(|uses| uses.0);
     if let Some(model) = model
         && let Some(bound) = world.get::<Bound>(model)

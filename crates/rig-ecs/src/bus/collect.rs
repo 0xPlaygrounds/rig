@@ -91,6 +91,10 @@ pub fn collect_streams(
             match streaming.events.try_recv() {
                 Ok(item) => {
                     items += 1;
+                    if let Err(error) = &item {
+                        let position = streamed.events.len() + streamed.errors.len();
+                        streamed.errors.push((position, error.clone()));
+                    }
                     // A layered handler's events are the observer's to
                     // record, from the innermost hop.
                     if let (Some(recording), false) = (&recording, observed)

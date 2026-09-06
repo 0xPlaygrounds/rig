@@ -1,5 +1,6 @@
 //! Every golden effect log in the corpus (`crates/rig-verify/fixtures/
-//! *.effects.json`) is paired with exactly one producer — the root test
+//! *.effects.json` and `ecs_parity/*.effects.json`) is paired with exactly
+//! one producer — the root test
 //! that records it under `RIG_REGENERATE_GOLDEN=1` by naming it in a
 //! `golden_effects("<name>", ..)` call — and every producer names a golden
 //! that is committed. A golden nobody can regenerate is a golden that can
@@ -16,17 +17,31 @@ fn root() -> &'static Path {
 /// The committed goldens, by name.
 fn fixtures() -> Vec<String> {
     let dir = root().join("crates/rig-verify/fixtures");
-    let mut names: Vec<String> = std::fs::read_dir(&dir)
-        .expect("the corpus directory")
-        .map(|entry| {
-            entry
-                .expect("entry")
-                .file_name()
-                .to_string_lossy()
-                .into_owned()
-        })
-        .filter_map(|name| name.strip_suffix(".effects.json").map(str::to_owned))
-        .collect();
+    let mut names = Vec::new();
+    // The native helper compares the original oracle but produces its own
+    // namespaced golden. Keep the one-producer rule for both corpora.
+    for namespace in ["", "ecs_parity"] {
+        names.extend(
+            std::fs::read_dir(dir.join(namespace))
+                .expect("the corpus directory")
+                .map(|entry| {
+                    entry
+                        .expect("entry")
+                        .file_name()
+                        .to_string_lossy()
+                        .into_owned()
+                })
+                .filter_map(|name| {
+                    name.strip_suffix(".effects.json").map(|name| {
+                        if namespace.is_empty() {
+                            name.to_owned()
+                        } else {
+                            format!("{namespace}/{name}")
+                        }
+                    })
+                }),
+        );
+    }
     names.sort();
     names
 }
@@ -70,9 +85,14 @@ fn producers() -> BTreeMap<String, Vec<String>> {
                     let Some((name, _)) = rest.split_once('"') else {
                         continue;
                     };
+                    let name = if text[..call].ends_with("ecs_goldens::") {
+                        format!("ecs_parity/{name}")
+                    } else {
+                        name.to_owned()
+                    };
                     let number = text[..call].matches('\n').count() + 1;
                     let relative = path.strip_prefix(root()).expect("under the root");
-                    sites.entry(name.to_owned()).or_default().push(format!(
+                    sites.entry(name).or_default().push(format!(
                         "{}:{}",
                         relative.display(),
                         number

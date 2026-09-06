@@ -20,8 +20,9 @@ use rig::tool::RegisteredTool;
 use super::super::support::with_anthropic_corpus_causal_cassette;
 use crate::goldens::{Lookup, NestedChild, Nesting, families, parent_positions};
 
-const TOOLS_PREAMBLE: &str = "You are a research assistant. Use the lookup tool to answer.";
-const PROMPT: &str = "Use the lookup tool with q set to exactly \"What is the capital of France?\" and reply with just the lookup result.";
+pub(super) const TOOLS_PREAMBLE: &str =
+    "You are a research assistant. Use the lookup tool to answer.";
+pub(super) const PROMPT: &str = "Use the lookup tool with q set to exactly \"What is the capital of France?\" and reply with just the lookup result.";
 
 struct Host {
     serial: bool,

@@ -11,21 +11,21 @@ use serde::{Deserialize, Serialize};
 use super::support::with_xai_cassette_result;
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
-struct Person {
-    name: Option<String>,
-    age: Option<u8>,
-    profession: Option<String>,
+pub(super) struct Person {
+    pub(super) name: Option<String>,
+    pub(super) age: Option<u8>,
+    pub(super) profession: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
-struct Address {
-    street: Option<String>,
-    city: Option<String>,
-    state: Option<String>,
-    zip_code: Option<String>,
+pub(super) struct Address {
+    pub(super) street: Option<String>,
+    pub(super) city: Option<String>,
+    pub(super) state: Option<String>,
+    pub(super) zip_code: Option<String>,
 }
 
-fn assert_compatible_professions(left: Option<&str>, right: &str) -> Result<()> {
+pub(super) fn assert_compatible_professions(left: Option<&str>, right: &str) -> Result<()> {
     let left = left
         .ok_or_else(|| anyhow::anyhow!("profession should be present"))?
         .trim()
