@@ -13,7 +13,7 @@ use crate::support::{
 async fn required_tool_choice_agent_roundtrip() {
     let agent = moonshot::Client::from_env()
         .expect("moonshot client should build")
-        .agent(moonshot::KIMI_K2_5)
+        .agent(moonshot::KIMI_K2_6)
         .preamble(TOOLS_PREAMBLE)
         .tool_choice(ToolChoice::Required)
         .tool(Adder)
