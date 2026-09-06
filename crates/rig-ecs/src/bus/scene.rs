@@ -340,7 +340,12 @@ impl Scene {
 }
 
 /// Validate a scene's single-parent forest without recursion or world mutation.
-pub(crate) fn validate_parent_indices(
+///
+/// Each iterator position names one entity; its value is the parent's position
+/// or `None` for a root. Missing parents and ancestry cycles are rejected in
+/// linear time. Consumers composing their own graph with an effect scene can
+/// use this preflight before spawning either graph.
+pub fn validate_parent_indices(
     parents: impl IntoIterator<Item = Option<usize>>,
 ) -> Result<(), ErrorReport> {
     let parents: Vec<_> = parents.into_iter().collect();
