@@ -1093,6 +1093,8 @@ impl OutcomeAction {
     /// Stop the run with `reason`: a replacement whose error is `Cancelled`
     /// terminates the run instead of being delivered. This is how a hook
     /// that observed an answer (a completion, a tool result) ends the run.
+    /// The cancellation short-circuits nested hook stacks; later hooks cannot
+    /// replace it with a successful answer.
     pub fn stop(reason: impl Into<String>) -> Self {
         Self::Replace(Err(ErrorReport::new(ErrorKind::Cancelled, reason)))
     }
@@ -1844,7 +1846,12 @@ impl AgentHook for HookStack {
             };
             match hook.outcome(ctx, current).await {
                 OutcomeAction::Proceed => {}
-                OutcomeAction::Replace(next) => replaced = Some(next),
+                OutcomeAction::Replace(next) => {
+                    if matches!(&next, Err(report) if report.kind == ErrorKind::Cancelled) {
+                        return OutcomeAction::Replace(next);
+                    }
+                    replaced = Some(next);
+                }
             }
         }
         replaced.map_or(OutcomeAction::Proceed, OutcomeAction::Replace)

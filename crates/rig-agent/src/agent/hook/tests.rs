@@ -376,7 +376,7 @@ impl AgentHook for StopThenCount {
 }
 
 #[tokio::test]
-async fn stop_outcome_threads_to_later_hooks_and_surfaces_as_cancelled() {
+async fn stop_outcome_short_circuits_later_hooks_and_surfaces_as_cancelled() {
     let calls = Arc::new(AtomicUsize::new(0));
     let seen_cancelled = Arc::new(AtomicUsize::new(0));
     let mut stack = HookStack::with(StopThenCount {
@@ -408,10 +408,9 @@ async fn stop_outcome_threads_to_later_hooks_and_surfaces_as_cancelled() {
             ..
         })) if message == "terminal"
     ));
-    // A stop is a replacement like any other: the later hook sees it as the
-    // outcome instead of being short-circuited.
-    assert_eq!(calls.load(Ordering::Relaxed), 2);
-    assert_eq!(seen_cancelled.load(Ordering::Relaxed), 1);
+    // Cancellation is terminal; later hooks cannot recover a stopped run.
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    assert_eq!(seen_cancelled.load(Ordering::Relaxed), 0);
 }
 
 // ---- hook stack composition and model-selection routing ----

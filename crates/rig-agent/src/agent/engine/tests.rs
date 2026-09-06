@@ -10141,3 +10141,88 @@ async fn outcome_replacement_preserves_tool_execution_commit_disposition() {
         assert_eq!(results, 1);
     }
 }
+
+#[tokio::test]
+async fn outcome_stop_is_terminal_through_nested_hooks_on_both_surfaces() {
+    struct StopTool;
+    impl AgentHook for StopTool {
+        async fn on_outcome(&self, _: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+            if event.tool_name().is_some() {
+                OutcomeAction::stop("terminal policy")
+            } else {
+                OutcomeAction::Proceed
+            }
+        }
+    }
+    struct Revive(Arc<AtomicU32>);
+    impl AgentHook for Revive {
+        async fn on_outcome(&self, _: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+            if event.tool_name().is_none() {
+                return OutcomeAction::Proceed;
+            }
+            self.0.fetch_add(1, SeqCst);
+            OutcomeAction::Replace(Ok(rig_core::effect::Outcome::ToolResult {
+                result: crate::tool::ToolResult::success(crate::tool::ToolOutput::text("revived")),
+            }))
+        }
+    }
+    for streaming in [false, true] {
+        for nested in [false, true] {
+            let later = Arc::new(AtomicU32::new(0));
+            let mut inner = HookStack::with(StopTool);
+            inner.push(Revive(later.clone()));
+            let mut stack = if nested {
+                HookStack::with(inner)
+            } else {
+                inner
+            };
+            stack.push(Revive(later.clone()));
+            let model = if streaming {
+                MockCompletionModel::from_stream_turns([
+                    vec![
+                        MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 2})),
+                        MockStreamEvent::final_response_with_total_tokens(0),
+                    ],
+                    vec![
+                        MockStreamEvent::text("done"),
+                        MockStreamEvent::final_response_with_total_tokens(0),
+                    ],
+                ])
+            } else {
+                MockCompletionModel::from_turns([
+                    MockTurn::tool_call("tc1", "add", json!({"x": 1, "y": 2})),
+                    MockTurn::text("done"),
+                ])
+            };
+            let agent = AgentBuilder::new(model)
+                .tool(MockAddTool)
+                .add_hook(stack)
+                .build();
+            let error = if streaming {
+                let mut stream = agent.runner("go").max_turns(3).stream().await;
+                let mut error = None;
+                while let Some(item) = stream.next().await {
+                    match item {
+                        Err(err) => error = Some(err.to_string()),
+                        Ok(
+                            MultiTurnStreamItem::ToolExecutionCommitted { .. }
+                            | MultiTurnStreamItem::FinalResponse(_),
+                        ) => panic!("stopped outcome must not commit"),
+                        _ => {}
+                    }
+                }
+                error.expect("stream must stop")
+            } else {
+                agent
+                    .runner("go")
+                    .max_turns(3)
+                    .run()
+                    .await
+                    .expect_err("run must stop")
+                    .to_string()
+            };
+            assert!(error.contains("terminal policy"), "{error}");
+            assert_eq!(later.load(SeqCst), 0, "later hooks must not undo stop");
+        }
+    }
+}
