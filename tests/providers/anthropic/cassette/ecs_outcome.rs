@@ -10,6 +10,7 @@ use crate::ecs_agent::EcsAgent;
 use crate::goldens::{BROKEN_ADD, FailingAdd, WriteNote, families};
 use crate::support::{Adder, BASIC_PREAMBLE, BASIC_PROMPT, TOOLS_PREAMBLE};
 use bevy_ecs::prelude::*;
+pub(super) use delivery::FirstToolDelta;
 use rig::effect::EffectFamily;
 use rig::error::ErrorKind;
 use rig::prelude::*;

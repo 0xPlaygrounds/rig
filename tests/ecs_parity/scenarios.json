@@ -161,7 +161,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Full original log JSON equality incl header/run fingerprint and all records; bijective nominal IDs/native-only scope metadata normalization documented; full separate native golden and raw delivery evidence retained. Memory preserves exact family vector and actual load/append payload/outcome.",
+          "comparison": "Full original log JSON equality incl header/run fingerprint and all records; bijective nominal IDs/native-only scope metadata normalization documented; full separate native golden retained; scheduling-dependent delivery traces excluded. Memory preserves exact family vector and actual load/append payload/outcome.",
           "ecs_symbol": "ecs_goldens::golden_effects",
           "id": "rig::anthropic::anthropic::cassette::agent::completion_smoke_effect_log_is_the_golden_fixture::complete-golden"
         },
@@ -234,7 +234,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Full original log JSON equality incl header/run fingerprint and all records; bijective nominal IDs/native-only scope metadata normalization documented; full separate native golden and raw delivery evidence retained. Memory preserves exact family vector and actual load/append payload/outcome.",
+          "comparison": "Full original log JSON equality incl header/run fingerprint and all records; bijective nominal IDs/native-only scope metadata normalization documented; full separate native golden retained; scheduling-dependent delivery traces excluded. Memory preserves exact family vector and actual load/append payload/outcome.",
           "ecs_symbol": "ecs_goldens::golden_effects",
           "id": "rig::anthropic::anthropic::cassette::agent::memory_conversation_effect_log_is_the_golden_fixture::complete-golden"
         },
@@ -335,7 +335,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original golden nominal ID comparison; native scopes/programs stable golden and raw deliveries retained.",
+          "comparison": "Complete original golden nominal ID comparison; native scopes/programs stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_causal::completion_concurrent_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_causal::completion_concurrent_effect_log_is_the_golden_fixture::golden"
         }
@@ -466,7 +466,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original golden nominal ID comparison; native scopes/programs stable golden and raw deliveries retained.",
+          "comparison": "Complete original golden nominal ID comparison; native scopes/programs stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_causal::completion_serial_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_causal::completion_serial_effect_log_is_the_golden_fixture::golden"
         }
@@ -618,7 +618,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original golden nominal ID comparison; native scopes/programs stable golden and raw deliveries retained.",
+          "comparison": "Complete original golden nominal ID comparison; native scopes/programs stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_causal::completion_streamed_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_causal::completion_streamed_effect_log_is_the_golden_fixture::golden"
         },
@@ -782,7 +782,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden and raw deliveries retained.",
+          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_endings::answer_outcome_cancelled_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_endings::answer_outcome_cancelled_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -878,7 +878,7 @@
       "id": "rig::anthropic::anthropic::cassette::corpus_endings::answer_outcome_cancelled_effect_log_is_the_golden_fixture",
       "mapping_limits": [
         "Default-feature native host only; full feature/WASM inventory unfinished.",
-        "Actual raw poll deliveries retained; arbitrary scheduling and complete interruption matrix not established."
+        "Scheduling-dependent delivery traces excluded from stable equality; arbitrary scheduling and complete interruption matrix not established."
       ],
       "native_golden": {
         "path": "crates/rig-verify/fixtures/ecs_parity/anthropic_endings_answer_outcome_cancelled.effects.json"
@@ -918,7 +918,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden and raw deliveries retained.",
+          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_endings::answer_turn_stop_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_endings::answer_turn_stop_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -1014,7 +1014,7 @@
       "id": "rig::anthropic::anthropic::cassette::corpus_endings::answer_turn_stop_effect_log_is_the_golden_fixture",
       "mapping_limits": [
         "Default-feature native host only; full feature/WASM inventory unfinished.",
-        "Actual raw poll deliveries retained; arbitrary scheduling and complete interruption matrix not established."
+        "Scheduling-dependent delivery traces excluded from stable equality; arbitrary scheduling and complete interruption matrix not established."
       ],
       "native_golden": {
         "path": "crates/rig-verify/fixtures/ecs_parity/anthropic_endings_answer_turn_stop.effects.json"
@@ -1068,7 +1068,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden and raw deliveries retained.",
+          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_endings::text_delta_stop_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_endings::text_delta_stop_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -1164,7 +1164,7 @@
       "id": "rig::anthropic::anthropic::cassette::corpus_endings::text_delta_stop_effect_log_is_the_golden_fixture",
       "mapping_limits": [
         "Default-feature native host only; full feature/WASM inventory unfinished.",
-        "Actual raw poll deliveries retained; arbitrary scheduling and complete interruption matrix not established."
+        "Scheduling-dependent delivery traces excluded from stable equality; arbitrary scheduling and complete interruption matrix not established."
       ],
       "native_golden": {
         "path": "crates/rig-verify/fixtures/ecs_parity/anthropic_endings_text_delta_stop.effects.json"
@@ -1212,13 +1212,13 @@
         },
         {
           "baseline_symbol": "original AgentHook impl method",
-          "comparison": "published ToolName/ToolArguments delta after Collect/before Fold; native Cancelled exactreason first, then drop issued stream entity",
+          "comparison": "First real ToolName/ToolArguments delta is delivered with test-owned backpressure after it; native policy observes after Collect/before Fold, sets the exact Cancelled reason, then drops the issued stream entity. No event filtering or rewriting.",
           "ecs_symbol": "anthropic::cassette::ecs_endings::tool_call_delta_stop_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_endings::tool_call_delta_stop_effect_log_is_the_golden_fixture::policy"
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden and raw deliveries retained.",
+          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_endings::tool_call_delta_stop_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_endings::tool_call_delta_stop_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -1314,7 +1314,8 @@
       "id": "rig::anthropic::anthropic::cassette::corpus_endings::tool_call_delta_stop_effect_log_is_the_golden_fixture",
       "mapping_limits": [
         "Default-feature native host only; full feature/WASM inventory unfinished.",
-        "Actual raw poll deliveries retained; arbitrary scheduling and complete interruption matrix not established."
+        "Scheduling-dependent delivery traces excluded from stable equality; arbitrary scheduling and complete interruption matrix not established.",
+        "Exact tool-delta prefix comparison uses test-owned first-real-delta backpressure; unrestricted scheduling is not asserted."
       ],
       "native_golden": {
         "path": "crates/rig-verify/fixtures/ecs_parity/anthropic_endings_tool_call_delta_stop.effects.json"
@@ -1354,7 +1355,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden and raw deliveries retained.",
+          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_endings::tool_dispatch_cancelled_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_endings::tool_dispatch_cancelled_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -1450,7 +1451,7 @@
       "id": "rig::anthropic::anthropic::cassette::corpus_endings::tool_dispatch_cancelled_effect_log_is_the_golden_fixture",
       "mapping_limits": [
         "Default-feature native host only; full feature/WASM inventory unfinished.",
-        "Actual raw poll deliveries retained; arbitrary scheduling and complete interruption matrix not established."
+        "Scheduling-dependent delivery traces excluded from stable equality; arbitrary scheduling and complete interruption matrix not established."
       ],
       "native_golden": {
         "path": "crates/rig-verify/fixtures/ecs_parity/anthropic_endings_tool_dispatch_cancelled.effects.json"
@@ -1504,7 +1505,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden and raw deliveries retained.",
+          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_endings::tool_dispatch_cancelled_streamed_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_endings::tool_dispatch_cancelled_streamed_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -1600,7 +1601,7 @@
       "id": "rig::anthropic::anthropic::cassette::corpus_endings::tool_dispatch_cancelled_streamed_effect_log_is_the_golden_fixture",
       "mapping_limits": [
         "Default-feature native host only; full feature/WASM inventory unfinished.",
-        "Actual raw poll deliveries retained; arbitrary scheduling and complete interruption matrix not established."
+        "Scheduling-dependent delivery traces excluded from stable equality; arbitrary scheduling and complete interruption matrix not established."
       ],
       "native_golden": {
         "path": "crates/rig-verify/fixtures/ecs_parity/anthropic_endings_tool_dispatch_cancelled_streamed.effects.json"
@@ -1647,7 +1648,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden and raw deliveries retained.",
+          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_endings::tool_outcome_cancelled_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_endings::tool_outcome_cancelled_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -1743,7 +1744,7 @@
       "id": "rig::anthropic::anthropic::cassette::corpus_endings::tool_outcome_cancelled_effect_log_is_the_golden_fixture",
       "mapping_limits": [
         "Default-feature native host only; full feature/WASM inventory unfinished.",
-        "Actual raw poll deliveries retained; arbitrary scheduling and complete interruption matrix not established."
+        "Scheduling-dependent delivery traces excluded from stable equality; arbitrary scheduling and complete interruption matrix not established."
       ],
       "native_golden": {
         "path": "crates/rig-verify/fixtures/ecs_parity/anthropic_endings_tool_outcome_cancelled.effects.json"
@@ -1797,7 +1798,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden and raw deliveries retained.",
+          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_endings::tool_outcome_cancelled_streamed_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_endings::tool_outcome_cancelled_streamed_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -1893,7 +1894,7 @@
       "id": "rig::anthropic::anthropic::cassette::corpus_endings::tool_outcome_cancelled_streamed_effect_log_is_the_golden_fixture",
       "mapping_limits": [
         "Default-feature native host only; full feature/WASM inventory unfinished.",
-        "Actual raw poll deliveries retained; arbitrary scheduling and complete interruption matrix not established."
+        "Scheduling-dependent delivery traces excluded from stable equality; arbitrary scheduling and complete interruption matrix not established."
       ],
       "native_golden": {
         "path": "crates/rig-verify/fixtures/ecs_parity/anthropic_endings_tool_outcome_cancelled_streamed.effects.json"
@@ -1933,7 +1934,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden and raw deliveries retained.",
+          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_endings::turn_finished_stop_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_endings::turn_finished_stop_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -2029,7 +2030,7 @@
       "id": "rig::anthropic::anthropic::cassette::corpus_endings::turn_finished_stop_effect_log_is_the_golden_fixture",
       "mapping_limits": [
         "Default-feature native host only; full feature/WASM inventory unfinished.",
-        "Actual raw poll deliveries retained; arbitrary scheduling and complete interruption matrix not established."
+        "Scheduling-dependent delivery traces excluded from stable equality; arbitrary scheduling and complete interruption matrix not established."
       ],
       "native_golden": {
         "path": "crates/rig-verify/fixtures/ecs_parity/anthropic_endings_turn_finished_stop.effects.json"
@@ -2083,7 +2084,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden and raw deliveries retained.",
+          "comparison": "Compare full original header/payload/outcome/partial events with existing nominal identity mapping; native stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_endings::turn_finished_stop_streamed_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_endings::turn_finished_stop_streamed_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -2179,7 +2180,7 @@
       "id": "rig::anthropic::anthropic::cassette::corpus_endings::turn_finished_stop_streamed_effect_log_is_the_golden_fixture",
       "mapping_limits": [
         "Default-feature native host only; full feature/WASM inventory unfinished.",
-        "Actual raw poll deliveries retained; arbitrary scheduling and complete interruption matrix not established."
+        "Scheduling-dependent delivery traces excluded from stable equality; arbitrary scheduling and complete interruption matrix not established."
       ],
       "native_golden": {
         "path": "crates/rig-verify/fixtures/ecs_parity/anthropic_endings_turn_finished_stop_streamed.effects.json"
@@ -3829,7 +3830,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden and raw deliveries retained.",
+          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_host::custom_at_completion_call_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_host::custom_at_completion_call_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -3986,7 +3987,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden and raw deliveries retained.",
+          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_host::custom_at_outcome_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_host::custom_at_outcome_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -4143,7 +4144,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden and raw deliveries retained.",
+          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_host::custom_at_outcome_streamed_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_host::custom_at_outcome_streamed_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -4300,7 +4301,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden and raw deliveries retained.",
+          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_host::custom_at_settled_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_host::custom_at_settled_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -4457,7 +4458,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden and raw deliveries retained.",
+          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_host::custom_at_start_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_host::custom_at_start_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -4614,7 +4615,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden and raw deliveries retained.",
+          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_host::custom_at_start_streamed_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_host::custom_at_start_streamed_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -4771,7 +4772,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden and raw deliveries retained.",
+          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_host::custom_start_and_settled_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_host::custom_start_and_settled_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -4929,7 +4930,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden and raw deliveries retained.",
+          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_host::custom_twice_concurrent_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_host::custom_twice_concurrent_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -5086,7 +5087,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden and raw deliveries retained.",
+          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_host::custom_twice_serial_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_host::custom_twice_serial_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -5243,7 +5244,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden and raw deliveries retained.",
+          "comparison": "Complete original log under existing nominal ID mapping; native scopes/programs in stable golden retained; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_host::custom_unserved_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_host::custom_unserved_effect_log_is_the_golden_fixture::full-golden"
         }
@@ -5394,7 +5395,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original golden compares inner exchange plus follow-up request carrying any outer replacement; native scopes/programs/raw deliveries separately retained.",
+          "comparison": "Complete original golden compares inner exchange plus follow-up request carrying any outer replacement; native scopes/programs retained in stable goldens; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_layers::deny_tool_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_layers::deny_tool_effect_log_is_the_golden_fixture::golden"
         }
@@ -5557,7 +5558,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original golden compares inner exchange plus follow-up request carrying any outer replacement; native scopes/programs/raw deliveries separately retained.",
+          "comparison": "Complete original golden compares inner exchange plus follow-up request carrying any outer replacement; native scopes/programs retained in stable goldens; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_layers::host_deny_over_host_bus_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_layers::host_deny_over_host_bus_effect_log_is_the_golden_fixture::golden"
         }
@@ -5720,7 +5721,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original golden compares inner exchange plus follow-up request carrying any outer replacement; native scopes/programs/raw deliveries separately retained.",
+          "comparison": "Complete original golden compares inner exchange plus follow-up request carrying any outer replacement; native scopes/programs retained in stable goldens; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_layers::memory_load_replaced_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_layers::memory_load_replaced_effect_log_is_the_golden_fixture::golden"
         }
@@ -5877,7 +5878,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original golden compares inner exchange plus follow-up request carrying any outer replacement; native scopes/programs/raw deliveries separately retained.",
+          "comparison": "Complete original golden compares inner exchange plus follow-up request carrying any outer replacement; native scopes/programs retained in stable goldens; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_layers::patch_beneath_hook_patch_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_layers::patch_beneath_hook_patch_effect_log_is_the_golden_fixture::golden"
         }
@@ -6027,7 +6028,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original golden compares inner exchange plus follow-up request carrying any outer replacement; native scopes/programs/raw deliveries separately retained.",
+          "comparison": "Complete original golden compares inner exchange plus follow-up request carrying any outer replacement; native scopes/programs retained in stable goldens; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_layers::patch_tool_args_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_layers::patch_tool_args_effect_log_is_the_golden_fixture::golden"
         }
@@ -6176,7 +6177,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original golden compares inner exchange plus follow-up request carrying any outer replacement; native scopes/programs/raw deliveries separately retained.",
+          "comparison": "Complete original golden compares inner exchange plus follow-up request carrying any outer replacement; native scopes/programs retained in stable goldens; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_layers::replace_tool_result_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_layers::replace_tool_result_effect_log_is_the_golden_fixture::golden"
         }
@@ -6332,7 +6333,7 @@
         },
         {
           "baseline_symbol": "goldens::golden_effects",
-          "comparison": "Complete original golden compares inner exchange plus follow-up request carrying any outer replacement; native scopes/programs/raw deliveries separately retained.",
+          "comparison": "Complete original golden compares inner exchange plus follow-up request carrying any outer replacement; native scopes/programs retained in stable goldens; scheduling-dependent delivery traces excluded.",
           "ecs_symbol": "anthropic::cassette::ecs_layers::two_layers_effect_log_is_the_golden_fixture",
           "id": "rig::anthropic::anthropic::cassette::corpus_layers::two_layers_effect_log_is_the_golden_fixture::golden"
         }
@@ -41885,27 +41886,27 @@
         {
           "baseline_symbol": "gemini::cassette::hook_stress::tool_call_turns_effect_log_is_the_golden_fixture",
           "comparison": "assert ! (saw_final , \"the stream must yield a FinalResponse\")",
-          "ecs_observation": "Exact named native registration stress-agent/model:default,tool:add#0,tool:subtract#1; originalrecord_effects keep_eventsfalse, actualdefaultbus, no policies, defaultNone/effective1, runoverride6. Actual settledRunResult presence maps originalfinalpresence. Original drains stream while ignoring itemerrors (not claimed as stricter errorrejection). Actual recorded completion tool IDs collected unchanged; nonempty and allis_generated assertions retained. Shared comparator compares entire originalgolden with existing nominal effect-ID/scope/program/delivery normalization, preserves actualhandlerkeys/builderfingerprint/requests/outcomes/errors/events. Separate fullnativegolden and rawnative log retained; no replayers.",
+          "ecs_observation": "Exact named native registration stress-agent/model:default,tool:add#0,tool:subtract#1; originalrecord_effects keep_eventsfalse, actualdefaultbus, no policies, defaultNone/effective1, runoverride6. Actual settledRunResult presence maps originalfinalpresence. Original drains stream while ignoring itemerrors (not claimed as stricter errorrejection). Actual recorded completion tool IDs collected unchanged; nonempty and allis_generated assertions retained. Shared comparator compares entire originalgolden with existing nominal effect-ID/scope/program/delivery normalization, preserves actualhandlerkeys/builderfingerprint/requests/outcomes/errors/events. Separate stable native golden retained; scheduling-dependent delivery traces excluded; no replayers.",
           "ecs_symbol": "gemini::cassette::ecs_stress_main::tool_call_turns_effect_log_is_the_golden_fixture",
           "id": "rig::gemini::gemini::cassette::hook_stress::tool_call_turns_effect_log_is_the_golden_fixture::assertion-0"
         },
         {
           "baseline_symbol": "gemini::cassette::hook_stress::tool_call_turns_effect_log_is_the_golden_fixture",
           "comparison": "assert ! (! tool_ids . is_empty () , \"the program calls tools\")",
-          "ecs_observation": "Exact named native registration stress-agent/model:default,tool:add#0,tool:subtract#1; originalrecord_effects keep_eventsfalse, actualdefaultbus, no policies, defaultNone/effective1, runoverride6. Actual settledRunResult presence maps originalfinalpresence. Original drains stream while ignoring itemerrors (not claimed as stricter errorrejection). Actual recorded completion tool IDs collected unchanged; nonempty and allis_generated assertions retained. Shared comparator compares entire originalgolden with existing nominal effect-ID/scope/program/delivery normalization, preserves actualhandlerkeys/builderfingerprint/requests/outcomes/errors/events. Separate fullnativegolden and rawnative log retained; no replayers.",
+          "ecs_observation": "Exact named native registration stress-agent/model:default,tool:add#0,tool:subtract#1; originalrecord_effects keep_eventsfalse, actualdefaultbus, no policies, defaultNone/effective1, runoverride6. Actual settledRunResult presence maps originalfinalpresence. Original drains stream while ignoring itemerrors (not claimed as stricter errorrejection). Actual recorded completion tool IDs collected unchanged; nonempty and allis_generated assertions retained. Shared comparator compares entire originalgolden with existing nominal effect-ID/scope/program/delivery normalization, preserves actualhandlerkeys/builderfingerprint/requests/outcomes/errors/events. Separate stable native golden retained; scheduling-dependent delivery traces excluded; no replayers.",
           "ecs_symbol": "gemini::cassette::ecs_stress_main::tool_call_turns_effect_log_is_the_golden_fixture",
           "id": "rig::gemini::gemini::cassette::hook_stress::tool_call_turns_effect_log_is_the_golden_fixture::assertion-1"
         },
         {
           "baseline_symbol": "gemini::cassette::hook_stress::tool_call_turns_effect_log_is_the_golden_fixture",
           "comparison": "assert ! (tool_ids . iter () . all (| id | id . is_generated ()) , \"every id-less wire call is named by its block: {tool_ids:?}\")",
-          "ecs_observation": "Exact named native registration stress-agent/model:default,tool:add#0,tool:subtract#1; originalrecord_effects keep_eventsfalse, actualdefaultbus, no policies, defaultNone/effective1, runoverride6. Actual settledRunResult presence maps originalfinalpresence. Original drains stream while ignoring itemerrors (not claimed as stricter errorrejection). Actual recorded completion tool IDs collected unchanged; nonempty and allis_generated assertions retained. Shared comparator compares entire originalgolden with existing nominal effect-ID/scope/program/delivery normalization, preserves actualhandlerkeys/builderfingerprint/requests/outcomes/errors/events. Separate fullnativegolden and rawnative log retained; no replayers.",
+          "ecs_observation": "Exact named native registration stress-agent/model:default,tool:add#0,tool:subtract#1; originalrecord_effects keep_eventsfalse, actualdefaultbus, no policies, defaultNone/effective1, runoverride6. Actual settledRunResult presence maps originalfinalpresence. Original drains stream while ignoring itemerrors (not claimed as stricter errorrejection). Actual recorded completion tool IDs collected unchanged; nonempty and allis_generated assertions retained. Shared comparator compares entire originalgolden with existing nominal effect-ID/scope/program/delivery normalization, preserves actualhandlerkeys/builderfingerprint/requests/outcomes/errors/events. Separate stable native golden retained; scheduling-dependent delivery traces excluded; no replayers.",
           "ecs_symbol": "gemini::cassette::ecs_stress_main::tool_call_turns_effect_log_is_the_golden_fixture",
           "id": "rig::gemini::gemini::cassette::hook_stress::tool_call_turns_effect_log_is_the_golden_fixture::assertion-2"
         },
         {
           "baseline_symbol": "original hook methods / neutral tools / collectors / cassette wrapper / golden helper",
-          "comparison": "Exact named native registration stress-agent/model:default,tool:add#0,tool:subtract#1; originalrecord_effects keep_eventsfalse, actualdefaultbus, no policies, defaultNone/effective1, runoverride6. Actual settledRunResult presence maps originalfinalpresence. Original drains stream while ignoring itemerrors (not claimed as stricter errorrejection). Actual recorded completion tool IDs collected unchanged; nonempty and allis_generated assertions retained. Shared comparator compares entire originalgolden with existing nominal effect-ID/scope/program/delivery normalization, preserves actualhandlerkeys/builderfingerprint/requests/outcomes/errors/events. Separate fullnativegolden and rawnative log retained; no replayers.",
+          "comparison": "Exact named native registration stress-agent/model:default,tool:add#0,tool:subtract#1; originalrecord_effects keep_eventsfalse, actualdefaultbus, no policies, defaultNone/effective1, runoverride6. Actual settledRunResult presence maps originalfinalpresence. Original drains stream while ignoring itemerrors (not claimed as stricter errorrejection). Actual recorded completion tool IDs collected unchanged; nonempty and allis_generated assertions retained. Shared comparator compares entire originalgolden with existing nominal effect-ID/scope/program/delivery normalization, preserves actualhandlerkeys/builderfingerprint/requests/outcomes/errors/events. Separate stable native golden retained; scheduling-dependent delivery traces excluded; no replayers.",
           "ecs_symbol": "gemini::cassette::ecs_stress_main::tool_call_turns_effect_log_is_the_golden_fixture",
           "id": "rig::gemini::gemini::cassette::hook_stress::tool_call_turns_effect_log_is_the_golden_fixture::helper-and-policy-obligations"
         }
@@ -41956,7 +41957,7 @@
       ],
       "helper_obligations": {
         "shared": "Full original producer bodies, impl methods, collectors, expect/unwrap and counter methods traced manually. Original free helpers reused where called; original sources and fixtures unchanged and frozen. Stronger native correlation guards are supplemental, not attributed to original.",
-        "specific": "Exact named native registration stress-agent/model:default,tool:add#0,tool:subtract#1; originalrecord_effects keep_eventsfalse, actualdefaultbus, no policies, defaultNone/effective1, runoverride6. Actual settledRunResult presence maps originalfinalpresence. Original drains stream while ignoring itemerrors (not claimed as stricter errorrejection). Actual recorded completion tool IDs collected unchanged; nonempty and allis_generated assertions retained. Shared comparator compares entire originalgolden with existing nominal effect-ID/scope/program/delivery normalization, preserves actualhandlerkeys/builderfingerprint/requests/outcomes/errors/events. Separate fullnativegolden and rawnative log retained; no replayers."
+        "specific": "Exact named native registration stress-agent/model:default,tool:add#0,tool:subtract#1; originalrecord_effects keep_eventsfalse, actualdefaultbus, no policies, defaultNone/effective1, runoverride6. Actual settledRunResult presence maps originalfinalpresence. Original drains stream while ignoring itemerrors (not claimed as stricter errorrejection). Actual recorded completion tool IDs collected unchanged; nonempty and allis_generated assertions retained. Shared comparator compares entire originalgolden with existing nominal effect-ID/scope/program/delivery normalization, preserves actualhandlerkeys/builderfingerprint/requests/outcomes/errors/events. Separate stable native golden retained; scheduling-dependent delivery traces excluded; no replayers."
       },
       "id": "rig::gemini::gemini::cassette::hook_stress::tool_call_turns_effect_log_is_the_golden_fixture",
       "mapping_limits": [

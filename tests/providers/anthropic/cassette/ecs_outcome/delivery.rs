@@ -16,10 +16,10 @@ use tokio::sync::Semaphore;
 #[path = "delivery/tests.rs"]
 mod tests;
 
-pub(super) struct FirstToolDelta<M>(M);
+pub(in super::super) struct FirstToolDelta<M>(M);
 
 impl<M> FirstToolDelta<M> {
-    pub(super) fn new(model: M) -> Self {
+    pub(in super::super) fn new(model: M) -> Self {
         Self(model)
     }
 }

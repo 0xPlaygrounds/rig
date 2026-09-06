@@ -28,6 +28,10 @@ consumer/task cancellation produces the cancelled effect record. A direct check
 requires the native Failed reason before effect drop. No input inbox is inspected,
 no expected prefix selects execution, and no recorded event or outcome is patched.
 Full original goldens compare the exact partial event prefix for both fixtures.
+The tool-delta fixture shares the outcome corpus's test-owned FirstToolDelta
+backpressure gate: the real first tool delta is delivered, then the provider
+stream stays owned until the native policy cancels it. No events are filtered
+or rewritten. Exact prefix equality is scoped to this controlled boundary.
 The application has one run; arbitrary transport scheduling is not proven.
 
 The Ending enum selects concrete system installation only. It is neither an
