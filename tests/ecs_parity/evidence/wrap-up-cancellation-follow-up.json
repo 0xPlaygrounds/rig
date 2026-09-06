@@ -1,0 +1,63 @@
+{
+  "fix": "test-owned releasable backpressure after the first actual tool delta, retaining the provider until native consumer cancellation; no event filtering or assertion changes",
+  "kind": "post-CI cancellation scheduling fix; not a paired-parity verdict",
+  "limitations": "controlled cancellation boundary, not arbitrary unrestricted producer scheduling; committed-head CI must be checked separately",
+  "logs": {
+    "cancellation-all-features": {
+      "path": "tests/ecs_parity/evidence/wrap-up/fbc002afa4891e397859053d6eaa54cb3a71ee6fd0f4c1900585adf3424b79d4.log",
+      "sha256": "fbc002afa4891e397859053d6eaa54cb3a71ee6fd0f4c1900585adf3424b79d4"
+    },
+    "cancellation-clippy": {
+      "path": "tests/ecs_parity/evidence/wrap-up/5860b5b0b589c8065fe78ded009f52bb280e272a7925f155566362535ba65b66.log",
+      "sha256": "5860b5b0b589c8065fe78ded009f52bb280e272a7925f155566362535ba65b66"
+    },
+    "cancellation-fix": {
+      "path": "tests/ecs_parity/evidence/wrap-up/591b21f7d73fc23eb329e47f38c888d621c4862923cbc05bcdba6807b1934bb8.log",
+      "sha256": "591b21f7d73fc23eb329e47f38c888d621c4862923cbc05bcdba6807b1934bb8"
+    },
+    "cancellation-fmt": {
+      "path": "tests/ecs_parity/evidence/wrap-up/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "cancellation-layout": {
+      "path": "tests/ecs_parity/evidence/wrap-up/3af3feaa5981ba20a0e3301689cad94482df76631953912cce4c9d0ecf04868b.log",
+      "sha256": "3af3feaa5981ba20a0e3301689cad94482df76631953912cce4c9d0ecf04868b"
+    },
+    "cancellation-repeat": {
+      "path": "tests/ecs_parity/evidence/wrap-up/4d1e7e9e099edd0948afbdffcc967e8be4a03183149641ba9fa8270d2abb8c57.log",
+      "sha256": "4d1e7e9e099edd0948afbdffcc967e8be4a03183149641ba9fa8270d2abb8c57"
+    },
+    "cancellation-repeat-summary": {
+      "path": "tests/ecs_parity/evidence/wrap-up/24865b775f1aa0af58b7e850c719cbb537bf9e5d79ad836f28c4451616db7156.log",
+      "sha256": "24865b775f1aa0af58b7e850c719cbb537bf9e5d79ad836f28c4451616db7156"
+    },
+    "ci-all-features": {
+      "path": "tests/ecs_parity/evidence/wrap-up/c6d5266253bd888a1d59e027c73c1eeb41e09187bf3d105ed10dd3a053f37034.log",
+      "sha256": "c6d5266253bd888a1d59e027c73c1eeb41e09187bf3d105ed10dd3a053f37034"
+    },
+    "ci-default": {
+      "path": "tests/ecs_parity/evidence/wrap-up/87d89024a845a763e5a48aefa7dda3b6381c6dfe6c5de5627c2004a2d579ae0b.log",
+      "sha256": "87d89024a845a763e5a48aefa7dda3b6381c6dfe6c5de5627c2004a2d579ae0b"
+    }
+  },
+  "previous_ci": {
+    "all_features_passed": 8023,
+    "all_features_retries": [
+      "native cancellation prefix race (fixed here)",
+      "unrelated MongoDB HMAC KeyNotFound (no integration code changed)"
+    ],
+    "default_passed": 7940
+  },
+  "previous_head": "d895ac92be09adeb0c150fd75222cba4c98e9a6c",
+  "source_sha256": {
+    "tests/providers/anthropic/cassette/ecs_outcome.rs": "f389a3a4b58189460f2cb9c96446db4bd7cba30688f87e91f3930aadaee772fa",
+    "tests/providers/anthropic/cassette/ecs_outcome/delivery.rs": "29a0f0b04ba9ac917514faaa91c2415ad937cd5da437eb4845ffee2181e21831",
+    "tests/providers/anthropic/cassette/ecs_outcome/delivery/tests.rs": "366f705bb9d671d9d13687082f5386186df8b27fd3af70467cd4212769c14454"
+  },
+  "verification": {
+    "all_feature_outcome_tests": 9,
+    "default_outcome_tests": 9,
+    "independent_cancellation_runs_without_retries": 20,
+    "new_controls": "unchanged events/errors and resumed tail; paused provider drop ownership"
+  }
+}

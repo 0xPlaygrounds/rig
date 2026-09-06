@@ -43,6 +43,17 @@ Failure::Cancelled and no Settled/RunResult. The full original golden pins the
 partial event prefix; native raw logs also retain real publication batches.
 These fixtures do not prove arbitrary transport scheduling equivalence.
 
+The cancellation case now applies test-owned backpressure after the first real
+tool delta. The provider stream remains owned and suspended until the ECS
+consumer despawns the dispatch; the gate neither polls later items nor creates
+EOF. This removes a CI race where Collect drained an additional empty argument
+delta before the consumer could cancel. A releasable synthetic control preserves
+every event and error through the boundary and resumes the unchanged tail;
+another control verifies that cancelling the paused stream drops its provider.
+The request, provider capabilities, golden assertions and recorded traffic are
+unchanged. This is cancellation under controlled backpressure, not a guarantee
+of identical prefixes under unrestricted producer scheduling.
+
 ## Full log comparison
 
 The existing nominal dispatch-ID mapping now also maps header.stream_errors keys

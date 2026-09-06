@@ -1,4 +1,6 @@
 //! Native provider-executed failure and cancellation corpus.
+#[path = "ecs_outcome/delivery.rs"]
+mod delivery;
 use super::super::support::{
     with_anthropic_cassette, with_anthropic_cassette_bogus_key,
     with_anthropic_corpus_outcome_cassette,
@@ -47,7 +49,7 @@ async fn cancel_after_tool_call_delta_effect_log_is_the_golden_fixture() {
         "corpus_outcome/cancel_after_tool_call_delta",
         |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                client.completion_model(CLAUDE_SONNET_4_6),
+                delivery::FirstToolDelta::new(client.completion_model(CLAUDE_SONNET_4_6)),
                 NOTE_PREAMBLE,
                 true,
             );

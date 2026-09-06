@@ -1,0 +1,183 @@
+    Checking tempfile v3.27.0
+    Checking hyper-util v0.1.20
+    Checking arrow-schema v58.3.0
+    Checking flatbuffers v25.12.19
+   Compiling rustix v1.1.4
+    Checking tower-http v0.6.8
+    Checking lopdf v0.44.0
+    Checking rustls-platform-verifier v0.7.0
+    Checking moka v0.12.15
+    Checking sysctl v0.6.0
+    Checking raw-cpuid v11.6.0
+    Checking onig v6.5.3
+    Checking native-tls v0.2.18
+    Checking objc2-core-foundation v0.3.2
+    Checking bevy_platform v0.19.1
+    Checking arrow-data v58.3.0
+    Checking safetensors v0.8.0
+    Checking sqlx-postgres v0.9.0
+    Checking tokenizers v0.22.2
+    Checking hyper-rustls v0.27.9
+    Checking hyper-timeout v0.5.2
+    Checking axum v0.8.9
+    Checking rig-core v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-core)
+    Checking tokio-native-tls v0.3.1
+    Checking gemm-common v0.19.0
+   Compiling xattr v1.6.1
+    Checking objc2-io-kit v0.3.2
+    Checking arrow-array v58.3.0
+    Checking aws-smithy-http-client v1.1.9
+   Compiling prost-build v0.14.3
+    Checking ureq v2.12.1
+    Checking png v0.18.1
+    Checking ext-sort v0.1.5
+    Checking tonic v0.14.6
+    Checking hyper-tls v0.6.0
+    Checking gemm-f32 v0.19.0
+   Compiling tar v0.4.46
+    Checking gemm-c64 v0.19.0
+    Checking aws-smithy-runtime v1.10.0
+    Checking arrow-select v58.3.0
+    Checking arrow-row v58.3.0
+    Checking arrow-arith v58.3.0
+   Compiling lance-encoding v7.0.0
+   Compiling lance-file v7.0.0
+    Checking tonic-prost v0.14.6
+    Checking fsst v7.0.0
+   Compiling lance-table v7.0.0
+   Compiling lance-datafusion v7.0.0
+    Checking reqwest v0.13.4
+    Checking reqwest v0.12.28
+   Compiling lance-index v7.0.0
+    Checking gemm-f16 v0.19.0
+   Compiling ort-sys v2.0.0-rc.9
+   Compiling lance v7.0.0
+    Checking gemm-f64 v0.19.0
+    Checking arrow-ord v58.3.0
+    Checking arrow-ipc v58.3.0
+    Checking arrow-string v58.3.0
+    Checking aws-runtime v1.6.0
+    Checking gemm-c32 v0.19.0
+    Checking surrealdb-protocol v0.10.2
+   Compiling tonic-prost-build v0.14.6
+    Checking google-cloud-auth v1.13.0
+    Checking reqwest-middleware v0.5.2
+    Checking lance-namespace-reqwest-client v0.7.7
+    Checking arrow-cast v58.3.0
+    Checking sysinfo v0.37.2
+    Checking rusqlite v0.32.1
+    Checking lance-arrow v7.0.0
+    Checking aws-sdk-sts v1.97.0
+    Checking ort v2.0.0-rc.9
+    Checking gemm v0.19.0
+   Compiling rig-gemini-grpc v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-gemini-grpc)
+    Checking lance-testing v7.0.0
+    Checking surrealdb-types v3.2.3
+    Checking bevy_utils v0.19.1
+    Checking google-cloud-gax-internal v0.7.14
+    Checking rig-reqwest v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-reqwest)
+    Checking hickory-resolver v0.26.1
+    Checking arrow-csv v58.3.0
+    Checking arrow-json v58.3.0
+    Checking image v0.25.10
+    Checking candle-core v0.11.0
+    Checking bevy_tasks v0.19.1
+    Checking tonic v0.12.3
+    Checking hf-hub v0.4.3
+    Checking bollard-buildkit-proto v0.7.0
+    Checking rig-effect-log v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-effect-log)
+    Checking surrealdb-core v3.2.3
+    Checking google-cloud-longrunning v1.10.0
+    Checking google-cloud-location v1.9.0
+    Checking google-cloud-iam-v1 v1.9.0
+    Checking sqlx v0.9.0
+    Checking arrow v58.3.0
+    Checking tungstenite v0.29.0
+    Checking tokenizers v0.21.4
+    Checking rmcp v2.2.0
+    Checking qdrant-client v1.17.0
+    Checking candle-nn v0.11.0
+    Checking bollard-stubs v1.52.1-rc.29.1.3
+    Checking google-cloud-lro v1.6.0
+    Checking bevy_ecs v0.19.1
+    Checking pgvector v0.4.2
+    Checking datafusion-common v53.1.0
+    Checking lance-datagen v7.0.0
+    Checking tokio-tungstenite v0.29.0
+    Checking candle-transformers v0.11.0
+    Checking fastembed v4.9.1
+    Checking google-cloud-aiplatform-v1 v1.11.0
+    Checking mongodb v3.7.0
+    Checking neo4rs v0.8.0
+    Checking aws-config v1.8.13
+    Checking tokio-rusqlite v0.6.0
+    Checking aws-sdk-s3vectors v1.19.0
+    Checking datafusion-expr-common v53.1.0
+    Checking aws-sdk-bedrockruntime v1.124.0
+    Checking hyperlocal v0.9.1
+    Checking bevy_app v0.19.1
+    Checking rig-neo4j v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-neo4j)
+    Checking rig-sqlite v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-sqlite)
+    Checking astral-tokio-tar v0.6.4
+    Checking datafusion-physical-expr-common v53.1.0
+    Checking rig-s3vectors v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-s3vectors)
+    Checking rig-fastembed v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-fastembed)
+    Checking bollard v0.20.2
+    Checking rig-bedrock v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-bedrock)
+    Checking rig-tungstenite v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-tungstenite)
+    Checking globwalk v0.9.1
+    Checking rig-rmcp v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-rmcp)
+    Checking rig-candle v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-candle)
+    Checking rig-scylladb v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-scylladb)
+    Checking rig-postgres v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-postgres)
+    Checking rig-qdrant v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-qdrant)
+    Checking datafusion-functions-window-common v53.1.0
+    Checking datafusion-functions-aggregate-common v53.1.0
+    Checking rig-agent v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-agent)
+    Checking rig-mongodb v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-mongodb)
+    Checking rig-milvus v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-milvus)
+    Checking rig-helixdb v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-helixdb)
+    Checking rig-vertexai v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-vertexai)
+    Checking opentelemetry-http v0.32.0
+    Checking rig-vectorize v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-vectorize)
+    Checking rig-memory v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-memory)
+    Checking httpmock v0.8.3
+    Checking redis v1.6.0
+    Checking testcontainers v0.27.3
+    Checking assert_fs v1.1.4
+    Checking reqwest-retry v0.9.1
+    Checking rig-ecs v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-ecs)
+    Checking datafusion-expr v53.1.0
+    Checking opentelemetry-otlp v0.32.0
+    Checking datafusion-physical-expr v53.1.0
+    Checking datafusion-execution v53.1.0
+    Checking datafusion-functions v53.1.0
+    Checking datafusion-functions-aggregate v53.1.0
+    Checking datafusion-functions-window v53.1.0
+    Checking datafusion-optimizer v53.1.0
+    Checking datafusion-physical-plan v53.1.0
+    Checking datafusion-physical-expr-adapter v53.1.0
+    Checking datafusion-functions-nested v53.1.0
+    Checking surrealdb v3.2.3
+    Checking datafusion-sql v53.1.0
+    Checking datafusion-session v53.1.0
+    Checking datafusion-datasource v53.1.0
+    Checking lance-core v7.0.0
+    Checking rig-surrealdb v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-surrealdb)
+    Checking datafusion-catalog v53.1.0
+    Checking datafusion-pruning v53.1.0
+    Checking datafusion-datasource-csv v53.1.0
+    Checking datafusion-datasource-json v53.1.0
+    Checking datafusion-datasource-arrow v53.1.0
+    Checking lance-namespace v7.0.0
+    Checking lance-linalg v7.0.0
+    Checking datafusion-physical-optimizer v53.1.0
+    Checking lance-io v7.0.0
+    Checking datafusion-functions-table v53.1.0
+    Checking datafusion-catalog-listing v53.1.0
+    Checking datafusion v53.1.0
+    Checking lance-namespace-impls v7.0.0
+    Checking lancedb v0.30.0
+    Checking rig-lancedb v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-lancedb)
+    Checking rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3m 52s
