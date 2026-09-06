@@ -22,8 +22,9 @@ use crate::goldens::{
 };
 use crate::support::{Adder, BASIC_PREAMBLE, TOOLS_PREAMBLE};
 
-const PROMPT: &str = "Reply with the single word: ready.";
-const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
+pub(super) const PROMPT: &str = "Reply with the single word: ready.";
+pub(super) const ADD_PROMPT: &str =
+    "Use the add tool to add 17 and 25, then reply with just the number.";
 
 /// The hooks a cell registers, in order.
 #[derive(Clone, Copy)]
@@ -147,7 +148,7 @@ async fn over_host(
     log
 }
 
-fn note_ats(log: &rig::effect_log::EffectLog) -> Vec<String> {
+pub(super) fn note_ats(log: &rig::effect_log::EffectLog) -> Vec<String> {
     log.iter()
         .filter(|record| record.key.as_str() == NOTE_KEY)
         .map(|record| match &record.kind {

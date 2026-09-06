@@ -75,6 +75,7 @@ pub fn register(app: &mut App) {
             OutcomeReflect,
             StreamedOutcomeReflect,
             StreamEventsReflect,
+            StreamErrorsReflect,
             // The graph.
             agent::Owner,
             agent::Preamble,
@@ -82,6 +83,8 @@ pub fn register(app: &mut App) {
             agent::MaxTokens,
             agent::AdditionalParams,
             agent::ToolChoiceSpec,
+            agent::ToolAccess,
+            agent::OutputToolConfig,
             agent::OutputKind,
             agent::Output,
             agent::MaxTurns,

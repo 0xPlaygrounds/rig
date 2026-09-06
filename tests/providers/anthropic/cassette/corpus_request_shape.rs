@@ -23,20 +23,21 @@ use crate::support::{
     TOOLS_PREAMBLE,
 };
 
-const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
-const NO_TOOL_PROMPT: &str = "What is 17 + 25? Reply with just the number.";
-const NAME_PROMPT: &str = "What is my name? Reply with just the name.";
-const THINKING_PROMPT: &str =
+pub(super) const ADD_PROMPT: &str =
+    "Use the add tool to add 17 and 25, then reply with just the number.";
+pub(super) const NO_TOOL_PROMPT: &str = "What is 17 + 25? Reply with just the number.";
+pub(super) const NAME_PROMPT: &str = "What is my name? Reply with just the name.";
+pub(super) const THINKING_PROMPT: &str =
     "Think briefly, then answer: what is 12 * 12? Reply with just the number.";
 
 /// Extended thinking with a budget: in `adaptive` mode Sonnet 4.6 chose
 /// not to think about a one-line arithmetic prompt (first recording), so
 /// the cells enable it outright.
-fn thinking_params() -> serde_json::Value {
+pub(super) fn thinking_params() -> serde_json::Value {
     serde_json::json!({ "thinking": { "type": "enabled", "budget_tokens": 1024 } })
 }
 
-fn reasoning_blocks(log: &rig::effect_log::EffectLog) -> usize {
+pub(super) fn reasoning_blocks(log: &rig::effect_log::EffectLog) -> usize {
     log.records
         .iter()
         .filter_map(|record| match record.outcome.as_ref() {
@@ -49,7 +50,7 @@ fn reasoning_blocks(log: &rig::effect_log::EffectLog) -> usize {
 }
 
 /// The last completion's text, as the golden's oracle reads it.
-fn last_text(log: &rig::effect_log::EffectLog) -> String {
+pub(super) fn last_text(log: &rig::effect_log::EffectLog) -> String {
     log.records
         .iter()
         .rev()

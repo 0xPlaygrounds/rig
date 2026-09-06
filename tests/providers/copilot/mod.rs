@@ -1,5 +1,11 @@
 mod agent;
 mod auth;
+#[path = "cassette/ecs_completion.rs"]
+mod ecs_completion;
+#[path = "cassette/ecs_extractor.rs"]
+mod ecs_extractor;
+#[path = "cassette/ecs_extractor_usage.rs"]
+mod ecs_extractor_usage;
 mod embeddings;
 mod extractor;
 mod extractor_usage;

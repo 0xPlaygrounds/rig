@@ -889,6 +889,24 @@
           {
             "kind": "turn",
             "components": {
+              "tool_access": {
+                "executable": {
+                  "repo_apply_patch": "maintenance/tool:repo_apply_patch",
+                  "repo_list_files": "maintenance/tool:repo_list_files",
+                  "repo_propose_patch": "maintenance/tool:repo_propose_patch",
+                  "repo_read_file": "maintenance/tool:repo_read_file",
+                  "repo_search": "maintenance/tool:repo_search",
+                  "repo_validate": "maintenance/tool:repo_validate"
+                },
+                "allowed": [
+                  "repo_apply_patch",
+                  "repo_list_files",
+                  "repo_propose_patch",
+                  "repo_read_file",
+                  "repo_search",
+                  "repo_validate"
+                ]
+              },
               "order": 1,
               "turn": null,
               "outputs": {
@@ -927,7 +945,9 @@
                   }
                 ],
                 "message_id": null,
-                "done": true
+                "done": true,
+                "usage_recorded": true,
+                "stream_validated": 8
               },
               "folded": "native",
               "materialised": true
@@ -937,6 +957,24 @@
           {
             "kind": "turn",
             "components": {
+              "tool_access": {
+                "executable": {
+                  "repo_apply_patch": "maintenance/tool:repo_apply_patch",
+                  "repo_list_files": "maintenance/tool:repo_list_files",
+                  "repo_propose_patch": "maintenance/tool:repo_propose_patch",
+                  "repo_read_file": "maintenance/tool:repo_read_file",
+                  "repo_search": "maintenance/tool:repo_search",
+                  "repo_validate": "maintenance/tool:repo_validate"
+                },
+                "allowed": [
+                  "repo_apply_patch",
+                  "repo_list_files",
+                  "repo_propose_patch",
+                  "repo_read_file",
+                  "repo_search",
+                  "repo_validate"
+                ]
+              },
               "order": 10,
               "turn": null,
               "outputs": {
@@ -992,7 +1030,9 @@
                   }
                 ],
                 "message_id": null,
-                "done": true
+                "done": true,
+                "usage_recorded": true,
+                "stream_validated": 10
               },
               "folded": "native",
               "materialised": true
@@ -1002,6 +1042,24 @@
           {
             "kind": "turn",
             "components": {
+              "tool_access": {
+                "executable": {
+                  "repo_apply_patch": "maintenance/tool:repo_apply_patch",
+                  "repo_list_files": "maintenance/tool:repo_list_files",
+                  "repo_propose_patch": "maintenance/tool:repo_propose_patch",
+                  "repo_read_file": "maintenance/tool:repo_read_file",
+                  "repo_search": "maintenance/tool:repo_search",
+                  "repo_validate": "maintenance/tool:repo_validate"
+                },
+                "allowed": [
+                  "repo_apply_patch",
+                  "repo_list_files",
+                  "repo_propose_patch",
+                  "repo_read_file",
+                  "repo_search",
+                  "repo_validate"
+                ]
+              },
               "order": 19,
               "turn": null,
               "outputs": {
@@ -1029,7 +1087,9 @@
                   }
                 ],
                 "message_id": null,
-                "done": true
+                "done": true,
+                "usage_recorded": true,
+                "stream_validated": 6
               },
               "folded": "native",
               "materialised": true
@@ -1039,6 +1099,24 @@
           {
             "kind": "turn",
             "components": {
+              "tool_access": {
+                "executable": {
+                  "repo_apply_patch": "maintenance/tool:repo_apply_patch",
+                  "repo_list_files": "maintenance/tool:repo_list_files",
+                  "repo_propose_patch": "maintenance/tool:repo_propose_patch",
+                  "repo_read_file": "maintenance/tool:repo_read_file",
+                  "repo_search": "maintenance/tool:repo_search",
+                  "repo_validate": "maintenance/tool:repo_validate"
+                },
+                "allowed": [
+                  "repo_apply_patch",
+                  "repo_list_files",
+                  "repo_propose_patch",
+                  "repo_read_file",
+                  "repo_search",
+                  "repo_validate"
+                ]
+              },
               "order": 28,
               "turn": null,
               "outputs": {
@@ -1060,7 +1138,9 @@
                   }
                 ],
                 "message_id": null,
-                "done": true
+                "done": true,
+                "usage_recorded": true,
+                "stream_validated": 3
               },
               "folded": "native",
               "materialised": true
@@ -1070,6 +1150,24 @@
           {
             "kind": "turn",
             "components": {
+              "tool_access": {
+                "executable": {
+                  "repo_apply_patch": "maintenance/tool:repo_apply_patch",
+                  "repo_list_files": "maintenance/tool:repo_list_files",
+                  "repo_propose_patch": "maintenance/tool:repo_propose_patch",
+                  "repo_read_file": "maintenance/tool:repo_read_file",
+                  "repo_search": "maintenance/tool:repo_search",
+                  "repo_validate": "maintenance/tool:repo_validate"
+                },
+                "allowed": [
+                  "repo_apply_patch",
+                  "repo_list_files",
+                  "repo_propose_patch",
+                  "repo_read_file",
+                  "repo_search",
+                  "repo_validate"
+                ]
+              },
               "order": 37,
               "turn": null,
               "outputs": {
@@ -1091,7 +1189,9 @@
                   }
                 ],
                 "message_id": null,
-                "done": true
+                "done": true,
+                "usage_recorded": true,
+                "stream_validated": 3
               },
               "folded": "native",
               "materialised": true
@@ -1101,6 +1201,24 @@
           {
             "kind": "turn",
             "components": {
+              "tool_access": {
+                "executable": {
+                  "repo_apply_patch": "maintenance/tool:repo_apply_patch",
+                  "repo_list_files": "maintenance/tool:repo_list_files",
+                  "repo_propose_patch": "maintenance/tool:repo_propose_patch",
+                  "repo_read_file": "maintenance/tool:repo_read_file",
+                  "repo_search": "maintenance/tool:repo_search",
+                  "repo_validate": "maintenance/tool:repo_validate"
+                },
+                "allowed": [
+                  "repo_apply_patch",
+                  "repo_list_files",
+                  "repo_propose_patch",
+                  "repo_read_file",
+                  "repo_search",
+                  "repo_validate"
+                ]
+              },
               "order": 46,
               "turn": null,
               "outputs": {
@@ -1124,7 +1242,9 @@
                   }
                 ],
                 "message_id": null,
-                "done": true
+                "done": true,
+                "usage_recorded": true,
+                "stream_validated": 3
               },
               "folded": "native",
               "materialised": true
@@ -1134,6 +1254,24 @@
           {
             "kind": "turn",
             "components": {
+              "tool_access": {
+                "executable": {
+                  "repo_apply_patch": "maintenance/tool:repo_apply_patch",
+                  "repo_list_files": "maintenance/tool:repo_list_files",
+                  "repo_propose_patch": "maintenance/tool:repo_propose_patch",
+                  "repo_read_file": "maintenance/tool:repo_read_file",
+                  "repo_search": "maintenance/tool:repo_search",
+                  "repo_validate": "maintenance/tool:repo_validate"
+                },
+                "allowed": [
+                  "repo_apply_patch",
+                  "repo_list_files",
+                  "repo_propose_patch",
+                  "repo_read_file",
+                  "repo_search",
+                  "repo_validate"
+                ]
+              },
               "order": 55,
               "turn": null,
               "outputs": {
@@ -1155,7 +1293,9 @@
                   }
                 ],
                 "message_id": null,
-                "done": true
+                "done": true,
+                "usage_recorded": true,
+                "stream_validated": 3
               },
               "batch": {
                 "calls": 1

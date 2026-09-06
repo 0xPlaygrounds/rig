@@ -22,8 +22,9 @@ use crate::support::{
     TWO_TOOL_STREAM_PROMPT,
 };
 
-const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
-const TWO_TOOLS: [EffectFamily; 4] = [
+pub(super) const ADD_PROMPT: &str =
+    "Use the add tool to add 17 and 25, then reply with just the number.";
+pub(super) const TWO_TOOLS: [EffectFamily; 4] = [
     EffectFamily::Completion,
     EffectFamily::Tool,
     EffectFamily::Tool,

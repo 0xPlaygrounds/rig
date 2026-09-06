@@ -1381,3 +1381,61 @@ fn errors_before_and_after_final_keep_their_positions_and_first_outcome() {
         );
     }
 }
+
+#[test]
+fn stream_error_observation_does_not_depend_on_recording() {
+    for record_without_events in [false, true] {
+        for error_first in [false, true] {
+            let mut live = bus_support::app();
+            let recorder = record_without_events.then(EffectLogRecorder::new);
+            if let Some(recorder) = &recorder {
+                EffectLogResource::install(live.world_mut(), recorder.clone());
+            }
+            bus_support::register(
+                &mut live,
+                "model",
+                TerminalErrors {
+                    error_first,
+                    error_kind: rig_core::error::ErrorKind::Response,
+                    produced: Arc::new(AtomicUsize::new(0)),
+                },
+            );
+            let effect = live
+                .world_mut()
+                .spawn(PendingEffect::new("model", bus_support::streaming()))
+                .id();
+            bus_support::tick_until(&mut live, "all stream items observed", |world| {
+                world.get::<EffectOutcome>(effect).is_some()
+            });
+            let stream = live.world().get::<Streamed>(effect).unwrap();
+            assert_eq!(stream.errors.len(), 2);
+            assert_eq!(stream.errors[0].0, usize::from(!error_first));
+            assert_eq!(stream.errors[0].1.message, "original error");
+            assert_eq!(stream.errors[1].0, 2);
+            assert_eq!(stream.errors[1].1.message, "late error");
+            assert_eq!(
+                live.world()
+                    .get::<EffectOutcome>(effect)
+                    .unwrap()
+                    .0
+                    .is_err(),
+                error_first,
+                "first fold remains unchanged"
+            );
+            let restored: Streamed =
+                serde_json::from_str(&serde_json::to_string(stream).unwrap()).unwrap();
+            assert_eq!(
+                restored.errors, stream.errors,
+                "durable stream state retains error positions and reports"
+            );
+            if let Some(recorder) = recorder {
+                let log = recorder.log();
+                assert!(
+                    log.header.stream_errors.is_empty(),
+                    "recording choice remains unchanged"
+                );
+                assert!(log.records[0].events.is_none());
+            }
+        }
+    }
+}

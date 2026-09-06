@@ -107,6 +107,32 @@ pub struct Output {
     pub schema: Option<serde_json::Value>,
 }
 
+/// Output-tool configuration, resolved from the run before the agent.
+///
+/// An explicit name reserves Tool mode when a schema is present, just like
+/// a name already committed on the run. A conflicting real tool fails before
+/// provider dispatch. Without a name, the normal collision-safe name is used.
+#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct OutputToolConfig {
+    /// Reserved name, or the automatically chosen name when absent.
+    pub name: Option<String>,
+    /// Tool description, or the standard final-answer description when absent.
+    pub description: Option<String>,
+    /// Append the standard output-tool instructions to the preamble.
+    pub augment_preamble: bool,
+}
+
+impl Default for OutputToolConfig {
+    fn default() -> Self {
+        Self {
+            name: None,
+            description: None,
+            augment_preamble: true,
+        }
+    }
+}
+
 /// The model-call budget of a run.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
@@ -304,6 +330,30 @@ pub struct RoutedTo(Vec<Entity>);
 #[relationship(relationship_target = Grants)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Grant(pub Entity);
+
+/// Tool execution and permission policy, independent of request advertisements.
+///
+/// Resolved from the run, then its agent. Assembly stores
+/// the effective snapshot on the turn before issuing its completion. Later
+/// run changes therefore affect future turns only. On a turn this component
+/// is the runtime's retained snapshot, not an input override. The synthetic output tool
+/// remains governed by the output configuration rather than these ordinary
+/// tool permissions.
+#[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "reflect",
+    derive(bevy_reflect::Reflect),
+    reflect(opaque, Component, Debug, PartialEq, Serialize, Deserialize)
+)]
+pub struct ToolAccess {
+    /// Executable names and their registered handler keys. `None` uses the
+    /// advertised handlers; an explicit map may include unadvertised tools.
+    pub executable: Option<std::collections::BTreeMap<String, rig_core::effect::HandlerKey>>,
+    /// Names accepted by invalid-call policy. `None` uses executable names;
+    /// `Some(empty)` denies all ordinary tools without changing the request.
+    /// Kept independently for diagnostics even when a name is not executable.
+    pub allowed: Option<std::collections::BTreeSet<String>>,
+}
 
 /// The grants naming this tool.
 #[derive(Component, Debug, Default)]
@@ -608,7 +658,7 @@ pub enum Failure {
     /// The run needs what a later stage brings (a tool dispatch, a
     /// resolution kind); named, never silent.
     Unsupported(String),
-    /// A granted tool took the output tool's name after it was minted.
+    /// A granted tool conflicts with the reserved or already minted output name.
     OutputToolCollision {
         /// The name.
         name: String,
@@ -680,6 +730,13 @@ pub struct Outputs {
     pub message_id: Option<String>,
     /// Whether the answer is complete.
     pub done: bool,
+    /// Whether this turn's completed provider usage has entered the run total.
+    /// Invalid-call decisions may now precede completion and survive its arrival.
+    #[serde(default)]
+    pub usage_recorded: bool,
+    /// Number of delivered stream events already checked for invalid names.
+    #[serde(default)]
+    pub stream_validated: usize,
 }
 
 /// A stop, written by any system at any moment: the run ends
@@ -786,6 +843,15 @@ pub struct InvalidCall {
     /// The arguments, verbatim.
     #[cfg_attr(feature = "reflect", reflect(remote = crate::agent::reflect::JsonReflect))]
     pub arguments: serde_json::Value,
+    /// The actual delivered assistant prefix at early stream validation.
+    /// Empty for calls discovered from an already completed turn.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::agent::reflect::AssistantContentsReflect))]
+    pub prefix: Vec<AssistantContent>,
+    /// Position of the early name event in the completion's delivered events.
+    /// This distinguishes reused block identifiers within one stream.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream_offset: Option<usize>,
 }
 
 /// What to do with an invalid call. Written by a user system before

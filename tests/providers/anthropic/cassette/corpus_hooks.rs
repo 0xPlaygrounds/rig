@@ -26,9 +26,10 @@ use crate::goldens::{
 };
 use crate::support::{Adder, BASIC_PREAMBLE, BASIC_PROMPT, TOOLS_PREAMBLE};
 
-const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
+pub(super) const ADD_PROMPT: &str =
+    "Use the add tool to add 17 and 25, then reply with just the number.";
 
-fn request_at(
+pub(super) fn request_at(
     log: &rig::effect_log::EffectLog,
     index: usize,
 ) -> &rig::completion::CompletionRequest {
@@ -39,7 +40,7 @@ fn request_at(
 }
 
 /// The text of every tool result in a request's history, in order.
-fn tool_result_texts(request: &rig::completion::CompletionRequest) -> Vec<String> {
+pub(super) fn tool_result_texts(request: &rig::completion::CompletionRequest) -> Vec<String> {
     request
         .chat_history
         .iter()
@@ -65,7 +66,7 @@ fn tool_result_texts(request: &rig::completion::CompletionRequest) -> Vec<String
         .collect()
 }
 
-fn tool_record_args(log: &rig::effect_log::EffectLog) -> Vec<String> {
+pub(super) fn tool_record_args(log: &rig::effect_log::EffectLog) -> Vec<String> {
     log.records
         .iter()
         .filter_map(|record| match &record.kind {
@@ -75,7 +76,7 @@ fn tool_record_args(log: &rig::effect_log::EffectLog) -> Vec<String> {
         .collect()
 }
 
-fn tool_record_outputs(log: &rig::effect_log::EffectLog) -> Vec<String> {
+pub(super) fn tool_record_outputs(log: &rig::effect_log::EffectLog) -> Vec<String> {
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {

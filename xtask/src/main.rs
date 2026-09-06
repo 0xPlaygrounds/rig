@@ -17,6 +17,7 @@
 //! cargo xtask check-test-layout   # fail on inline `mod tests { }`
 //! ```
 
+mod scenarios;
 mod test_layout;
 
 use std::path::{Path, PathBuf};
@@ -28,6 +29,9 @@ fn main() -> ExitCode {
 
     let result = match task.as_deref() {
         Some("check-test-layout") => test_layout::check(&workspace_root()),
+        Some("check-ecs-scenarios") => {
+            scenarios::run(&workspace_root(), args.collect()).map_err(|e| e.to_string())
+        }
         Some(other) => Err(format!("unknown task {other:?}\n{USAGE}")),
         None => Err(format!("no task given\n{USAGE}")),
     };
@@ -45,6 +49,7 @@ const USAGE: &str = "\
 usage: cargo xtask <task>
 
 tasks:
+  check-ecs-scenarios [nextest.json]  validate current scenario files and compiled mappings
   check-test-layout           fail if any crates/*/src file has an inline
                               test-gated `mod x { }` instead of `mod x;`
 ";

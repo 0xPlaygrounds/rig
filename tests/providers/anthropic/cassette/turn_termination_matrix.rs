@@ -69,18 +69,19 @@ use crate::support::{
 
 /// Anthropic's floor is 1; 3 is the proven cap that truncates mid-word while
 /// still returning text, so the turn succeeds and a hook can observe it.
-const TINY_CAP: u64 = 3;
+pub(super) const TINY_CAP: u64 = 3;
 /// Roomy enough for every prompt below to finish naturally.
-const ROOMY_CAP: u64 = 512;
+pub(super) const ROOMY_CAP: u64 = 512;
 /// Truncates at `TINY_CAP` and completes at `ROOMY_CAP`.
-const TRUNCATING_PROMPT: &str =
+pub(super) const TRUNCATING_PROMPT: &str =
     "Repeat exactly these four words, one per line, and nothing else: alpha bravo charlie delta";
-const RETRY_PROMPT: &str =
+pub(super) const RETRY_PROMPT: &str =
     "Repeat exactly these four words, one per line, and nothing else: alpha bravo charlie delta";
-const SHORT_PROMPT: &str = "Reply with exactly the word: cedar.";
-const TOOL_PROMPT: &str = "Calculate 2 + 3.";
-const CONCISE_PREAMBLE: &str = "You are a concise assistant. Answer directly in plain text.";
-const TOOL_PREAMBLE: &str = "Use the provided tool to answer arithmetic questions.";
+pub(super) const SHORT_PROMPT: &str = "Reply with exactly the word: cedar.";
+pub(super) const TOOL_PROMPT: &str = "Calculate 2 + 3.";
+pub(super) const CONCISE_PREAMBLE: &str =
+    "You are a concise assistant. Answer directly in plain text.";
+pub(super) const TOOL_PREAMBLE: &str = "Use the provided tool to answer arithmetic questions.";
 
 // ---------------------------------------------------------------------------
 // Length — the provider cut the turn short at the cap we set.
@@ -515,7 +516,7 @@ fn body_json_objects(body: &str) -> Vec<Value> {
 /// non-null one the body carries. A stream repeats `null` on every chunk until
 /// the terminal one, so taking the first non-null entry yields exactly one
 /// reason per call on both surfaces.
-fn recorded_wire_reasons(scenario: &str) -> Vec<String> {
+pub(super) fn recorded_wire_reasons(scenario: &str) -> Vec<String> {
     {
         interaction_bodies(scenario, "then")
             .iter()
@@ -535,7 +536,7 @@ fn recorded_wire_reasons(scenario: &str) -> Vec<String> {
     }
 }
 
-fn assert_recorded_wire_reason(scenario: &str, expected: &str) {
+pub(super) fn assert_recorded_wire_reason(scenario: &str, expected: &str) {
     {
         let reasons = recorded_wire_reasons(scenario);
         assert!(
@@ -548,7 +549,7 @@ fn assert_recorded_wire_reason(scenario: &str, expected: &str) {
 
 /// The output-token cap of every recorded *request*, in order — proof that the
 /// cap the hook reported is the cap that actually went on the wire.
-fn recorded_request_caps(scenario: &str) -> Vec<u64> {
+pub(super) fn recorded_request_caps(scenario: &str) -> Vec<u64> {
     {
         interaction_bodies(scenario, "when")
             .iter()
@@ -558,7 +559,7 @@ fn recorded_request_caps(scenario: &str) -> Vec<u64> {
     }
 }
 
-fn assert_recorded_request_cap(scenario: &str, expected: u64) {
+pub(super) fn assert_recorded_request_cap(scenario: &str, expected: u64) {
     {
         let caps = recorded_request_caps(scenario);
         assert!(

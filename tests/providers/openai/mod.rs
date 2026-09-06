@@ -22,6 +22,14 @@ mod cassette {
     mod corpus_retrieval;
     mod corpus_serving;
     mod document_ordering;
+    mod ecs_chat_tool_lifecycle;
+    mod ecs_extractor;
+    mod ecs_extractor_usage;
+    mod ecs_lifecycle;
+    mod ecs_ordering;
+    mod ecs_parity;
+    mod ecs_prompt_caching;
+    mod ecs_termination;
     mod effect_corpus;
     mod embedding_matrix;
     mod error_envelope;

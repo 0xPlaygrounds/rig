@@ -80,7 +80,7 @@ type AnthropicModel = anthropic::CompletionModel;
 
 /// Emits `alpha`, `bravo`, `charlie`, `delta` on separate lines, so a stop
 /// sequence naming any of them cuts the turn at a known point.
-const LIST_PROMPT: &str =
+pub(super) const LIST_PROMPT: &str =
     "Repeat exactly these four words, one per line, and nothing else: alpha bravo charlie delta";
 /// The same four words on one line, so a sequence may span a space.
 const LINE_PROMPT: &str =
@@ -240,7 +240,7 @@ fn recorded_request_contains(scenario: &str, needle: &str) -> bool {
     request.contains(needle)
 }
 
-fn assert_recorded_terminal_stop_sequence(scenario: &str, expected: Option<&str>) {
+pub(super) fn assert_recorded_terminal_stop_sequence(scenario: &str, expected: Option<&str>) {
     assert_eq!(
         recorded_terminal_stop_sequence(scenario).as_deref(),
         expected,

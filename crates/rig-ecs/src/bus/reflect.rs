@@ -71,3 +71,10 @@ pub enum StreamedOutcomeReflect {}
 #[reflect(opaque)]
 #[reflect(Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct StreamEventsReflect {}
+
+/// Stream error reports with their item positions, reflected.
+#[reflect_remote(Vec<(usize, ErrorReport)>)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[reflect(opaque)]
+#[reflect(Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct StreamErrorsReflect {}
