@@ -161,11 +161,10 @@ fn test_tool_call_response_conversion() {
             function,
             ..
         })) => {
-            // Vertex issues no call ids: the decode mints a unique
-            // non-empty handle (never the function name) and records
-            // that the provider issued nothing.
-            assert!(!id.as_str().is_empty());
-            assert_ne!(id, "add");
+            // Vertex issues no call ids: decoding generates a local identity
+            // in a separate namespace and preserves absent provider identity.
+            assert!(id.is_generated());
+            assert_eq!(id.explicit(), None);
             assert_eq!(provider, &None);
             assert_eq!(function.name, "add");
             assert_eq!(function.arguments, args);
