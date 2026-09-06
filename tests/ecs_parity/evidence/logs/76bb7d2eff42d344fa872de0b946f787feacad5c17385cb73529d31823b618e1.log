@@ -1,0 +1,25 @@
+   Compiling ring v0.17.14
+   Compiling rustls v0.23.39
+   Compiling rustls-webpki v0.103.13
+   Compiling tokio-rustls v0.26.4
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling ureq v3.3.0
+   Compiling hyper-rustls v0.27.9
+   Compiling tonic v0.12.3
+   Compiling neo4rs v0.8.0
+   Compiling mongodb v3.7.0
+   Compiling bollard-buildkit-proto v0.7.0
+   Compiling reqwest v0.13.4
+   Compiling httpmock v0.8.3
+   Compiling qdrant-client v1.17.0
+   Compiling bollard-stubs v1.52.1-rc.29.1.3
+   Compiling rig-reqwest v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-reqwest)
+   Compiling opentelemetry-http v0.32.0
+   Compiling reqwest-middleware v0.5.2
+   Compiling rmcp v2.2.0
+   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+   Compiling bollard v0.20.2
+   Compiling opentelemetry-otlp v0.32.0
+   Compiling reqwest-retry v0.9.1
+   Compiling testcontainers v0.27.3
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.78s

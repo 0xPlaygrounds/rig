@@ -1,0 +1,52 @@
+   Compiling rig v0.42.0 (/private/tmp/rig-superset-baseline)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.43s
+    Starting 47 tests across 1 binary (492 skipped)
+        PASS [   0.467s] rig::anthropic anthropic::cassette::messages_strict_tools::draft7_definitions_ref_preserves_optional_member
+        PASS [   0.468s] rig::anthropic anthropic::cassette::messages_strict_tools::defs_ref_preserves_optional_member
+        PASS [   0.471s] rig::anthropic anthropic::cassette::messages_strict_tools::nested_optional_object_can_be_partially_populated
+        PASS [   0.472s] rig::anthropic anthropic::cassette::messages_strict_tools::array_items_and_formats_roundtrip
+        PASS [   0.472s] rig::anthropic anthropic::cassette::messages_strict_tools::strict_tools_opt_in_roundtrip
+        PASS [   0.473s] rig::anthropic anthropic::cassette::messages_strict_tools::nullable_union_can_emit_null
+        PASS [   0.473s] rig::anthropic anthropic::cassette::strict_schema_matrix::annotations_become_guidance_without_overwriting_description
+        PASS [   0.478s] rig::anthropic anthropic::cassette::messages_strict_tools::optional_scalar_can_be_omitted
+        PASS [   0.479s] rig::anthropic anthropic::cassette::messages_strict_tools::optional_scalar_can_be_included_after_constraint_transform
+        PASS [   0.481s] rig::anthropic anthropic::cassette::messages_strict_tools::nested_optional_object_can_be_omitted
+        PASS [   0.487s] rig::anthropic anthropic::cassette::messages_strict_tools::all_of_composition_roundtrip
+        PASS [   0.488s] rig::anthropic anthropic::cassette::messages_strict_tools::discriminated_any_of_preserves_const
+        PASS [   0.426s] rig::anthropic anthropic::cassette::strict_schema_matrix::boolean_root_schema_is_rejected_for_tool_input
+        PASS [   0.450s] rig::anthropic anthropic::cassette::strict_schema_matrix::boolean_true_subschema_is_rejected_by_strict_compiler
+        PASS [   0.447s] rig::anthropic anthropic::cassette::strict_schema_matrix::chained_root_refs_roundtrip
+        PASS [   0.448s] rig::anthropic anthropic::cassette::strict_schema_matrix::conditionals_and_dependencies_become_guidance
+        PASS [   0.451s] rig::anthropic anthropic::cassette::strict_schema_matrix::cyclic_root_ref_aliases_are_rejected
+        PASS [   0.454s] rig::anthropic anthropic::cassette::strict_schema_matrix::empty_object_schema_roundtrip
+        PASS [   0.444s] rig::anthropic anthropic::cassette::strict_schema_matrix::external_root_ref_is_rejected
+        PASS [   0.461s] rig::anthropic anthropic::cassette::strict_schema_matrix::dangling_local_root_ref_is_rejected
+        PASS [   0.456s] rig::anthropic anthropic::cassette::strict_schema_matrix::nested_arrays_roundtrip
+        PASS [   0.465s] rig::anthropic anthropic::cassette::strict_schema_matrix::escaped_json_pointer_root_ref_roundtrip
+        PASS [   0.463s] rig::anthropic anthropic::cassette::strict_schema_matrix::explicit_any_of_roundtrip
+        PASS [   0.465s] rig::anthropic anthropic::cassette::strict_schema_matrix::every_numeric_constraint_becomes_guidance
+        PASS [   0.432s] rig::anthropic anthropic::cassette::strict_schema_matrix::primitive_types_roundtrip
+        PASS [   0.440s] rig::anthropic anthropic::cassette::strict_schema_matrix::recursive_ref_is_rejected_by_strict_compiler
+        PASS [   0.445s] rig::anthropic anthropic::cassette::strict_schema_matrix::required_and_optional_property_order_schema_is_accepted
+        PASS [   0.444s] rig::anthropic anthropic::cassette::strict_schema_matrix::root_all_of_local_defs_ref_branch_roundtrip
+        PASS [   0.439s] rig::anthropic anthropic::cassette::strict_schema_matrix::root_all_of_local_draft7_ref_branch_roundtrip
+        PASS [   0.454s] rig::anthropic anthropic::cassette::strict_schema_matrix::properties_without_explicit_object_type_roundtrip
+        PASS [   0.451s] rig::anthropic anthropic::cassette::strict_schema_matrix::root_all_of_object_schema_roundtrip
+        PASS [   0.457s] rig::anthropic anthropic::cassette::strict_schema_matrix::root_draft7_definitions_ref_roundtrip
+        PASS [   0.466s] rig::anthropic anthropic::cassette::strict_schema_matrix::root_defs_ref_roundtrip
+        PASS [   0.461s] rig::anthropic anthropic::cassette::strict_schema_matrix::root_ref_keeps_document_defs_authoritative_on_collision
+        PASS [   0.462s] rig::anthropic anthropic::cassette::strict_schema_matrix::root_ref_preserves_sibling_all_of
+        PASS [   0.465s] rig::anthropic anthropic::cassette::strict_schema_matrix::root_ref_keeps_document_definitions_authoritative_on_collision
+        PASS [   0.429s] rig::anthropic anthropic::cassette::strict_schema_matrix::root_ref_preserves_sibling_properties_and_required
+        PASS [   0.409s] rig::anthropic anthropic::cassette::strict_schema_matrix::root_ref_retains_sibling_definitions
+        PASS [   0.416s] rig::anthropic anthropic::cassette::strict_schema_matrix::root_ref_sibling_unions_become_guidance
+        PASS [   0.414s] rig::anthropic anthropic::cassette::strict_schema_matrix::scalar_enum_and_const_roundtrip
+        PASS [   0.420s] rig::anthropic anthropic::cassette::strict_schema_matrix::scalar_root_ref_is_rejected_for_tool_input
+        PASS [   0.416s] rig::anthropic anthropic::cassette::strict_schema_matrix::scalar_root_schema_is_rejected_for_tool_input
+        PASS [   0.407s] rig::anthropic anthropic::cassette::strict_schema_matrix::supported_array_minimums_roundtrip
+        PASS [   0.395s] rig::anthropic anthropic::cassette::strict_schema_matrix::top_level_any_of_is_rejected_for_tool_input
+        PASS [   0.399s] rig::anthropic anthropic::cassette::strict_schema_matrix::top_level_one_of_is_rejected_for_tool_input
+        PASS [   0.398s] rig::anthropic anthropic::cassette::strict_schema_matrix::unsupported_array_constraints_become_guidance
+        PASS [   0.397s] rig::anthropic anthropic::cassette::strict_schema_matrix::unsupported_object_constraints_become_guidance
+------------
+     Summary [   1.804s] 47 tests run: 47 passed, 492 skipped

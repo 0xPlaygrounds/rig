@@ -1,0 +1,58 @@
+   Compiling ring v0.17.14
+   Compiling rustls-webpki v0.103.13
+   Compiling rustls v0.23.39
+   Compiling tokio-rustls v0.26.4
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling ureq v3.3.0
+   Compiling hyper-rustls v0.27.9
+   Compiling tonic v0.12.3
+   Compiling neo4rs v0.8.0
+   Compiling mongodb v3.7.0
+   Compiling bollard-buildkit-proto v0.7.0
+   Compiling reqwest v0.13.4
+   Compiling aws-smithy-http-client v1.1.9
+   Compiling httpmock v0.8.3
+   Compiling qdrant-client v1.17.0
+   Compiling bollard-stubs v1.52.1-rc.29.1.3
+   Compiling aws-smithy-runtime v1.10.0
+   Compiling opentelemetry-http v0.32.0
+   Compiling reqwest-middleware v0.5.2
+   Compiling rig-reqwest v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-reqwest)
+   Compiling rmcp v2.2.0
+   Compiling opentelemetry-otlp v0.32.0
+   Compiling reqwest-retry v0.9.1
+   Compiling aws-runtime v1.6.0
+   Compiling bollard v0.20.2
+   Compiling aws-sdk-sts v1.97.0
+   Compiling aws-sdk-bedrockruntime v1.124.0
+   Compiling testcontainers v0.27.3
+   Compiling aws-config v1.8.13
+   Compiling rig-bedrock v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-bedrock)
+   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.18s
+    Starting 1 test across 1 binary (101 skipped)
+        FAIL [   0.262s] rig::ollama ollama::cassette::ecs_completion::completion_respects_max_tokens
+
+--- STDOUT:              rig::ollama ollama::cassette::ecs_completion::completion_respects_max_tokens ---
+
+running 1 test
+test ollama::cassette::ecs_completion::completion_respects_max_tokens ... FAILED
+
+failures:
+
+failures:
+    ollama::cassette::ecs_completion::completion_respects_max_tokens
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 101 filtered out; finished in 0.24s
+
+
+--- STDERR:              rig::ollama ollama::cassette::ecs_completion::completion_respects_max_tokens ---
+
+thread 'ollama::cassette::ecs_completion::completion_respects_max_tokens' (3506364) panicked at tests/common/ecs_agent.rs:203:14:
+native ECS run must succeed: Provider(ErrorReport { kind: Http { status: Some(404) }, retryable: false, message: "HttpError: Invalid status code 404 Not Found with message: {\"message\":\"Request did not match any route or mock\",\"actual_method\":\"POST\",\"actual_path\":\"/api/chat\",\"actual_query\":null,\"actual_query_params\":[],\"required_headers\":[],\"missing_required_headers\":[],\"actual_body_preview\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"You are a concise assistant. Answer directly.\\\",\\\"role\\\":\\\"system\\\"},{\\\"content\\\":\\\"In one or two sentences, explain what Rust programming language is and why memory safety matters.\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"qwen3:4b\\\",\\\"options\\\":{\\\"num_predict\\\":25},\\\"stream\\\":false,\\\"think\\\":false}\",\"candidates\":[{\"index\":0,\"consumed\":false,\"method_matches\":true,\"path_matches\":true,\"query_matches\":true,\"expected_query_params\":[],\"headers_match\":true,\"required_headers_match\":true,\"body_matches\":false,\"expected_method\":\"POST\",\"expected_path\":\"/api/chat\",\"expected_body_preview\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"You are a concise assistant. Answer directly.\\\",\\\"role\\\":\\\"system\\\"},{\\\"content\\\":\\\"In one or two sentences, explain what Rust programming language is and why memory safety matters.\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"qwen3:4b\\\",\\\"options\\\":{\\\"num_predict\\\":24},\\\"stream\\\":false,\\\"think\\\":false}\"}]}", code: None, http_status: Some(404), refusal: false, source_chain: ["Invalid status code 404 Not Found with message: {\"message\":\"Request did not match any route or mock\",\"actual_method\":\"POST\",\"actual_path\":\"/api/chat\",\"actual_query\":null,\"actual_query_params\":[],\"required_headers\":[],\"missing_required_headers\":[],\"actual_body_preview\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"You are a concise assistant. Answer directly.\\\",\\\"role\\\":\\\"system\\\"},{\\\"content\\\":\\\"In one or two sentences, explain what Rust programming language is and why memory safety matters.\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"qwen3:4b\\\",\\\"options\\\":{\\\"num_predict\\\":25},\\\"stream\\\":false,\\\"think\\\":false}\",\"candidates\":[{\"index\":0,\"consumed\":false,\"method_matches\":true,\"path_matches\":true,\"query_matches\":true,\"expected_query_params\":[],\"headers_match\":true,\"required_headers_match\":true,\"body_matches\":false,\"expected_method\":\"POST\",\"expected_path\":\"/api/chat\",\"expected_body_preview\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"You are a concise assistant. Answer directly.\\\",\\\"role\\\":\\\"system\\\"},{\\\"content\\\":\\\"In one or two sentences, explain what Rust programming language is and why memory safety matters.\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"qwen3:4b\\\",\\\"options\\\":{\\\"num_predict\\\":24},\\\"stream\\\":false,\\\"think\\\":false}\"}]}"], request_id: None, provider_response: Some(ProviderResponseError { status: Some(404), body: "{\"message\":\"Request did not match any route or mock\",\"actual_method\":\"POST\",\"actual_path\":\"/api/chat\",\"actual_query\":null,\"actual_query_params\":[],\"required_headers\":[],\"missing_required_headers\":[],\"actual_body_preview\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"You are a concise assistant. Answer directly.\\\",\\\"role\\\":\\\"system\\\"},{\\\"content\\\":\\\"In one or two sentences, explain what Rust programming language is and why memory safety matters.\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"qwen3:4b\\\",\\\"options\\\":{\\\"num_predict\\\":25},\\\"stream\\\":false,\\\"think\\\":false}\",\"candidates\":[{\"index\":0,\"consumed\":false,\"method_matches\":true,\"path_matches\":true,\"query_matches\":true,\"expected_query_params\":[],\"headers_match\":true,\"required_headers_match\":true,\"body_matches\":false,\"expected_method\":\"POST\",\"expected_path\":\"/api/chat\",\"expected_body_preview\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"You are a concise assistant. Answer directly.\\\",\\\"role\\\":\\\"system\\\"},{\\\"content\\\":\\\"In one or two sentences, explain what Rust programming language is and why memory safety matters.\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"qwen3:4b\\\",\\\"options\\\":{\\\"num_predict\\\":24},\\\"stream\\\":false,\\\"think\\\":false}\"}]}", provider_request_id: None, headers: Some({"content-type": "application/json", "content-length": "1156", "date": "Sun, 06 Sep 2026 12:23:43 GMT"}) }) })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+------------
+     Summary [   0.262s] 1 test run: 0 passed, 1 failed, 101 skipped
+        FAIL [   0.262s] rig::ollama ollama::cassette::ecs_completion::completion_respects_max_tokens
+error: test run failed

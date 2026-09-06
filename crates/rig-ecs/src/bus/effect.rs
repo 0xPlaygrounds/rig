@@ -222,6 +222,12 @@ pub struct Streaming {
 #[derive(Component, Debug, Default, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Streamed {
+    /// Every error item and its zero-based position among all stream items,
+    /// including errors after the first terminal outcome. Live observation is
+    /// independent of recorder event retention; `outcome` remains the first fold.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::StreamErrorsReflect))]
+    pub errors: Vec<(usize, ErrorReport)>,
     /// Every event, in order.
     #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::StreamEventsReflect))]
     pub events: Vec<StreamEvent>,

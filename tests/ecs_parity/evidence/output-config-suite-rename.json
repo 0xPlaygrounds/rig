@@ -1,0 +1,9 @@
+{
+  "body_change": false,
+  "current_path": "crates/rig-ecs/tests/run_output_tool_config.rs",
+  "historical_evidence": "Original extractor-usage review/source indexes retain output_tool_config.rs path at execution time; do not rewrite old source identities.",
+  "operation": "Rename new output_tool_config.rs test target to run_output_tool_config.rs under existing architecture suite naming contract",
+  "schema": 1,
+  "sha256": "0c1742b0e35401bc63225169442b62445f952a4d6738d774274c605ae7c6ce8e",
+  "verification": "Nine renamed tests and seven architecture guards pass; logs in extractor-smoke-review.json. Full815 rig-verify cases pass."
+}

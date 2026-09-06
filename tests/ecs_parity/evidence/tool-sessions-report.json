@@ -1,0 +1,11 @@
+{
+  "assertion_review": "required separately",
+  "batch": "tool-sessions",
+  "cells": 27,
+  "runs": {
+    "native": "1b2d094cddd5af378ee255c265733feb8b789cf04560c300ab6da64bd028c1a2.json",
+    "original": "ee828733771294fcdf800297a1ce24a87f935282a1b3c73782b858c87b01ac40.json"
+  },
+  "schema": 2,
+  "status": "executed"
+}

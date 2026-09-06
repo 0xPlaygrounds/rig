@@ -6,6 +6,12 @@
     clippy::unreachable
 )]
 
+#[allow(dead_code)]
+#[path = "common/ecs_agent.rs"]
+mod ecs_agent;
+#[path = "common/ecs_extractor.rs"]
+mod ecs_extractor;
+
 #[path = "common/support.rs"]
 mod support;
 

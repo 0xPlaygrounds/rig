@@ -1,0 +1,187 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "native": "rig::copilot$copilot::ecs_extractor_usage::extract_backward_compatibility",
+      "original": "rig::copilot$copilot::extractor_usage::extract_backward_compatibility"
+    },
+    {
+      "native": "rig::copilot$copilot::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+      "original": "rig::copilot$copilot::extractor_usage::extract_with_usage_returns_data_and_usage"
+    },
+    {
+      "native": "rig::copilot$copilot::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+      "original": "rig::copilot$copilot::extractor_usage::extract_with_chat_history_with_usage_works"
+    },
+    {
+      "native": "rig::copilot$copilot::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "original": "rig::copilot$copilot::extractor_usage::extract_and_extract_with_usage_return_same_data"
+    },
+    {
+      "native": "rig::copilot$copilot::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+      "original": "rig::copilot$copilot::extractor_usage::usage_tracking_works_for_different_schemas"
+    },
+    {
+      "native": "rig::deepseek$deepseek::ecs_extractor_usage::extract_backward_compatibility",
+      "original": "rig::deepseek$deepseek::extractor_usage::extract_backward_compatibility"
+    },
+    {
+      "native": "rig::deepseek$deepseek::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+      "original": "rig::deepseek$deepseek::extractor_usage::extract_with_usage_returns_data_and_usage"
+    },
+    {
+      "native": "rig::deepseek$deepseek::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+      "original": "rig::deepseek$deepseek::extractor_usage::extract_with_chat_history_with_usage_works"
+    },
+    {
+      "native": "rig::deepseek$deepseek::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "original": "rig::deepseek$deepseek::extractor_usage::extract_and_extract_with_usage_return_same_data"
+    },
+    {
+      "native": "rig::deepseek$deepseek::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+      "original": "rig::deepseek$deepseek::extractor_usage::usage_tracking_works_for_different_schemas"
+    },
+    {
+      "native": "rig::llamacpp$llamacpp::cassette::ecs_extractor_usage::extract_backward_compatibility",
+      "original": "rig::llamacpp$llamacpp::cassette::extractor_usage::extract_backward_compatibility"
+    },
+    {
+      "native": "rig::llamacpp$llamacpp::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+      "original": "rig::llamacpp$llamacpp::cassette::extractor_usage::extract_with_usage_returns_data_and_usage"
+    },
+    {
+      "native": "rig::llamacpp$llamacpp::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+      "original": "rig::llamacpp$llamacpp::cassette::extractor_usage::extract_with_chat_history_with_usage_works"
+    },
+    {
+      "native": "rig::llamacpp$llamacpp::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "original": "rig::llamacpp$llamacpp::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data"
+    },
+    {
+      "native": "rig::llamacpp$llamacpp::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+      "original": "rig::llamacpp$llamacpp::cassette::extractor_usage::usage_tracking_works_for_different_schemas"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_extractor_usage::extract_backward_compatibility",
+      "original": "rig::openai$openai::cassette::extractor_usage::extract_backward_compatibility"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+      "original": "rig::openai$openai::cassette::extractor_usage::extract_with_usage_returns_data_and_usage"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+      "original": "rig::openai$openai::cassette::extractor_usage::extract_with_chat_history_with_usage_works"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "original": "rig::openai$openai::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+      "original": "rig::openai$openai::cassette::extractor_usage::usage_tracking_works_for_different_schemas"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::ecs_extractor_usage::extract_backward_compatibility",
+      "original": "rig::openrouter$openrouter::cassette::extractor_usage::extract_backward_compatibility"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+      "original": "rig::openrouter$openrouter::cassette::extractor_usage::extract_with_usage_returns_data_and_usage"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+      "original": "rig::openrouter$openrouter::cassette::extractor_usage::extract_with_chat_history_with_usage_works"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "original": "rig::openrouter$openrouter::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+      "original": "rig::openrouter$openrouter::cassette::extractor_usage::usage_tracking_works_for_different_schemas"
+    },
+    {
+      "native": "rig::xai$xai::ecs_extractor_usage::extract_backward_compatibility",
+      "original": "rig::xai$xai::extractor_usage::extract_backward_compatibility"
+    },
+    {
+      "native": "rig::xai$xai::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+      "original": "rig::xai$xai::extractor_usage::extract_with_usage_returns_data_and_usage"
+    },
+    {
+      "native": "rig::xai$xai::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+      "original": "rig::xai$xai::extractor_usage::extract_with_chat_history_with_usage_works"
+    },
+    {
+      "native": "rig::xai$xai::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "original": "rig::xai$xai::extractor_usage::extract_and_extract_with_usage_return_same_data"
+    },
+    {
+      "native": "rig::xai$xai::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+      "original": "rig::xai$xai::extractor_usage::usage_tracking_works_for_different_schemas"
+    }
+  ],
+  "features": [],
+  "fixtures": [
+    "tests/cassettes/copilot/extractor_usage/extract_backward_compatibility.yaml",
+    "tests/cassettes/copilot/extractor_usage/extract_with_usage_returns_data_and_usage.yaml",
+    "tests/cassettes/copilot/extractor_usage/extract_with_chat_history_with_usage_works.yaml",
+    "tests/cassettes/copilot/extractor_usage/extract_and_extract_with_usage_return_same_data.yaml",
+    "tests/cassettes/copilot/extractor_usage/usage_tracking_works_for_different_schemas.yaml",
+    "tests/cassettes/deepseek/extractor_usage/extract_backward_compatibility.yaml",
+    "tests/cassettes/deepseek/extractor_usage/extract_with_usage_returns_data_and_usage.yaml",
+    "tests/cassettes/deepseek/extractor_usage/extract_with_chat_history_with_usage_works.yaml",
+    "tests/cassettes/deepseek/extractor_usage/extract_and_extract_with_usage_return_same_data.yaml",
+    "tests/cassettes/deepseek/extractor_usage/usage_tracking_works_for_different_schemas.yaml",
+    "tests/cassettes/llamacpp/extractor_usage/extract_backward_compatibility.yaml",
+    "tests/cassettes/llamacpp/extractor_usage/extract_with_usage_returns_data_and_usage.yaml",
+    "tests/cassettes/llamacpp/extractor_usage/extract_with_chat_history_with_usage_works.yaml",
+    "tests/cassettes/llamacpp/extractor_usage/extract_and_extract_with_usage_return_same_data.yaml",
+    "tests/cassettes/llamacpp/extractor_usage/usage_tracking_works_for_different_schemas.yaml",
+    "tests/cassettes/openai/extractor_usage/extract_backward_compatibility.yaml",
+    "tests/cassettes/openai/extractor_usage/extract_with_usage_returns_data_and_usage.yaml",
+    "tests/cassettes/openai/extractor_usage/extract_with_chat_history_with_usage_works.yaml",
+    "tests/cassettes/openai/extractor_usage/extract_and_extract_with_usage_return_same_data.yaml",
+    "tests/cassettes/openai/extractor_usage/usage_tracking_works_for_different_schemas.yaml",
+    "tests/cassettes/openrouter/extractor_usage/extract_backward_compatibility.yaml",
+    "tests/cassettes/openrouter/extractor_usage/extract_with_usage_returns_data_and_usage.yaml",
+    "tests/cassettes/openrouter/extractor_usage/extract_with_chat_history_with_usage_works.yaml",
+    "tests/cassettes/openrouter/extractor_usage/extract_and_extract_with_usage_return_same_data.yaml",
+    "tests/cassettes/openrouter/extractor_usage/usage_tracking_works_for_different_schemas.yaml",
+    "tests/cassettes/xai/extractor_usage/extract_backward_compatibility.yaml",
+    "tests/cassettes/xai/extractor_usage/extract_with_usage_returns_data_and_usage.yaml",
+    "tests/cassettes/xai/extractor_usage/extract_with_chat_history_with_usage_works.yaml",
+    "tests/cassettes/xai/extractor_usage/extract_and_extract_with_usage_return_same_data.yaml",
+    "tests/cassettes/xai/extractor_usage/usage_tracking_works_for_different_schemas.yaml"
+  ],
+  "name": "extractor-usage",
+  "original_sources": [
+    "tests/common/support.rs",
+    "tests/providers/copilot/extractor_usage.rs",
+    "tests/providers/deepseek/extractor_usage.rs",
+    "tests/providers/deepseek/support.rs",
+    "tests/providers/llamacpp/cassette/extractor_usage.rs",
+    "tests/providers/llamacpp/cassette_support.rs",
+    "tests/providers/openai/cassette/extractor_usage.rs",
+    "tests/providers/openai/support.rs",
+    "tests/providers/openrouter/cassette/extractor_usage.rs",
+    "tests/providers/openrouter/support.rs",
+    "tests/providers/xai/extractor_usage.rs",
+    "tests/providers/xai/support.rs"
+  ],
+  "package": "rig",
+  "schema": 1,
+  "semantic_skip_markers": [
+    "SKIP",
+    "skipping"
+  ],
+  "targets": [
+    "copilot",
+    "deepseek",
+    "llamacpp",
+    "openai",
+    "openrouter",
+    "xai"
+  ]
+}

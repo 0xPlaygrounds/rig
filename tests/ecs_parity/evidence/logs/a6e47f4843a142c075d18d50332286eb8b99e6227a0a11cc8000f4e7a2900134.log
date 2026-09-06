@@ -1,0 +1,304 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.35s
+    Starting 30 tests across 6 binaries (1332 skipped)
+        PASS [   0.160s] rig::copilot copilot::extractor_usage::extract_with_chat_history_with_usage_works
+
+--- OUTPUT:              rig::copilot copilot::extractor_usage::extract_with_chat_history_with_usage_works ---
+
+running 1 test
+test copilot::extractor_usage::extract_with_chat_history_with_usage_works ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.15s
+
+
+        PASS [   0.162s] rig::copilot copilot::extractor_usage::extract_backward_compatibility
+
+--- OUTPUT:              rig::copilot copilot::extractor_usage::extract_backward_compatibility ---
+
+running 1 test
+test copilot::extractor_usage::extract_backward_compatibility ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.15s
+
+
+        PASS [   0.164s] rig::copilot copilot::extractor_usage::extract_and_extract_with_usage_return_same_data
+
+--- OUTPUT:              rig::copilot copilot::extractor_usage::extract_and_extract_with_usage_return_same_data ---
+
+running 1 test
+test copilot::extractor_usage::extract_and_extract_with_usage_return_same_data ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.16s
+
+
+        PASS [   0.167s] rig::copilot copilot::extractor_usage::extract_with_usage_returns_data_and_usage
+
+--- OUTPUT:              rig::copilot copilot::extractor_usage::extract_with_usage_returns_data_and_usage ---
+
+running 1 test
+test copilot::extractor_usage::extract_with_usage_returns_data_and_usage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.16s
+
+
+        PASS [   0.166s] rig::deepseek deepseek::extractor_usage::extract_with_usage_returns_data_and_usage
+
+--- OUTPUT:              rig::deepseek deepseek::extractor_usage::extract_with_usage_returns_data_and_usage ---
+
+running 1 test
+test deepseek::extractor_usage::extract_with_usage_returns_data_and_usage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 185 filtered out; finished in 0.16s
+
+
+        PASS [   0.167s] rig::copilot copilot::extractor_usage::usage_tracking_works_for_different_schemas
+
+--- OUTPUT:              rig::copilot copilot::extractor_usage::usage_tracking_works_for_different_schemas ---
+
+running 1 test
+test copilot::extractor_usage::usage_tracking_works_for_different_schemas ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.16s
+
+
+        PASS [   0.168s] rig::deepseek deepseek::extractor_usage::extract_with_chat_history_with_usage_works
+
+--- OUTPUT:              rig::deepseek deepseek::extractor_usage::extract_with_chat_history_with_usage_works ---
+
+running 1 test
+test deepseek::extractor_usage::extract_with_chat_history_with_usage_works ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 185 filtered out; finished in 0.16s
+
+
+        PASS [   0.176s] rig::deepseek deepseek::extractor_usage::extract_backward_compatibility
+
+--- OUTPUT:              rig::deepseek deepseek::extractor_usage::extract_backward_compatibility ---
+
+running 1 test
+test deepseek::extractor_usage::extract_backward_compatibility ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 185 filtered out; finished in 0.16s
+
+
+        PASS [   0.178s] rig::deepseek deepseek::extractor_usage::extract_and_extract_with_usage_return_same_data
+
+--- OUTPUT:              rig::deepseek deepseek::extractor_usage::extract_and_extract_with_usage_return_same_data ---
+
+running 1 test
+test deepseek::extractor_usage::extract_and_extract_with_usage_return_same_data ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 185 filtered out; finished in 0.16s
+
+
+        PASS [   0.177s] rig::deepseek deepseek::extractor_usage::usage_tracking_works_for_different_schemas
+
+--- OUTPUT:              rig::deepseek deepseek::extractor_usage::usage_tracking_works_for_different_schemas ---
+
+running 1 test
+test deepseek::extractor_usage::usage_tracking_works_for_different_schemas ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 185 filtered out; finished in 0.16s
+
+
+        PASS [   0.176s] rig::llamacpp llamacpp::cassette::extractor_usage::extract_backward_compatibility
+
+--- OUTPUT:              rig::llamacpp llamacpp::cassette::extractor_usage::extract_backward_compatibility ---
+
+running 1 test
+test llamacpp::cassette::extractor_usage::extract_backward_compatibility ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 203 filtered out; finished in 0.17s
+
+
+        PASS [   0.180s] rig::llamacpp llamacpp::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data
+
+--- OUTPUT:              rig::llamacpp llamacpp::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data ---
+
+running 1 test
+test llamacpp::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 203 filtered out; finished in 0.17s
+
+
+        PASS [   0.088s] rig::llamacpp llamacpp::cassette::extractor_usage::extract_with_chat_history_with_usage_works
+
+--- OUTPUT:              rig::llamacpp llamacpp::cassette::extractor_usage::extract_with_chat_history_with_usage_works ---
+
+running 1 test
+test llamacpp::cassette::extractor_usage::extract_with_chat_history_with_usage_works ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 203 filtered out; finished in 0.07s
+
+
+        PASS [   0.087s] rig::llamacpp llamacpp::cassette::extractor_usage::extract_with_usage_returns_data_and_usage
+
+--- OUTPUT:              rig::llamacpp llamacpp::cassette::extractor_usage::extract_with_usage_returns_data_and_usage ---
+
+running 1 test
+test llamacpp::cassette::extractor_usage::extract_with_usage_returns_data_and_usage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 203 filtered out; finished in 0.07s
+
+
+        PASS [   0.086s] rig::llamacpp llamacpp::cassette::extractor_usage::usage_tracking_works_for_different_schemas
+
+--- OUTPUT:              rig::llamacpp llamacpp::cassette::extractor_usage::usage_tracking_works_for_different_schemas ---
+
+running 1 test
+test llamacpp::cassette::extractor_usage::usage_tracking_works_for_different_schemas ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 203 filtered out; finished in 0.08s
+
+
+        PASS [   0.094s] rig::openrouter openrouter::cassette::extractor_usage::extract_backward_compatibility
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::extractor_usage::extract_backward_compatibility ---
+
+running 1 test
+test openrouter::cassette::extractor_usage::extract_backward_compatibility ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 292 filtered out; finished in 0.09s
+
+
+        PASS [   0.094s] rig::openrouter openrouter::cassette::extractor_usage::extract_with_chat_history_with_usage_works
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::extractor_usage::extract_with_chat_history_with_usage_works ---
+
+running 1 test
+test openrouter::cassette::extractor_usage::extract_with_chat_history_with_usage_works ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 292 filtered out; finished in 0.08s
+
+
+        PASS [   0.092s] rig::openrouter openrouter::cassette::extractor_usage::extract_with_usage_returns_data_and_usage
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::extractor_usage::extract_with_usage_returns_data_and_usage ---
+
+running 1 test
+test openrouter::cassette::extractor_usage::extract_with_usage_returns_data_and_usage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 292 filtered out; finished in 0.08s
+
+
+        PASS [   0.096s] rig::openrouter openrouter::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data ---
+
+running 1 test
+test openrouter::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 292 filtered out; finished in 0.09s
+
+
+        PASS [   0.076s] rig::openrouter openrouter::cassette::extractor_usage::usage_tracking_works_for_different_schemas
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::extractor_usage::usage_tracking_works_for_different_schemas ---
+
+running 1 test
+test openrouter::cassette::extractor_usage::usage_tracking_works_for_different_schemas ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 292 filtered out; finished in 0.07s
+
+
+        PASS [   0.078s] rig::xai xai::extractor_usage::extract_backward_compatibility
+
+--- OUTPUT:              rig::xai xai::extractor_usage::extract_backward_compatibility ---
+
+running 1 test
+test xai::extractor_usage::extract_backward_compatibility ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.07s
+
+
+        PASS [   0.081s] rig::xai xai::extractor_usage::extract_and_extract_with_usage_return_same_data
+
+--- OUTPUT:              rig::xai xai::extractor_usage::extract_and_extract_with_usage_return_same_data ---
+
+running 1 test
+test xai::extractor_usage::extract_and_extract_with_usage_return_same_data ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.07s
+
+
+        PASS [   0.065s] rig::xai xai::extractor_usage::extract_with_usage_returns_data_and_usage
+
+--- OUTPUT:              rig::xai xai::extractor_usage::extract_with_usage_returns_data_and_usage ---
+
+running 1 test
+test xai::extractor_usage::extract_with_usage_returns_data_and_usage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.06s
+
+
+        PASS [   0.065s] rig::xai xai::extractor_usage::extract_with_chat_history_with_usage_works
+
+--- OUTPUT:              rig::xai xai::extractor_usage::extract_with_chat_history_with_usage_works ---
+
+running 1 test
+test xai::extractor_usage::extract_with_chat_history_with_usage_works ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.06s
+
+
+        PASS [   0.067s] rig::xai xai::extractor_usage::usage_tracking_works_for_different_schemas
+
+--- OUTPUT:              rig::xai xai::extractor_usage::usage_tracking_works_for_different_schemas ---
+
+running 1 test
+test xai::extractor_usage::usage_tracking_works_for_different_schemas ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.06s
+
+
+        PASS [   0.659s] rig::openai openai::cassette::extractor_usage::extract_with_chat_history_with_usage_works
+
+--- OUTPUT:              rig::openai openai::cassette::extractor_usage::extract_with_chat_history_with_usage_works ---
+
+running 1 test
+test openai::cassette::extractor_usage::extract_with_chat_history_with_usage_works ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.65s
+
+
+        PASS [   0.651s] rig::openai openai::cassette::extractor_usage::usage_tracking_works_for_different_schemas
+
+--- OUTPUT:              rig::openai openai::cassette::extractor_usage::usage_tracking_works_for_different_schemas ---
+
+running 1 test
+test openai::cassette::extractor_usage::usage_tracking_works_for_different_schemas ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.63s
+
+
+        PASS [   0.660s] rig::openai openai::cassette::extractor_usage::extract_backward_compatibility
+
+--- OUTPUT:              rig::openai openai::cassette::extractor_usage::extract_backward_compatibility ---
+
+running 1 test
+test openai::cassette::extractor_usage::extract_backward_compatibility ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.65s
+
+
+        PASS [   0.661s] rig::openai openai::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data
+
+--- OUTPUT:              rig::openai openai::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data ---
+
+running 1 test
+test openai::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.65s
+
+
+        PASS [   0.658s] rig::openai openai::cassette::extractor_usage::extract_with_usage_returns_data_and_usage
+
+--- OUTPUT:              rig::openai openai::cassette::extractor_usage::extract_with_usage_returns_data_and_usage ---
+
+running 1 test
+test openai::cassette::extractor_usage::extract_with_usage_returns_data_and_usage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.65s
+
+
+------------
+     Summary [   0.828s] 30 tests run: 30 passed, 1332 skipped

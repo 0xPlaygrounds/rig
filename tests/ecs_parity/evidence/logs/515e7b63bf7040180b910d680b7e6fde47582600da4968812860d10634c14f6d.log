@@ -1,0 +1,244 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.35s
+    Starting 24 tests across 3 binaries (1609 skipped)
+        PASS [   2.854s] rig::anthropic anthropic::cassette::ecs_raw::hooks_observe_raw_blocking
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_raw::hooks_observe_raw_blocking ---
+
+running 1 test
+test anthropic::cassette::ecs_raw::hooks_observe_raw_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.84s
+
+
+        PASS [   2.874s] rig::anthropic anthropic::cassette::ecs_parity::completion_smoke
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_parity::completion_smoke ---
+
+running 1 test
+test anthropic::cassette::ecs_parity::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.86s
+
+
+        PASS [   2.907s] rig::anthropic anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_blocking
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_blocking ---
+
+running 1 test
+test anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.89s
+
+
+        PASS [   2.922s] rig::anthropic anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_blocking
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_blocking ---
+
+running 1 test
+test anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.91s
+
+
+        PASS [   3.162s] rig::anthropic anthropic::cassette::ecs_raw::hooks_observe_raw_streamed
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_raw::hooks_observe_raw_streamed ---
+
+running 1 test
+test anthropic::cassette::ecs_raw::hooks_observe_raw_streamed ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 3.15s
+
+
+        PASS [   3.182s] rig::gemini gemini::cassette::ecs_ordering::streaming_tools_emit_tool_call_before_later_text
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_ordering::streaming_tools_emit_tool_call_before_later_text ---
+
+running 1 test
+test gemini::cassette::ecs_ordering::streaming_tools_emit_tool_call_before_later_text ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 437 filtered out; finished in 3.17s
+
+
+        PASS [   3.263s] rig::anthropic anthropic::cassette::ecs_parity::streaming_smoke
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_parity::streaming_smoke ---
+
+running 1 test
+test anthropic::cassette::ecs_parity::streaming_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 3.25s
+
+
+        PASS [   3.297s] rig::anthropic anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_streamed
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_streamed ---
+
+running 1 test
+test anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_streamed ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 3.28s
+
+
+        PASS [   3.318s] rig::anthropic anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_streamed
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_streamed ---
+
+running 1 test
+test anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_streamed ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 3.30s
+
+
+        PASS [   3.367s] rig::anthropic anthropic::cassette::ecs_parity::streaming_tools_smoke
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_parity::streaming_tools_smoke ---
+
+running 1 test
+test anthropic::cassette::ecs_parity::streaming_tools_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 3.36s
+
+
+        PASS [   3.383s] rig::anthropic anthropic::cassette::ecs_raw::streamed_final_carries_final_turn_raw
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_raw::streamed_final_carries_final_turn_raw ---
+
+running 1 test
+test anthropic::cassette::ecs_raw::streamed_final_carries_final_turn_raw ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 3.37s
+
+
+        PASS [   3.415s] rig::anthropic anthropic::cassette::ecs_ordering::streaming_tools_batches_multiple_tool_results_in_one_followup_message
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_ordering::streaming_tools_batches_multiple_tool_results_in_one_followup_message ---
+
+running 1 test
+test anthropic::cassette::ecs_ordering::streaming_tools_batches_multiple_tool_results_in_one_followup_message ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 3.40s
+
+
+        PASS [   2.045s] rig::gemini gemini::cassette::ecs_parity::completion_smoke
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_parity::completion_smoke ---
+
+running 1 test
+test gemini::cassette::ecs_parity::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 437 filtered out; finished in 2.03s
+
+
+        PASS [   2.187s] rig::gemini gemini::cassette::ecs_ordering::streaming_tools_surface_two_distinct_tool_calls_before_final_answer
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_ordering::streaming_tools_surface_two_distinct_tool_calls_before_final_answer ---
+
+running 1 test
+test gemini::cassette::ecs_ordering::streaming_tools_surface_two_distinct_tool_calls_before_final_answer ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 437 filtered out; finished in 2.17s
+
+
+        PASS [   2.365s] rig::gemini gemini::cassette::ecs_parity::example_streaming_with_tools
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_parity::example_streaming_with_tools ---
+
+running 1 test
+test gemini::cassette::ecs_parity::example_streaming_with_tools ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 437 filtered out; finished in 2.35s
+
+
+        PASS [   2.388s] rig::gemini gemini::cassette::ecs_parity::example_streaming_prompt
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_parity::example_streaming_prompt ---
+
+running 1 test
+test gemini::cassette::ecs_parity::example_streaming_prompt ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 437 filtered out; finished in 2.38s
+
+
+        PASS [   2.437s] rig::openai openai::cassette::ecs_parity::completion_smoke
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_parity::completion_smoke ---
+
+running 1 test
+test openai::cassette::ecs_parity::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 511 filtered out; finished in 2.43s
+
+
+        PASS [   2.555s] rig::gemini gemini::cassette::ecs_parity::streaming_tools_smoke
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_parity::streaming_tools_smoke ---
+
+running 1 test
+test gemini::cassette::ecs_parity::streaming_tools_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 437 filtered out; finished in 2.54s
+
+
+        PASS [   2.714s] rig::gemini gemini::cassette::ecs_parity::streaming_smoke
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_parity::streaming_smoke ---
+
+running 1 test
+test gemini::cassette::ecs_parity::streaming_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 437 filtered out; finished in 2.70s
+
+
+        PASS [   3.899s] rig::openai openai::cassette::ecs_parity::example_streaming_prompt
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_parity::example_streaming_prompt ---
+
+running 1 test
+test openai::cassette::ecs_parity::example_streaming_prompt ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 511 filtered out; finished in 3.89s
+
+
+        PASS [   4.120s] rig::openai openai::cassette::ecs_ordering::responses_stream_preserves_tool_result_flow
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_ordering::responses_stream_preserves_tool_result_flow ---
+
+running 1 test
+test openai::cassette::ecs_ordering::responses_stream_preserves_tool_result_flow ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 511 filtered out; finished in 4.11s
+
+
+        PASS [   4.151s] rig::openai openai::cassette::ecs_parity::streaming_tools_smoke
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_parity::streaming_tools_smoke ---
+
+running 1 test
+test openai::cassette::ecs_parity::streaming_tools_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 511 filtered out; finished in 4.14s
+
+
+        PASS [   4.283s] rig::openai openai::cassette::ecs_parity::example_streaming_with_tools
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_parity::example_streaming_with_tools ---
+
+running 1 test
+test openai::cassette::ecs_parity::example_streaming_with_tools ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 511 filtered out; finished in 4.27s
+
+
+        PASS [   4.998s] rig::openai openai::cassette::ecs_parity::streaming_smoke
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_parity::streaming_smoke ---
+
+running 1 test
+test openai::cassette::ecs_parity::streaming_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 511 filtered out; finished in 4.98s
+
+
+------------
+     Summary [   8.383s] 24 tests run: 24 passed, 1609 skipped

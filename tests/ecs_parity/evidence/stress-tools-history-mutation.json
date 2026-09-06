@@ -1,0 +1,30 @@
+{
+  "caught": true,
+  "command": [
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--test",
+    "gemini",
+    "-E",
+    "test(::ecs_stress_tools::terminate_from_tool_result_cancels_after_execution_blocking)",
+    "--no-fail-fast",
+    "--retries",
+    "0"
+  ],
+  "exit_code": 100,
+  "expected_tests": 1,
+  "limits": "One cancellation diagnostic mutation, not general stream draining or concurrent cancellation proof.",
+  "log": "tests/ecs_parity/evidence/logs/6db54eef64fa921455feda709398e48081fda24faefefa2b77f834718b5ad472.log",
+  "log_sha256": "6db54eef64fa921455feda709398e48081fda24faefefa2b77f834718b5ad472",
+  "mode": "replay",
+  "mutated_sha256": "2f4d979bff7fa0428a56116d9b0bf588990dd736d18d11a3527a99818cbbd9f1",
+  "mutation": "remove actual retained utterances from cancellation error projection",
+  "rejected_by": "original validate_cancelled_failure requires retained assistant tool call",
+  "schema": 1,
+  "source": "tests/providers/gemini/cassette/ecs_stress/tools.rs",
+  "source_before_sha256": "5af3847e3a725f47e5046b926b38b017c07e1711f60cd47d8581edb3630b1ec5",
+  "source_restored_sha256": "5af3847e3a725f47e5046b926b38b017c07e1711f60cd47d8581edb3630b1ec5"
+}

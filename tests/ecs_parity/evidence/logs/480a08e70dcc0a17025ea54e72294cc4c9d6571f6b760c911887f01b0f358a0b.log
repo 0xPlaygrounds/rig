@@ -1,0 +1,74 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.39s
+    Starting 7 tests across 1 binary (629 skipped)
+        PASS [   0.508s] rig::anthropic anthropic::cassette::ecs_outcome::model_error_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_outcome::model_error_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_outcome::model_error_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 635 filtered out; finished in 0.49s
+
+
+        PASS [   0.507s] rig::anthropic anthropic::cassette::ecs_outcome::model_error_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_outcome::model_error_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_outcome::model_error_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 635 filtered out; finished in 0.49s
+
+
+        PASS [   0.513s] rig::anthropic anthropic::cassette::ecs_outcome::max_turns_exhausted_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_outcome::max_turns_exhausted_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_outcome::max_turns_exhausted_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 635 filtered out; finished in 0.49s
+
+
+        PASS [   0.524s] rig::anthropic anthropic::cassette::ecs_outcome::default_max_turns_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_outcome::default_max_turns_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_outcome::default_max_turns_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 635 filtered out; finished in 0.51s
+
+
+        PASS [   0.525s] rig::anthropic anthropic::cassette::ecs_outcome::tool_error_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_outcome::tool_error_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_outcome::tool_error_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 635 filtered out; finished in 0.51s
+
+
+        PASS [   0.621s] rig::anthropic anthropic::cassette::ecs_outcome::cancel_after_tool_call_delta_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_outcome::cancel_after_tool_call_delta_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_outcome::cancel_after_tool_call_delta_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 635 filtered out; finished in 0.60s
+
+
+        PASS [   0.877s] rig::anthropic anthropic::cassette::ecs_outcome::tool_error_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_outcome::tool_error_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_outcome::tool_error_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 635 filtered out; finished in 0.86s
+
+
+------------
+     Summary [   0.887s] 7 tests run: 7 passed, 629 skipped

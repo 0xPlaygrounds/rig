@@ -1,0 +1,210 @@
+{
+  "batch_sha256": "f4972f258daebf300f07bed4f231adbf9201ce9b64269d2a0e30357acd80c88e",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "anthropic",
+    "--test",
+    "openai",
+    "--test",
+    "gemini",
+    "-E",
+    "(binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential variable suffixes removed"
+  },
+  "exit_code": 0,
+  "listing": "5041bfb48a386f506305ae42ef379b83f6ce065f70b63b72b73d8817fd4e39cc.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "anthropic",
+    "--test",
+    "openai",
+    "--test",
+    "gemini",
+    "-E",
+    "(binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap))",
+    "--message-format",
+    "json"
+  ],
+  "logs": {
+    "turn-termination-native.jsonl": "2946572eb46ee4dd2e84271e90dffb73d1ffbd87ba38140efbd29ae266cc70dd",
+    "turn-termination-native.log": "68fb7146f6e57ed8d050c8854391ff971fece3e4d69b07c083abb3202efd20f0"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap",
+      "seconds": 0.612438375,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap",
+      "seconds": 0.777267542,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap",
+      "seconds": 0.621367666,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap",
+      "seconds": 0.757648583,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls",
+      "seconds": 0.639643125,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls",
+      "seconds": 0.974184125,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap",
+      "seconds": 0.591553416,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap",
+      "seconds": 0.927395416,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap",
+      "seconds": 0.473351458,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap",
+      "seconds": 0.8104175,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap",
+      "seconds": 0.4870295,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap",
+      "seconds": 0.605801833,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls",
+      "seconds": 0.488381292,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls",
+      "seconds": 1.180038625,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap",
+      "seconds": 0.489007792,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap",
+      "seconds": 1.79473825,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap",
+      "seconds": 0.622838583,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap",
+      "seconds": 0.607242209,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap",
+      "seconds": 0.616857167,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap",
+      "seconds": 0.366322042,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls",
+      "seconds": 0.628615416,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls",
+      "seconds": 0.608224958,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap",
+      "seconds": 0.625209375,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap",
+      "seconds": 0.724478,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 1,
+  "source_index": "8e57fffb8085ace7efb836e2ccd6e66a9ce4b7cc56eb216468999bfc8bae2ab4.json",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

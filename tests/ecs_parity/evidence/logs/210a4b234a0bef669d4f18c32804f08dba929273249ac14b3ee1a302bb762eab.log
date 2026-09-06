@@ -1,0 +1,20 @@
+   Compiling xtask v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/xtask)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.72s
+     Running unittests src/main.rs (target/debug/deps/xtask-f127ae1999d041f7)
+
+running 12 tests
+test parity::batch::tests::logs_are_content_addressed ... ok
+test parity::batch::tests::failing_outcomes_are_preserved ... ok
+test parity::batch::tests::empty_and_duplicate_selections_are_rejected ... ok
+test parity::batch::tests::unselected_execution_fails_but_ignored_noise_does_not_count ... ok
+test parity::batch::tests::missing_or_duplicate_terminal_outcomes_fail_closed ... ok
+test parity::batch::tests::evidence_replay_cannot_inherit_golden_regeneration ... ok
+test parity::batch::tests::failed_source_inspection_retains_run_and_log_references ... ok
+test parity::batch::tests::original_comparison_permits_only_sibling_visibility_and_formatting ... ok
+test parity::batch::tests::wrapped_signature_keeps_every_argument_and_body_obligation ... ok
+test parity::batch::tests::shared_enum_visibility_preserves_variants_payloads_and_attributes ... ok
+test parity::batch::tests::failed_attempt_replaces_latest_success_and_preserves_history ... ok
+test parity::batch::tests::shared_tool_visibility_keeps_fields_and_implementation_intact ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.00s
+

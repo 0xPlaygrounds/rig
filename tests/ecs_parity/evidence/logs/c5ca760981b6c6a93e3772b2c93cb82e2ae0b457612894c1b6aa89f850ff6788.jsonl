@@ -1,0 +1,10 @@
+{"type":"suite","event":"started","test_count":4,"nextest":{"crate":"rig","test_binary":"anthropic","kind":"test"}}
+{"type":"test","event":"started","name":"rig::anthropic$anthropic::cassette::ecs_reasoning_usage::agent_blocking_thinking"}
+{"type":"test","event":"started","name":"rig::anthropic$anthropic::cassette::ecs_stop_sequences::agent_prompt_empty_stop_sequence"}
+{"type":"test","event":"started","name":"rig::anthropic$anthropic::cassette::ecs_stop_sequences::agent_stream_empty_stop_sequence"}
+{"type":"test","event":"started","name":"rig::anthropic$anthropic::cassette::ecs_stop_sequences::agent_stream_single_sequence"}
+{"type":"test","event":"ok","name":"rig::anthropic$anthropic::cassette::ecs_stop_sequences::agent_prompt_empty_stop_sequence","exec_time":1.804566458}
+{"type":"test","event":"ok","name":"rig::anthropic$anthropic::cassette::ecs_reasoning_usage::agent_blocking_thinking","exec_time":1.804856209}
+{"type":"test","event":"ok","name":"rig::anthropic$anthropic::cassette::ecs_stop_sequences::agent_stream_empty_stop_sequence","exec_time":1.857525666}
+{"type":"test","event":"ok","name":"rig::anthropic$anthropic::cassette::ecs_stop_sequences::agent_stream_single_sequence","exec_time":1.891822333}
+{"type":"suite","event":"ok","passed":4,"failed":0,"ignored":0,"measured":0,"filtered_out":686,"exec_time":7.358770666,"nextest":{"crate":"rig","test_binary":"anthropic","kind":"test"}}

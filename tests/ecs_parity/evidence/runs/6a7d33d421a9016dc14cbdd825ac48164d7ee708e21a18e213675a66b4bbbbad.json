@@ -1,0 +1,215 @@
+{
+  "batch": "61c56402e9247e6136bcbffc6467cb171ec0b962ab36b276da2ac4a60e1b8344.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "anthropic",
+    "--test",
+    "gemini",
+    "--test",
+    "openai",
+    "-E",
+    "(binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_ordering::streaming_tools_batches_multiple_tool_results_in_one_followup_message)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_parity::completion_smoke)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_parity::streaming_smoke)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_parity::streaming_tools_smoke)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_raw::hooks_observe_raw_blocking)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_raw::hooks_observe_raw_streamed)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_blocking)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_streamed)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_blocking)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_streamed)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_raw::streamed_final_carries_final_turn_raw)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_ordering::streaming_tools_emit_tool_call_before_later_text)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_ordering::streaming_tools_surface_two_distinct_tool_calls_before_final_answer)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_parity::completion_smoke)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_parity::example_streaming_prompt)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_parity::example_streaming_with_tools)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_parity::streaming_smoke)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_parity::streaming_tools_smoke)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_ordering::responses_stream_preserves_tool_result_flow)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_parity::completion_smoke)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_parity::example_streaming_prompt)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_parity::example_streaming_with_tools)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_parity::streaming_smoke)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_parity::streaming_tools_smoke))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "662fe7d144057f960f3294eef0062d4c22dbe4f0002cce383fdb839a5ef55bfa.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "anthropic",
+    "--test",
+    "gemini",
+    "--test",
+    "openai",
+    "-E",
+    "(binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_ordering::streaming_tools_batches_multiple_tool_results_in_one_followup_message)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_parity::completion_smoke)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_parity::streaming_smoke)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_parity::streaming_tools_smoke)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_raw::hooks_observe_raw_blocking)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_raw::hooks_observe_raw_streamed)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_blocking)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_streamed)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_blocking)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_streamed)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_raw::streamed_final_carries_final_turn_raw)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_ordering::streaming_tools_emit_tool_call_before_later_text)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_ordering::streaming_tools_surface_two_distinct_tool_calls_before_final_answer)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_parity::completion_smoke)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_parity::example_streaming_prompt)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_parity::example_streaming_with_tools)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_parity::streaming_smoke)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_parity::streaming_tools_smoke)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_ordering::responses_stream_preserves_tool_result_flow)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_parity::completion_smoke)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_parity::example_streaming_prompt)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_parity::example_streaming_with_tools)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_parity::streaming_smoke)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_parity::streaming_tools_smoke))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "a4711f5b0648cb2ac502f1c6d615ce0ac026b68dbe3f63c62606dcdc665075a1.log",
+    "listing_stdout": "e3eb6e8659e22ffb536c2261d77227a1853a78bbb45a4f917b1404b43f975dfb.json",
+    "stderr": "515e7b63bf7040180b910d680b7e6fde47582600da4968812860d10634c14f6d.log",
+    "stdout": "6e1c8a1420145a02fef94cf321925b40536888fd08c40bb5862c90725edae4b1.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_parity::completion_smoke",
+      "seconds": 2.874045625,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_raw::hooks_observe_raw_blocking",
+      "seconds": 2.853658584,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_raw::hooks_observe_raw_streamed",
+      "seconds": 3.161795167,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_blocking",
+      "seconds": 2.921927542,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_streamed",
+      "seconds": 3.318288541,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_blocking",
+      "seconds": 2.907074125,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_streamed",
+      "seconds": 3.29690825,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_raw::streamed_final_carries_final_turn_raw",
+      "seconds": 3.382747583,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_parity::streaming_smoke",
+      "seconds": 3.262636417,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_ordering::streaming_tools_batches_multiple_tool_results_in_one_followup_message",
+      "seconds": 3.415113708,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_parity::streaming_tools_smoke",
+      "seconds": 3.366589959,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_parity::completion_smoke",
+      "seconds": 2.044823167,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_parity::example_streaming_prompt",
+      "seconds": 2.387906708,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_parity::streaming_smoke",
+      "seconds": 2.713515667,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_parity::example_streaming_with_tools",
+      "seconds": 2.365255416,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_ordering::streaming_tools_emit_tool_call_before_later_text",
+      "seconds": 3.182275917,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_parity::streaming_tools_smoke",
+      "seconds": 2.555372333,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_ordering::streaming_tools_surface_two_distinct_tool_calls_before_final_answer",
+      "seconds": 2.187161667,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_parity::completion_smoke",
+      "seconds": 2.437456625,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_parity::example_streaming_prompt",
+      "seconds": 3.899044625,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_parity::streaming_smoke",
+      "seconds": 4.998031291,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_parity::example_streaming_with_tools",
+      "seconds": 4.282537083,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_ordering::responses_stream_preserves_tool_result_flow",
+      "seconds": 4.120259125,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_parity::streaming_tools_smoke",
+      "seconds": 4.151013459,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "6951767cb391f304866c1c4f928664962cef7e6950be67952fe9818dab71fca6.json",
+  "source_index_after": "6951767cb391f304866c1c4f928664962cef7e6950be67952fe9818dab71fca6.json",
+  "status": "executed",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

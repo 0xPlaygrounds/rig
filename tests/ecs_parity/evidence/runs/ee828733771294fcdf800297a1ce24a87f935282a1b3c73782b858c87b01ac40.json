@@ -1,0 +1,233 @@
+{
+  "batch": "a36ae16d1656efd64c9ef35829dc7be9d4014b6a27ae8e6189a9d034ffd3f7bd.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/private/tmp/rig-superset-baseline/target",
+    "--test",
+    "deepseek",
+    "--test",
+    "xai",
+    "--test",
+    "openrouter",
+    "-E",
+    "(binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::json_object_response_format_roundtrip)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_streaming)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::sequential_complex_tool_calls_streaming)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::tool_choice_required_specific_and_none)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::nested_structured_output_schema_roundtrip)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_streaming)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_streaming)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::multimodal_image_input_mixed_text_ordering)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::parallel_tool_calls_single_turn_streaming)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::sequential_complex_tool_calls_streaming)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::tool_choice_required_specific_and_none))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "43e345a30cb361a3671ed97188e0faecfb4c69cc1fae5a6422c41e24b0e89500.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/private/tmp/rig-superset-baseline/target",
+    "--test",
+    "deepseek",
+    "--test",
+    "xai",
+    "--test",
+    "openrouter",
+    "-E",
+    "(binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::json_object_response_format_roundtrip)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_streaming)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::sequential_complex_tool_calls_streaming)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::tool_choice_required_specific_and_none)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::nested_structured_output_schema_roundtrip)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_streaming)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_streaming)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::multimodal_image_input_mixed_text_ordering)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::parallel_tool_calls_single_turn_streaming)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::sequential_complex_tool_calls_streaming)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::tool_choice_required_specific_and_none))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "56daf10531b1839b29e118ff792e1e9531bea872f92849d4b272e146e74bf4da.log",
+    "listing_stdout": "eade913a547b9fccea6b7722ced79a9398b61198e2a36558dba081a4f540ac53.json",
+    "stderr": "349283fc258fe8081ad5f213de42f52816b6ee21b229a6a975e5c6d0900ed876.log",
+    "stdout": "98848615e1596984420fed4f349f5318df1de50e61900b28dfe1eaa12c9f3215.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior",
+      "seconds": 0.252885625,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent_tool_sessions::json_object_response_format_roundtrip",
+      "seconds": 0.252183375,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "seconds": 0.251922083,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "seconds": 0.254844709,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "seconds": 0.314646042,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "seconds": 0.391196833,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
+      "seconds": 0.302596041,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "seconds": 0.2716355,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent_tool_sessions::sequential_complex_tool_calls_streaming",
+      "seconds": 0.656841625,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent_tool_sessions::tool_choice_required_specific_and_none",
+      "seconds": 0.252722292,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "seconds": 0.267616791,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::agent_tool_sessions::nested_structured_output_schema_roundtrip",
+      "seconds": 0.267358959,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "seconds": 0.100797167,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "seconds": 0.18939325,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "seconds": 0.21638725,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "seconds": 0.127970334,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_streaming",
+      "seconds": 0.4180375,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "seconds": 0.175566208,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::agent_tool_sessions::multimodal_image_input_mixed_text_ordering",
+      "seconds": 0.845680584,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip",
+      "seconds": 0.172320041,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "seconds": 0.144790709,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::agent_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "seconds": 0.332406834,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "seconds": 0.208141791,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage",
+      "seconds": 0.0781255,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "seconds": 0.095128833,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::agent_tool_sessions::sequential_complex_tool_calls_streaming",
+      "seconds": 0.667323083,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::agent_tool_sessions::tool_choice_required_specific_and_none",
+      "seconds": 0.043926333,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "64293ec9a51357865a243a2733535a437f0845e84fa4c7ac087860d31384b9b7.json",
+  "source_index_after": "64293ec9a51357865a243a2733535a437f0845e84fa4c7ac087860d31384b9b7.json",
+  "status": "executed",
+  "surface": "original",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

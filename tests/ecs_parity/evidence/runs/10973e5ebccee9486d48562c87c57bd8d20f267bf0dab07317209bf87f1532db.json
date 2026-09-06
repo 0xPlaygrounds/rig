@@ -1,0 +1,115 @@
+{
+  "batch": "c30b65ec7349836d49982d78180fe3f6f07193518c4f81be7c799fb57d0bf3aa.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "deepseek",
+    "--test",
+    "gemini",
+    "-E",
+    "(binary_id(=rig::deepseek) & test(=deepseek::ecs_truncation::agent_blocking_empty_arguments_on_length_are_not_invoked)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_truncation::agent_blocking_truncated_call_is_not_invoked)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_truncation::agent_streaming_empty_arguments_on_length_are_not_invoked)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_truncation::agent_streaming_truncated_call_is_not_invoked)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_code_execution::blocking_agent_prompt_answers_after_code_execution)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_code_execution::blocking_code_execution_replayed_in_chat_history)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_code_execution::streaming_agent_prompt_answers_after_code_execution)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_code_execution::two_terminal_stream_agent_prompt_keeps_the_answer))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "45aa3155c2a5493edfc70289a7dff24b0187df53f6a521be3395d369c568021b.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "deepseek",
+    "--test",
+    "gemini",
+    "-E",
+    "(binary_id(=rig::deepseek) & test(=deepseek::ecs_truncation::agent_blocking_empty_arguments_on_length_are_not_invoked)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_truncation::agent_blocking_truncated_call_is_not_invoked)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_truncation::agent_streaming_empty_arguments_on_length_are_not_invoked)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_truncation::agent_streaming_truncated_call_is_not_invoked)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_code_execution::blocking_agent_prompt_answers_after_code_execution)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_code_execution::blocking_code_execution_replayed_in_chat_history)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_code_execution::streaming_agent_prompt_answers_after_code_execution)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_code_execution::two_terminal_stream_agent_prompt_keeps_the_answer))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "f3daaff4728b4296efcd62a03efe86431fc036226168ce9f369f62ec3c194e64.log",
+    "listing_stdout": "b990e962dc708e6c834cd9bc93273d53c110cb48ae36027f7436fb0ec915f7f0.json",
+    "stderr": "9fca708aa7e1c5968656bf90b218d2eb926da33cc231546e2aa38dc27cfd0715.log",
+    "stdout": "a085981b8315e067b31cdaa9a23d5dc76387f63a1176d339ce2d7f5f06921093.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::ecs_truncation::agent_blocking_truncated_call_is_not_invoked",
+      "seconds": 3.65521225,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::ecs_truncation::agent_streaming_truncated_call_is_not_invoked",
+      "seconds": 4.074133834,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::ecs_truncation::agent_blocking_empty_arguments_on_length_are_not_invoked",
+      "seconds": 3.665091916,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::ecs_truncation::agent_streaming_empty_arguments_on_length_are_not_invoked",
+      "seconds": 3.806591125,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_code_execution::blocking_agent_prompt_answers_after_code_execution",
+      "seconds": 3.719515417,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_code_execution::streaming_agent_prompt_answers_after_code_execution",
+      "seconds": 3.906536417,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_code_execution::blocking_code_execution_replayed_in_chat_history",
+      "seconds": 3.7195445,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_code_execution::two_terminal_stream_agent_prompt_keeps_the_answer",
+      "seconds": 3.981069666,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "59098c2825849cc53fa3687c23327b3e851e54bda9bd7efbe73e55036f0a73a2.json",
+  "source_index_after": "59098c2825849cc53fa3687c23327b3e851e54bda9bd7efbe73e55036f0a73a2.json",
+  "status": "executed",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

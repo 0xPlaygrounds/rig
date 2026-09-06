@@ -1,0 +1,11 @@
+   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.07s
+    Starting 6 tests across 1 binary (411 skipped)
+        PASS [   0.656s] rig::gemini gemini::cassette::ecs_stress_tools::terminate_from_tool_result_cancels_after_execution_blocking
+        PASS [   0.663s] rig::gemini gemini::cassette::ecs_stress_tools::arg_rewrite_sets_one_key_preserving_rest_blocking
+        PASS [   0.666s] rig::gemini gemini::cassette::ecs_stress_tools::result_truncation_reaches_model_blocking
+        PASS [   0.667s] rig::gemini gemini::cassette::ecs_stress_tools::two_result_rewrites_chain_redact_then_wrap_blocking
+        PASS [   0.667s] rig::gemini gemini::cassette::ecs_stress_tools::two_arg_rewrites_chain_blocking
+        PASS [   0.667s] rig::gemini gemini::cassette::ecs_stress_tools::tool_error_guidance_drives_model_retry_blocking
+------------
+     Summary [   0.668s] 6 tests run: 6 passed, 411 skipped

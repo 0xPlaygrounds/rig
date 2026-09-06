@@ -1,0 +1,11 @@
+{
+  "assertion_review": "required separately",
+  "batch": "stress-streaming",
+  "cells": 6,
+  "runs": {
+    "native": "fcbb0b6a4f0e583384eba6d9f0b9ea6ef75fdddbcedfe94351c978f32dc03928.json",
+    "original": "8e0c293e0ae99fb3b532138907120c5e6fcc55a1258f4f5e8df15ee1a07424f6.json"
+  },
+  "schema": 2,
+  "status": "executed"
+}

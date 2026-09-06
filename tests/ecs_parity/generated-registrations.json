@@ -1,0 +1,287 @@
+{
+  "schema": 1,
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "purpose": "Reviewed generated registrations, checked against immutable source hashes and independently compiled test listings. Not an execution or parity report.",
+  "suites": [
+    {
+      "binary": "bedrock",
+      "module": "bedrock::streaming_conformance",
+      "invocation_source": "tests/providers/bedrock/streaming_conformance.rs",
+      "macro": "rig_core::streaming_conformance_suite",
+      "source_dependencies": [
+        {
+          "path": "tests/providers/bedrock/streaming_conformance.rs",
+          "sha256": "3be18b089835862873455eef99269894ecd8435183ff65338380f78e7e332716"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+          "sha256": "bcba79be3019f045d59976035af1834ea946b81d9f29dedc54804af242d46c20"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "sha256": "ce1c82c9c5696da8104a497676c40c5af8c88118cf9fdd2099f390de1884c718"
+        }
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Typed ConverseStreamOutput fixtures drive rig::bedrock::streaming::stream_from_events and shared wire validators directly. No agent runner or provider HTTP cassette is used. Capability-gated synthetic cases may report ScenarioOutcome::Skipped.",
+      "provenance": "synthetic_typed_provider_events",
+      "configuration_obligations": [
+        "rig root integration target bedrock requires feature bedrock"
+      ],
+      "cases": [
+        {
+          "name": "truncation_preserves_content_without_terminal",
+          "assertion_sources": [
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "truncation_preserves_content_without_terminal"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "check_ungated_outcome"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+              "symbol": "__streaming_conformance_scenario"
+            }
+          ],
+          "capability_requirements": [],
+          "execution_result": null,
+          "semantic_outcome": null,
+          "skip_obligation": "Capture actual test execution; no execution is claimed by this source mapping."
+        },
+        {
+          "name": "transport_error_after_tool_call_yields_err_then_end",
+          "assertion_sources": [
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "transport_error_after_tool_call_yields_err_then_end"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "check_ungated_outcome"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+              "symbol": "__streaming_conformance_scenario"
+            }
+          ],
+          "capability_requirements": [],
+          "execution_result": null,
+          "semantic_outcome": null,
+          "skip_obligation": "Capture actual test execution; no execution is claimed by this source mapping."
+        },
+        {
+          "name": "malformed_frame_surfaces_err_and_terminal_still_completes",
+          "assertion_sources": [
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "malformed_frame_surfaces_err_and_terminal_still_completes"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "check_gated_outcome"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+              "symbol": "__streaming_conformance_scenario"
+            }
+          ],
+          "capability_requirements": [
+            "malformed_frame"
+          ],
+          "execution_result": null,
+          "semantic_outcome": null,
+          "skip_obligation": "Capture ScenarioOutcome and any named skipped/xfail diagnostics; a Rust test pass is not proof this capability ran."
+        },
+        {
+          "name": "unknown_event_is_skipped",
+          "assertion_sources": [
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "unknown_event_is_skipped"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "check_gated_outcome"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+              "symbol": "__streaming_conformance_scenario"
+            }
+          ],
+          "capability_requirements": [
+            "unknown_event_frame"
+          ],
+          "execution_result": null,
+          "semantic_outcome": null,
+          "skip_obligation": "Capture ScenarioOutcome and any named skipped/xfail diagnostics; a Rust test pass is not proof this capability ran."
+        },
+        {
+          "name": "defective_known_event_surfaces_err",
+          "assertion_sources": [
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "defective_known_event_surfaces_err"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "check_gated_outcome"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+              "symbol": "__streaming_conformance_scenario"
+            }
+          ],
+          "capability_requirements": [
+            "defective_known_frame"
+          ],
+          "execution_result": null,
+          "semantic_outcome": null,
+          "skip_obligation": "Capture ScenarioOutcome and any named skipped/xfail diagnostics; a Rust test pass is not proof this capability ran."
+        },
+        {
+          "name": "delta_less_choice_prelude_is_a_noop",
+          "assertion_sources": [
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "delta_less_choice_prelude_is_a_noop"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "check_gated_outcome"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+              "symbol": "__streaming_conformance_scenario"
+            }
+          ],
+          "capability_requirements": [
+            "delta_less_prelude"
+          ],
+          "execution_result": null,
+          "semantic_outcome": null,
+          "skip_obligation": "Capture ScenarioOutcome and any named skipped/xfail diagnostics; a Rust test pass is not proof this capability ran."
+        },
+        {
+          "name": "refusal_frames_deliver_text_without_error",
+          "assertion_sources": [
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "refusal_frames_deliver_text_without_error"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "check_gated_outcome"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+              "symbol": "__streaming_conformance_scenario"
+            }
+          ],
+          "capability_requirements": [
+            "refusal"
+          ],
+          "execution_result": null,
+          "semantic_outcome": null,
+          "skip_obligation": "Capture ScenarioOutcome and any named skipped/xfail diagnostics; a Rust test pass is not proof this capability ran."
+        },
+        {
+          "name": "bare_terminal_after_only_unparseable_frames_fabricates_nothing",
+          "assertion_sources": [
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "bare_terminal_after_only_unparseable_frames_fabricates_nothing"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "check_gated_outcome"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+              "symbol": "__streaming_conformance_scenario"
+            }
+          ],
+          "capability_requirements": [
+            "bare_terminal",
+            "malformed_frame"
+          ],
+          "execution_result": null,
+          "semantic_outcome": null,
+          "skip_obligation": "Capture ScenarioOutcome and any named skipped/xfail diagnostics; a Rust test pass is not proof this capability ran."
+        },
+        {
+          "name": "usage_variants_are_reported_or_zero_sentinel",
+          "assertion_sources": [
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "usage_variants_are_reported_or_zero_sentinel"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "check_ungated_outcome"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+              "symbol": "__streaming_conformance_scenario"
+            }
+          ],
+          "capability_requirements": [],
+          "execution_result": null,
+          "semantic_outcome": null,
+          "skip_obligation": "Capture actual test execution; no execution is claimed by this source mapping."
+        },
+        {
+          "name": "interleaved_constant_id_reasoning_preserves_order",
+          "assertion_sources": [
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "interleaved_constant_id_reasoning_preserves_order"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+              "symbol": "check_gated_outcome"
+            },
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+              "symbol": "__streaming_conformance_scenario"
+            }
+          ],
+          "capability_requirements": [
+            "interleaved_reasoning"
+          ],
+          "execution_result": null,
+          "semantic_outcome": null,
+          "skip_obligation": "Capture ScenarioOutcome and any named skipped/xfail diagnostics; a Rust test pass is not proof this capability ran."
+        },
+        {
+          "name": "derived_capabilities_match_the_manifest",
+          "assertion_sources": [
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+              "symbol": "streaming_conformance_suite::derived_capabilities_match_the_manifest"
+            }
+          ],
+          "capability_requirements": [],
+          "execution_result": null,
+          "semantic_outcome": null,
+          "skip_obligation": "Structural assertion test; not a provider behavior or migrated agent scenario."
+        },
+        {
+          "name": "suite_is_complete",
+          "assertion_sources": [
+            {
+              "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+              "symbol": "streaming_conformance_suite::suite_is_complete"
+            }
+          ],
+          "capability_requirements": [],
+          "execution_result": null,
+          "semantic_outcome": null,
+          "skip_obligation": "Structural assertion test; not a provider behavior or migrated agent scenario."
+        }
+      ],
+      "macro_definition_source": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+running 3 tests
+test the_components_are_send_sync_on_wasm_too ... ok
+test a_unary_effect_resolves_on_the_browser_pool ... ok
+test a_stream_accumulates_and_a_despawn_cancels ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 filtered out; finished in 0.14s
+

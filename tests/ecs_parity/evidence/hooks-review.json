@@ -1,0 +1,68 @@
+{
+  "execution_report": "tests/ecs_parity/evidence/hooks-report.json",
+  "final_runs": {
+    "native": "26406f13eba2c7a3f29f68aba5a69e692249a73185411604eefd04b9995e5483.json",
+    "original": "9f47b5579b8fb41438858042796af268674ceb8cdb4124cbdfdfde4b8fe402d5.json"
+  },
+  "findings": [],
+  "limits": [
+    "Native Settled itself does not promise completed memory append; consumer awaits the actual append acknowledgement.",
+    "Startup run condition is deliberately single-run application policy, not a per-run scheduler for arbitrary concurrent worlds.",
+    "Full inventory, other feature/target cells, aggregate verification and publication/CI remain incomplete."
+  ],
+  "negative_control": "tests/ecs_parity/evidence/hooks-memory-barrier-mutation.json",
+  "result": "final scoped pass",
+  "reviewed_implementation": [
+    {
+      "path": "tests/providers/anthropic/cassette/ecs_hooks.rs",
+      "sha256": "22dc87ea8540bd2a9a9830b5b05c34eb017fb7ea14df2055bfed1895d5006047"
+    },
+    {
+      "path": "tests/providers/anthropic/cassette/ecs_hooks/policies.rs",
+      "sha256": "8406c60e07303877e0243c719b786fd479cc646b02460d974238d3119e63d54a"
+    },
+    {
+      "path": "tests/providers/anthropic/cassette/corpus_hooks.rs",
+      "sha256": "94606972a0b23ccd5126c635db3cff9dd60631a35a2634e5f5397a1d2159d706"
+    },
+    {
+      "path": "tests/common/ecs_agent.rs",
+      "sha256": "be6381b417fd6b0bd1394d5866f736aafa383cb9bcd077458ff7bed17f973e2d"
+    },
+    {
+      "path": "tests/common/ecs_agent/tests.rs",
+      "sha256": "f337419e43732d10d372cbfccc2b8911167a4b811b733ca67226d092cc00bc61"
+    }
+  ],
+  "reviewer": "/root/request_shape_review",
+  "schema": 1,
+  "scope": "eleven Anthropic corpus_hooks agent cells and shared consumer memory acknowledgement boundary",
+  "supplemental_verification": [
+    {
+      "command": "cargo clippy --locked -p rig --test anthropic --test openai --test gemini -- -D warnings",
+      "log": "tests/ecs_parity/evidence/logs/634a3e274f4675dbbacbb0f8ca0471573e0b0e3dd4db386deb8febcda85a24bf.log",
+      "sha256": "634a3e274f4675dbbacbb0f8ca0471573e0b0e3dd4db386deb8febcda85a24bf"
+    },
+    {
+      "command": "RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig --test anthropic --test openai --test gemini -E 'test(ecs_agent::tests::) | test(ecs_goldens::tests::) | test(::ecs_hooks::) | test(::ecs_output::) | test(::ecs_shaping::) | test(::ecs_request_shape::) | test(::ecs_termination::)' --no-fail-fast --retries 0",
+      "log": "tests/ecs_parity/evidence/logs/00711bfb0579257984854a9ecb7adf7f51b05d5ea2a5dc7799e917675d7d96ca.log",
+      "sha256": "00711bfb0579257984854a9ecb7adf7f51b05d5ea2a5dc7799e917675d7d96ca"
+    },
+    {
+      "command": "RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig --test anthropic --test openai --test gemini -E 'test(ecs_agent::tests::successful_response_waits_for_actual_memory_append) | test(::ecs_hooks::) | test(cassette_files_match_registered_scenarios) | test(cassettes_do_not_contain_obvious_secrets)' --no-fail-fast --retries 0",
+      "log": "tests/ecs_parity/evidence/logs/c1ec68ce34772739ba8bfdbc9a628fef2cfa31fe5d773f1658a1ab4772eebd88.log",
+      "sha256": "c1ec68ce34772739ba8bfdbc9a628fef2cfa31fe5d773f1658a1ab4772eebd88"
+    },
+    {
+      "command": "cargo xtask check-test-layout",
+      "log": "tests/ecs_parity/evidence/logs/88cdbd2fb92f4203cd5355ef6327511f9871108f8a15c27505e2fb76347e5815.log",
+      "sha256": "88cdbd2fb92f4203cd5355ef6327511f9871108f8a15c27505e2fb76347e5815"
+    }
+  ],
+  "verification_counts": {
+    "final_controls": 20,
+    "native_cells": 11,
+    "original_cells": 11,
+    "regression_tests": 88
+  }
+}

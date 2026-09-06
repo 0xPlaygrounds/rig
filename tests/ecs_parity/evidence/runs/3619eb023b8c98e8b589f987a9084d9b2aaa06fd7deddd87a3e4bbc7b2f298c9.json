@@ -1,0 +1,207 @@
+{
+  "batch": "5be8e2c1611f9f58a054912eb096eb0355c553610bb83c69adb72b348e6ae563.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "openai",
+    "-E",
+    "(binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_model)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_nested_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_parallel_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_zero_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_nested_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_parallel_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_zero_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_nested_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_parallel_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_zero_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_nested_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_parallel_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_zero_agent))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "e1afca80a19e5c01ea979f3f8a4acd2d7e4b0f274f5425bd6004908b24c5ab31.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "openai",
+    "-E",
+    "(binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_model)) | (binary_id(=rig::openai) & test(=openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_model)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_nested_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_parallel_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_zero_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_nested_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_parallel_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_zero_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_nested_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_parallel_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_zero_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_nested_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_parallel_agent)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_zero_agent))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "a0b5fb68c1718b589712156568a15148e6bb24b783f456b3163363f141b80991.log",
+    "listing_stdout": "22208dd2f940dac25eefe6c1361e3440ec84cf4eba21fa713fa5296258be74b4.json",
+    "stderr": "2341027d0cfda5d3d812ebf680169c99c1f754bbaa620287003880c1d97db3b4.log",
+    "stdout": "dea82727a815383b1edf38774e4f9e299f6d4a84df32f82b1694fb4a84033ec9.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_model",
+      "seconds": 1.326725375,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_zero_agent",
+      "seconds": 1.268741666,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_model",
+      "seconds": 1.327438292,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_nested_agent",
+      "seconds": 1.269662833,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_model",
+      "seconds": 1.308131166,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_parallel_agent",
+      "seconds": 1.267941875,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_model",
+      "seconds": 1.301365125,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_zero_agent",
+      "seconds": 1.241328042,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_model",
+      "seconds": 1.316737208,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_nested_agent",
+      "seconds": 1.247005875,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_model",
+      "seconds": 1.334141208,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_parallel_agent",
+      "seconds": 1.246203667,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_model",
+      "seconds": 1.33164375,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_zero_agent",
+      "seconds": 1.441059959,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_model",
+      "seconds": 1.377358542,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_nested_agent",
+      "seconds": 2.03688675,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_model",
+      "seconds": 1.371141417,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_parallel_agent",
+      "seconds": 1.758763542,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_model",
+      "seconds": 1.34413075,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_zero_agent",
+      "seconds": 1.462195583,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_model",
+      "seconds": 1.395996291,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_nested_agent",
+      "seconds": 2.071798875,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_model",
+      "seconds": 1.364364959,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_parallel_agent",
+      "seconds": 1.772750292,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "8d72ee09a7d5d49b9d93fc0c7b45a4dfe20a5b403332a36467a42d925643c912.json",
+  "source_index_after": "8d72ee09a7d5d49b9d93fc0c7b45a4dfe20a5b403332a36467a42d925643c912.json",
+  "status": "executed",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

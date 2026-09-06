@@ -1,0 +1,27 @@
+   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.16s
+    Starting 22 tests across 3 binaries (1378 skipped)
+        PASS [   0.035s] rig::anthropic ecs_agent::tests::clean_stream_returns_final_answer
+        PASS [   0.036s] rig::anthropic ecs_agent::tests::error_after_final_is_not_success
+        PASS [   0.037s] rig::gemini ecs_agent::tests::clean_stream_returns_final_answer
+        PASS [   0.037s] rig::gemini ecs_agent::tests::error_after_final_is_not_success
+        PASS [   0.507s] rig::anthropic anthropic::cassette::ecs_parity::completion_smoke
+        PASS [   0.522s] rig::anthropic anthropic::cassette::ecs_raw::hooks_observe_raw_blocking
+        PASS [   0.532s] rig::anthropic anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_blocking
+        PASS [   0.461s] rig::gemini gemini::cassette::ecs_parity::completion_smoke
+        PASS [   0.536s] rig::anthropic anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_blocking
+        PASS [   0.033s] rig::openai ecs_agent::tests::clean_stream_returns_final_answer
+        PASS [   0.023s] rig::openai ecs_agent::tests::error_after_final_is_not_success
+        PASS [   0.693s] rig::anthropic anthropic::cassette::ecs_raw::hooks_observe_raw_streamed
+        PASS [   0.197s] rig::openai openai::cassette::ecs_parity::completion_smoke
+        PASS [   0.856s] rig::anthropic anthropic::cassette::ecs_parity::streaming_smoke
+        PASS [   0.870s] rig::anthropic anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_streamed
+        PASS [   0.373s] rig::gemini gemini::cassette::ecs_parity::streaming_tools_smoke
+        PASS [   0.917s] rig::anthropic anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_streamed
+        PASS [   0.919s] rig::anthropic anthropic::cassette::ecs_parity::streaming_tools_smoke
+        PASS [   0.848s] rig::gemini gemini::cassette::ecs_parity::streaming_smoke
+        PASS [   0.935s] rig::anthropic anthropic::cassette::ecs_raw::streamed_final_carries_final_turn_raw
+        PASS [   1.475s] rig::openai openai::cassette::ecs_parity::streaming_tools_smoke
+        PASS [   2.245s] rig::openai openai::cassette::ecs_parity::streaming_smoke
+------------
+     Summary [   2.783s] 22 tests run: 22 passed, 1378 skipped

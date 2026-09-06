@@ -1,0 +1,11 @@
+{
+  "assertion_review": "required separately",
+  "batch": "gemini-stream-access",
+  "cells": 2,
+  "runs": {
+    "native": "16bc9dc0b6e49808306268bff4752d72d9a016430909cbad9179ca48ed706bf9.json",
+    "original": "6d880df18fea01f0eb8bda46c33cdf732b06bc9ca92bd883e82d1c68785181cb.json"
+  },
+  "schema": 2,
+  "status": "executed"
+}

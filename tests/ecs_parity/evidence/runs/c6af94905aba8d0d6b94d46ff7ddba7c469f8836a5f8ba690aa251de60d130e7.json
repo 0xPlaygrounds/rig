@@ -1,0 +1,123 @@
+{
+  "batch": "4c4f6d429d6976cd81b18aa4c0a99341a375b402581a4a549e3e695a75d393c1.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "anthropic",
+    "-E",
+    "(binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_at_completion_call_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_at_outcome_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_at_outcome_streamed_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_at_settled_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_at_start_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_at_start_streamed_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_start_and_settled_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_twice_concurrent_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_twice_serial_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_unserved_effect_log_is_the_golden_fixture))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "aa493e80d14f042f2000fed6209f6cc8b3e119b56e02f39f010265b32b7592df.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "anthropic",
+    "-E",
+    "(binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_at_completion_call_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_at_outcome_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_at_outcome_streamed_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_at_settled_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_at_start_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_at_start_streamed_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_start_and_settled_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_twice_concurrent_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_twice_serial_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_host::custom_unserved_effect_log_is_the_golden_fixture))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "6c519c9d2d6e1a6e5a87faaacd09a7d08a642cf60104d7b0ea4f71e862e50efc.log",
+    "listing_stdout": "7b54b94ce03691719d9c3db61e2f7ad0cd974a7da8496fd182f2edcd022e87c8.json",
+    "stderr": "668502e48955d643708b79d95eb99985f3ea39808414b299d3717c2fe2109c81.log",
+    "stdout": "b10cca11d8d9c1b7aa07d57cafd5808b2d1bca3e84d3a13c1913f36f56cd80fd.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_host::custom_at_start_effect_log_is_the_golden_fixture",
+      "seconds": 1.017452042,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_host::custom_at_completion_call_effect_log_is_the_golden_fixture",
+      "seconds": 1.008745958,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_host::custom_at_outcome_effect_log_is_the_golden_fixture",
+      "seconds": 1.019581292,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_host::custom_at_settled_effect_log_is_the_golden_fixture",
+      "seconds": 1.009007875,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_host::custom_start_and_settled_effect_log_is_the_golden_fixture",
+      "seconds": 1.010337333,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_host::custom_twice_serial_effect_log_is_the_golden_fixture",
+      "seconds": 1.008562167,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_host::custom_twice_concurrent_effect_log_is_the_golden_fixture",
+      "seconds": 1.007553625,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_host::custom_at_start_streamed_effect_log_is_the_golden_fixture",
+      "seconds": 1.091779583,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_host::custom_at_outcome_streamed_effect_log_is_the_golden_fixture",
+      "seconds": 1.1833855,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_host::custom_unserved_effect_log_is_the_golden_fixture",
+      "seconds": 1.007325208,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "d052f9b5389e0a7bc0d1ad5518d4573014a366aaedac415922082c7f00f6215b.json",
+  "source_index_after": "d052f9b5389e0a7bc0d1ad5518d4573014a366aaedac415922082c7f00f6215b.json",
+  "status": "executed",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

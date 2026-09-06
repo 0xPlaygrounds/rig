@@ -1,0 +1,48 @@
+{
+  "execution_report": "tests/ecs_parity/evidence/output-report.json",
+  "findings": [],
+  "limits": [
+    "No shared helper or production runtime changes; prior negative controls remain applicable without an identical rerun.",
+    "Full feature/target inventory and aggregate native/WASM/CI verification remain incomplete."
+  ],
+  "result": "final scoped pass",
+  "reviewed_implementation": [
+    {
+      "path": "tests/providers/anthropic/cassette/ecs_output.rs",
+      "sha256": "e0462d3e66e11dca8889a4f86e9481f9c3fe48d3ac544d144ca3702df3050207"
+    },
+    {
+      "path": "tests/providers/anthropic/cassette/corpus_output.rs",
+      "sha256": "f528b44d555b87ae48f450b78d3fb55fe985858a94eb8ff42d618d09efc80265"
+    },
+    {
+      "path": "tests/common/ecs_agent.rs",
+      "sha256": "0ec4abb947dee91dc3ec02dafaaf4f74d649d9078daeb5e1d2a4790056c2219c"
+    },
+    {
+      "path": "tests/common/ecs_goldens.rs",
+      "sha256": "4da8ebb3a7f895f3fa6eaa6a9ef4819fa820b871978979ad47f78ba1ecf28f0f"
+    }
+  ],
+  "reviewer": "/root/request_shape_review",
+  "schema": 1,
+  "scope": "ten Anthropic corpus_output agent cells",
+  "supplemental_verification": [
+    {
+      "command": "cargo clippy --locked -p rig --test anthropic -- -D warnings",
+      "log": "tests/ecs_parity/evidence/logs/6cf19f5f73cb6c905293fcafa020efada5180a7699c69b264d801cf107093df3.log",
+      "sha256": "6cf19f5f73cb6c905293fcafa020efada5180a7699c69b264d801cf107093df3"
+    },
+    {
+      "command": "RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig --test anthropic -E 'test(cassette_files_match_registered_scenarios) | test(cassettes_do_not_contain_obvious_secrets)' --no-fail-fast --retries 0",
+      "log": "tests/ecs_parity/evidence/logs/34178a812a95a7c8545b9a6ff0fc42de33c41f56be686f3ae3eee281519f47c1.log",
+      "sha256": "34178a812a95a7c8545b9a6ff0fc42de33c41f56be686f3ae3eee281519f47c1"
+    },
+    {
+      "command": "cargo xtask check-test-layout",
+      "log": "tests/ecs_parity/evidence/logs/88cdbd2fb92f4203cd5355ef6327511f9871108f8a15c27505e2fb76347e5815.log",
+      "sha256": "88cdbd2fb92f4203cd5355ef6327511f9871108f8a15c27505e2fb76347e5815"
+    }
+  ],
+  "verification": "Exact original10/native10 pass, Anthropic clippy pass, formatting and diff checks pass, cassette registry and safety2 pass, test layout pass."
+}

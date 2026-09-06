@@ -1,0 +1,73 @@
+{
+  "execution_report": "tests/ecs_parity/evidence/endings-report.json",
+  "final_runs": {
+    "native": "c896219f8cc148a8c68c0e8e2e8f7db189bc8d8e0c211ebbc01a9f4340e3308f.json",
+    "original": "7051709d790328d44651120b6200049f26da95861c826ecf1f5dd5fcd12293dc.json"
+  },
+  "findings": [],
+  "limits": [
+    "One-run native application per cell; arbitrary stream scheduling equivalence not claimed.",
+    "Provider errors are distinct from actual cancelled run terminal; original does not assert terminal uniqueness.",
+    "Source/feature matrix, full interruption programme, network barrier, aggregate verification, publication and CI remain incomplete."
+  ],
+  "negative_control": "tests/ecs_parity/evidence/endings-drop-mutation.json",
+  "result": "final scoped pass",
+  "reviewed_implementation": [
+    {
+      "path": "tests/providers/anthropic/cassette/ecs_endings.rs",
+      "sha256": "a56cfd1da652463d71c9a6ec579d844d2fe44383191d680a19262f3b28ac6b07"
+    },
+    {
+      "path": "tests/providers/anthropic/cassette/ecs_endings/policies.rs",
+      "sha256": "ab0bb72775aed066512dc6e87451a655df83401743b42ef7733c7b3702bf6541"
+    },
+    {
+      "path": "tests/providers/anthropic/cassette/corpus_endings.rs",
+      "sha256": "a0018811a463964398865c1e467d45ebd93af0116c324eee2c8ef9ccec86449f"
+    },
+    {
+      "path": "tests/common/ecs_agent.rs",
+      "sha256": "3924ccd7eec752af12498f48436125d4b5538b47c3882777606ef9d34f499f56"
+    },
+    {
+      "path": "tests/common/ecs_goldens.rs",
+      "sha256": "c4e37b31e1fbe9b87161b786137b90de8d39233bdcfa6d667764adaa6c7c7c0d"
+    },
+    {
+      "path": "tests/ecs_parity/endings-contract.md",
+      "sha256": "add04aeadf940b476f439dd699cd87dc85d2aad97955d0ee69d045065b002180"
+    }
+  ],
+  "reviewer": "/root/endings_review",
+  "schema": 1,
+  "scope": "ten Anthropic corpus_endings cells, terminal callback/collector mappings and native stopping policies",
+  "supplemental_verification": [
+    {
+      "command": "cargo clippy --locked -p rig --test anthropic -- -D warnings",
+      "log": "tests/ecs_parity/evidence/logs/6f0be04e40b4169716013cd30fae7594e401338379069e773888a0326040f196.log",
+      "sha256": "6f0be04e40b4169716013cd30fae7594e401338379069e773888a0326040f196"
+    },
+    {
+      "command": "RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig --test anthropic -E 'test(::ecs_endings::) | test(::ecs_outcome::) | test(::ecs_hooks::) | test(ecs_agent::tests::) | test(ecs_goldens::tests::)' --no-fail-fast --retries 0",
+      "log": "tests/ecs_parity/evidence/logs/9e884f665cabbad4b07bf65ba0e999cb85c74f1bc4e591b32234392ecdebe315.log",
+      "sha256": "9e884f665cabbad4b07bf65ba0e999cb85c74f1bc4e591b32234392ecdebe315"
+    },
+    {
+      "command": "RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig --test anthropic -E 'test(::ecs_endings::) | test(::ecs_outcome::) | test(::ecs_hooks::) | test(ecs_agent::tests::) | test(ecs_goldens::tests::) | test(cassette_files_match_registered_scenarios) | test(cassettes_do_not_contain_obvious_secrets)' --no-fail-fast --retries 0",
+      "log": "tests/ecs_parity/evidence/logs/82cb041cd4469e76cd82d857be4316c01d4eb767d0a3ef042326c90cdc1f4340.log",
+      "sha256": "82cb041cd4469e76cd82d857be4316c01d4eb767d0a3ef042326c90cdc1f4340"
+    },
+    {
+      "command": "cargo xtask check-test-layout",
+      "log": "tests/ecs_parity/evidence/logs/88cdbd2fb92f4203cd5355ef6327511f9871108f8a15c27505e2fb76347e5815.log",
+      "sha256": "88cdbd2fb92f4203cd5355ef6327511f9871108f8a15c27505e2fb76347e5815"
+    }
+  ],
+  "verification_counts": {
+    "final_controls": 41,
+    "native_cells": 10,
+    "negative_mutation_cells_rejected": 2,
+    "original_cells": 10,
+    "regression_tests": 39
+  }
+}

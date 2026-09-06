@@ -1,0 +1,101 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion",
+      "original": "rig::anthropic$anthropic::cassette::lifecycle_matrix::middleware_phases_observe_a_unary_completion"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption",
+      "original": "rig::anthropic$anthropic::cassette::lifecycle_matrix::middleware_response_phase_precedes_stream_consumption"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider",
+      "original": "rig::anthropic$anthropic::cassette::lifecycle_matrix::run_start_rewrite_reaches_the_provider"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run",
+      "original": "rig::anthropic$anthropic::cassette::lifecycle_matrix::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state",
+      "original": "rig::anthropic$anthropic::cassette::lifecycle_matrix::run_settles_once_across_a_multi_turn_tool_run_with_durable_state"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion",
+      "original": "rig::openai$openai::cassette::lifecycle_matrix::middleware_phases_observe_a_unary_completion"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption",
+      "original": "rig::openai$openai::cassette::lifecycle_matrix::middleware_response_phase_precedes_stream_consumption"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider",
+      "original": "rig::openai$openai::cassette::lifecycle_matrix::run_start_rewrite_reaches_the_provider"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run",
+      "original": "rig::openai$openai::cassette::lifecycle_matrix::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state",
+      "original": "rig::openai$openai::cassette::lifecycle_matrix::run_settles_once_across_a_multi_turn_tool_run_with_durable_state"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion",
+      "original": "rig::gemini$gemini::cassette::lifecycle_matrix::middleware_phases_observe_a_unary_completion"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption",
+      "original": "rig::gemini$gemini::cassette::lifecycle_matrix::middleware_response_phase_precedes_stream_consumption"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider",
+      "original": "rig::gemini$gemini::cassette::lifecycle_matrix::run_start_rewrite_reaches_the_provider"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run",
+      "original": "rig::gemini$gemini::cassette::lifecycle_matrix::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state",
+      "original": "rig::gemini$gemini::cassette::lifecycle_matrix::run_settles_once_across_a_multi_turn_tool_run_with_durable_state"
+    }
+  ],
+  "features": [],
+  "fixtures": [
+    "tests/cassettes/anthropic/lifecycle_matrix/middleware_unary.yaml",
+    "tests/cassettes/anthropic/lifecycle_matrix/middleware_streaming.yaml",
+    "tests/cassettes/anthropic/lifecycle_matrix/run_start_rewrite.yaml",
+    "tests/cassettes/anthropic/lifecycle_matrix/entry_log_order.yaml",
+    "tests/cassettes/anthropic/lifecycle_matrix/run_settled_tool_run.yaml",
+    "tests/cassettes/openai/lifecycle_matrix/middleware_unary.yaml",
+    "tests/cassettes/openai/lifecycle_matrix/middleware_streaming.yaml",
+    "tests/cassettes/openai/lifecycle_matrix/run_start_rewrite.yaml",
+    "tests/cassettes/openai/lifecycle_matrix/entry_log_order.yaml",
+    "tests/cassettes/openai/lifecycle_matrix/run_settled_tool_run.yaml",
+    "tests/cassettes/gemini/lifecycle_matrix/middleware_unary.yaml",
+    "tests/cassettes/gemini/lifecycle_matrix/middleware_streaming.yaml",
+    "tests/cassettes/gemini/lifecycle_matrix/run_start_rewrite.yaml",
+    "tests/cassettes/gemini/lifecycle_matrix/entry_log_order.yaml",
+    "tests/cassettes/gemini/lifecycle_matrix/run_settled_tool_run.yaml"
+  ],
+  "name": "lifecycle",
+  "original_sources": [
+    "tests/common/support.rs",
+    "tests/providers/anthropic/cassette/lifecycle_matrix.rs",
+    "tests/providers/openai/cassette/lifecycle_matrix.rs",
+    "tests/providers/gemini/cassette/lifecycle_matrix.rs"
+  ],
+  "package": "rig",
+  "schema": 1,
+  "semantic_skip_markers": [
+    "SKIP",
+    "skipping"
+  ],
+  "targets": [
+    "anthropic",
+    "openai",
+    "gemini"
+  ]
+}

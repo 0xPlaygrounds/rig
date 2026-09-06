@@ -1,0 +1,203 @@
+{
+  "batch": "24908d34dfa7cf8faacba8de2633e139db44b6c72a246baa495ac04788282920.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/private/tmp/rig-superset-baseline/target",
+    "--test",
+    "cohere",
+    "--test",
+    "copilot",
+    "--test",
+    "deepseek",
+    "--test",
+    "doubleword",
+    "--test",
+    "llamacpp",
+    "--test",
+    "ollama",
+    "--test",
+    "openrouter",
+    "--test",
+    "perplexity",
+    "--test",
+    "venice",
+    "--test",
+    "xai",
+    "--test",
+    "bedrock",
+    "--features",
+    "bedrock",
+    "-E",
+    "(binary_id(=rig::bedrock) & test(=bedrock::cassette::agent::completion_smoke)) | (binary_id(=rig::bedrock) & test(=bedrock::cassette::agent::completion_with_context_smoke)) | (binary_id(=rig::bedrock) & test(=bedrock::cassette::agent::prompt_caching_completion_smoke)) | (binary_id(=rig::bedrock) & test(=bedrock::cassette::agent::tool_roundtrip_smoke)) | (binary_id(=rig::cohere) & test(=cohere::cassette::agent::completion_smoke)) | (binary_id(=rig::copilot) & test(=copilot::agent::completion_smoke)) | (binary_id(=rig::deepseek) & test(=deepseek::agent::completion_smoke)) | (binary_id(=rig::doubleword) & test(=doubleword::cassette::agent::completion_smoke)) | (binary_id(=rig::llamacpp) & test(=llamacpp::cassette::agent::completion_smoke)) | (binary_id(=rig::ollama) & test(=ollama::cassette::agent::completion_respects_max_tokens)) | (binary_id(=rig::ollama) & test(=ollama::cassette::agent::completion_smoke)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent::completion_smoke)) | (binary_id(=rig::perplexity) & test(=perplexity::cassette::agent::completion_smoke)) | (binary_id(=rig::perplexity) & test(=perplexity::cassette::agent::completion_with_perplexity_options)) | (binary_id(=rig::venice) & test(=venice::cassette::agent::completion_smoke)) | (binary_id(=rig::xai) & test(=xai::agent::completion_smoke))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "60d906984d3e709ff2bf31bbbf79ece8c16ff052f3bfe7240d6922de34127ac3.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/private/tmp/rig-superset-baseline/target",
+    "--test",
+    "cohere",
+    "--test",
+    "copilot",
+    "--test",
+    "deepseek",
+    "--test",
+    "doubleword",
+    "--test",
+    "llamacpp",
+    "--test",
+    "ollama",
+    "--test",
+    "openrouter",
+    "--test",
+    "perplexity",
+    "--test",
+    "venice",
+    "--test",
+    "xai",
+    "--test",
+    "bedrock",
+    "--features",
+    "bedrock",
+    "-E",
+    "(binary_id(=rig::bedrock) & test(=bedrock::cassette::agent::completion_smoke)) | (binary_id(=rig::bedrock) & test(=bedrock::cassette::agent::completion_with_context_smoke)) | (binary_id(=rig::bedrock) & test(=bedrock::cassette::agent::prompt_caching_completion_smoke)) | (binary_id(=rig::bedrock) & test(=bedrock::cassette::agent::tool_roundtrip_smoke)) | (binary_id(=rig::cohere) & test(=cohere::cassette::agent::completion_smoke)) | (binary_id(=rig::copilot) & test(=copilot::agent::completion_smoke)) | (binary_id(=rig::deepseek) & test(=deepseek::agent::completion_smoke)) | (binary_id(=rig::doubleword) & test(=doubleword::cassette::agent::completion_smoke)) | (binary_id(=rig::llamacpp) & test(=llamacpp::cassette::agent::completion_smoke)) | (binary_id(=rig::ollama) & test(=ollama::cassette::agent::completion_respects_max_tokens)) | (binary_id(=rig::ollama) & test(=ollama::cassette::agent::completion_smoke)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent::completion_smoke)) | (binary_id(=rig::perplexity) & test(=perplexity::cassette::agent::completion_smoke)) | (binary_id(=rig::perplexity) & test(=perplexity::cassette::agent::completion_with_perplexity_options)) | (binary_id(=rig::venice) & test(=venice::cassette::agent::completion_smoke)) | (binary_id(=rig::xai) & test(=xai::agent::completion_smoke))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "4da9018371348e134dbd2b2040fac07d265b8d2bd1d8428e082acafc806ee28a.log",
+    "listing_stdout": "6ff05e3c3e23fda8bd7e02300378100d81398a02a64ce161a9f6764f6b0dd709.json",
+    "stderr": "ce38935d134d32181c4580a84164b29f10418d222c1b5e55c86d454dca461f68.log",
+    "stdout": "b24ee555bf65e6e4c8feef74a39f2c15d3e577037b1fde8a6891700cede46e62.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::bedrock$bedrock::cassette::agent::completion_smoke",
+      "seconds": 0.400414083,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::bedrock$bedrock::cassette::agent::completion_with_context_smoke",
+      "seconds": 0.400150792,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::bedrock$bedrock::cassette::agent::prompt_caching_completion_smoke",
+      "seconds": 0.4000085,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::bedrock$bedrock::cassette::agent::tool_roundtrip_smoke",
+      "seconds": 0.403175042,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::cohere$cohere::cassette::agent::completion_smoke",
+      "seconds": 0.154827334,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::copilot$copilot::agent::completion_smoke",
+      "seconds": 0.162403083,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent::completion_smoke",
+      "seconds": 0.153004459,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::doubleword$doubleword::cassette::agent::completion_smoke",
+      "seconds": 0.155573292,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::llamacpp$llamacpp::cassette::agent::completion_smoke",
+      "seconds": 0.158320417,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::ollama$ollama::cassette::agent::completion_respects_max_tokens",
+      "seconds": 0.153680458,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::ollama$ollama::cassette::agent::completion_smoke",
+      "seconds": 0.156170208,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::agent::completion_smoke",
+      "seconds": 0.156532333,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::perplexity$perplexity::cassette::agent::completion_smoke",
+      "seconds": 0.066200083,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::perplexity$perplexity::cassette::agent::completion_with_perplexity_options",
+      "seconds": 0.065041459,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::venice$venice::cassette::agent::completion_smoke",
+      "seconds": 0.064293375,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::agent::completion_smoke",
+      "seconds": 0.063809833,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "64293ec9a51357865a243a2733535a437f0845e84fa4c7ac087860d31384b9b7.json",
+  "source_index_after": "64293ec9a51357865a243a2733535a437f0845e84fa4c7ac087860d31384b9b7.json",
+  "status": "executed",
+  "surface": "original",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

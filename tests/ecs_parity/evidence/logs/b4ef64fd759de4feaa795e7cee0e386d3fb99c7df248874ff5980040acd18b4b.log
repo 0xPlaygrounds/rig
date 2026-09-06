@@ -1,0 +1,104 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.36s
+    Starting 10 tests across 1 binary (646 skipped)
+        PASS [   0.887s] rig::anthropic anthropic::cassette::ecs_serving::host_bus_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::host_bus_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::host_bus_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 655 filtered out; finished in 0.88s
+
+
+        PASS [   0.885s] rig::anthropic anthropic::cassette::ecs_serving::serial_memory_tools_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::serial_memory_tools_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::serial_memory_tools_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 655 filtered out; finished in 0.87s
+
+
+        PASS [   0.890s] rig::anthropic anthropic::cassette::ecs_serving::model_route_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::model_route_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::model_route_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 655 filtered out; finished in 0.87s
+
+
+        PASS [   0.891s] rig::anthropic anthropic::cassette::ecs_serving::model_route_unselected_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::model_route_unselected_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::model_route_unselected_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 655 filtered out; finished in 0.88s
+
+
+        PASS [   1.198s] rig::anthropic anthropic::cassette::ecs_serving::host_bus_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::host_bus_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::host_bus_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 655 filtered out; finished in 1.18s
+
+
+        PASS [   1.255s] rig::anthropic anthropic::cassette::ecs_serving::serial_concurrency_one_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::serial_concurrency_one_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::serial_concurrency_one_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 655 filtered out; finished in 1.24s
+
+
+        PASS [   1.257s] rig::anthropic anthropic::cassette::ecs_serving::concurrent_concurrency_two_events_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::concurrent_concurrency_two_events_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::concurrent_concurrency_two_events_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 655 filtered out; finished in 1.25s
+
+
+        PASS [   1.259s] rig::anthropic anthropic::cassette::ecs_serving::capacity_one_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::capacity_one_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::capacity_one_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 655 filtered out; finished in 1.25s
+
+
+        PASS [   1.259s] rig::anthropic anthropic::cassette::ecs_serving::concurrent_concurrency_one_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::concurrent_concurrency_one_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::concurrent_concurrency_one_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 655 filtered out; finished in 1.25s
+
+
+        PASS [   1.261s] rig::anthropic anthropic::cassette::ecs_serving::concurrent_concurrency_two_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::concurrent_concurrency_two_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::concurrent_concurrency_two_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 655 filtered out; finished in 1.25s
+
+
+------------
+     Summary [   1.262s] 10 tests run: 10 passed, 646 skipped

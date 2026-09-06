@@ -1,0 +1,30 @@
+{
+  "caught": true,
+  "command": [
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--test",
+    "anthropic",
+    "-E",
+    "test(::ecs_endings::text_delta_stop_) | test(::ecs_endings::tool_call_delta_stop_)",
+    "--no-fail-fast",
+    "--retries",
+    "0"
+  ],
+  "exit_code": 100,
+  "expected_tests": 2,
+  "limits": "Demonstrates rejection of leaving an issued stream without terminal outcome at return; general transport/task cancellation matrix remains separate.",
+  "log": "tests/ecs_parity/evidence/logs/d02fc13054c958081c3b132a6b5a621ecaa9808e9e070d803d017c180a78b92b.log",
+  "log_sha256": "d02fc13054c958081c3b132a6b5a621ecaa9808e9e070d803d017c180a78b92b",
+  "mode": "replay",
+  "mutated_sha256": "acdfe6596137da0c889be091f124296bc14c1de117b508ef312efa3ba3de10cc",
+  "mutation": "omit despawn of issued stream after native run cancellation",
+  "rejected_by": "all retained effects have finished; dropped stream is gone",
+  "schema": 1,
+  "source": "tests/providers/anthropic/cassette/ecs_endings/policies.rs",
+  "source_before_sha256": "ab0bb72775aed066512dc6e87451a655df83401743b42ef7733c7b3702bf6541",
+  "source_restored_sha256": "ab0bb72775aed066512dc6e87451a655df83401743b42ef7733c7b3702bf6541"
+}

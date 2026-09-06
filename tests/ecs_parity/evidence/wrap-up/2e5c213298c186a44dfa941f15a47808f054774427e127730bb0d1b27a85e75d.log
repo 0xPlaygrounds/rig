@@ -1,0 +1,523 @@
+   Compiling stable_deref_trait v1.2.1
+   Compiling zerofrom v0.1.7
+   Compiling nom v7.1.3
+   Compiling convert_case v0.11.0
+   Compiling hashbrown v0.16.1
+   Compiling ring v0.17.14
+   Compiling rustls v0.23.39
+   Compiling convert_case v0.10.0
+   Compiling regex-automata v0.4.14
+   Compiling tempfile v3.27.0
+   Compiling bytemuck_derive v1.11.0
+   Compiling rand_distr v0.5.1
+   Compiling byteorder v1.5.0
+   Compiling bytemuck v1.25.0
+   Compiling rustls-webpki v0.103.13
+   Compiling yoke v0.8.2
+   Compiling rig-derive v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-derive)
+   Compiling ahash v0.8.12
+   Compiling derive_more-impl v2.1.1
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+   Compiling data-encoding v2.11.0
+   Compiling bevy_platform v0.19.1
+   Compiling eventsource-stream v0.2.3
+   Compiling num-complex v0.4.6
+   Compiling matchers v0.2.0
+   Compiling derive_more v2.1.1
+   Compiling half v2.7.1
+   Compiling zerovec v0.11.6
+   Compiling zerotrie v0.2.4
+   Compiling tokio-rustls v0.26.4
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling bevy_utils v0.19.1
+   Compiling regex v1.12.3
+   Compiling zstd-safe v7.2.4
+   Compiling tracing-subscriber v0.3.23
+   Compiling globset v0.4.18
+   Compiling bevy_tasks v0.19.1
+   Compiling hyper-rustls v0.27.9
+   Compiling hashlink v0.11.1
+   Compiling ureq v3.3.0
+   Compiling tinystr v0.8.3
+   Compiling potential_utf v0.1.5
+   Compiling hashbrown v0.14.5
+   Compiling zstd v0.13.3
+   Compiling aws-smithy-http-client v1.1.9
+   Compiling ignore v0.4.25
+   Compiling bevy_ecs v0.19.1
+   Compiling tracing-opentelemetry v0.33.0
+   Compiling num v0.4.3
+   Compiling icu_locale_core v2.2.0
+   Compiling icu_collections v2.2.0
+   Compiling aws-smithy-runtime v1.10.0
+   Compiling hashlink v0.9.1
+   Compiling tonic v0.14.6
+   Compiling arrow-buffer v58.3.0
+   Compiling globwalk v0.9.1
+   Compiling bson v2.15.0
+   Compiling tonic v0.12.3
+   Compiling aws-runtime v1.6.0
+   Compiling icu_provider v2.2.0
+   Compiling parse-display v0.9.1
+   Compiling rusqlite v0.32.1
+   Compiling serde_regex v1.1.0
+   Compiling aws-sdk-sts v1.97.0
+   Compiling aws-sdk-bedrockruntime v1.124.0
+   Compiling assert_fs v1.1.4
+   Compiling tonic-prost v0.14.6
+   Compiling icu_normalizer v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling bevy_app v0.19.1
+   Compiling arrow-data v58.3.0
+   Compiling qdrant-client v1.17.0
+   Compiling rusty-fork v0.3.1
+   Compiling tokio-rusqlite v0.6.0
+   Compiling rayon-core v1.13.0
+   Compiling enum-as-inner v0.6.1
+   Compiling pulp-wasm-simd-flag v0.1.1
+   Compiling reborrow v0.5.5
+   Compiling bollard-buildkit-proto v0.7.0
+   Compiling dyn-stack v0.13.2
+   Compiling sysctl v0.6.0
+   Compiling idna_adapter v1.2.2
+   Compiling proptest v1.11.0
+   Compiling raw-cpuid v11.6.0
+   Compiling onig_sys v69.9.3
+   Compiling arrow-array v58.3.0
+   Compiling rayon v1.12.0
+   Compiling pulp v0.22.3
+   Compiling castaway v0.2.4
+   Compiling monostate-impl v0.1.18
+   Compiling idna v1.1.0
+   Compiling bollard-stubs v1.52.1-rc.29.1.3
+   Compiling base64 v0.13.1
+   Compiling static_assertions v1.1.0
+   Compiling macro_rules_attribute v0.2.2
+   Compiling monostate v0.1.18
+   Compiling onig v6.5.3
+   Compiling rustix v1.1.4
+   Compiling rayon-cond v0.4.0
+   Compiling esaxx-rs v0.1.10
+   Compiling compact_str v0.9.0
+   Compiling spm_precompiled v0.1.4
+   Compiling url v2.5.8
+   Compiling gemm-common v0.19.0
+   Compiling prettyplease v0.2.37
+   Compiling pulldown-cmark v0.13.3
+   Compiling prost v0.14.4
+   Compiling unicode-normalization-alignments v0.1.12
+   Compiling dary_heap v0.3.9
+   Compiling unicode_categories v0.1.1
+   Compiling typed-path v0.12.3
+   Compiling petgraph v0.8.3
+   Compiling gemm-f32 v0.19.0
+   Compiling rig-core v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-core)
+   Compiling reqwest v0.13.4
+   Compiling aws-config v1.8.13
+   Compiling redis v1.6.0
+   Compiling hickory-proto v0.26.1
+   Compiling sqlx-core v0.9.0
+   Compiling bollard v0.20.2
+   Compiling neo4rs v0.8.0
+   Compiling httpmock v0.8.3
+   Compiling gemm-f64 v0.19.0
+   Compiling gemm-f16 v0.19.0
+   Compiling gemm-c32 v0.19.0
+   Compiling opentelemetry-http v0.32.0
+   Compiling hickory-net v0.26.1
+   Compiling sqlx-postgres v0.9.0
+   Compiling reqwest-middleware v0.5.2
+   Compiling rmcp v2.2.0
+   Compiling gemm-c64 v0.19.0
+   Compiling zip v8.6.0
+   Compiling opentelemetry-otlp v0.32.0
+   Compiling testcontainers v0.27.3
+   Compiling tokenizers v0.22.2
+   Compiling hickory-resolver v0.26.1
+   Compiling reqwest-retry v0.9.1
+   Compiling prost-types v0.14.3
+   Compiling rig-effect-log v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-effect-log)
+   Compiling rig-reqwest v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-reqwest)
+   Compiling rig-bedrock v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-bedrock)
+   Compiling gemm v0.19.0
+   Compiling rig-ecs v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-ecs)
+   Compiling rig-agent v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-agent)
+   Compiling mongodb v3.7.0
+   Compiling pulldown-cmark-to-cmark v22.0.0
+   Compiling float8 v0.7.0
+   Compiling safetensors v0.8.0
+   Compiling memmap2 v0.9.11
+   Compiling sqlx-macros-core v0.9.0
+   Compiling tonic-build v0.14.6
+   Compiling tungstenite v0.29.0
+   Compiling fancy-regex v0.18.0
+   Compiling prost-build v0.14.3
+   Compiling serde_plain v1.0.2
+   Compiling web-time v1.1.0
+   Compiling candle-core v0.11.0
+   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+   Compiling sqlx-macros v0.9.0
+   Compiling tokio-tungstenite v0.29.0
+   Compiling rig-verify v0.0.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-verify)
+   Compiling sqlx v0.9.0
+   Compiling tonic-prost-build v0.14.6
+   Compiling rig-tungstenite v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-tungstenite)
+   Compiling rig-gemini-grpc v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-gemini-grpc)
+   Compiling candle-nn v0.11.0
+   Compiling candle-transformers v0.11.0
+   Compiling rig-candle v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-candle)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4m 00s
+    Starting 7939 tests across 116 binaries (203 skipped)
+        PASS [   7.517s] rig::anthropic anthropic::cassette::corpus_endings::answer_outcome_cancelled_effect_log_is_the_golden_fixture
+        PASS [   7.735s] rig::anthropic anthropic::cassette::corpus_causal::completion_serial_effect_log_is_the_golden_fixture
+        PASS [   7.751s] rig::anthropic anthropic::cassette::corpus_causal::completion_streamed_effect_log_is_the_golden_fixture
+        PASS [   7.763s] rig::anthropic anthropic::cassette::agent::completion_smoke_effect_log_is_the_golden_fixture
+        PASS [   7.766s] rig::anthropic anthropic::cassette::agent::completion_smoke
+        PASS [   7.791s] rig::anthropic anthropic::cassette::corpus_endings::answer_turn_stop_effect_log_is_the_golden_fixture
+        PASS [   7.795s] rig::anthropic anthropic::cassette::boxed_transport::completion_smoke_through_boxed_transport
+        PASS [   7.803s] rig::anthropic anthropic::cassette::agent::memory_conversation_effect_log_is_the_golden_fixture
+        PASS [   7.812s] rig::anthropic anthropic::cassette::corpus_causal::completion_concurrent_effect_log_is_the_golden_fixture
+        PASS [   7.825s] rig::anthropic anthropic::cassette::corpus_endings::text_delta_stop_effect_log_is_the_golden_fixture
+        PASS [   7.839s] rig::anthropic anthropic::cassette::corpus_endings::tool_call_delta_stop_effect_log_is_the_golden_fixture
+        PASS [   7.843s] rig::anthropic anthropic::cassette::boxed_transport::streaming_smoke_through_boxed_transport
+        PASS [   6.760s] rig::anthropic anthropic::cassette::corpus_endings::tool_dispatch_cancelled_effect_log_is_the_golden_fixture
+        PASS [   6.683s] rig::anthropic anthropic::cassette::corpus_hooks::deny_tool_effect_log_is_the_golden_fixture
+        PASS [   6.715s] rig::anthropic anthropic::cassette::corpus_endings::turn_finished_stop_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.718s] rig::anthropic anthropic::cassette::corpus_hooks::demand_done_effect_log_is_the_golden_fixture
+        PASS [   6.786s] rig::anthropic anthropic::cassette::corpus_endings::tool_dispatch_cancelled_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.763s] rig::anthropic anthropic::cassette::corpus_endings::turn_finished_stop_effect_log_is_the_golden_fixture
+        PASS [   6.786s] rig::anthropic anthropic::cassette::corpus_endings::tool_outcome_cancelled_effect_log_is_the_golden_fixture
+        PASS [   6.737s] rig::anthropic anthropic::cassette::corpus_hooks::lookup_before_run_effect_log_is_the_golden_fixture
+        PASS [   6.810s] rig::anthropic anthropic::cassette::corpus_endings::tool_outcome_cancelled_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.767s] rig::anthropic anthropic::cassette::corpus_hooks::deny_tool_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.741s] rig::anthropic anthropic::cassette::corpus_hooks::observe_everything_effect_log_is_the_golden_fixture
+        PASS [   6.740s] rig::anthropic anthropic::cassette::corpus_hooks::patch_tool_args_effect_log_is_the_golden_fixture
+        PASS [   6.539s] rig::anthropic anthropic::cassette::corpus_hooks::patch_tool_args_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.315s] rig::anthropic anthropic::cassette::corpus_host::custom_at_completion_call_effect_log_is_the_golden_fixture
+        PASS [   6.370s] rig::anthropic anthropic::cassette::corpus_hooks::preamble_override_effect_log_is_the_golden_fixture
+        PASS [   6.366s] rig::anthropic anthropic::cassette::corpus_hooks::replace_tool_result_effect_log_is_the_golden_fixture
+        PASS [   6.341s] rig::anthropic anthropic::cassette::corpus_host::custom_at_outcome_effect_log_is_the_golden_fixture
+        PASS [   6.366s] rig::anthropic anthropic::cassette::corpus_host::custom_at_outcome_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.447s] rig::anthropic anthropic::cassette::corpus_hooks::replace_answer_effect_log_is_the_golden_fixture
+        PASS [   6.435s] rig::anthropic anthropic::cassette::corpus_hooks::two_hooks_effect_log_is_the_golden_fixture
+        PASS [   6.384s] rig::anthropic anthropic::cassette::corpus_host::custom_at_start_effect_log_is_the_golden_fixture
+        PASS [   6.438s] rig::anthropic anthropic::cassette::corpus_host::custom_at_settled_effect_log_is_the_golden_fixture
+        PASS [   6.447s] rig::anthropic anthropic::cassette::corpus_host::custom_at_start_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.456s] rig::anthropic anthropic::cassette::corpus_host::custom_start_and_settled_effect_log_is_the_golden_fixture
+        PASS [   6.347s] rig::anthropic anthropic::cassette::corpus_host::custom_unserved_effect_log_is_the_golden_fixture
+        PASS [   6.419s] rig::anthropic anthropic::cassette::corpus_host::custom_twice_concurrent_effect_log_is_the_golden_fixture
+        PASS [   6.419s] rig::anthropic anthropic::cassette::corpus_host::custom_twice_serial_effect_log_is_the_golden_fixture
+        PASS [   6.414s] rig::anthropic anthropic::cassette::corpus_layers::deny_tool_effect_log_is_the_golden_fixture
+        PASS [   6.330s] rig::anthropic anthropic::cassette::corpus_layers::replace_tool_result_effect_log_is_the_golden_fixture
+        PASS [   6.369s] rig::anthropic anthropic::cassette::corpus_layers::patch_tool_args_effect_log_is_the_golden_fixture
+        PASS [   6.479s] rig::anthropic anthropic::cassette::corpus_layers::host_deny_over_host_bus_effect_log_is_the_golden_fixture
+        PASS [   6.436s] rig::anthropic anthropic::cassette::corpus_layers::memory_load_replaced_effect_log_is_the_golden_fixture
+        PASS [   6.416s] rig::anthropic anthropic::cassette::corpus_layers::two_layers_effect_log_is_the_golden_fixture
+        PASS [   6.479s] rig::anthropic anthropic::cassette::corpus_layers::patch_beneath_hook_patch_effect_log_is_the_golden_fixture
+        PASS [   6.481s] rig::anthropic anthropic::cassette::corpus_memory::clear_at_settled_two_runs_effect_log_is_the_golden_fixture
+        PASS [   6.494s] rig::anthropic anthropic::cassette::corpus_memory::clear_at_settled_effect_log_is_the_golden_fixture
+        PASS [   6.275s] rig::anthropic anthropic::cassette::corpus_memory::failing_append_effect_log_is_the_golden_fixture
+        PASS [   6.447s] rig::anthropic anthropic::cassette::corpus_memory::clear_at_start_effect_log_is_the_golden_fixture
+        PASS [   6.432s] rig::anthropic anthropic::cassette::corpus_memory::clear_at_start_two_runs_effect_log_is_the_golden_fixture
+        PASS [   6.379s] rig::anthropic anthropic::cassette::corpus_memory::failing_append_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.349s] rig::anthropic anthropic::cassette::corpus_memory::host_bus_memory_effect_log_is_the_golden_fixture
+        PASS [   6.394s] rig::anthropic anthropic::cassette::corpus_memory::history_bypass_effect_log_is_the_golden_fixture
+        PASS [   6.396s] rig::anthropic anthropic::cassette::corpus_memory::two_runs_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.473s] rig::anthropic anthropic::cassette::corpus_memory::serial_two_tools_effect_log_is_the_golden_fixture
+        PASS [   6.466s] rig::anthropic anthropic::cassette::corpus_memory::two_runs_effect_log_is_the_golden_fixture
+        PASS [   6.314s] rig::anthropic anthropic::cassette::corpus_oracle::stop_after_turn_two_effect_log_is_the_golden_fixture
+        PASS [   6.452s] rig::anthropic anthropic::cassette::corpus_oracle::concurrent_notes_effect_log_is_the_golden_fixture
+        PASS [   6.490s] rig::anthropic anthropic::cassette::corpus_outcome::cancel_after_tool_call_delta_effect_log_is_the_golden_fixture
+        PASS [   6.386s] rig::anthropic anthropic::cassette::corpus_outcome::default_max_turns_effect_log_is_the_golden_fixture
+        PASS [   6.258s] rig::anthropic anthropic::cassette::corpus_outcome::model_error_effect_log_is_the_golden_fixture
+        PASS [   6.312s] rig::anthropic anthropic::cassette::corpus_outcome::tool_error_effect_log_is_the_golden_fixture
+        PASS [   6.354s] rig::anthropic anthropic::cassette::corpus_outcome::model_error_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.428s] rig::anthropic anthropic::cassette::corpus_outcome::max_turns_exhausted_effect_log_is_the_golden_fixture
+        PASS [   6.405s] rig::anthropic anthropic::cassette::corpus_outcome::tool_error_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.300s] rig::anthropic anthropic::cassette::corpus_output::prompted_unary_effect_log_is_the_golden_fixture
+        PASS [   6.315s] rig::anthropic anthropic::cassette::corpus_output::prompted_with_real_tool_effect_log_is_the_golden_fixture
+        PASS [   6.268s] rig::anthropic anthropic::cassette::corpus_output::tool_choice_specific_output_effect_log_is_the_golden_fixture
+        PASS [   6.326s] rig::anthropic anthropic::cassette::corpus_output::tool_choice_required_effect_log_is_the_golden_fixture
+        PASS [   6.356s] rig::anthropic anthropic::cassette::corpus_output::prompted_streamed_effect_log_is_the_golden_fixture
+        PASS [   0.012s] rig::anthropic anthropic::cassette::corpus_request_shape::the_event_schema_is_the_literal
+        PASS [   6.390s] rig::anthropic anthropic::cassette::corpus_output::tool_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.243s] rig::anthropic anthropic::cassette::corpus_output::tool_thinking_effect_log_is_the_golden_fixture
+        PASS [   6.298s] rig::anthropic anthropic::cassette::corpus_output::tool_unary_effect_log_is_the_golden_fixture
+        PASS [   6.283s] rig::anthropic anthropic::cassette::corpus_output::tool_under_none_degrades_effect_log_is_the_golden_fixture
+        PASS [   6.215s] rig::anthropic anthropic::cassette::corpus_request_shape::max_tokens_effect_log_is_the_golden_fixture
+        PASS [   6.294s] rig::anthropic anthropic::cassette::corpus_output::tool_with_real_tool_effect_log_is_the_golden_fixture
+        PASS [   6.249s] rig::anthropic anthropic::cassette::corpus_request_shape::output_schema_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.240s] rig::anthropic anthropic::cassette::corpus_request_shape::static_context_effect_log_is_the_golden_fixture
+        PASS [   6.332s] rig::anthropic anthropic::cassette::corpus_request_shape::append_preamble_effect_log_is_the_golden_fixture
+        PASS [   6.257s] rig::anthropic anthropic::cassette::corpus_request_shape::thinking_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.301s] rig::anthropic anthropic::cassette::corpus_request_shape::prior_history_effect_log_is_the_golden_fixture
+        PASS [   6.367s] rig::anthropic anthropic::cassette::corpus_request_shape::output_schema_unary_effect_log_is_the_golden_fixture
+        PASS [   6.259s] rig::anthropic anthropic::cassette::corpus_request_shape::thinking_unary_effect_log_is_the_golden_fixture
+        PASS [   6.210s] rig::anthropic anthropic::cassette::corpus_request_shape::tool_choice_auto_effect_log_is_the_golden_fixture
+        PASS [   6.231s] rig::anthropic anthropic::cassette::corpus_request_shape::tool_choice_required_effect_log_is_the_golden_fixture
+        PASS [   6.356s] rig::anthropic anthropic::cassette::corpus_request_shape::tool_choice_none_effect_log_is_the_golden_fixture
+        PASS [   6.305s] rig::anthropic anthropic::cassette::corpus_request_shape::without_preamble_effect_log_is_the_golden_fixture
+        PASS [   6.321s] rig::anthropic anthropic::cassette::corpus_request_shape::tool_choice_specific_effect_log_is_the_golden_fixture
+        PASS [   6.309s] rig::anthropic anthropic::cassette::corpus_serving::capacity_one_effect_log_is_the_golden_fixture
+        PASS [   6.345s] rig::anthropic anthropic::cassette::corpus_serving::concurrent_concurrency_one_effect_log_is_the_golden_fixture
+        PASS [   6.290s] rig::anthropic anthropic::cassette::corpus_serving::host_bus_effect_log_is_the_golden_fixture
+        PASS [   6.279s] rig::anthropic anthropic::cassette::corpus_serving::host_bus_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.353s] rig::anthropic anthropic::cassette::corpus_serving::concurrent_concurrency_two_events_effect_log_is_the_golden_fixture
+        PASS [   6.400s] rig::anthropic anthropic::cassette::corpus_serving::concurrent_concurrency_two_effect_log_is_the_golden_fixture
+        PASS [   6.208s] rig::anthropic anthropic::cassette::corpus_serving::model_route_effect_log_is_the_golden_fixture
+        PASS [   6.295s] rig::anthropic anthropic::cassette::corpus_serving::model_route_unselected_effect_log_is_the_golden_fixture
+        PASS [   6.244s] rig::anthropic anthropic::cassette::corpus_serving::serial_concurrency_one_effect_log_is_the_golden_fixture
+        PASS [   6.211s] rig::anthropic anthropic::cassette::corpus_serving::serial_memory_tools_effect_log_is_the_golden_fixture
+        PASS [   6.202s] rig::anthropic anthropic::cassette::corpus_shaping::extra_context_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.283s] rig::anthropic anthropic::cassette::corpus_shaping::extra_context_effect_log_is_the_golden_fixture
+        PASS [   0.011s] rig::anthropic anthropic::cassette::document_file_id::document_file_id_wire_assertions_cover_roundtrip_paths
+        PASS [   6.182s] rig::anthropic anthropic::cassette::corpus_shaping::history_first_turn_effect_log_is_the_golden_fixture
+        PASS [   6.311s] rig::anthropic anthropic::cassette::corpus_shaping::active_tools_none_second_turn_effect_log_is_the_golden_fixture
+        PASS [   6.150s] rig::anthropic anthropic::cassette::corpus_shaping::preamble_second_turn_effect_log_is_the_golden_fixture
+        PASS [   6.241s] rig::anthropic anthropic::cassette::corpus_shaping::late_route_effect_log_is_the_golden_fixture
+        PASS [   6.324s] rig::anthropic anthropic::cassette::corpus_shaping::merged_three_effect_log_is_the_golden_fixture
+        PASS [   6.301s] rig::anthropic anthropic::cassette::corpus_shaping::route_on_first_turn_effect_log_is_the_golden_fixture
+        PASS [   6.384s] rig::anthropic anthropic::cassette::corpus_shaping::max_tokens_second_turn_effect_log_is_the_golden_fixture
+        PASS [   6.287s] rig::anthropic anthropic::cassette::corpus_shaping::thinking_second_turn_effect_log_is_the_golden_fixture
+        PASS [   6.310s] rig::anthropic anthropic::cassette::corpus_shaping::tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture
+        PASS [   6.323s] rig::anthropic anthropic::cassette::corpus_shaping::tool_choice_required_first_effect_log_is_the_golden_fixture
+        PASS [   6.241s] rig::anthropic anthropic::cassette::default_max_turns::default_max_turns_allows_multi_step_tool_use
+        PASS [   6.291s] rig::anthropic anthropic::cassette::document_file_id::messages_document_file_id_roundtrip_live
+        PASS [   6.293s] rig::anthropic anthropic::cassette::document_file_id::streaming_document_file_id_roundtrip_live
+        PASS [   6.346s] rig::anthropic anthropic::cassette::ecs_agent_goldens::completion_smoke_effect_log_is_the_golden_fixture
+        PASS [   6.323s] rig::anthropic anthropic::cassette::ecs_causal::completion_concurrent_effect_log_is_the_golden_fixture
+        PASS [   6.233s] rig::anthropic anthropic::cassette::ecs_causal::completion_serial_effect_log_is_the_golden_fixture
+        PASS [   6.416s] rig::anthropic anthropic::cassette::ecs_agent_goldens::memory_conversation_effect_log_is_the_golden_fixture
+        PASS [   6.660s] rig::anthropic anthropic::cassette::ecs_concurrency::serial_serving_reproduces_the_recorded_request_order
+        PASS [   6.753s] rig::anthropic anthropic::cassette::ecs_causal::completion_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.451s] rig::anthropic anthropic::cassette::ecs_endings::answer_outcome_cancelled_effect_log_is_the_golden_fixture
+        PASS [   6.406s] rig::anthropic anthropic::cassette::ecs_endings::answer_turn_stop_effect_log_is_the_golden_fixture
+        PASS [   6.334s] rig::anthropic anthropic::cassette::ecs_endings::tool_dispatch_cancelled_effect_log_is_the_golden_fixture
+        PASS [   6.474s] rig::anthropic anthropic::cassette::ecs_endings::text_delta_stop_effect_log_is_the_golden_fixture
+        PASS [   6.438s] rig::anthropic anthropic::cassette::ecs_endings::tool_call_delta_stop_effect_log_is_the_golden_fixture
+        PASS [   6.372s] rig::anthropic anthropic::cassette::ecs_endings::tool_outcome_cancelled_effect_log_is_the_golden_fixture
+        PASS [   6.832s] rig::anthropic anthropic::cassette::ecs_concurrency::streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_settles
+        PASS [   6.419s] rig::anthropic anthropic::cassette::ecs_endings::turn_finished_stop_effect_log_is_the_golden_fixture
+        PASS [   6.522s] rig::anthropic anthropic::cassette::ecs_endings::tool_dispatch_cancelled_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.523s] rig::anthropic anthropic::cassette::ecs_endings::tool_outcome_cancelled_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.308s] rig::anthropic anthropic::cassette::ecs_hooks::demand_done_effect_log_is_the_golden_fixture
+        PASS [   6.581s] rig::anthropic anthropic::cassette::ecs_endings::turn_finished_stop_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.205s] rig::anthropic anthropic::cassette::ecs_hooks::deny_tool_effect_log_is_the_golden_fixture
+        PASS [   6.326s] rig::anthropic anthropic::cassette::ecs_hooks::lookup_before_run_effect_log_is_the_golden_fixture
+        PASS [   6.365s] rig::anthropic anthropic::cassette::ecs_hooks::observe_everything_effect_log_is_the_golden_fixture
+        PASS [   6.374s] rig::anthropic anthropic::cassette::ecs_hooks::patch_tool_args_effect_log_is_the_golden_fixture
+        PASS [   6.602s] rig::anthropic anthropic::cassette::ecs_hooks::deny_tool_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.406s] rig::anthropic anthropic::cassette::ecs_hooks::preamble_override_effect_log_is_the_golden_fixture
+        PASS [   6.432s] rig::anthropic anthropic::cassette::ecs_hooks::replace_tool_result_effect_log_is_the_golden_fixture
+        PASS [   6.441s] rig::anthropic anthropic::cassette::ecs_hooks::replace_answer_effect_log_is_the_golden_fixture
+        PASS [   6.380s] rig::anthropic anthropic::cassette::ecs_hooks::two_hooks_effect_log_is_the_golden_fixture
+        PASS [   6.678s] rig::anthropic anthropic::cassette::ecs_hooks::patch_tool_args_streamed_effect_log_is_the_golden_fixture
+        PASS [   0.316s] rig::anthropic anthropic::cassette::ecs_host::tests::host_acknowledgements_precede_continuation
+        PASS [   6.474s] rig::anthropic anthropic::cassette::ecs_host::custom_at_completion_call_effect_log_is_the_golden_fixture
+        PASS [   6.298s] rig::anthropic anthropic::cassette::ecs_host::custom_at_outcome_effect_log_is_the_golden_fixture
+        PASS [   6.160s] rig::anthropic anthropic::cassette::ecs_host::custom_at_settled_effect_log_is_the_golden_fixture
+        PASS [   6.348s] rig::anthropic anthropic::cassette::ecs_host::custom_at_outcome_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.094s] rig::anthropic anthropic::cassette::ecs_host::custom_at_start_effect_log_is_the_golden_fixture
+        PASS [   6.098s] rig::anthropic anthropic::cassette::ecs_host::custom_start_and_settled_effect_log_is_the_golden_fixture
+        PASS [   6.200s] rig::anthropic anthropic::cassette::ecs_host::custom_at_start_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.021s] rig::anthropic anthropic::cassette::ecs_host::custom_twice_serial_effect_log_is_the_golden_fixture
+        PASS [   6.050s] rig::anthropic anthropic::cassette::ecs_host::custom_unserved_effect_log_is_the_golden_fixture
+        PASS [   6.089s] rig::anthropic anthropic::cassette::ecs_host::custom_twice_concurrent_effect_log_is_the_golden_fixture
+        PASS [   6.038s] rig::anthropic anthropic::cassette::ecs_layers::deny_tool_effect_log_is_the_golden_fixture
+        PASS [   6.157s] rig::anthropic anthropic::cassette::ecs_layers::host_deny_over_host_bus_effect_log_is_the_golden_fixture
+        PASS [   6.096s] rig::anthropic anthropic::cassette::ecs_layers::patch_beneath_hook_patch_effect_log_is_the_golden_fixture
+        PASS [   6.147s] rig::anthropic anthropic::cassette::ecs_layers::memory_load_replaced_effect_log_is_the_golden_fixture
+        PASS [   6.229s] rig::anthropic anthropic::cassette::ecs_layers::replace_tool_result_effect_log_is_the_golden_fixture
+        PASS [   6.267s] rig::anthropic anthropic::cassette::ecs_layers::two_layers_effect_log_is_the_golden_fixture
+        PASS [   6.297s] rig::anthropic anthropic::cassette::ecs_layers::patch_tool_args_effect_log_is_the_golden_fixture
+        PASS [   6.240s] rig::anthropic anthropic::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion
+        PASS [   6.269s] rig::anthropic anthropic::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider
+        PASS [   6.296s] rig::anthropic anthropic::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state
+        PASS [   6.397s] rig::anthropic anthropic::cassette::ecs_memory::clear_at_settled_effect_log_is_the_golden_fixture
+        PASS [   6.596s] rig::anthropic anthropic::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption
+        PASS [   6.635s] rig::anthropic anthropic::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run
+        PASS [   6.155s] rig::anthropic anthropic::cassette::ecs_memory::clear_at_settled_two_runs_effect_log_is_the_golden_fixture
+        PASS [   6.211s] rig::anthropic anthropic::cassette::ecs_memory::clear_at_start_effect_log_is_the_golden_fixture
+        PASS [   6.236s] rig::anthropic anthropic::cassette::ecs_memory::clear_at_start_two_runs_effect_log_is_the_golden_fixture
+        PASS [   6.197s] rig::anthropic anthropic::cassette::ecs_memory::failing_append_effect_log_is_the_golden_fixture
+        PASS [   6.228s] rig::anthropic anthropic::cassette::ecs_memory::history_bypass_effect_log_is_the_golden_fixture
+        PASS [   6.306s] rig::anthropic anthropic::cassette::ecs_memory::failing_append_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.369s] rig::anthropic anthropic::cassette::ecs_memory::host_bus_memory_effect_log_is_the_golden_fixture
+        PASS [   6.365s] rig::anthropic anthropic::cassette::ecs_memory::two_runs_effect_log_is_the_golden_fixture
+        PASS [   6.668s] rig::anthropic anthropic::cassette::ecs_memory::serial_two_tools_effect_log_is_the_golden_fixture
+        PASS [   6.358s] rig::anthropic anthropic::cassette::ecs_outcome::default_max_turns_effect_log_is_the_golden_fixture
+        PASS [   6.224s] rig::anthropic anthropic::cassette::ecs_outcome::max_turns_exhausted_effect_log_is_the_golden_fixture
+        PASS [   6.451s] rig::anthropic anthropic::cassette::ecs_outcome::cancel_after_tool_call_delta_effect_log_is_the_golden_fixture
+        PASS [   6.545s] rig::anthropic anthropic::cassette::ecs_memory::two_runs_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.252s] rig::anthropic anthropic::cassette::ecs_outcome::model_error_effect_log_is_the_golden_fixture
+        PASS [   6.715s] rig::anthropic anthropic::cassette::ecs_ordering::streaming_tools_batches_multiple_tool_results_in_one_followup_message
+        PASS [   6.207s] rig::anthropic anthropic::cassette::ecs_outcome::model_error_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.242s] rig::anthropic anthropic::cassette::ecs_outcome::tool_error_effect_log_is_the_golden_fixture
+        PASS [   6.542s] rig::anthropic anthropic::cassette::ecs_outcome::tool_error_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.243s] rig::anthropic anthropic::cassette::ecs_output::prompted_unary_effect_log_is_the_golden_fixture
+        PASS [   6.376s] rig::anthropic anthropic::cassette::ecs_output::prompted_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.151s] rig::anthropic anthropic::cassette::ecs_output::tool_choice_specific_output_effect_log_is_the_golden_fixture
+        PASS [   6.200s] rig::anthropic anthropic::cassette::ecs_output::tool_choice_required_effect_log_is_the_golden_fixture
+        PASS [   6.234s] rig::anthropic anthropic::cassette::ecs_output::prompted_with_real_tool_effect_log_is_the_golden_fixture
+        PASS [   6.273s] rig::anthropic anthropic::cassette::ecs_output::tool_unary_effect_log_is_the_golden_fixture
+        PASS [   6.364s] rig::anthropic anthropic::cassette::ecs_output::tool_thinking_effect_log_is_the_golden_fixture
+        PASS [   6.217s] rig::anthropic anthropic::cassette::ecs_output::tool_under_none_degrades_effect_log_is_the_golden_fixture
+        PASS [   6.975s] rig::anthropic anthropic::cassette::ecs_output::tool_streamed_effect_log_is_the_golden_fixture
+        PASS [   6.205s] rig::anthropic anthropic::cassette::ecs_output::tool_with_real_tool_effect_log_is_the_golden_fixture
+        PASS [   6.231s] rig::anthropic anthropic::cassette::ecs_parity::completion_smoke
+        PASS [   6.410s] rig::anthropic anthropic::cassette::ecs_prompt_caching::conformance_agent_loop_keeps_hitting_across_tool_turns
+        FAIL [   6.233s] rig::anthropic anthropic::cassette::ecs_raw::hooks_observe_raw_blocking
+
+--- STDOUT:              rig::anthropic anthropic::cassette::ecs_raw::hooks_observe_raw_blocking ---
+
+running 1 test
+test anthropic::cassette::ecs_raw::hooks_observe_raw_blocking ... FAILED
+
+failures:
+
+failures:
+    anthropic::cassette::ecs_raw::hooks_observe_raw_blocking
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 689 filtered out; finished in 6.22s
+
+
+--- STDERR:              rig::anthropic anthropic::cassette::ecs_raw::hooks_observe_raw_blocking ---
+
+thread 'anthropic::cassette::ecs_raw::hooks_observe_raw_blocking' (4278313) panicked at tests/providers/anthropic/cassette/ecs_raw.rs:120:5:
+assertion `left == right` failed: one completed-turn observation
+  left: 2
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+   Canceling due to test failure: 11 tests still running
+        FAIL [   6.261s] rig::anthropic anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_blocking
+
+--- STDOUT:              rig::anthropic anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_blocking ---
+
+running 1 test
+test anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_blocking ... FAILED
+
+failures:
+
+failures:
+    anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_blocking
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 689 filtered out; finished in 6.25s
+
+
+--- STDERR:              rig::anthropic anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_blocking ---
+
+thread 'anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_blocking' (4278374) panicked at tests/providers/anthropic/cassette/ecs_raw.rs:268:5:
+assertion `left == right` failed
+  left: [Object {"content": Array [Object {"type": String("tool_use"), "id": String("toolu_REDACTED_1"), "name": String("add"), "input": Object {"x": Number(2), "y": Number(3)}}], "id": String("msg_REDACTED_1"), "model": String("claude-haiku-4-5-20251001"), "role": String("assistant"), "stop_reason": String("tool_use"), "stop_sequence": Null, "usage": Object {"input_tokens": Number(630), "cache_read_input_tokens": Number(0), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "output_tokens": Number(69)}, "provider_request_id": String("req_REDACTED_1")}, Object {"content": Array [Object {"type": String("tool_use"), "id": String("toolu_REDACTED_1"), "name": String("add"), "input": Object {"x": Number(2), "y": Number(3)}}], "id": String("msg_REDACTED_1"), "model": String("claude-haiku-4-5-20251001"), "role": String("assistant"), "stop_reason": String("tool_use"), "stop_sequence": Null, "usage": Object {"input_tokens": Number(630), "cache_read_input_tokens": Number(0), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "output_tokens": Number(69)}, "provider_request_id": String("req_REDACTED_1")}, Object {"content": Array [Object {"type": String("text"), "text": String("The result is **5**.\n\n2 + 3 = 5")}], "id": String("msg_REDACTED_2"), "model": String("claude-haiku-4-5-20251001"), "role": String("assistant"), "stop_reason": String("end_turn"), "stop_sequence": Null, "usage": Object {"input_tokens": Number(712), "cache_read_input_tokens": Number(0), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "output_tokens": Number(19)}, "provider_request_id": String("req_REDACTED_2")}, Object {"content": Array [Object {"type": String("text"), "text": String("The result is **5**.\n\n2 + 3 = 5")}], "id": String("msg_REDACTED_2"), "model": String("claude-haiku-4-5-20251001"), "role": String("assistant"), "stop_reason": String("end_turn"), "stop_sequence": Null, "usage": Object {"input_tokens": Number(712), "cache_read_input_tokens": Number(0), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "output_tokens": Number(19)}, "provider_request_id": String("req_REDACTED_2")}]
+ right: [Object {"content": Array [Object {"type": String("tool_use"), "id": String("toolu_REDACTED_1"), "name": String("add"), "input": Object {"x": Number(2), "y": Number(3)}}], "id": String("msg_REDACTED_1"), "model": String("claude-haiku-4-5-20251001"), "role": String("assistant"), "stop_reason": String("tool_use"), "stop_sequence": Null, "usage": Object {"input_tokens": Number(630), "cache_read_input_tokens": Number(0), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "output_tokens": Number(69)}, "provider_request_id": String("req_REDACTED_1")}, Object {"content": Array [Object {"type": String("text"), "text": String("The result is **5**.\n\n2 + 3 = 5")}], "id": String("msg_REDACTED_2"), "model": String("claude-haiku-4-5-20251001"), "role": String("assistant"), "stop_reason": String("end_turn"), "stop_sequence": Null, "usage": Object {"input_tokens": Number(712), "cache_read_input_tokens": Number(0), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "output_tokens": Number(19)}, "provider_request_id": String("req_REDACTED_2")}]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        PASS [   6.548s] rig::anthropic anthropic::cassette::ecs_parity::streaming_smoke
+        PASS [   6.637s] rig::anthropic anthropic::cassette::ecs_parity::streaming_tools_smoke
+        FAIL [   6.399s] rig::anthropic anthropic::cassette::ecs_raw::hooks_observe_raw_streamed
+
+--- STDOUT:              rig::anthropic anthropic::cassette::ecs_raw::hooks_observe_raw_streamed ---
+
+running 1 test
+test anthropic::cassette::ecs_raw::hooks_observe_raw_streamed ... FAILED
+
+failures:
+
+failures:
+    anthropic::cassette::ecs_raw::hooks_observe_raw_streamed
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 689 filtered out; finished in 6.39s
+
+
+--- STDERR:              rig::anthropic anthropic::cassette::ecs_raw::hooks_observe_raw_streamed ---
+
+thread 'anthropic::cassette::ecs_raw::hooks_observe_raw_streamed' (4278371) panicked at tests/providers/anthropic/cassette/ecs_raw.rs:165:5:
+assertion `left == right` failed
+  left: 2
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        FAIL [   6.180s] rig::anthropic anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_blocking
+
+--- STDOUT:              rig::anthropic anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_blocking ---
+
+running 1 test
+test anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_blocking ... FAILED
+
+failures:
+
+failures:
+    anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_blocking
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 689 filtered out; finished in 6.17s
+
+
+--- STDERR:              rig::anthropic anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_blocking ---
+
+thread 'anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_blocking' (4278460) panicked at tests/providers/anthropic/cassette/ecs_raw.rs:268:5:
+assertion `left == right` failed
+  left: [Object {"content": Array [Object {"type": String("text"), "text": String("agent raw probe")}], "id": String("msg_REDACTED_1"), "model": String("claude-haiku-4-5-20251001"), "role": String("assistant"), "stop_reason": String("end_turn"), "stop_sequence": Null, "usage": Object {"input_tokens": Number(14), "cache_read_input_tokens": Number(0), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "output_tokens": Number(6)}, "provider_request_id": String("req_REDACTED_1")}, Object {"content": Array [Object {"type": String("text"), "text": String("agent raw probe")}], "id": String("msg_REDACTED_1"), "model": String("claude-haiku-4-5-20251001"), "role": String("assistant"), "stop_reason": String("end_turn"), "stop_sequence": Null, "usage": Object {"input_tokens": Number(14), "cache_read_input_tokens": Number(0), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "output_tokens": Number(6)}, "provider_request_id": String("req_REDACTED_1")}, Object {"content": Array [Object {"type": String("text"), "text": String("agent raw probe")}], "id": String("msg_REDACTED_2"), "model": String("claude-haiku-4-5-20251001"), "role": String("assistant"), "stop_reason": String("end_turn"), "stop_sequence": Null, "usage": Object {"input_tokens": Number(14), "cache_read_input_tokens": Number(0), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "output_tokens": Number(6)}, "provider_request_id": String("req_REDACTED_2")}, Object {"content": Array [Object {"type": String("text"), "text": String("agent raw probe")}], "id": String("msg_REDACTED_2"), "model": String("claude-haiku-4-5-20251001"), "role": String("assistant"), "stop_reason": String("end_turn"), "stop_sequence": Null, "usage": Object {"input_tokens": Number(14), "cache_read_input_tokens": Number(0), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "output_tokens": Number(6)}, "provider_request_id": String("req_REDACTED_2")}]
+ right: [Object {"content": Array [Object {"type": String("text"), "text": String("agent raw probe")}], "id": String("msg_REDACTED_1"), "model": String("claude-haiku-4-5-20251001"), "role": String("assistant"), "stop_reason": String("end_turn"), "stop_sequence": Null, "usage": Object {"input_tokens": Number(14), "cache_read_input_tokens": Number(0), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "output_tokens": Number(6)}, "provider_request_id": String("req_REDACTED_1")}, Object {"content": Array [Object {"type": String("text"), "text": String("agent raw probe")}], "id": String("msg_REDACTED_2"), "model": String("claude-haiku-4-5-20251001"), "role": String("assistant"), "stop_reason": String("end_turn"), "stop_sequence": Null, "usage": Object {"input_tokens": Number(14), "cache_read_input_tokens": Number(0), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "output_tokens": Number(6)}, "provider_request_id": String("req_REDACTED_2")}]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        FAIL [   6.398s] rig::anthropic anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_streamed
+
+--- STDOUT:              rig::anthropic anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_streamed ---
+
+running 1 test
+test anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_streamed ... FAILED
+
+failures:
+
+failures:
+    anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_streamed
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 689 filtered out; finished in 6.38s
+
+
+--- STDERR:              rig::anthropic anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_streamed ---
+
+thread 'anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_streamed' (4278430) panicked at tests/providers/anthropic/cassette/ecs_raw.rs:268:5:
+assertion `left == right` failed
+  left: [Object {"usage": Object {"output_tokens": Number(69), "input_tokens": Number(630), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "cache_read_input_tokens": Number(0)}, "stop_reason": String("tool_use"), "message_id": String("msg_REDACTED_1"), "model": String("claude-haiku-4-5-20251001")}, Object {"usage": Object {"output_tokens": Number(69), "input_tokens": Number(630), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "cache_read_input_tokens": Number(0)}, "stop_reason": String("tool_use"), "message_id": String("msg_REDACTED_1"), "model": String("claude-haiku-4-5-20251001")}, Object {"usage": Object {"output_tokens": Number(17), "input_tokens": Number(712), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "cache_read_input_tokens": Number(0)}, "stop_reason": String("end_turn"), "message_id": String("msg_REDACTED_2"), "model": String("claude-haiku-4-5-20251001")}, Object {"usage": Object {"output_tokens": Number(17), "input_tokens": Number(712), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "cache_read_input_tokens": Number(0)}, "stop_reason": String("end_turn"), "message_id": String("msg_REDACTED_2"), "model": String("claude-haiku-4-5-20251001")}]
+ right: [Object {"usage": Object {"output_tokens": Number(69), "input_tokens": Number(630), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "cache_read_input_tokens": Number(0)}, "stop_reason": String("tool_use"), "message_id": String("msg_REDACTED_1"), "model": String("claude-haiku-4-5-20251001")}, Object {"usage": Object {"output_tokens": Number(17), "input_tokens": Number(712), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "cache_read_input_tokens": Number(0)}, "stop_reason": String("end_turn"), "message_id": String("msg_REDACTED_2"), "model": String("claude-haiku-4-5-20251001")}]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        FAIL [   6.361s] rig::anthropic anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_streamed
+
+--- STDOUT:              rig::anthropic anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_streamed ---
+
+running 1 test
+test anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_streamed ... FAILED
+
+failures:
+
+failures:
+    anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_streamed
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 689 filtered out; finished in 6.35s
+
+
+--- STDERR:              rig::anthropic anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_streamed ---
+
+thread 'anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_streamed' (4278491) panicked at tests/providers/anthropic/cassette/ecs_raw.rs:268:5:
+assertion `left == right` failed
+  left: [Object {"usage": Object {"output_tokens": Number(6), "input_tokens": Number(14), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "cache_read_input_tokens": Number(0)}, "stop_reason": String("end_turn"), "message_id": String("msg_REDACTED_1"), "model": String("claude-haiku-4-5-20251001")}, Object {"usage": Object {"output_tokens": Number(6), "input_tokens": Number(14), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "cache_read_input_tokens": Number(0)}, "stop_reason": String("end_turn"), "message_id": String("msg_REDACTED_1"), "model": String("claude-haiku-4-5-20251001")}, Object {"usage": Object {"output_tokens": Number(6), "input_tokens": Number(14), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "cache_read_input_tokens": Number(0)}, "stop_reason": String("end_turn"), "message_id": String("msg_REDACTED_2"), "model": String("claude-haiku-4-5-20251001")}, Object {"usage": Object {"output_tokens": Number(6), "input_tokens": Number(14), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "cache_read_input_tokens": Number(0)}, "stop_reason": String("end_turn"), "message_id": String("msg_REDACTED_2"), "model": String("claude-haiku-4-5-20251001")}]
+ right: [Object {"usage": Object {"output_tokens": Number(6), "input_tokens": Number(14), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "cache_read_input_tokens": Number(0)}, "stop_reason": String("end_turn"), "message_id": String("msg_REDACTED_1"), "model": String("claude-haiku-4-5-20251001")}, Object {"usage": Object {"output_tokens": Number(6), "input_tokens": Number(14), "cache_creation_input_tokens": Number(0), "cache_creation": Object {"ephemeral_5m_input_tokens": Number(0), "ephemeral_1h_input_tokens": Number(0)}, "cache_read_input_tokens": Number(0)}, "stop_reason": String("end_turn"), "message_id": String("msg_REDACTED_2"), "model": String("claude-haiku-4-5-20251001")}]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        PASS [   6.117s] rig::anthropic anthropic::cassette::ecs_raw::streamed_final_carries_final_turn_raw
+        PASS [   2.720s] rig::anthropic anthropic::cassette::ecs_reasoning_usage::agent_blocking_thinking
+        PASS [   2.637s] rig::anthropic anthropic::cassette::ecs_request_shape::append_preamble_effect_log_is_the_golden_fixture
+        PASS [   2.149s] rig::anthropic anthropic::cassette::ecs_request_shape::max_tokens_effect_log_is_the_golden_fixture
+        PASS [   2.222s] rig::anthropic anthropic::cassette::ecs_request_shape::output_schema_streamed_effect_log_is_the_golden_fixture
+------------
+     Summary [ 111.855s] 211/7939 tests run: 205 passed, 6 failed, 0 skipped
+        FAIL [   6.233s] rig::anthropic anthropic::cassette::ecs_raw::hooks_observe_raw_blocking
+        FAIL [   6.399s] rig::anthropic anthropic::cassette::ecs_raw::hooks_observe_raw_streamed
+        FAIL [   6.261s] rig::anthropic anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_blocking
+        FAIL [   6.398s] rig::anthropic anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_streamed
+        FAIL [   6.180s] rig::anthropic anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_blocking
+        FAIL [   6.361s] rig::anthropic anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_streamed
+error: test run failed

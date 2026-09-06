@@ -1,0 +1,104 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.34s
+    Starting 10 tests across 9 binaries (1975 skipped)
+        PASS [   0.071s] rig::doubleword doubleword::cassette::extractor::extractor_smoke
+
+--- OUTPUT:              rig::doubleword doubleword::cassette::extractor::extractor_smoke ---
+
+running 1 test
+test doubleword::cassette::extractor::extractor_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 146 filtered out; finished in 0.06s
+
+
+        PASS [   0.069s] rig::venice venice::cassette::extractor::extractor_smoke
+
+--- OUTPUT:              rig::venice venice::cassette::extractor::extractor_smoke ---
+
+running 1 test
+test venice::cassette::extractor::extractor_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 103 filtered out; finished in 0.06s
+
+
+        PASS [   0.181s] rig::deepseek deepseek::extractor::extractor_smoke
+
+--- OUTPUT:              rig::deepseek deepseek::extractor::extractor_smoke ---
+
+running 1 test
+test deepseek::extractor::extractor_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 185 filtered out; finished in 0.17s
+
+
+        PASS [   0.201s] rig::xai xai::extractor::extractor_smoke
+
+--- OUTPUT:              rig::xai xai::extractor::extractor_smoke ---
+
+running 1 test
+test xai::extractor::extractor_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.19s
+
+
+        PASS [   0.210s] rig::copilot copilot::extractor::extractor_smoke
+
+--- OUTPUT:              rig::copilot copilot::extractor::extractor_smoke ---
+
+running 1 test
+test copilot::extractor::extractor_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.20s
+
+
+        PASS [   0.224s] rig::llamacpp llamacpp::cassette::extractor::extractor_smoke
+
+--- OUTPUT:              rig::llamacpp llamacpp::cassette::extractor::extractor_smoke ---
+
+running 1 test
+test llamacpp::cassette::extractor::extractor_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 203 filtered out; finished in 0.21s
+
+
+        PASS [   0.224s] rig::openrouter openrouter::cassette::extractor::extractor_smoke
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::extractor::extractor_smoke ---
+
+running 1 test
+test openrouter::cassette::extractor::extractor_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 292 filtered out; finished in 0.21s
+
+
+        PASS [   0.228s] rig::gemini gemini::cassette::extractor::extractor_with_additional_params
+
+--- OUTPUT:              rig::gemini gemini::cassette::extractor::extractor_with_additional_params ---
+
+running 1 test
+test gemini::cassette::extractor::extractor_with_additional_params ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.22s
+
+
+        PASS [   0.228s] rig::gemini gemini::cassette::extractor::extractor_smoke
+
+--- OUTPUT:              rig::gemini gemini::cassette::extractor::extractor_smoke ---
+
+running 1 test
+test gemini::cassette::extractor::extractor_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.22s
+
+
+        PASS [   0.228s] rig::openai openai::cassette::extractor::extractor_smoke
+
+--- OUTPUT:              rig::openai openai::cassette::extractor::extractor_smoke ---
+
+running 1 test
+test openai::cassette::extractor::extractor_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.22s
+
+
+------------
+     Summary [   0.230s] 10 tests run: 10 passed, 1975 skipped

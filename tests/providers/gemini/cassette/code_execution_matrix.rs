@@ -76,7 +76,7 @@ use super::super::support::{
 };
 
 /// Wire markers of the two code-execution part kinds, as Gemini spells them.
-const CODE_PART_MARKERS: &[&str] = &["executableCode", "codeExecutionResult"];
+pub(super) const CODE_PART_MARKERS: &[&str] = &["executableCode", "codeExecutionResult"];
 
 /// `additional_params` enabling Gemini's built-in code-execution tool.
 ///
@@ -86,7 +86,7 @@ const CODE_PART_MARKERS: &[&str] = &["executableCode", "codeExecutionResult"];
 /// `"tool_code\nprint(2**20)\n\n"` with no `executableCode` part at all — so a
 /// zero budget would silently record cells that never exercise the part kinds
 /// this matrix is about.
-fn code_execution_params() -> Value {
+pub(super) fn code_execution_params() -> Value {
     json!({ "tools": [{ "codeExecution": {} }] })
 }
 
@@ -109,7 +109,7 @@ fn code_execution_params_with_thoughts() -> Value {
 /// `value` must not be a fragment of a longer number — "2880" in "28800" is
 /// not the answer — so digit-adjacency is rejected. An empty or non-numeric
 /// `value` keeps plain substring semantics.
-fn states(text: &str, value: &str) -> bool {
+pub(super) fn states(text: &str, value: &str) -> bool {
     let text: String = text
         .char_indices()
         .filter(|(index, ch)| {

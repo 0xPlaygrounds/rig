@@ -1,0 +1,95 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "native": "rig::deepseek$deepseek::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "original": "rig::deepseek$deepseek::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming"
+    },
+    {
+      "native": "rig::deepseek$deepseek::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+      "original": "rig::deepseek$deepseek::agent_tool_sessions::sequential_complex_tool_calls_streaming"
+    },
+    {
+      "native": "rig::deepseek$deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "original": "rig::deepseek$deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming"
+    },
+    {
+      "native": "rig::deepseek$deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "original": "rig::deepseek$deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_streaming"
+    },
+    {
+      "native": "rig::xai$xai::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "original": "rig::xai$xai::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming"
+    },
+    {
+      "native": "rig::xai$xai::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+      "original": "rig::xai$xai::agent_tool_sessions::sequential_complex_tool_calls_streaming"
+    },
+    {
+      "native": "rig::xai$xai::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "original": "rig::xai$xai::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming"
+    },
+    {
+      "native": "rig::xai$xai::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "original": "rig::xai$xai::agent_tool_sessions::parallel_tool_calls_single_turn_streaming"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "original": "rig::openrouter$openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+      "original": "rig::openrouter$openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_streaming"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "original": "rig::openrouter$openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "original": "rig::openrouter$openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_streaming"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::ecs_tool_sessions::nested_structured_output_schema_roundtrip",
+      "original": "rig::openrouter$openrouter::cassette::agent_tool_sessions::nested_structured_output_schema_roundtrip"
+    }
+  ],
+  "features": [],
+  "fixtures": [
+    "tests/cassettes/deepseek/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml",
+    "tests/cassettes/deepseek/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml",
+    "tests/cassettes/deepseek/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml",
+    "tests/cassettes/deepseek/agent_tool_sessions/parallel_tool_calls_single_turn_streaming.yaml",
+    "tests/cassettes/xai/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml",
+    "tests/cassettes/xai/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml",
+    "tests/cassettes/xai/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml",
+    "tests/cassettes/xai/agent_tool_sessions/parallel_tool_calls_single_turn_streaming.yaml",
+    "tests/cassettes/openrouter/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml",
+    "tests/cassettes/openrouter/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml",
+    "tests/cassettes/openrouter/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml",
+    "tests/cassettes/openrouter/agent_tool_sessions/parallel_tool_calls_single_turn_streaming.yaml",
+    "tests/cassettes/openrouter/agent_tool_sessions/nested_structured_output_schema_roundtrip.yaml"
+  ],
+  "name": "tool-sessions",
+  "original_sources": [
+    "tests/common/support.rs",
+    "tests/common/cassettes.rs",
+    "tests/providers/deepseek/agent_tool_sessions.rs",
+    "tests/providers/deepseek/support.rs",
+    "tests/providers/xai/agent_tool_sessions.rs",
+    "tests/providers/xai/support.rs",
+    "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+    "tests/providers/openrouter/support.rs"
+  ],
+  "package": "rig",
+  "schema": 1,
+  "semantic_skip_markers": [
+    "SKIP",
+    "skipping"
+  ],
+  "targets": [
+    "deepseek",
+    "xai",
+    "openrouter"
+  ]
+}

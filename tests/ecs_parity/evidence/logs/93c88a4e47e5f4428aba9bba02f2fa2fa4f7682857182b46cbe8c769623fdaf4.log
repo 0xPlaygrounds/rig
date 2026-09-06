@@ -1,0 +1,104 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.34s
+    Starting 10 tests across 1 binary (529 skipped)
+        PASS [   0.073s] rig::anthropic anthropic::cassette::corpus_output::tool_thinking_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::corpus_output::tool_thinking_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::corpus_output::tool_thinking_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.06s
+
+
+        PASS [   0.074s] rig::anthropic anthropic::cassette::corpus_output::tool_choice_required_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::corpus_output::tool_choice_required_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::corpus_output::tool_choice_required_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.06s
+
+
+        PASS [   0.073s] rig::anthropic anthropic::cassette::corpus_output::tool_unary_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::corpus_output::tool_unary_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::corpus_output::tool_unary_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.06s
+
+
+        PASS [   0.074s] rig::anthropic anthropic::cassette::corpus_output::prompted_unary_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::corpus_output::prompted_unary_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::corpus_output::prompted_unary_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.06s
+
+
+        PASS [   0.073s] rig::anthropic anthropic::cassette::corpus_output::tool_under_none_degrades_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::corpus_output::tool_under_none_degrades_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::corpus_output::tool_under_none_degrades_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.06s
+
+
+        PASS [   0.074s] rig::anthropic anthropic::cassette::corpus_output::tool_choice_specific_output_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::corpus_output::tool_choice_specific_output_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::corpus_output::tool_choice_specific_output_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.06s
+
+
+        PASS [   0.077s] rig::anthropic anthropic::cassette::corpus_output::prompted_with_real_tool_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::corpus_output::prompted_with_real_tool_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::corpus_output::prompted_with_real_tool_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.07s
+
+
+        PASS [   0.076s] rig::anthropic anthropic::cassette::corpus_output::tool_with_real_tool_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::corpus_output::tool_with_real_tool_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::corpus_output::tool_with_real_tool_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.06s
+
+
+        PASS [   0.083s] rig::anthropic anthropic::cassette::corpus_output::prompted_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::corpus_output::prompted_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::corpus_output::prompted_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.07s
+
+
+        PASS [   0.104s] rig::anthropic anthropic::cassette::corpus_output::tool_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::corpus_output::tool_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::corpus_output::tool_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.10s
+
+
+------------
+     Summary [   0.105s] 10 tests run: 10 passed, 529 skipped

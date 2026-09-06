@@ -1,0 +1,12 @@
+   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.68s
+    Starting 7 tests across 116 binaries (8136 skipped)
+        PASS [   3.601s] rig::anthropic anthropic::cassette::ecs_raw::hooks_observe_raw_blocking
+        PASS [   3.603s] rig::anthropic anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_blocking
+        PASS [   3.636s] rig::anthropic anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_blocking
+        PASS [   3.723s] rig::anthropic anthropic::cassette::ecs_raw::hooks_observe_raw_streamed
+        PASS [   3.799s] rig::anthropic anthropic::cassette::ecs_raw::retried_turn_records_retried_attempt_raw_streamed
+        PASS [   3.876s] rig::anthropic anthropic::cassette::ecs_raw::streamed_final_carries_final_turn_raw
+        PASS [   3.880s] rig::anthropic anthropic::cassette::ecs_raw::multi_turn_tool_run_records_distinct_raw_streamed
+------------
+     Summary [   3.881s] 7 tests run: 7 passed, 8136 skipped

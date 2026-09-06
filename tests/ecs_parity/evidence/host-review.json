@@ -1,0 +1,75 @@
+{
+  "execution_report": "tests/ecs_parity/evidence/host-report.json",
+  "final_runs": {
+    "native": "646b1818d304750002201c14295a252a966ad63b467d936d2ac834ad93d929b0.json",
+    "original": "5ba5c6ca56026535842cba0a669835338cb68d6aca71ae8872ab5b739ae16e99.json"
+  },
+  "findings": [],
+  "limits": [
+    "Single-active-run application gates; arbitrary concurrent agent schedules not established.",
+    "Unserved legacy bindrefusal maps to actual native rejection before issuance; no handler/record, exact error kind, internal APIs differ.",
+    "Completion-call request metadata unused; native note precedes assembly, no prepared-request observation claim.",
+    "Combined startup/settled control releases both permits together; standalone settled control independently holds settled acknowledgement.",
+    "Full inventory/feature matrix, network barrier, interruption/performance programme, aggregate verification, publication and CI remain unfinished."
+  ],
+  "negative_control": "tests/ecs_parity/evidence/host-gate-mutation.json",
+  "result": "final scoped pass",
+  "reviewed_implementation": [
+    {
+      "path": "tests/providers/anthropic/cassette/ecs_host.rs",
+      "sha256": "19a231aeb01df8c3395e51e0c345125ebb0b727b191e6789f626530f655870f4"
+    },
+    {
+      "path": "tests/providers/anthropic/cassette/ecs_host/policies.rs",
+      "sha256": "c27ecf0654f011588d45c4dfc8698c8c679da3ad3f380f4718b37f3f2494eddf"
+    },
+    {
+      "path": "tests/providers/anthropic/cassette/ecs_host/tests.rs",
+      "sha256": "fa49a726bbabdc678c491d7b3b44276d1e62b8c01e600fd1751da3bb18155a82"
+    },
+    {
+      "path": "tests/providers/anthropic/cassette/corpus_host.rs",
+      "sha256": "61cd266e80d84541b8288e31117e9a0612224d151e337ee8b11b487b171817a8"
+    },
+    {
+      "path": "tests/common/ecs_agent.rs",
+      "sha256": "3a571cf4f3cffdaca132d98cd57a9ad3cb006e5959294f2f560b3d8b48f71268"
+    },
+    {
+      "path": "tests/common/ecs_goldens.rs",
+      "sha256": "c4e37b31e1fbe9b87161b786137b90de8d39233bdcfa6d667764adaa6c7c7c0d"
+    },
+    {
+      "path": "tests/ecs_parity/host-contract.md",
+      "sha256": "e7fa3331c13a99cc751f48c5ada5a8b36400afc462eb53550f7e2a977c304496"
+    }
+  ],
+  "reviewer": "/root/host_review",
+  "schema": 1,
+  "scope": "ten host custom-effect cells and six-configuration synthetic acknowledgement barrier control",
+  "supplemental_verification": [
+    {
+      "command": "cargo clippy --locked -p rig --test anthropic -- -D warnings",
+      "log": "tests/ecs_parity/evidence/logs/64e1b96aa5aa21bec6ff7f3e085c1c89f89e460b98cc325ace12ccf0842f2986.log",
+      "sha256": "64e1b96aa5aa21bec6ff7f3e085c1c89f89e460b98cc325ace12ccf0842f2986"
+    },
+    {
+      "command": "RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig --test anthropic -E 'test(::ecs_host::) | test(::ecs_memory::) | test(::ecs_serving::) | test(::ecs_hooks::) | test(ecs_agent::tests::) | test(ecs_goldens::tests::) | test(cassette_files_match_registered_scenarios) | test(cassettes_do_not_contain_obvious_secrets)' --no-fail-fast --retries 0",
+      "log": "tests/ecs_parity/evidence/logs/046d514fb78fdae42af65e07dc23b950fe1c24cabb07d62bb55f3912acdf22b4.log",
+      "sha256": "046d514fb78fdae42af65e07dc23b950fe1c24cabb07d62bb55f3912acdf22b4"
+    },
+    {
+      "command": "cargo xtask check-test-layout",
+      "log": "tests/ecs_parity/evidence/logs/88cdbd2fb92f4203cd5355ef6327511f9871108f8a15c27505e2fb76347e5815.log",
+      "sha256": "88cdbd2fb92f4203cd5355ef6327511f9871108f8a15c27505e2fb76347e5815"
+    }
+  ],
+  "verification_counts": {
+    "final_controls": 57,
+    "native_cells": 10,
+    "negative_mutation_tests_rejected": 1,
+    "original_cells": 10,
+    "synthetic_ack_configurations": 6,
+    "synthetic_ack_test": 1
+  }
+}

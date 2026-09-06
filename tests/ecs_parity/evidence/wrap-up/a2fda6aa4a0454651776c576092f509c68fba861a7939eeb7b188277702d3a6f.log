@@ -1,0 +1,25 @@
+    Checking rustls-webpki v0.103.13
+   Compiling rustls v0.23.39
+    Checking rig-ecs v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-ecs)
+    Checking tokio-rustls v0.26.4
+    Checking rustls-platform-verifier v0.7.0
+    Checking ureq v3.3.0
+    Checking hyper-rustls v0.27.9
+    Checking tonic v0.12.3
+    Checking mongodb v3.7.0
+    Checking neo4rs v0.8.0
+    Checking bollard-buildkit-proto v0.7.0
+    Checking reqwest v0.13.4
+    Checking httpmock v0.8.3
+    Checking qdrant-client v1.17.0
+    Checking bollard-stubs v1.52.1-rc.29.1.3
+    Checking opentelemetry-http v0.32.0
+    Checking reqwest-middleware v0.5.2
+    Checking rig-reqwest v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-reqwest)
+    Checking rmcp v2.2.0
+    Checking rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+    Checking bollard v0.20.2
+    Checking reqwest-retry v0.9.1
+    Checking opentelemetry-otlp v0.32.0
+    Checking testcontainers v0.27.3
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 26.53s

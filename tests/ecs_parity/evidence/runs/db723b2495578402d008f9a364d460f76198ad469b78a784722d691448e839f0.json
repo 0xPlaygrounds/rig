@@ -1,0 +1,81 @@
+{
+  "batch": "6f2e208d39a7951173c8328985b7c000eda574115035df7b5858e374fdc7ed38.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "anthropic",
+    "-E",
+    "(binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_causal::completion_concurrent_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_causal::completion_serial_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_causal::completion_streamed_effect_log_is_the_golden_fixture))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "99b02d58c07138b55f7df51eaae67a6e77fde044ced544281f1dce6614f9a38d.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "anthropic",
+    "-E",
+    "(binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_causal::completion_concurrent_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_causal::completion_serial_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_causal::completion_streamed_effect_log_is_the_golden_fixture))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "b67f0e2339ef26943fc4b70d7c112d714e0d51d067842c7db720f20854920b8a.log",
+    "listing_stdout": "c7defbffde43a083a9aa4927e509135873e03952a95009cd4133c8d8322f42fb.json",
+    "stderr": "1d469dc7adfa76e6efea51c85cd41e6dde0667f58280ef4f01dba5cbe6d156b2.log",
+    "stdout": "24cac2f2157c8404011020965ea1787e2aef62c2161df687c58218c09c04b862.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_causal::completion_serial_effect_log_is_the_golden_fixture",
+      "seconds": 0.369166292,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_causal::completion_concurrent_effect_log_is_the_golden_fixture",
+      "seconds": 0.369365791,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_causal::completion_streamed_effect_log_is_the_golden_fixture",
+      "seconds": 0.563510375,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "d6fcf449e6d36747aa535a57cdba590b086582f2c20dec43acd80d15b7b8fdaf.json",
+  "source_index_after": "d6fcf449e6d36747aa535a57cdba590b086582f2c20dec43acd80d15b7b8fdaf.json",
+  "status": "executed",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

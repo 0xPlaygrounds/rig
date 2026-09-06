@@ -1,0 +1,89 @@
+{
+  "artifacts": [
+    {
+      "path": "tests/ecs_parity/workspace-target-inventory.json",
+      "sha256": "99a9c69a300c6b973aa297251ba9cae0be274ea8be256eaf0e2f700fcfc4494b"
+    },
+    {
+      "path": "tests/ecs_parity/root-target-registration.json",
+      "sha256": "957b6f90dbb89ddf80d0570abefbb6053637a31f247dbdfa5f5b920073a55c66"
+    },
+    {
+      "path": "tests/ecs_parity/root-partial-listing-negative.json",
+      "sha256": "93c339911cfd256582ca3c757c606f50bdd302122b1e4d7a34d5776a7f474331"
+    }
+  ],
+  "candidate_root": {
+    "compiled_testcases": 4253,
+    "expected_targets": 35,
+    "ignored_testcases": 199,
+    "listed_targets": 35
+  },
+  "findings": [
+    {
+      "disposition": "Included both kinds when Cargo metadata test flag is true; added omission/acceptance regression; final independent review passed",
+      "finding": "Explicit test=true examples and benches participate in default nextest listings",
+      "severity": "P2",
+      "validation": "Reviewer constructed a dependency-free Rust crate and observed actual lib/example/bench registrations"
+    }
+  ],
+  "independent_artifact_verification": "Reviewer checked all five referenced raw metadata/listing artifact hashes using Rust",
+  "inventory": {
+    "all_targets": 264,
+    "workspace_packages": 93
+  },
+  "limits": [
+    "Target registration only; no command authentication, conditional-source, feature-matrix, assertion or execution coverage claim",
+    "Inventory retains declared feature inputs; finite audited execution matrix and full CI coverage guard remain required"
+  ],
+  "negative_control": {
+    "actual_exit_code": 1,
+    "command": "cargo xtask parity-targets check . rig /tmp/rig-candidate-parity-targets.json tests/ecs_parity/root-partial-listing-negative.json",
+    "expected_exit_code": 1,
+    "listed_targets": 3,
+    "missing_targets": 32,
+    "raw_listing": "See listing_artifact in the retained negative report",
+    "result": "rejected as intended"
+  },
+  "result": "final scoped pass",
+  "reviewed_sources": [
+    {
+      "path": "xtask/src/parity/targets.rs",
+      "sha256": "f86e512037ef9ad5af716f9cf7cc61da3828a6610842b6564daface2a4b462b6"
+    },
+    {
+      "path": "xtask/src/parity/targets/tests.rs",
+      "sha256": "2cff1febd70b853409d6e9eef2a968e49cf2c10d7315551b2ea007e54c4dd359"
+    },
+    {
+      "path": "xtask/src/parity.rs",
+      "sha256": "aff970dfb8bdaa4b82a96e9401ebdca007b22f18044232c79a5afffb1c1bd32f"
+    },
+    {
+      "path": "xtask/src/main.rs",
+      "sha256": "30aecc69d0009561dedd3dc893ce209ecbcefd6055f987e4e580de849cce68d5"
+    },
+    {
+      "path": "tests/README.md",
+      "sha256": "c7a5c90c4429413b45f77d9124ce1444ff657c2e2d126b163e14fc032832fd37"
+    }
+  ],
+  "reviewer": "/root/target_inventory_review",
+  "schema": 1,
+  "scope": "Independent workspace target enumeration and package-specific nextest target registration guard",
+  "tests_passed": 40,
+  "verification": [
+    {
+      "command": "cargo test --locked -p xtask",
+      "log": "tests/ecs_parity/evidence/logs/0b60990f2f02b6e66c85fc56c3560c715ed48865ebee5a77545c7c0e6c057eee.log",
+      "result": "passed",
+      "sha256": "0b60990f2f02b6e66c85fc56c3560c715ed48865ebee5a77545c7c0e6c057eee"
+    },
+    {
+      "command": "cargo clippy --locked -p xtask --all-targets -- -D warnings",
+      "log": "tests/ecs_parity/evidence/logs/4392a37b1018ca6d03a99658c4f39182eee1a85ac6f273420d3f9fd693961472.log",
+      "result": "passed",
+      "sha256": "4392a37b1018ca6d03a99658c4f39182eee1a85ac6f273420d3f9fd693961472"
+    }
+  ]
+}

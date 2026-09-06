@@ -1,0 +1,129 @@
+{
+  "batch": "fcc06436cd908c4fdcb7345059812ba94deaac6625b33f4aa09ea83e7cf6c21f.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/private/tmp/rig-superset-baseline/target",
+    "--test",
+    "anthropic",
+    "-E",
+    "(binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::clear_at_settled_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::clear_at_settled_two_runs_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::clear_at_start_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::clear_at_start_two_runs_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::failing_append_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::failing_append_streamed_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::history_bypass_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::host_bus_memory_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::serial_two_tools_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::two_runs_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::two_runs_streamed_effect_log_is_the_golden_fixture))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "4fff112494c1fe842346730283027469807a0af192fae0e60fd167d12687ae25.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/private/tmp/rig-superset-baseline/target",
+    "--test",
+    "anthropic",
+    "-E",
+    "(binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::clear_at_settled_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::clear_at_settled_two_runs_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::clear_at_start_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::clear_at_start_two_runs_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::failing_append_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::failing_append_streamed_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::history_bypass_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::host_bus_memory_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::serial_two_tools_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::two_runs_effect_log_is_the_golden_fixture)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::corpus_memory::two_runs_streamed_effect_log_is_the_golden_fixture))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "02dedfe9fc75225757d8c15559f527f1cd62505f0d03c6bcced2dda978514a83.log",
+    "listing_stdout": "da85233a7297214f60a84dac265089776496180c4e93527c94968687c4df3ae4.json",
+    "stderr": "79f4605f55262b41b89602b90324c81605191cb8c63d09688f23c9e371a7429a.log",
+    "stdout": "0890f10a0bd5f90134e05b2b25abe517ceedc4b55a9f44465d664e866e3064c2.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::corpus_memory::clear_at_start_effect_log_is_the_golden_fixture",
+      "seconds": 0.079058833,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::corpus_memory::clear_at_settled_effect_log_is_the_golden_fixture",
+      "seconds": 0.072947292,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::corpus_memory::two_runs_effect_log_is_the_golden_fixture",
+      "seconds": 0.080212542,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::corpus_memory::two_runs_streamed_effect_log_is_the_golden_fixture",
+      "seconds": 0.089967708,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::corpus_memory::clear_at_settled_two_runs_effect_log_is_the_golden_fixture",
+      "seconds": 0.08063375,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::corpus_memory::clear_at_start_two_runs_effect_log_is_the_golden_fixture",
+      "seconds": 0.076808583,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::corpus_memory::history_bypass_effect_log_is_the_golden_fixture",
+      "seconds": 0.079154041,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::corpus_memory::host_bus_memory_effect_log_is_the_golden_fixture",
+      "seconds": 0.079802667,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::corpus_memory::serial_two_tools_effect_log_is_the_golden_fixture",
+      "seconds": 0.098749541,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::corpus_memory::failing_append_effect_log_is_the_golden_fixture",
+      "seconds": 0.071159709,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::corpus_memory::failing_append_streamed_effect_log_is_the_golden_fixture",
+      "seconds": 0.08488775,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "64293ec9a51357865a243a2733535a437f0845e84fa4c7ac087860d31384b9b7.json",
+  "source_index_after": "64293ec9a51357865a243a2733535a437f0845e84fa4c7ac087860d31384b9b7.json",
+  "status": "executed",
+  "surface": "original",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

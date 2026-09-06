@@ -37,6 +37,20 @@ The fold is the only constructor of a `CompletionRequest` in the crate (`tests/c
 | the text-answer reprompt | ``Provide your final answer by calling the `{name}` tool with the structured result as its arguments, not as plain text.`` — a plain user message | `mock_output_tool_text_reprompt` `/records/1/…/chat_history/3` |
 | the missing-field reprompt | ``The `{name}` arguments were missing required field(s): {a, b}. Call `{name}` again with every required field.`` — a tool result on the call (`call`, `provider`, `name`, one text part) | `mock_output_tool_missing_field_reprompt` `/records/1/…/chat_history/3` |
 
+`OutputToolConfig` overrides the default name and description above and can
+disable tool-mode preamble augmentation. Settings resolve run first, then agent;
+an explicit default component on the run resets the agent's customization.
+Without a configured name, automatic collision-safe naming still applies.
+With a schema, a reserved name commits `Tool` mode regardless of the requested
+mode or tool choice. A granted tool using a reserved or already minted name
+causes `Failed(OutputToolCollision)` before provider dispatch. Later configuration
+changes cannot rename an already minted output tool. Without a schema,
+configuration alone does not advertise a tool. Scene persistence and replay
+identity include all three configuration fields. These contracts are exercised
+by `tests/run_output_tool_config.rs`; the root extractor-usage cassette counterparts
+exercise the original `submit` name, extraction description, and unaugmented
+preamble through real provider adapters.
+
 ## 3. Output modes
 
 `resolve_output(mode, has_schema, granted_tools, callable, provider_composes_native)`, never `Auto`:
@@ -122,6 +136,35 @@ A call to a granted tool is an effect entity `ChildOf` the turn; the turn's tool
 | a patched call | the record holds the patched arguments, history the model's | `anthropic_hooks_patch_tool_args` `/records/1/kind/args` (`{"x":40,"y":2}`) vs `/records/2/…/chat_history/2` (`{17, 25}`) |
 
 ### 8.2 Invalid calls beside the batch
+
+For an active streamed completion, `discover_streamed_invalid_calls` publishes
+an unknown delivered `ToolName` before EOF. A system in `RigSet::Judge` can
+write its `Resolution`. The call retains the actual delivered assistant prefix
+and event position. Effective failure, including exhausted retry, takes effect
+immediately. Repair, Ignore, Skip and retry with budget wait for the producer's
+real completion; its usage enters the run total once. Repair follows core block
+assembly to the final provider identity. Skip/retry retain the early prefix,
+not arguments delivered after the decision. Ignore suppresses later names on
+that open call but does not suppress a later reuse of the same block identifier.
+The controlled tests in `run_stream_boundary` verify these boundaries, including
+completed tool blocks without prior name deltas and names buffered with EOF.
+Discovery stops at the first retained stream error: later name events cannot
+replace that earlier provider failure or trigger invalid-call policy. A name
+delivered before the error remains actionable; a deferred repair does not wait
+for the discarded event tail after that error.
+They are synthetic scheduling evidence, separate from provider-cassette parity.
+
+`ToolAccess` separates executable name-to-handler bindings and allowed names from
+the actual advertisements. Configure it on the run or agent; `None` bindings use
+advertised handlers, `None` permissions use executable names, and an explicit
+empty set denies ordinary tools without changing the provider request. Explicit
+bindings may reference unadvertised handlers. Assembly saves the effective
+snapshot on each turn; changing the run policy affects later turns. That
+snapshot exposes executable and allowed diagnostic sets after a failure and
+survives a scene. Reserved output names cannot collide with execution bindings;
+automatically selected output names avoid both bindings and advertisements.
+Replay identity includes explicit run/agent access and handler descriptors;
+required rows also retain dependencies from saved turns after a policy change.
 
 `Resolution` gains its payloads here: `Retry { feedback }`, `Repair { to }`, `Skip { reason }`. Written by a user system before `Materialise` (§9), or by `resolve_invalid_defaults` from `InvalidCalls.unhandled` (`Fail` / `Ignore`).
 
@@ -328,7 +371,15 @@ fresh ID is minted or recorded, and dispatch returns a request error. Existing
 reserved IDs below that sentinel can still resume. This prevents ID reuse; it
 does not make an unanswered external write safe to repeat.
 
-Completed stream effects retain `Streamed` events, text and terminal outcome
+`Streamed.errors` retains every error report and its zero-based position among
+all stream items, even after the first terminal outcome and without a recorder
+or kept event bytes. This is live consumer evidence; `Streamed.outcome` and
+`EffectOutcome` still carry the first folded outcome. Consumers that require
+error-free drainage through EOF must inspect errors as well as that outcome.
+Policy-visible replay reconstructs the same error observations when the log kept
+the error items. A folded-only log does not acquire omitted error evidence.
+
+Completed stream effects retain `Streamed` events, errors, text and terminal outcome
 through JSON scenes and load without serving again (`bus_scene.rs`). The
 required nullable `SceneEffect.streamed` field distinguishes no state from
 an omitted prefix. Load is fallible: unfinished streams with observed progress

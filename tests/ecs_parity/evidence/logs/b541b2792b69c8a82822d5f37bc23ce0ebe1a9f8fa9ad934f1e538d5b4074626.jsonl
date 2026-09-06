@@ -1,0 +1,10 @@
+{"type":"suite","event":"started","test_count":4,"nextest":{"crate":"rig","test_binary":"gemini","kind":"test"}}
+{"type":"test","event":"started","name":"rig::gemini$gemini::cassette::agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn"}
+{"type":"test","event":"started","name":"rig::gemini$gemini::cassette::agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message"}
+{"type":"test","event":"started","name":"rig::gemini$gemini::cassette::prompt_caching::live_cache_economics"}
+{"type":"test","event":"started","name":"rig::gemini$gemini::live::image_tool_result::test_gemini_agent_with_image_tool_result_e2e"}
+{"type":"suite","event":"ok","passed":0,"failed":0,"ignored":2,"measured":0,"filtered_out":368,"exec_time":0,"nextest":{"crate":"rig","test_binary":"gemini","kind":"test"}}
+{"type":"suite","event":"started","test_count":4,"nextest":{"crate":"rig","test_binary":"gemini","kind":"test"}}
+{"type":"test","event":"ok","name":"rig::gemini$gemini::cassette::agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn","exec_time":0.122621708}
+{"type":"test","event":"ok","name":"rig::gemini$gemini::cassette::agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message","exec_time":0.127395292}
+{"type":"suite","event":"ok","passed":2,"failed":0,"ignored":2,"measured":0,"filtered_out":368,"exec_time":0.250017,"nextest":{"crate":"rig","test_binary":"gemini","kind":"test"}}

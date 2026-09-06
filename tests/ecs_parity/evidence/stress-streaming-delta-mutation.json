@@ -1,0 +1,30 @@
+{
+  "caught": true,
+  "command": [
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--test",
+    "gemini",
+    "-E",
+    "test(::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish)",
+    "--no-fail-fast",
+    "--retries",
+    "0"
+  ],
+  "exit_code": 100,
+  "expected_tests": 1,
+  "limits": "One actual stream observation fault; not all ordering, grouping or consumer-drain faults.",
+  "log": "tests/ecs_parity/evidence/logs/cf0687985a4346d6259609cd6bb1f8a23fe41b44a9d9769f756d67b39e54ce81.log",
+  "log_sha256": "cf0687985a4346d6259609cd6bb1f8a23fe41b44a9d9769f756d67b39e54ce81",
+  "mode": "replay",
+  "mutated_sha256": "61571a024186fb32ae9356c4725df37a39228c857f99f0ebc5e14a31a0ee3ab9",
+  "mutation": "misclassify actual published text deltas as tool-call deltas",
+  "rejected_by": "original streamed text delta presence assertion",
+  "schema": 1,
+  "source": "tests/providers/gemini/cassette/ecs_stress/streaming.rs",
+  "source_before_sha256": "9ed5625655747584ac3e671087da378142c1703a0945fef66d13383de38b3a91",
+  "source_restored_sha256": "9ed5625655747584ac3e671087da378142c1703a0945fef66d13383de38b3a91"
+}

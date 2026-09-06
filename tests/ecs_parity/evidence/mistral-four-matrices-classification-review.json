@@ -1,0 +1,716 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_nested_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_nested_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_parallel_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_zero_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_zero_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_nested_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_nested_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_parallel_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_parallel_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_zero_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_zero_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_nested_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_nested_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_parallel_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_zero_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_zero_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_nested_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_nested_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_parallel_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_parallel_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_zero_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_zero_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_complete_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_complete_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_low_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_low_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_mid_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_mid_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_complete_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_complete_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_low_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_low_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_mid_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_mid_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_complete_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_complete_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_low_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_low_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_mid_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_mid_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_complete_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_complete_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_low_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_low_model"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_mid_agent"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream."
+      },
+      "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_mid_model"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::blocking_ministral_3b_normalized_parallel_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::blocking_ministral_3b_normalized_single_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::blocking_ministral_3b_normalized_text"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::blocking_ministral_3b_raw_parallel_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::blocking_ministral_3b_raw_single_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::blocking_ministral_3b_raw_text"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::blocking_mistral_small_normalized_parallel_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::blocking_mistral_small_normalized_single_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::blocking_mistral_small_normalized_text"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::blocking_mistral_small_raw_parallel_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::blocking_mistral_small_raw_single_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::blocking_mistral_small_raw_text"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::streaming_ministral_3b_normalized_parallel_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::streaming_ministral_3b_normalized_single_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::streaming_ministral_3b_normalized_text"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::streaming_ministral_3b_raw_parallel_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::streaming_ministral_3b_raw_single_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::streaming_ministral_3b_raw_text"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::streaming_mistral_small_normalized_parallel_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::streaming_mistral_small_normalized_single_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::streaming_mistral_small_normalized_text"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::streaming_mistral_small_raw_parallel_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::streaming_mistral_small_raw_single_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 transport/surface combinations call provider completion/stream APIs; supplied constructed history does not involve agent execution."
+      },
+      "id": "rig::mistral::mistral::history_roundtrip_matrix::streaming_mistral_small_raw_text"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::blocking_ministral_3b_roomy_plain_one"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::blocking_ministral_3b_roomy_plain_two"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::blocking_ministral_3b_roomy_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::blocking_ministral_3b_tiny_plain_one"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::blocking_ministral_3b_tiny_plain_two"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::blocking_ministral_3b_tiny_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::blocking_mistral_small_roomy_plain_one"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::blocking_mistral_small_roomy_plain_two"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::blocking_mistral_small_roomy_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::blocking_mistral_small_tiny_plain_one"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::blocking_mistral_small_tiny_plain_two"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::blocking_mistral_small_tiny_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::streaming_ministral_3b_roomy_plain_one"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::streaming_ministral_3b_roomy_plain_two"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::streaming_ministral_3b_roomy_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::streaming_ministral_3b_tiny_plain_one"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::streaming_ministral_3b_tiny_plain_two"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::streaming_ministral_3b_tiny_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::streaming_mistral_small_roomy_plain_one"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::streaming_mistral_small_roomy_plain_two"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::streaming_mistral_small_roomy_tool"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::streaming_mistral_small_tiny_plain_one"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::streaming_mistral_small_tiny_plain_two"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "All24 cases call raw_completion/model.stream and inspect terminal metadata; tool cases extract only Adder definition."
+      },
+      "id": "rig::mistral::mistral::terminal_metadata_matrix::streaming_mistral_small_tiny_tool"
+    }
+  ],
+  "kind": "classification",
+  "limits": "Classification only; fixture/assertion inventory and native parity separately tracked.",
+  "reviewer": "/root/parity_workflow_review",
+  "rule": "96explicit registered cells and actual enums/helper paths reviewed against compiled listing:24agent,72shared_provider. Names are identifiers, not classification evidence. All cassette-backed; no ignored/live/synthetic exceptions.",
+  "schema": 1,
+  "sources": {
+    "tests/common/cassettes.rs": "0d26d322265b22088f9fb873b3ee0f8a07bb2bef1ac5ca4f16bdda3c6ac754a4",
+    "tests/common/support.rs": "a0f495e031171f27e1de754fb334e336e2461b44cfc9202bc17499e004d2e26a",
+    "tests/providers/mistral/history_roundtrip_matrix.rs": "d5d3b588e04174c3fa0d54aeb8b951e6ce8a3213e9155634f6e31e428ab23b0b",
+    "tests/providers/mistral/support.rs": "f4694fa38f8f672851b1e31952e529815a2beee59ea1f458b479634049c97016",
+    "tests/providers/mistral/terminal_metadata_matrix.rs": "f1772d4e9040d8bc70bcc0f8743b8e72e97b7186d47bdf0a04ae33b504d104e3",
+    "tests/providers/mistral/tool_lifecycle_matrix.rs": "e03685375f01ae7f34c651c6be6db370df65b94f439b52e2e0f83c4ce26e9a86",
+    "tests/providers/mistral/tool_truncation_matrix.rs": "3cbe04febb20f370ead89ed5bab9f4d7003dab5fa5c0619112129db61ea59f1b"
+  },
+  "status": "accepted"
+}

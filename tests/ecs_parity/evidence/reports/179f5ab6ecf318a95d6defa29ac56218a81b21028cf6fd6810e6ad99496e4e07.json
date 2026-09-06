@@ -1,0 +1,11 @@
+{
+  "assertion_review": "required separately",
+  "batch": "lifecycle",
+  "cells": 15,
+  "runs": {
+    "native": "527bae8311b5ead2676f14c16bfa1df6a3ef652b2287d0cf1876e4b27cf241f6.json",
+    "original": "4f17881d3f114ba8426952a57d029a721b34db1878a766b640c3749bcd9019c5.json"
+  },
+  "schema": 2,
+  "status": "executed"
+}

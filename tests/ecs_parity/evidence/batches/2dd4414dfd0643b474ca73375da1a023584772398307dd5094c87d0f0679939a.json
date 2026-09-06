@@ -1,0 +1,82 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_output::tool_unary_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_output::tool_unary_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_output::tool_streamed_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_output::tool_streamed_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_output::prompted_unary_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_output::prompted_unary_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_output::prompted_streamed_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_output::prompted_streamed_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_output::tool_with_real_tool_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_output::tool_with_real_tool_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_output::prompted_with_real_tool_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_output::prompted_with_real_tool_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_output::tool_choice_specific_output_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_output::tool_choice_specific_output_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_output::tool_choice_required_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_output::tool_choice_required_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_output::tool_under_none_degrades_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_output::tool_under_none_degrades_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_output::tool_thinking_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_output::tool_thinking_effect_log_is_the_golden_fixture"
+    }
+  ],
+  "features": [],
+  "fixtures": [
+    "tests/cassettes/anthropic/corpus_output/tool_unary.yaml",
+    "crates/rig-verify/fixtures/anthropic_output_tool_unary.effects.json",
+    "tests/cassettes/anthropic/corpus_output/tool_streamed.yaml",
+    "crates/rig-verify/fixtures/anthropic_output_tool_streamed.effects.json",
+    "tests/cassettes/anthropic/corpus_output/prompted_unary.yaml",
+    "crates/rig-verify/fixtures/anthropic_output_prompted_unary.effects.json",
+    "tests/cassettes/anthropic/corpus_output/prompted_streamed.yaml",
+    "crates/rig-verify/fixtures/anthropic_output_prompted_streamed.effects.json",
+    "tests/cassettes/anthropic/corpus_output/tool_with_real_tool.yaml",
+    "crates/rig-verify/fixtures/anthropic_output_tool_with_real_tool.effects.json",
+    "tests/cassettes/anthropic/corpus_output/prompted_with_real_tool.yaml",
+    "crates/rig-verify/fixtures/anthropic_output_prompted_with_real_tool.effects.json",
+    "tests/cassettes/anthropic/corpus_output/tool_choice_specific_output.yaml",
+    "crates/rig-verify/fixtures/anthropic_output_tool_choice_specific_output.effects.json",
+    "tests/cassettes/anthropic/corpus_output/tool_choice_required.yaml",
+    "crates/rig-verify/fixtures/anthropic_output_tool_choice_required.effects.json",
+    "tests/cassettes/anthropic/corpus_output/tool_under_none_degrades.yaml",
+    "crates/rig-verify/fixtures/anthropic_output_tool_under_none_degrades.effects.json",
+    "tests/cassettes/anthropic/corpus_output/tool_thinking.yaml",
+    "crates/rig-verify/fixtures/anthropic_output_tool_thinking.effects.json"
+  ],
+  "name": "output",
+  "original_sources": [
+    "tests/providers/anthropic/cassette/corpus_output.rs",
+    "tests/common/goldens.rs"
+  ],
+  "package": "rig",
+  "schema": 1,
+  "semantic_skip_markers": [
+    "SKIP",
+    "skipping"
+  ],
+  "targets": [
+    "anthropic"
+  ]
+}

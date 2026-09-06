@@ -1,0 +1,162 @@
+{
+  "execution_report": "tests/ecs_parity/evidence/serving-report.json",
+  "final_runs": {
+    "native": "02bdc3129b4929eb80db38ffe9bab16be8085716a56054a3d6d0f8ff21c76b91.json",
+    "original": "d0007ef1c569150738d1f243095bcc8fb24239a22e054e5370c4050d729f0237.json"
+  },
+  "findings": [
+    {
+      "correction": "Native Streamed.errors publishes reports/positions independently of recording in live and replay paths; scene/reflection retain them, helper checks actual public state. Original firstfold/recording semantics unchanged.",
+      "disposition": "fixed",
+      "finding": "Recorder-only error check missed late errors when event retention disabled, weakening original EOF collectors.",
+      "severity": "P2",
+      "tests": [
+        "error_after_final_without_recorded_events_is_not_success",
+        "stream_error_observation_does_not_depend_on_recording",
+        "errors_before_and_after_final_keep_their_positions_and_first_outcome"
+      ]
+    }
+  ],
+  "limits": [
+    "Native command_capacity is intake-per-pass, not legacy queue capacity; identical backpressure/memory bounds unproven.",
+    "Dispatch order is not an overlap/performance proof.",
+    "Helper checks whole App; reuse following failed streamed run remains outside scoped success consumers.",
+    "Full inventory/provider-feature matrix, network barrier, interruption/performance programme, aggregate workspace verification, publication and CI remain incomplete."
+  ],
+  "result": "final scoped pass after P2 correction",
+  "reviewed_implementation": [
+    {
+      "path": "tests/providers/anthropic/cassette/ecs_serving.rs",
+      "sha256": "08f346b310f3c2d2fbc6df76d8bb9ff9067a006cb1d955375efc29b89af72714"
+    },
+    {
+      "path": "tests/providers/anthropic/cassette/corpus_serving.rs",
+      "sha256": "e20a191e5f6234d67b169d45b68e1b0899f0297b4d09f82b147b93253af128e8"
+    },
+    {
+      "path": "tests/common/ecs_agent.rs",
+      "sha256": "3a571cf4f3cffdaca132d98cd57a9ad3cb006e5959294f2f560b3d8b48f71268"
+    },
+    {
+      "path": "tests/common/ecs_agent/tests.rs",
+      "sha256": "71ac9856f22a59c175cd8d6925ac1c999cdd7e5fdbf6480690d99cd44f3c170e"
+    },
+    {
+      "path": "tests/ecs_parity/serving-contract.md",
+      "sha256": "43f6175ebec1edbd37a91dc3ca5957718d01536df624695e859a236938fde217"
+    },
+    {
+      "path": "crates/rig-ecs/src/bus/effect.rs",
+      "sha256": "9b1aadceacea8d1e57841fd3ea75094633ed11249e81a2f294c6774f12ddc84b"
+    },
+    {
+      "path": "crates/rig-ecs/src/bus/collect.rs",
+      "sha256": "8f4aeb45a7d5a15baf6816fb660d0cf3fc3c380aedebfa16aebd2faa2b15175e"
+    },
+    {
+      "path": "crates/rig-ecs/src/bus/delivery.rs",
+      "sha256": "b00657528029ec35b26e1d49dcc10af2f23252ff94a1ea2e4db0865694bb8657"
+    },
+    {
+      "path": "crates/rig-ecs/src/bus/scene.rs",
+      "sha256": "cdea2e9419c9bcf33ea493d45b5270aa3eae4a0ac581e2848035204a5b4e20ed"
+    },
+    {
+      "path": "crates/rig-ecs/src/bus/reflect.rs",
+      "sha256": "dd44a74eeeb7517dbb37d0d0ee73b52948a2d3acc76ae3f60f4f5068b23bbaaa"
+    },
+    {
+      "path": "crates/rig-ecs/src/reflect.rs",
+      "sha256": "7f717f3b1f4c39f03b923657664e0887ea7cdc4370e97c057e0b7c56e0a3d2fb"
+    },
+    {
+      "path": "crates/rig-ecs/tests/bus_delivery.rs",
+      "sha256": "fb307e421aad949cf9c89175cc822b23de337093bd3fea96cc45db54697f699e"
+    },
+    {
+      "path": "crates/rig-ecs/tests/reflect_roundtrip.rs",
+      "sha256": "2be0d251766bbb78afc630aa5ad1628fc0f19a2f05e0d286d7cb0242a30cce2c"
+    },
+    {
+      "path": "crates/rig-ecs/CONTRACT.md",
+      "sha256": "aa779f5c8c6a7f925497e69966d94c115f4440672528f0753eac7014f203d7bd"
+    },
+    {
+      "path": "crates/rig-ecs/README.md",
+      "sha256": "05da452810047198e31eeafb2d89c0d6ceea8807aa0f5fcbcc1c54312695ec01"
+    }
+  ],
+  "reviewer": "/root/serving_review",
+  "runtime_regression_report": "tests/ecs_parity/evidence/stream-error-regression-report.json",
+  "runtime_regression_runs": {
+    "native": "de7f12e619de90304c3d8d64c95c026c0eea46e148fd6891fc0e204f3a37308f.json",
+    "original": "919cab3c8dbf9061445690c412f1b2e398d99fabf2d37ea0538bdb0d43783ce1.json"
+  },
+  "schema": 1,
+  "scope": "ten serving cells and native stream-error observation correction; source-bound execution regression over110 previously batched cells",
+  "supplemental_verification": [
+    {
+      "command": "cargo nextest run --locked -p rig-ecs --all-features --test bus_delivery --test bus_scene --test reflect_roundtrip --test reflect_scene --no-fail-fast --retries 0",
+      "log": "tests/ecs_parity/evidence/logs/331d468b78ba2e056bedc955b2d244a38337b934c7790c8e71f2bad9329bb34f.log",
+      "sha256": "331d468b78ba2e056bedc955b2d244a38337b934c7790c8e71f2bad9329bb34f"
+    },
+    {
+      "command": "cargo nextest run --locked -p rig-ecs --all-features --no-fail-fast --retries 0",
+      "log": "tests/ecs_parity/evidence/logs/057f312fe901848d935f90a860e3dc4a76d4f90c4fa13b29edb8964d4bbb096c.log",
+      "sha256": "057f312fe901848d935f90a860e3dc4a76d4f90c4fa13b29edb8964d4bbb096c"
+    },
+    {
+      "command": "cargo clippy --locked -p rig-ecs --all-features --all-targets -- -D warnings",
+      "log": "tests/ecs_parity/evidence/logs/4a881e7ac57bb88f3d808a95eec140798905b621e8a28ec3e208a883b704fecf.log",
+      "sha256": "4a881e7ac57bb88f3d808a95eec140798905b621e8a28ec3e208a883b704fecf"
+    },
+    {
+      "command": "cargo clippy --locked -p rig --test anthropic --test openai --test gemini -- -D warnings",
+      "log": "tests/ecs_parity/evidence/logs/494f30e1db11d4fd4a7be1b39a815bff0014541ca3ced79a804781e5d5d5fb67.log",
+      "sha256": "494f30e1db11d4fd4a7be1b39a815bff0014541ca3ced79a804781e5d5d5fb67"
+    },
+    {
+      "command": "RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig --test anthropic --test openai --test gemini -E 'test(ecs_agent::tests::)' --no-fail-fast --retries 0",
+      "log": "tests/ecs_parity/evidence/logs/b24b1f256cc5abec36813b1c9a4c563870b777b0e16db965acebc8be8b00cae2.log",
+      "sha256": "b24b1f256cc5abec36813b1c9a4c563870b777b0e16db965acebc8be8b00cae2"
+    },
+    {
+      "command": "RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig --test anthropic --test openai --test gemini -E 'test(::ecs_) | test(ecs_agent::tests::) | test(ecs_goldens::tests::) | test(cassette_files_match_registered_scenarios) | test(cassettes_do_not_contain_obvious_secrets)' --no-fail-fast --retries 0",
+      "log": "tests/ecs_parity/evidence/logs/284c4392cd1d16210d435d81cdf90084b1b2b76a28362b47d72123471cb432a5.log",
+      "sha256": "284c4392cd1d16210d435d81cdf90084b1b2b76a28362b47d72123471cb432a5"
+    },
+    {
+      "command": "cargo test --locked -p rig-ecs --no-default-features --lib",
+      "log": "tests/ecs_parity/evidence/logs/f601084dc587571e631fd00daaf03a4bef4568fb5967ce83eff00bf98ce43917.log",
+      "sha256": "f601084dc587571e631fd00daaf03a4bef4568fb5967ce83eff00bf98ce43917"
+    },
+    {
+      "command": "cargo check --locked -p rig-ecs --no-default-features --lib --target wasm32-unknown-unknown",
+      "log": "tests/ecs_parity/evidence/logs/4eb9dcfc651d777a66fa0f272f1d018d582da075e7d0b8b27085e2d8148073b4.log",
+      "sha256": "4eb9dcfc651d777a66fa0f272f1d018d582da075e7d0b8b27085e2d8148073b4"
+    },
+    {
+      "command": "cargo nextest run --locked -p rig --test core -E 'test(rig_ecs_bus_module::)' --no-fail-fast --retries 0",
+      "log": "tests/ecs_parity/evidence/logs/ab2153ccc95371ee17b7cddff47a36b3e9fec965855f388410e51e9a2aa5d8df.log",
+      "sha256": "ab2153ccc95371ee17b7cddff47a36b3e9fec965855f388410e51e9a2aa5d8df"
+    },
+    {
+      "command": "cargo xtask check-test-layout",
+      "log": "tests/ecs_parity/evidence/logs/88cdbd2fb92f4203cd5355ef6327511f9871108f8a15c27505e2fb76347e5815.log",
+      "sha256": "88cdbd2fb92f4203cd5355ef6327511f9871108f8a15c27505e2fb76347e5815"
+    }
+  ],
+  "verification_counts": {
+    "architecture": 7,
+    "error_controls": 18,
+    "native_all_features": 161,
+    "native_cells": 10,
+    "native_no_default_lib": 13,
+    "native_targeted": 45,
+    "original_cells": 10,
+    "provider_controls": 165,
+    "runtime_regression_native": 110,
+    "runtime_regression_original": 110
+  },
+  "wasm_evidence": "no-default-features library compile check; not WASM execution"
+}

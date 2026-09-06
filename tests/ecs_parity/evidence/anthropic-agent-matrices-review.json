@@ -1,0 +1,301 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "anthropic::cassette::reasoning_usage_matrix::agent_blocking_thinking",
+            "comparison": "First actual native ordered completion usage passes complete unchanged Observed validator against recorded thinking breakdown after wrapper teardown; identical request settings.",
+            "ecs_symbol": "anthropic::cassette::ecs_reasoning_usage::agent_blocking_thinking",
+            "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::agent_blocking_thinking::original-obligations",
+            "review_state": "independent final family review accepted"
+          }
+        ],
+        "assertion_sources": [
+          {
+            "direct_assertions": [],
+            "path": "tests/providers/anthropic/cassette/reasoning_usage_matrix.rs",
+            "symbol": "anthropic::cassette::reasoning_usage_matrix::agent_blocking_thinking"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "anthropic::cassette::ecs_reasoning_usage::agent_blocking_thinking",
+          "path": "tests/ecs_parity/evidence/anthropic-agent-matrices-report.json"
+        },
+        "ecs": {
+          "binary": "anthropic",
+          "execution_path": "Independent native ECS run/provider bus and actual completion outcomes or stream terminal",
+          "source": "tests/providers/anthropic/cassette/ecs_reasoning_usage.rs",
+          "test": "anthropic::cassette::ecs_reasoning_usage::agent_blocking_thinking"
+        },
+        "family_contract": "tests/ecs_parity/anthropic-agent-matrices-contract.md",
+        "fixture_inventory_complete": true,
+        "fixtures": [
+          {
+            "path": "tests/cassettes/anthropic/reasoning_usage_matrix/agent_blocking_thinking.yaml",
+            "provenance": "unchanged original provider cassette",
+            "sha256": "4bfa0cea9e5cb0e0e8587f6b50ce6315d24a1d24f1ecb074da9af59aa9b7061c"
+          }
+        ],
+        "helper_obligations": {
+          "chain": "Original provider/cassette wrappers, Observed or recorded stop validators; native error-free consumer and actual typed provider final",
+          "limits": "Isolated single-run recorded scenarios; Observed method assertions are explicitly documented because free-function discovery does not emit methods",
+          "method_inventory": {
+            "assertions": 4,
+            "other_failure_obligations": "take requires recorded usage; recorded breakdown must exist",
+            "provenance": "Original method not emitted by free-function discovery; entire source hash and independent full-method review retained",
+            "source": "tests/providers/anthropic/cassette/reasoning_usage_matrix.rs",
+            "symbol": "Observed::assert_matches"
+          },
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::agent_blocking_thinking",
+      "native": "rig::anthropic$anthropic::cassette::ecs_reasoning_usage::agent_blocking_thinking",
+      "original": "rig::anthropic$anthropic::cassette::reasoning_usage_matrix::agent_blocking_thinking"
+    },
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "anthropic::cassette::stop_sequence_terminal_matrix::agent_stream_single_sequence",
+            "comparison": "Actual native success/error-free stream and output, retained typed provider Stop terminal where streaming, and every original post-wrapper fixture validator with identical request settings.",
+            "ecs_symbol": "anthropic::cassette::ecs_stop_sequences::agent_stream_single_sequence",
+            "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::agent_stream_single_sequence::original-obligations",
+            "review_state": "independent final family review accepted"
+          }
+        ],
+        "assertion_sources": [
+          {
+            "direct_assertions": [
+              {
+                "expression_sha256": "b799a10ff3562d27fb503800d3861bdd633468393959e268ae78990c55089646",
+                "line": 845
+              }
+            ],
+            "path": "tests/providers/anthropic/cassette/stop_sequence_terminal_matrix.rs",
+            "symbol": "anthropic::cassette::stop_sequence_terminal_matrix::agent_stream_single_sequence"
+          },
+          {
+            "direct_assertions": [
+              {
+                "expression_sha256": "c3cb191a615555110c79b5eaa1563cbe4f322071c8cb49fa4d7a9dea79c49330",
+                "line": 244
+              }
+            ],
+            "path": "tests/providers/anthropic/cassette/stop_sequence_terminal_matrix.rs",
+            "symbol": "anthropic::cassette::stop_sequence_terminal_matrix::assert_recorded_terminal_stop_sequence"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "anthropic::cassette::ecs_stop_sequences::agent_stream_single_sequence",
+          "path": "tests/ecs_parity/evidence/anthropic-agent-matrices-report.json"
+        },
+        "ecs": {
+          "binary": "anthropic",
+          "execution_path": "Independent native ECS run/provider bus and actual completion outcomes or stream terminal",
+          "source": "tests/providers/anthropic/cassette/ecs_stop_sequences.rs",
+          "test": "anthropic::cassette::ecs_stop_sequences::agent_stream_single_sequence"
+        },
+        "family_contract": "tests/ecs_parity/anthropic-agent-matrices-contract.md",
+        "fixture_inventory_complete": true,
+        "fixtures": [
+          {
+            "path": "tests/cassettes/anthropic/stop_sequence_terminal_matrix/agent_stream_single_sequence.yaml",
+            "provenance": "unchanged original provider cassette",
+            "sha256": "2ba4a906e49f9321f99b07cbaac5114a8aa40a7071ce3157b7afd66b7f5c5506"
+          }
+        ],
+        "helper_obligations": {
+          "chain": "Original provider/cassette wrappers, Observed or recorded stop validators; native error-free consumer and actual typed provider final",
+          "limits": "Isolated single-run recorded scenarios; Observed method assertions are explicitly documented because free-function discovery does not emit methods",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::agent_stream_single_sequence",
+      "native": "rig::anthropic$anthropic::cassette::ecs_stop_sequences::agent_stream_single_sequence",
+      "original": "rig::anthropic$anthropic::cassette::stop_sequence_terminal_matrix::agent_stream_single_sequence"
+    },
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "anthropic::cassette::empty_stop_sequence_matrix::agent_prompt_empty_stop_sequence",
+            "comparison": "Actual native success/error-free stream and output, retained typed provider Stop terminal where streaming, and every original post-wrapper fixture validator with identical request settings.",
+            "ecs_symbol": "anthropic::cassette::ecs_stop_sequences::agent_prompt_empty_stop_sequence",
+            "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::agent_prompt_empty_stop_sequence::original-obligations",
+            "review_state": "independent final family review accepted"
+          }
+        ],
+        "assertion_sources": [
+          {
+            "direct_assertions": [
+              {
+                "expression_sha256": "deafa8972e3e794276e34404ea4d9d89a5286dc8042b79785aba68d6ec49fab0",
+                "line": 246
+              }
+            ],
+            "path": "tests/providers/anthropic/cassette/empty_stop_sequence_matrix.rs",
+            "symbol": "anthropic::cassette::empty_stop_sequence_matrix::agent_prompt_empty_stop_sequence"
+          },
+          {
+            "direct_assertions": [
+              {
+                "expression_sha256": "a3b4c8098adbd08cc82772ca8930c446de2f3393fb6f7138ef94177ed9471cb6",
+                "line": 126
+              },
+              {
+                "expression_sha256": "fd746d4bb9b84fd1e006ea242408cfd9836a2a010bf5e37496cc0ea87adb6b2b",
+                "line": 131
+              }
+            ],
+            "path": "tests/providers/anthropic/cassette/empty_stop_sequence_matrix.rs",
+            "symbol": "anthropic::cassette::empty_stop_sequence_matrix::assert_recorded_empty_stop"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "anthropic::cassette::ecs_stop_sequences::agent_prompt_empty_stop_sequence",
+          "path": "tests/ecs_parity/evidence/anthropic-agent-matrices-report.json"
+        },
+        "ecs": {
+          "binary": "anthropic",
+          "execution_path": "Independent native ECS run/provider bus and actual completion outcomes or stream terminal",
+          "source": "tests/providers/anthropic/cassette/ecs_stop_sequences.rs",
+          "test": "anthropic::cassette::ecs_stop_sequences::agent_prompt_empty_stop_sequence"
+        },
+        "family_contract": "tests/ecs_parity/anthropic-agent-matrices-contract.md",
+        "fixture_inventory_complete": true,
+        "fixtures": [
+          {
+            "path": "tests/cassettes/anthropic/empty_stop_sequence_matrix/agent_prompt_empty_stop_sequence.yaml",
+            "provenance": "unchanged original provider cassette",
+            "sha256": "89a66d59f701fb1ea7560416eaf8d09684ad2576b5e8dd5c0f10d1810964e350"
+          }
+        ],
+        "helper_obligations": {
+          "chain": "Original provider/cassette wrappers, Observed or recorded stop validators; native error-free consumer and actual typed provider final",
+          "limits": "Isolated single-run recorded scenarios; Observed method assertions are explicitly documented because free-function discovery does not emit methods",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::agent_prompt_empty_stop_sequence",
+      "native": "rig::anthropic$anthropic::cassette::ecs_stop_sequences::agent_prompt_empty_stop_sequence",
+      "original": "rig::anthropic$anthropic::cassette::empty_stop_sequence_matrix::agent_prompt_empty_stop_sequence"
+    },
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "anthropic::cassette::empty_stop_sequence_matrix::agent_stream_empty_stop_sequence",
+            "comparison": "Actual native success/error-free stream and output, retained typed provider Stop terminal where streaming, and every original post-wrapper fixture validator with identical request settings.",
+            "ecs_symbol": "anthropic::cassette::ecs_stop_sequences::agent_stream_empty_stop_sequence",
+            "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::agent_stream_empty_stop_sequence::original-obligations",
+            "review_state": "independent final family review accepted"
+          }
+        ],
+        "assertion_sources": [
+          {
+            "direct_assertions": [
+              {
+                "expression_sha256": "45d712435689f47af0957274ed67b3b0160e00275082074c6e67aa45f4b26c67",
+                "line": 324
+              },
+              {
+                "expression_sha256": "482460372151131c923938a724329438af9f55e95e52c366a69f734f8a8c42ba",
+                "line": 328
+              },
+              {
+                "expression_sha256": "dbd05dcd7a36b4878554c296d764fc674ec0ce460211cb56984ac99c94bffcee",
+                "line": 337
+              }
+            ],
+            "path": "tests/providers/anthropic/cassette/empty_stop_sequence_matrix.rs",
+            "symbol": "anthropic::cassette::empty_stop_sequence_matrix::agent_stream_empty_stop_sequence"
+          },
+          {
+            "direct_assertions": [
+              {
+                "expression_sha256": "41542e53a28b236061b003ccd646b53426966bf61116f4762d79b099eff1b53b",
+                "line": 146
+              },
+              {
+                "expression_sha256": "1a85b15fd0261fe3826f8ecd1bc469629256c82a05ad543a79d6aeace98fbfa2",
+                "line": 150
+              }
+            ],
+            "path": "tests/providers/anthropic/cassette/empty_stop_sequence_matrix.rs",
+            "symbol": "anthropic::cassette::empty_stop_sequence_matrix::assert_recorded_streamed_empty_stop"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "anthropic::cassette::ecs_stop_sequences::agent_stream_empty_stop_sequence",
+          "path": "tests/ecs_parity/evidence/anthropic-agent-matrices-report.json"
+        },
+        "ecs": {
+          "binary": "anthropic",
+          "execution_path": "Independent native ECS run/provider bus and actual completion outcomes or stream terminal",
+          "source": "tests/providers/anthropic/cassette/ecs_stop_sequences.rs",
+          "test": "anthropic::cassette::ecs_stop_sequences::agent_stream_empty_stop_sequence"
+        },
+        "family_contract": "tests/ecs_parity/anthropic-agent-matrices-contract.md",
+        "fixture_inventory_complete": true,
+        "fixtures": [
+          {
+            "path": "tests/cassettes/anthropic/empty_stop_sequence_matrix/agent_stream_empty_stop_sequence.yaml",
+            "provenance": "unchanged original provider cassette",
+            "sha256": "2036213fedec951582fc48c1e40b567b6a059a5715ff6a72a6676ec287c53ac8"
+          }
+        ],
+        "helper_obligations": {
+          "chain": "Original provider/cassette wrappers, Observed or recorded stop validators; native error-free consumer and actual typed provider final",
+          "limits": "Isolated single-run recorded scenarios; Observed method assertions are explicitly documented because free-function discovery does not emit methods",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::agent_stream_empty_stop_sequence",
+      "native": "rig::anthropic$anthropic::cassette::ecs_stop_sequences::agent_stream_empty_stop_sequence",
+      "original": "rig::anthropic$anthropic::cassette::empty_stop_sequence_matrix::agent_stream_empty_stop_sequence"
+    }
+  ],
+  "configuration": "root default features native host explicit cassette replay",
+  "kind": "parity",
+  "limits": "Four recorded agent exceptions only; no aggregate programme claim",
+  "reviewer": "/root/allowed_tools_review",
+  "runs": {
+    "native": "2b18e6f9a9ff41fad42f61e98cbf4edd9fd5ab7841c2e06bd9bc642f4cb2a0a5.json",
+    "original": "78f798d321a3cb400c9ea0ff4ead5a6e39f04b28846b666fea5c7e7a756c3ae7.json"
+  },
+  "schema": 1,
+  "sources": {
+    "crates/rig-ecs/src/agent/mod.rs": "5d7587af4f042acef21edd8f668e89dcafe17c979404b04aacc7531c1d48c7fc",
+    "crates/rig-ecs/src/systems/mod.rs": "59dd9912f118762961b0725c0917f363e78873b74f50509e78397302f84d12a3",
+    "tests/cassettes/anthropic/empty_stop_sequence_matrix/agent_prompt_empty_stop_sequence.yaml": "89a66d59f701fb1ea7560416eaf8d09684ad2576b5e8dd5c0f10d1810964e350",
+    "tests/cassettes/anthropic/empty_stop_sequence_matrix/agent_stream_empty_stop_sequence.yaml": "2036213fedec951582fc48c1e40b567b6a059a5715ff6a72a6676ec287c53ac8",
+    "tests/cassettes/anthropic/reasoning_usage_matrix/agent_blocking_thinking.yaml": "4bfa0cea9e5cb0e0e8587f6b50ce6315d24a1d24f1ecb074da9af59aa9b7061c",
+    "tests/cassettes/anthropic/stop_sequence_terminal_matrix/agent_stream_single_sequence.yaml": "2ba4a906e49f9321f99b07cbaac5114a8aa40a7071ce3157b7afd66b7f5c5506",
+    "tests/common/cassettes.rs": "0d26d322265b22088f9fb873b3ee0f8a07bb2bef1ac5ca4f16bdda3c6ac754a4",
+    "tests/common/ecs_agent.rs": "3a571cf4f3cffdaca132d98cd57a9ad3cb006e5959294f2f560b3d8b48f71268",
+    "tests/common/ecs_lifecycle.rs": "e8180ddf255aed1f3a49b6c948b3e8fb68ff6d8435102ce1fc96423a50b0ea59",
+    "tests/common/support.rs": "a0f495e031171f27e1de754fb334e336e2461b44cfc9202bc17499e004d2e26a",
+    "tests/providers/anthropic/cassette/ecs_reasoning_usage.rs": "fb63a7097d0a2cffdfcc0e609c1aaf8399ef073b5cdcf5d9f6d27ddd9043369d",
+    "tests/providers/anthropic/cassette/ecs_stop_sequences.rs": "db2f277ad734ffd6cb0e032bc99f2475ac4fbc15d72c2c22c43d057ece4c59c2",
+    "tests/providers/anthropic/cassette/empty_stop_sequence_matrix.rs": "e7fe06c33621f9efe92e8265d1005deca391f71b9de7d8a7f8f13457c732f0e2",
+    "tests/providers/anthropic/cassette/reasoning_usage_matrix.rs": "4d05c1151d0b71d33324596c389cc73c21ab53971f27e021c1cbf0ee3d0f52bb",
+    "tests/providers/anthropic/cassette/stop_sequence_terminal_matrix.rs": "85a2e754148586f5d4e023d80970b8d9bbaff34333c47ff52e244e1613df7ef6",
+    "tests/providers/anthropic/support.rs": "edabccc54e620ada50c9f468c55d898afdca76075ef485785f230074610a0fe8"
+  },
+  "status": "accepted"
+}

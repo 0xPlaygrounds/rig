@@ -44,14 +44,14 @@ use super::support::{
     with_deepseek_truncation_cassette_result,
 };
 
-const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
+pub(super) const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 
 /// The tool's one required argument must be long enough that a small budget
 /// lands inside the JSON string rather than after it.
-const TOOL_PREAMBLE: &str = "You must call the file_report tool. The summary argument must be a verbatim, complete restatement of the user's entire request, word for word, at least 120 words long.";
+pub(super) const TOOL_PREAMBLE: &str = "You must call the file_report tool. The summary argument must be a verbatim, complete restatement of the user's entire request, word for word, at least 120 words long.";
 const TEXT_FIRST_PREAMBLE: &str = "First write exactly one short sentence acknowledging the request, then call the file_report tool whose summary argument is a verbatim, complete restatement of the user request, word for word, at least 120 words long.";
 const PARALLEL_PREAMBLE: &str = "You must call page_oncall with team set to platform, and then file_report whose summary argument is a verbatim, complete restatement of the user request, word for word, at least 120 words long. Emit both calls in the same turn.";
-const INCIDENT_PROMPT: &str = "Log this incident: the nightly build broke because the cache warmer raced the artifact uploader, then the retry storm saturated the queue, and the on-call engineer had to drain three regions by hand while the dashboards lagged behind by nine minutes.";
+pub(super) const INCIDENT_PROMPT: &str = "Log this incident: the nightly build broke because the cache warmer raced the artifact uploader, then the retry storm saturated the queue, and the on-call engineer had to drain three regions by hand while the dashboards lagged behind by nine minutes.";
 /// The reasoner cells need a turn whose *thinking* is trivial and whose
 /// *arguments* are long, so the budget reliably lands inside the JSON string
 /// rather than inside the reasoning. A verbatim-copy instruction does that:
@@ -59,7 +59,7 @@ const INCIDENT_PROMPT: &str = "Log this incident: the nightly build broke becaus
 const REASONER_TOOL_PREAMBLE: &str = "Call the file_report tool exactly once. Set its summary argument to the user's text, copied out verbatim and in full. Do not summarise, do not shorten, do not think about it.";
 const REASONER_INCIDENT_PROMPT: &str = "Copy this into file_report: the nightly build broke because the cache warmer raced the artifact uploader; the retry storm then saturated the queue; the on-call engineer drained three regions by hand; the dashboards lagged nine minutes behind; the checksum verifier timed out twice; the release channel notification never fired; the rollback took forty minutes; the incident channel filled with duplicate alerts; the paging policy escalated to the wrong rotation; and the postmortem template was missing three required sections.";
 
-fn non_thinking_params() -> Value {
+pub(super) fn non_thinking_params() -> Value {
     json!({ "thinking": { "type": "disabled" } })
 }
 
@@ -151,7 +151,7 @@ fn text(choice: &[AssistantContent]) -> String {
 // ================================================================
 
 /// The `arguments` strings the recorded blocking turn carried, in wire order.
-fn recorded_blocking_arguments(scenario: &str) -> Vec<String> {
+pub(super) fn recorded_blocking_arguments(scenario: &str) -> Vec<String> {
     let response = recorded_response(scenario);
     response["choices"][0]["message"]["tool_calls"]
         .as_array()
@@ -169,7 +169,7 @@ fn recorded_blocking_arguments(scenario: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn recorded_blocking_finish_reason(scenario: &str) -> String {
+pub(super) fn recorded_blocking_finish_reason(scenario: &str) -> String {
     recorded_response(scenario)["choices"][0]["finish_reason"]
         .as_str()
         .unwrap_or_default()
@@ -178,7 +178,7 @@ fn recorded_blocking_finish_reason(scenario: &str) -> String {
 
 /// The `arguments` fragments the recorded stream delivered, concatenated per
 /// `tool_calls[].index`.
-fn recorded_stream_arguments(scenario: &str) -> Vec<String> {
+pub(super) fn recorded_stream_arguments(scenario: &str) -> Vec<String> {
     let mut accumulated: Vec<String> = Vec::new();
     for chunk in recorded_stream_chunks(scenario) {
         let Some(calls) = chunk["choices"][0]["delta"]["tool_calls"].as_array() else {
@@ -197,7 +197,7 @@ fn recorded_stream_arguments(scenario: &str) -> Vec<String> {
     accumulated
 }
 
-fn recorded_stream_finish_reason(scenario: &str) -> String {
+pub(super) fn recorded_stream_finish_reason(scenario: &str) -> String {
     recorded_stream_chunks(scenario)
         .into_iter()
         .filter_map(|chunk| {
@@ -209,7 +209,7 @@ fn recorded_stream_finish_reason(scenario: &str) -> String {
         .unwrap_or_default()
 }
 
-fn assert_unparseable(arguments: &str, scenario: &str) {
+pub(super) fn assert_unparseable(arguments: &str, scenario: &str) {
     assert!(
         !arguments.trim().is_empty(),
         "{scenario}: premise requires a non-empty truncated argument string, got {arguments:?}"
@@ -976,21 +976,21 @@ async fn streaming_reasoner_truncated_call_keeps_the_reasoning_block() {
 // ================================================================
 
 #[derive(Clone)]
-struct FileReport {
-    invocations: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+pub(super) struct FileReport {
+    pub(super) invocations: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-struct FileReportArgs {
+pub(super) struct FileReportArgs {
     summary: String,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-struct EmptyFileReportArgs {}
+pub(super) struct EmptyFileReportArgs {}
 
 #[derive(Debug, thiserror::Error)]
 #[error("file_report failed")]
-struct FileReportError;
+pub(super) struct FileReportError;
 
 impl rig::tool::Tool for FileReport {
     const NAME: &'static str = "file_report";
@@ -1031,8 +1031,8 @@ impl rig::tool::Tool for FileReport {
 /// `call` method because its required `summary` fails argument decoding, which
 /// would make an invocation-count assertion pass for the wrong reason.
 #[derive(Clone)]
-struct ZeroArgumentFileReport {
-    invocations: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+pub(super) struct ZeroArgumentFileReport {
+    pub(super) invocations: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl rig::tool::Tool for ZeroArgumentFileReport {

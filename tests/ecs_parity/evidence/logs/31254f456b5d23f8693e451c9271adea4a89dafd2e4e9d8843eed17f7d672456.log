@@ -1,0 +1,83 @@
+   Compiling rig-ecs v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-ecs)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.93s
+    Starting 7 tests across 1 binary
+        PASS [   0.015s] rig-ecs::output_tool_config replay_identity_includes_each_effective_output_tool_setting
+        PASS [   0.022s] rig-ecs::output_tool_config reserved_name_collision_fails_before_provider_or_tool_dispatch
+        PASS [   0.023s] rig-ecs::output_tool_config output_configuration_without_a_schema_does_not_create_a_tool
+        FAIL [   0.023s] rig-ecs::output_tool_config custom_output_tool_is_advertised_and_finalizes_without_executing_a_tool
+
+--- STDOUT:              rig-ecs::output_tool_config custom_output_tool_is_advertised_and_finalizes_without_executing_a_tool ---
+
+running 1 test
+test custom_output_tool_is_advertised_and_finalizes_without_executing_a_tool ... FAILED
+
+failures:
+
+failures:
+    custom_output_tool_is_advertised_and_finalizes_without_executing_a_tool
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.02s
+
+
+--- STDERR:              rig-ecs::output_tool_config custom_output_tool_is_advertised_and_finalizes_without_executing_a_tool ---
+
+thread 'custom_output_tool_is_advertised_and_finalizes_without_executing_a_tool' (3555563) panicked at crates/rig-ecs/tests/output_tool_config.rs:76:5:
+assertion `left == right` failed
+  left: Some("You are terse.")
+ right: Some("You are a concise assistant. Answer directly.")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+   Canceling due to test failure: 3 tests still running
+        FAIL [   0.023s] rig-ecs::output_tool_config run_configuration_overrides_and_can_reset_the_agent_configuration
+
+--- STDOUT:              rig-ecs::output_tool_config run_configuration_overrides_and_can_reset_the_agent_configuration ---
+
+running 1 test
+test run_configuration_overrides_and_can_reset_the_agent_configuration ... FAILED
+
+failures:
+
+failures:
+    run_configuration_overrides_and_can_reset_the_agent_configuration
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.01s
+
+
+--- STDERR:              rig-ecs::output_tool_config run_configuration_overrides_and_can_reset_the_agent_configuration ---
+
+thread 'run_configuration_overrides_and_can_reset_the_agent_configuration' (3555568) panicked at crates/rig-ecs/tests/output_tool_config.rs:120:5:
+assertion `left == right` failed
+  left: "You are terse.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text."
+ right: "You are a concise assistant. Answer directly.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text."
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        FAIL [   0.024s] rig-ecs::output_tool_config a_committed_name_survives_later_configuration_changes
+
+--- STDOUT:              rig-ecs::output_tool_config a_committed_name_survives_later_configuration_changes ---
+
+running 1 test
+test a_committed_name_survives_later_configuration_changes ... FAILED
+
+failures:
+
+failures:
+    a_committed_name_survives_later_configuration_changes
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.02s
+
+
+--- STDERR:              rig-ecs::output_tool_config a_committed_name_survives_later_configuration_changes ---
+
+thread 'a_committed_name_survives_later_configuration_changes' (3555562) panicked at crates/rig-ecs/tests/output_tool_config.rs:189:5:
+assertion `left == right` failed
+  left: 2
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        PASS [   0.024s] rig-ecs::output_tool_config scene_restores_custom_configuration_in_a_fresh_world
+------------
+     Summary [   0.026s] 7 tests run: 4 passed, 3 failed, 0 skipped
+        FAIL [   0.024s] rig-ecs::output_tool_config a_committed_name_survives_later_configuration_changes
+        FAIL [   0.023s] rig-ecs::output_tool_config custom_output_tool_is_advertised_and_finalizes_without_executing_a_tool
+        FAIL [   0.023s] rig-ecs::output_tool_config run_configuration_overrides_and_can_reset_the_agent_configuration
+error: test run failed

@@ -1,0 +1,134 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.32s
+    Starting 13 tests across 3 binaries (572 skipped)
+        PASS [   0.178s] rig::openrouter openrouter::cassette::agent_tool_sessions::nested_structured_output_schema_roundtrip
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::agent_tool_sessions::nested_structured_output_schema_roundtrip ---
+
+running 1 test
+test openrouter::cassette::agent_tool_sessions::nested_structured_output_schema_roundtrip ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 292 filtered out; finished in 0.17s
+
+
+        PASS [   0.181s] rig::openrouter openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming ---
+
+running 1 test
+test openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 292 filtered out; finished in 0.17s
+
+
+        PASS [   0.196s] rig::deepseek deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming
+
+--- OUTPUT:              rig::deepseek deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming ---
+
+running 1 test
+test deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 185 filtered out; finished in 0.18s
+
+
+        PASS [   0.198s] rig::xai xai::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming
+
+--- OUTPUT:              rig::xai xai::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming ---
+
+running 1 test
+test xai::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.19s
+
+
+        PASS [   0.210s] rig::openrouter openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming ---
+
+running 1 test
+test openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 292 filtered out; finished in 0.20s
+
+
+        PASS [   0.216s] rig::deepseek deepseek::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming
+
+--- OUTPUT:              rig::deepseek deepseek::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming ---
+
+running 1 test
+test deepseek::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 185 filtered out; finished in 0.20s
+
+
+        PASS [   0.216s] rig::xai xai::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming
+
+--- OUTPUT:              rig::xai xai::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming ---
+
+running 1 test
+test xai::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.21s
+
+
+        PASS [   0.239s] rig::deepseek deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_streaming
+
+--- OUTPUT:              rig::deepseek deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_streaming ---
+
+running 1 test
+test deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_streaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 185 filtered out; finished in 0.23s
+
+
+        PASS [   0.260s] rig::openrouter openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_streaming
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_streaming ---
+
+running 1 test
+test openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_streaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 292 filtered out; finished in 0.25s
+
+
+        PASS [   0.387s] rig::xai xai::agent_tool_sessions::parallel_tool_calls_single_turn_streaming
+
+--- OUTPUT:              rig::xai xai::agent_tool_sessions::parallel_tool_calls_single_turn_streaming ---
+
+running 1 test
+test xai::agent_tool_sessions::parallel_tool_calls_single_turn_streaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.38s
+
+
+        PASS [   0.469s] rig::openrouter openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_streaming
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_streaming ---
+
+running 1 test
+test openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_streaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 292 filtered out; finished in 0.46s
+
+
+        PASS [   0.522s] rig::deepseek deepseek::agent_tool_sessions::sequential_complex_tool_calls_streaming
+
+--- OUTPUT:              rig::deepseek deepseek::agent_tool_sessions::sequential_complex_tool_calls_streaming ---
+
+running 1 test
+test deepseek::agent_tool_sessions::sequential_complex_tool_calls_streaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 185 filtered out; finished in 0.51s
+
+
+        PASS [   0.659s] rig::xai xai::agent_tool_sessions::sequential_complex_tool_calls_streaming
+
+--- OUTPUT:              rig::xai xai::agent_tool_sessions::sequential_complex_tool_calls_streaming ---
+
+running 1 test
+test xai::agent_tool_sessions::sequential_complex_tool_calls_streaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.65s
+
+
+------------
+     Summary [   0.839s] 13 tests run: 13 passed, 572 skipped

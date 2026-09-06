@@ -20,11 +20,11 @@ use crate::support::{
     AlphaSignal, BASIC_PREAMBLE, BetaSignal, TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT,
 };
 
-const PROMPT: &str = "Reply with the single word: ready.";
-const SECOND_PROMPT: &str = "Now reply with the single word: again.";
-const NAME_PROMPT: &str = "What is my name? Reply with just the name.";
+pub(super) const PROMPT: &str = "Reply with the single word: ready.";
+pub(super) const SECOND_PROMPT: &str = "Now reply with the single word: again.";
+pub(super) const NAME_PROMPT: &str = "What is my name? Reply with just the name.";
 
-fn bypass_history() -> Vec<Message> {
+pub(super) fn bypass_history() -> Vec<Message> {
     vec![
         Message::user("My name is Ada."),
         Message::assistant("Hello, Ada."),
@@ -42,7 +42,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
 }
 
 /// The memory ops of `log`, in order.
-fn memory_ops(log: &rig::effect_log::EffectLog) -> Vec<&'static str> {
+pub(super) fn memory_ops(log: &rig::effect_log::EffectLog) -> Vec<&'static str> {
     log.iter()
         .filter_map(|record| match &record.kind {
             EffectKind::Memory { op } => Some(match op {
@@ -56,7 +56,7 @@ fn memory_ops(log: &rig::effect_log::EffectLog) -> Vec<&'static str> {
 }
 
 /// The messages each `Load` answered with, in order.
-fn loaded_lengths(log: &rig::effect_log::EffectLog) -> Vec<usize> {
+pub(super) fn loaded_lengths(log: &rig::effect_log::EffectLog) -> Vec<usize> {
     log.iter()
         .filter_map(|record| match (&record.kind, &record.outcome) {
             (

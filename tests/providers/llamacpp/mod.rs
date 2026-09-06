@@ -101,6 +101,17 @@
 //! | `typed_prompt_tools` | 2 | `prompt_typed` with a tool round trip |
 //! | `matrix_index` | 3 | the guard that keeps every table on this page honest |
 //!
+//! ## Native ECS counterparts
+//!
+//! These modules replay the same default-server (8080) fixtures through the
+//! native ECS runtime. Each module tabulates its own cells.
+//!
+//! | Module | Cells | Covers |
+//! | --- | --- | --- |
+//! | `ecs_completion` | 1 | native prompt smoke |
+//! | `ecs_extractor` | 1 | native typed extraction |
+//! | `ecs_extractor_usage` | 5 | typed extraction, history and usage |
+//!
 //! # Model tiers, and the rule for escalating
 //!
 //! The **smoke tier** (`unsloth/Qwen3-1.7B-GGUF` Q4_K_M) is the default and
@@ -136,6 +147,9 @@ mod cassette {
     mod bare_openai_client;
     mod content_matrix;
     mod context;
+    mod ecs_completion;
+    mod ecs_extractor;
+    mod ecs_extractor_usage;
     mod embedding_matrix;
     mod embeddings;
     mod error_matrix;

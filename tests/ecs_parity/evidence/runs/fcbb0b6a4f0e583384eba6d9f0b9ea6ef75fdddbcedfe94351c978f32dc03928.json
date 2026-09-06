@@ -1,0 +1,99 @@
+{
+  "batch": "7aca0d8ec5668606012776e3c266817af7e74dc481a421929192f00479c31db6.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "gemini",
+    "-E",
+    "(binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_streaming::blocking_and_streaming_produce_same_final_answer)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_streaming::streaming_active_tools_narrowing_filters_a_tool)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_streaming::streaming_result_redaction_reaches_final_response)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_streaming::streaming_skip_leaves_tool_unexecuted)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_streaming::streaming_tool_turns_fire_model_turn_finished))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "3edfc51113015f0aa8a39d4ecc1fa62f0fc97f99fa17b3f46b26ab01e1232f72.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "gemini",
+    "-E",
+    "(binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_streaming::blocking_and_streaming_produce_same_final_answer)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_streaming::streaming_active_tools_narrowing_filters_a_tool)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_streaming::streaming_result_redaction_reaches_final_response)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_streaming::streaming_skip_leaves_tool_unexecuted)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_streaming::streaming_tool_turns_fire_model_turn_finished))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "ee80ac201342e09fcbdab3198674d0eef7d8c327d6dcd093309792b6b8b720c9.log",
+    "listing_stdout": "2ad2f4db7c37b73df2fdc22166289511b1fcf47012f537f72757549d0e6227c6.json",
+    "stderr": "5b4f799786fbb6caced2f4622537d5b1db72bfe93ecb03afb4e468dfacde42b3.log",
+    "stdout": "c44567d7fa5a8addc3c5d71e0334d920eb38d2a2f0059b3b3924a14196b8c037.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish",
+      "seconds": 0.730699584,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_streaming::streaming_tool_turns_fire_model_turn_finished",
+      "seconds": 0.871359834,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_streaming::streaming_result_redaction_reaches_final_response",
+      "seconds": 0.882604583,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_streaming::streaming_active_tools_narrowing_filters_a_tool",
+      "seconds": 0.884480792,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_streaming::streaming_skip_leaves_tool_unexecuted",
+      "seconds": 0.880553042,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_streaming::blocking_and_streaming_produce_same_final_answer",
+      "seconds": 0.899460458,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "86de3d18bdbb749e011a44f7bf9e01bfc2aea874afc2021fc480b849fb59136e.json",
+  "source_index_after": "86de3d18bdbb749e011a44f7bf9e01bfc2aea874afc2021fc480b849fb59136e.json",
+  "status": "executed",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

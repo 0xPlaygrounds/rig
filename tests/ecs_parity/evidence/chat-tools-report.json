@@ -1,0 +1,11 @@
+{
+  "assertion_review": "required separately",
+  "batch": "chat-tools",
+  "cells": 24,
+  "runs": {
+    "native": "3619eb023b8c98e8b589f987a9084d9b2aaa06fd7deddd87a3e4bbc7b2f298c9.json",
+    "original": "4c37630bdd8a56ce6b5b6aa804d7ab724835e6983d2669ffbd8590c869a0a242.json"
+  },
+  "schema": 2,
+  "status": "executed"
+}

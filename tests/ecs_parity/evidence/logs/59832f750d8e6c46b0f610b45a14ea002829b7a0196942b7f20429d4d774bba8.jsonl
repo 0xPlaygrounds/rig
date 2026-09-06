@@ -1,0 +1,6 @@
+{"type":"suite","event":"started","test_count":2,"nextest":{"crate":"rig","test_binary":"anthropic","kind":"test"}}
+{"type":"test","event":"started","name":"rig::anthropic$anthropic::cassette::streaming_tools::serial_serving_reproduces_the_recorded_request_order"}
+{"type":"test","event":"started","name":"rig::anthropic$anthropic::cassette::streaming_tools::streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_settles"}
+{"type":"test","event":"ok","name":"rig::anthropic$anthropic::cassette::streaming_tools::serial_serving_reproduces_the_recorded_request_order","exec_time":0.108552625}
+{"type":"test","event":"ok","name":"rig::anthropic$anthropic::cassette::streaming_tools::streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_settles","exec_time":0.108332083}
+{"type":"suite","event":"ok","passed":2,"failed":0,"ignored":0,"measured":0,"filtered_out":537,"exec_time":0.216884708,"nextest":{"crate":"rig","test_binary":"anthropic","kind":"test"}}

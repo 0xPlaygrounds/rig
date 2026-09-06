@@ -31,11 +31,11 @@ use crate::{
         Conversation, Cursor, DocumentId, DocumentProps, DocumentText, Failed, Failure, Grant,
         InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory, MaxTokens, MaxTurns,
         MemoryAppendScheduled, MessageParts, Order, OrderCounter, Output, OutputKind,
-        OutputRetries, OutputToolName, Outputs, Parts, Preamble, Remembered, Remembering,
-        Remembers, Reprompt, RequestPatch, Resolution, ResolvingTools, Retrievable, Retrieval,
-        RetrievalKind, Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunResult, RunSeq,
-        Settled, Streamed, Temperature, ToolCallSlot, ToolChoiceSpec, ToolContextSpec, ToolPolicy,
-        Turn, Unhandled, Usage, UsesModel, Utterance,
+        OutputRetries, OutputToolConfig, OutputToolName, Outputs, Parts, Preamble, Remembered,
+        Remembering, Remembers, Reprompt, RequestPatch, Resolution, ResolvingTools, Retrievable,
+        Retrieval, RetrievalKind, Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunResult,
+        RunSeq, Settled, Streamed, Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec,
+        ToolContextSpec, ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
     },
     bus::{
         Bound, BusPlugin, BusSet, EffectOutcome, Held, Issued, PendingEffect, Progress,
@@ -43,6 +43,9 @@ use crate::{
     },
     policy::{self, RequestGraph},
 };
+
+mod stream_invalid;
+pub use stream_invalid::discover_streamed_invalid_calls;
 
 /// The agent's sets, in order, around the bus module's.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -104,6 +107,10 @@ pub struct Settings<'w, 's> {
     pub choices: Query<'w, 's, &'static ToolChoiceSpec>,
     /// The output mode.
     pub outputs: Query<'w, 's, &'static Output>,
+    /// The output tool's reserved name, description and preamble behavior.
+    pub output_tools: Query<'w, 's, &'static OutputToolConfig>,
+    /// Execution bindings and permissions, separate from advertisements.
+    pub tool_access: Query<'w, 's, &'static ToolAccess>,
 }
 /// What `assemble` reads of a fresh turn: its run, its patch, whether it
 /// is retrieving.
@@ -205,7 +212,9 @@ impl Plugin for AgentPlugin {
             select.in_set(RigSet::Select),
             assemble.in_set(RigSet::Assemble),
             release_batch.in_set(RigSet::Release),
-            fold.in_set(RigSet::Fold),
+            (fold, discover_streamed_invalid_calls)
+                .chain()
+                .in_set(RigSet::Fold),
             (
                 land_memory,
                 resolve_invalid_defaults,
@@ -753,6 +762,8 @@ pub fn assemble(
         params,
         choices,
         outputs,
+        output_tools,
+        tool_access,
     } = settings;
     let mut turns: Vec<(Entity, Entity, RunSeq, Option<&RequestPatch>, bool)> = fresh
         .iter()
@@ -970,6 +981,24 @@ pub fn assemble(
             .and_then(|p| p.tool_choice.as_ref())
             .or_else(|| setting(run, agent, &choices).and_then(|c| c.0.as_ref()));
         let output = setting(run, agent, &outputs).cloned().unwrap_or_default();
+        let output_tool_config = setting(run, agent, &output_tools);
+        let reserved_name = output_tool_config.and_then(|config| config.name.as_deref());
+
+        let mut access = setting(run, agent, &tool_access)
+            .cloned()
+            .unwrap_or_default();
+        let executable = access.executable.get_or_insert_with(|| {
+            tools
+                .iter()
+                .filter_map(|bound| match &bound.descriptor.family {
+                    FamilyDescriptor::Tool { name, .. } => Some((name.clone(), bound.key.clone())),
+                    _ => None,
+                })
+                .collect()
+        });
+        if access.allowed.is_none() {
+            access.allowed = Some(executable.keys().cloned().collect());
+        }
 
         let granted_names: Vec<&str> = tools
             .iter()
@@ -983,14 +1012,21 @@ pub fn assemble(
                 | FamilyDescriptor::Custom { .. } => None,
             })
             .collect();
+        let occupied_names: Vec<&str> = granted_names
+            .iter()
+            .copied()
+            .chain(executable.keys().map(String::as_str))
+            .collect();
         let output_tool = minted
             .0
             .clone()
-            .unwrap_or_else(|| policy::output_tool_name(&granted_names));
+            .or_else(|| reserved_name.map(str::to_owned))
+            .unwrap_or_else(|| policy::output_tool_name(&occupied_names));
         let callable = policy::output_tool_callable(tool_choice, &output_tool);
         // A committed output tool (minted on an earlier turn) stays the
         // mode whatever this turn's choice says (CONTRACT §9.3).
-        let resolved = if minted.0.is_some() {
+        let resolved = if minted.0.is_some() || (reserved_name.is_some() && output.schema.is_some())
+        {
             OutputKind::Tool
         } else {
             policy::resolve_output(
@@ -1001,17 +1037,15 @@ pub fn assemble(
                 composes,
             )
         };
-        if let Some(name) = &minted.0
-            && granted_names.contains(&name.as_str())
-        {
-            // A tool granted after the mint took the output tool's name: a
-            // request that advertised both would be ambiguous, so the run
-            // fails here, named, as rig-agent's docs say it must.
+        if resolved == OutputKind::Tool && occupied_names.contains(&output_tool.as_str()) {
+            // A reserved or already minted name must not also advertise a
+            // granted tool: refuse the ambiguous request before dispatch.
             commands.entity(turn).remove::<Fresh>();
-            commands
-                .entity(run)
-                .remove::<Assembling>()
-                .insert(Failed(Failure::OutputToolCollision { name: name.clone() }));
+            commands.entity(run).remove::<Assembling>().insert(Failed(
+                Failure::OutputToolCollision {
+                    name: output_tool.clone(),
+                },
+            ));
             progress.mark();
             continue;
         }
@@ -1036,8 +1070,10 @@ pub fn assemble(
             output: resolved,
             schema: output.schema.as_ref(),
             output_tool: (resolved == OutputKind::Tool).then_some(output_tool.as_str()),
+            output_tool_config,
         };
         let request = policy::fold_request(&graph);
+        commands.entity(turn).insert(access);
         commands.spawn((
             PendingEffect::new(
                 model_bound.key.clone(),
@@ -1336,7 +1372,7 @@ pub fn land_batch(
 /// answers the call and skips the turn; else repairs and ignores edit the
 /// turn's content and the turn goes on.
 enum InvalidVerdict {
-    Fail(String),
+    Fail(InvalidCall),
     Retry(InvalidCall, String),
     Skip(InvalidCall, String),
     Edit,
@@ -1347,7 +1383,7 @@ fn invalid_verdict(pending: &[(Entity, InvalidCall, Resolution)]) -> InvalidVerd
         .iter()
         .find(|(_, _, resolution)| matches!(resolution, Resolution::Fail))
     {
-        return InvalidVerdict::Fail(call.name.clone());
+        return InvalidVerdict::Fail(call.clone());
     }
     if let Some((_, call, Resolution::Retry { feedback })) = pending
         .iter()
@@ -1384,13 +1420,14 @@ pub fn materialise(
     outputs: Query<&Output>,
     max_turns: Query<&MaxTurns>,
     policies: Query<&InvalidCalls>,
-    choices: Query<&ToolChoiceSpec>,
+    access_and_choices: (Query<&ToolChoiceSpec>, Query<&ToolAccess>),
     tool_policies: Query<&ToolPolicy>,
     contexts: Query<&ToolContextSpec>,
     invalid_calls: Query<(Entity, &ChildOf, &InvalidCall, &Resolution)>,
     mut orders: ResMut<OrderCounter>,
     mut progress: ResMut<Progress>,
 ) {
+    let (choices, access) = access_and_choices;
     let mut turns: Vec<_> = turns.iter_mut().collect();
     turns.sort_by_key(|(_, turn_of, _, _, _)| runs.get(turn_of.parent()).map(|(_, seq)| *seq).ok());
     for (turn, turn_of, mut outs, Folded(mode), retry) in turns {
@@ -1404,7 +1441,7 @@ pub fn materialise(
         let tool_choice = setting(run, agent, &choices).and_then(|c| c.0.clone());
 
         // The tools this turn advertised, by name, with their keys.
-        let granted: Vec<(String, rig_core::effect::HandlerKey)> =
+        let mut granted: Vec<(String, rig_core::effect::HandlerKey)> =
             links_in_order(turn, &children, &adverts)
                 .into_iter()
                 .filter_map(|Advert(tool)| bound.get(*tool).ok())
@@ -1418,35 +1455,95 @@ pub fn materialise(
                     | FamilyDescriptor::Custom { .. } => None,
                 })
                 .collect();
+        let access = access.get(turn).ok();
+        if let Some(executable) = access.and_then(|access| access.executable.as_ref()) {
+            granted = executable
+                .iter()
+                .map(|(name, key)| (name.clone(), key.clone()))
+                .collect();
+        }
         let output_tool = minted.0.as_deref();
+
+        // An early decision can outlive the stream. Count the actual completed
+        // response once, before consuming a deferred skip/repair decision.
+        if !outs.usage_recorded
+            && let Some((_, EffectOutcome(Ok(Outcome::Completion(response))), _)) = effects
+                .iter()
+                .find(|(parent, _, _)| parent.parent() == turn)
+        {
+            commands.entity(run).insert(Usage(usage.0 + response.usage));
+            outs.usage_recorded = true;
+        }
 
         // Pending invalid calls of this turn: consumed first.
         let pending: Vec<(Entity, InvalidCall, Resolution)> = invalid_calls
             .iter()
             .filter(|(_, child_of, _, _)| child_of.parent() == turn)
-            .map(|(entity, _, call, resolution)| (entity, call.clone(), resolution.clone()))
+            .map(|(entity, _, call, resolution)| {
+                let mut call = call.clone();
+                if let Some(offset) = call.stream_offset
+                    && let Some((_, _, Some(stream))) = effects
+                        .iter()
+                        .find(|(parent, _, _)| parent.parent() == turn)
+                    && let Some(id) = stream_invalid::completed_call_id(&stream.events, offset)
+                {
+                    call.id = id;
+                }
+                (entity, call, resolution.clone())
+            })
             .collect();
         if !pending.is_empty() {
-            for (entity, _, _) in &pending {
-                commands.entity(*entity).despawn();
-            }
             let budget = setting(run, agent, &policies).map_or(0, |p| p.retries);
             let verdict = match invalid_verdict(&pending) {
                 InvalidVerdict::Retry(call, _) if invalid_retries.0 >= budget => {
-                    InvalidVerdict::Fail(call.name)
+                    InvalidVerdict::Fail(call)
                 }
                 InvalidVerdict::Skip(call, _) if matches!(tool_choice, Some(ToolChoice::None)) => {
-                    InvalidVerdict::Fail(call.name)
+                    InvalidVerdict::Fail(call)
                 }
                 verdict => verdict,
             };
+            // Effective failure (including an exhausted retry) is immediate.
+            // Keep edits until final folding and real usage arrive.
+            if !outs.done && !matches!(verdict, InvalidVerdict::Fail(_)) {
+                continue;
+            }
+            // EOF can arrive with more name events than this pass judged.
+            // Retain earlier edits while discovery visits that delivered tail,
+            // so the next decision sees the repaired/ignored prefix in order.
+            if matches!(verdict, InvalidVerdict::Edit)
+                && effects.iter().any(|(parent, _, stream)| {
+                    parent.parent() == turn
+                        && stream.is_some_and(|stream| {
+                            outs.stream_validated < stream_invalid::validation_len(stream)
+                        })
+                })
+            {
+                continue;
+            }
+            for (entity, _, _) in &pending {
+                commands.entity(*entity).despawn();
+            }
             match verdict {
-                InvalidVerdict::Fail(name) => {
+                InvalidVerdict::Fail(call) => {
+                    if !call.prefix.is_empty() {
+                        let assistant = MessageParts::Assistant {
+                            id: outs.message_id.clone(),
+                            content: call.prefix.clone(),
+                        };
+                        commands.spawn((
+                            Utterance,
+                            assistant.role(),
+                            Parts(assistant),
+                            next_order_in(&mut orders),
+                            ChildOf(run),
+                        ));
+                    }
                     commands.entity(turn).insert(Materialised);
                     commands
                         .entity(run)
                         .remove::<AwaitingModel>()
-                        .insert(Failed(Failure::UnknownToolCall { name }));
+                        .insert(Failed(Failure::UnknownToolCall { name: call.name }));
                     progress.mark();
                     continue;
                 }
@@ -1464,7 +1561,11 @@ pub fn materialise(
                         .chain(output_tool.map(str::to_owned))
                         .collect();
                     let (content, diagnostic_id) =
-                        policy::partial_turn_at(&outs.content, events, &call.id, &allowed_names);
+                        if let Some(AssistantContent::ToolCall(diagnostic)) = call.prefix.last() {
+                            (call.prefix.clone(), diagnostic.id.clone())
+                        } else {
+                            policy::partial_turn_at(&outs.content, events, &call.id, &allowed_names)
+                        };
                     let assistant = MessageParts::Assistant {
                         id: outs.message_id.clone(),
                         content: content.clone(),
@@ -1566,11 +1667,6 @@ pub fn materialise(
                 continue;
             }
         };
-        if !pending.is_empty() {
-            // The usage was counted when the turn was first read.
-        } else {
-            commands.entity(run).insert(Usage(usage.0 + response.usage));
-        }
         let content = outs.content.clone();
 
         // An empty turn is not history, and answers nothing.
@@ -1603,7 +1699,10 @@ pub fn materialise(
             .iter()
             .copied()
             .filter(|call| {
-                !granted.iter().any(|(name, _)| *name == call.function.name)
+                (!granted.iter().any(|(name, _)| *name == call.function.name)
+                    || access
+                        .and_then(|access| access.allowed.as_ref())
+                        .is_some_and(|allowed| !allowed.contains(&call.function.name)))
                     && output_tool != Some(call.function.name.as_str())
             })
             .collect();
@@ -1615,6 +1714,8 @@ pub fn materialise(
                         id: call.id.clone(),
                         name: call.function.name.clone(),
                         arguments: call.function.arguments.clone(),
+                        prefix: Vec::new(),
+                        stream_offset: None,
                     },
                     ChildOf(turn),
                 ));

@@ -1,0 +1,28 @@
+   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.11s
+    Starting 1 test across 1 binary (422 skipped)
+        FAIL [   0.200s] rig::gemini gemini::cassette::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish
+
+--- STDOUT:              rig::gemini gemini::cassette::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish ---
+
+running 1 test
+test gemini::cassette::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish ... FAILED
+
+failures:
+
+failures:
+    gemini::cassette::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 422 filtered out; finished in 0.19s
+
+
+--- STDERR:              rig::gemini gemini::cassette::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish ---
+
+thread 'gemini::cassette::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish' (3393825) panicked at tests/providers/gemini/cassette/ecs_stress_streaming.rs:33:13:
+a streamed text turn must emit TextDelta events
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+------------
+     Summary [   0.200s] 1 test run: 0 passed, 1 failed, 422 skipped
+        FAIL [   0.200s] rig::gemini gemini::cassette::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish
+error: test run failed

@@ -18,16 +18,19 @@ use super::super::support::with_anthropic_corpus_output_cassette;
 use crate::goldens::{event_schema, families};
 use crate::support::{Adder, BASIC_PREAMBLE, STRUCTURED_OUTPUT_PROMPT, TOOLS_PREAMBLE};
 
-const SUM_EVENT_PROMPT: &str = "Use the add tool to add 17 and 25, then return a concise event object for a Rust meetup in Seattle whose summary states the sum.";
+pub(super) const SUM_EVENT_PROMPT: &str = "Use the add tool to add 17 and 25, then return a concise event object for a Rust meetup in Seattle whose summary states the sum.";
 
-fn request_at(log: &rig::effect_log::EffectLog, at: usize) -> &rig::completion::CompletionRequest {
+pub(super) fn request_at(
+    log: &rig::effect_log::EffectLog,
+    at: usize,
+) -> &rig::completion::CompletionRequest {
     match &log.records[at].kind {
         EffectKind::Completion { request, .. } => request,
         other => panic!("record {at} is a completion, not {other:?}"),
     }
 }
 
-fn assert_event(output: &str) {
+pub(super) fn assert_event(output: &str) {
     let object: serde_json::Value =
         serde_json::from_str(output).unwrap_or_else(|_| panic!("the schema's object: {output}"));
     assert!(
@@ -36,7 +39,7 @@ fn assert_event(output: &str) {
     );
 }
 
-fn tool_names(request: &rig::completion::CompletionRequest) -> Vec<&str> {
+pub(super) fn tool_names(request: &rig::completion::CompletionRequest) -> Vec<&str> {
     request
         .tools
         .iter()

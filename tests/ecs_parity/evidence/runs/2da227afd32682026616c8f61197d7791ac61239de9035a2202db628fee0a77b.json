@@ -1,0 +1,203 @@
+{
+  "batch": "24908d34dfa7cf8faacba8de2633e139db44b6c72a246baa495ac04788282920.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "cohere",
+    "--test",
+    "copilot",
+    "--test",
+    "deepseek",
+    "--test",
+    "doubleword",
+    "--test",
+    "llamacpp",
+    "--test",
+    "ollama",
+    "--test",
+    "openrouter",
+    "--test",
+    "perplexity",
+    "--test",
+    "venice",
+    "--test",
+    "xai",
+    "--test",
+    "bedrock",
+    "--features",
+    "bedrock",
+    "-E",
+    "(binary_id(=rig::bedrock) & test(=bedrock::cassette::ecs_completion::completion_smoke)) | (binary_id(=rig::bedrock) & test(=bedrock::cassette::ecs_completion::completion_with_context_smoke)) | (binary_id(=rig::bedrock) & test(=bedrock::cassette::ecs_completion::prompt_caching_completion_smoke)) | (binary_id(=rig::bedrock) & test(=bedrock::cassette::ecs_completion::tool_roundtrip_smoke)) | (binary_id(=rig::cohere) & test(=cohere::cassette::ecs_completion::completion_smoke)) | (binary_id(=rig::copilot) & test(=copilot::ecs_completion::completion_smoke)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_completion::completion_smoke)) | (binary_id(=rig::doubleword) & test(=doubleword::cassette::ecs_completion::completion_smoke)) | (binary_id(=rig::llamacpp) & test(=llamacpp::cassette::ecs_completion::completion_smoke)) | (binary_id(=rig::ollama) & test(=ollama::cassette::ecs_completion::completion_respects_max_tokens)) | (binary_id(=rig::ollama) & test(=ollama::cassette::ecs_completion::completion_smoke)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_completion::completion_smoke)) | (binary_id(=rig::perplexity) & test(=perplexity::cassette::ecs_completion::completion_smoke)) | (binary_id(=rig::perplexity) & test(=perplexity::cassette::ecs_completion::completion_with_perplexity_options)) | (binary_id(=rig::venice) & test(=venice::cassette::ecs_completion::completion_smoke)) | (binary_id(=rig::xai) & test(=xai::ecs_completion::completion_smoke))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "4489795997c1d96a0c6eb981482de7e9b4c3a32cdb5fcd60526bbdf181959437.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "cohere",
+    "--test",
+    "copilot",
+    "--test",
+    "deepseek",
+    "--test",
+    "doubleword",
+    "--test",
+    "llamacpp",
+    "--test",
+    "ollama",
+    "--test",
+    "openrouter",
+    "--test",
+    "perplexity",
+    "--test",
+    "venice",
+    "--test",
+    "xai",
+    "--test",
+    "bedrock",
+    "--features",
+    "bedrock",
+    "-E",
+    "(binary_id(=rig::bedrock) & test(=bedrock::cassette::ecs_completion::completion_smoke)) | (binary_id(=rig::bedrock) & test(=bedrock::cassette::ecs_completion::completion_with_context_smoke)) | (binary_id(=rig::bedrock) & test(=bedrock::cassette::ecs_completion::prompt_caching_completion_smoke)) | (binary_id(=rig::bedrock) & test(=bedrock::cassette::ecs_completion::tool_roundtrip_smoke)) | (binary_id(=rig::cohere) & test(=cohere::cassette::ecs_completion::completion_smoke)) | (binary_id(=rig::copilot) & test(=copilot::ecs_completion::completion_smoke)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_completion::completion_smoke)) | (binary_id(=rig::doubleword) & test(=doubleword::cassette::ecs_completion::completion_smoke)) | (binary_id(=rig::llamacpp) & test(=llamacpp::cassette::ecs_completion::completion_smoke)) | (binary_id(=rig::ollama) & test(=ollama::cassette::ecs_completion::completion_respects_max_tokens)) | (binary_id(=rig::ollama) & test(=ollama::cassette::ecs_completion::completion_smoke)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_completion::completion_smoke)) | (binary_id(=rig::perplexity) & test(=perplexity::cassette::ecs_completion::completion_smoke)) | (binary_id(=rig::perplexity) & test(=perplexity::cassette::ecs_completion::completion_with_perplexity_options)) | (binary_id(=rig::venice) & test(=venice::cassette::ecs_completion::completion_smoke)) | (binary_id(=rig::xai) & test(=xai::ecs_completion::completion_smoke))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "dfa20864940f370dd4078938d123f64edd6ab78d25e8c7e1368603ac4108d034.log",
+    "listing_stdout": "2b59f45a9cf41c054cd9f548cf3c023914fd71d965c7ce47b6e4ff1d2c3d50ea.json",
+    "stderr": "723534808ac8491434872febb2b0418ec0c07508db9fc7df3c1755692d841b1a.log",
+    "stdout": "f4fe6038750ec3e1c4ed8feb6a562e4090a043a43aa8923696a2dc61d0a5bb0b.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::bedrock$bedrock::cassette::ecs_completion::completion_smoke",
+      "seconds": 1.854437083,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::bedrock$bedrock::cassette::ecs_completion::completion_with_context_smoke",
+      "seconds": 1.81232525,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::bedrock$bedrock::cassette::ecs_completion::prompt_caching_completion_smoke",
+      "seconds": 1.851480083,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::bedrock$bedrock::cassette::ecs_completion::tool_roundtrip_smoke",
+      "seconds": 1.77054025,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::cohere$cohere::cassette::ecs_completion::completion_smoke",
+      "seconds": 1.5885394590000002,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::copilot$copilot::ecs_completion::completion_smoke",
+      "seconds": 1.6111462909999998,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::ecs_completion::completion_smoke",
+      "seconds": 1.63028975,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::doubleword$doubleword::cassette::ecs_completion::completion_smoke",
+      "seconds": 1.562347,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::llamacpp$llamacpp::cassette::ecs_completion::completion_smoke",
+      "seconds": 1.642697708,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::ollama$ollama::cassette::ecs_completion::completion_respects_max_tokens",
+      "seconds": 1.548318541,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::ollama$ollama::cassette::ecs_completion::completion_smoke",
+      "seconds": 1.614822334,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::ecs_completion::completion_smoke",
+      "seconds": 1.617098208,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::perplexity$perplexity::cassette::ecs_completion::completion_smoke",
+      "seconds": 0.513510292,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::perplexity$perplexity::cassette::ecs_completion::completion_with_perplexity_options",
+      "seconds": 0.509829209,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::venice$venice::cassette::ecs_completion::completion_smoke",
+      "seconds": 0.509163167,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::ecs_completion::completion_smoke",
+      "seconds": 0.494729834,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "e0fec8873228e213272f07766c64163c9d5ca4a4da939932115209c28ae5efaf.json",
+  "source_index_after": "e0fec8873228e213272f07766c64163c9d5ca4a4da939932115209c28ae5efaf.json",
+  "status": "executed",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

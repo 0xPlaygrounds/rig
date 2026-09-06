@@ -1,0 +1,115 @@
+{
+  "batch": "853d8b0e7224c9996dcb51434af2a714f314c10876f7a44d6acd87d6b9f630ce.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "anthropic",
+    "--test",
+    "openai",
+    "--test",
+    "gemini",
+    "--test",
+    "openrouter",
+    "--test",
+    "venice",
+    "-E",
+    "(binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_prompt_caching::conformance_agent_loop_keeps_hitting_across_tool_turns)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_prompt_caching::agent_loop_keeps_hitting_across_tool_turns)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_prompt_caching::chat_completions_agent_loop_keeps_hitting_across_tool_turns)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_prompt_caching::responses_agent_loop_keeps_hitting_across_tool_turns)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_prompt_caching::agent_loop_keeps_hitting_across_tool_turns)) | (binary_id(=rig::venice) & test(=venice::cassette::ecs_prompt_caching::agent_loop_keeps_hitting_across_tool_turns))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "9d0c48b34369f61dbecf53d8ca481efd4c7f301022199911f53ecb5136cd328d.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "anthropic",
+    "--test",
+    "openai",
+    "--test",
+    "gemini",
+    "--test",
+    "openrouter",
+    "--test",
+    "venice",
+    "-E",
+    "(binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_prompt_caching::conformance_agent_loop_keeps_hitting_across_tool_turns)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_prompt_caching::agent_loop_keeps_hitting_across_tool_turns)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_prompt_caching::chat_completions_agent_loop_keeps_hitting_across_tool_turns)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_prompt_caching::responses_agent_loop_keeps_hitting_across_tool_turns)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_prompt_caching::agent_loop_keeps_hitting_across_tool_turns)) | (binary_id(=rig::venice) & test(=venice::cassette::ecs_prompt_caching::agent_loop_keeps_hitting_across_tool_turns))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "6981a7ea7a33d6a6211591d165fed950356c884519a01de985f12eb54e09caec.log",
+    "listing_stdout": "57ed7e018bd96b27e5e0bb1fe9f7ee615b1fe8b7973c5a278a0d3b176de9fb08.json",
+    "stderr": "85653c1a4fa04067ca7b6246623f13a837b41b612375fd0505a15ba966161d45.log",
+    "stdout": "5824eab695d01968b333f2449c86ce0f3215cbf2e0885f7b655babb4edca3d64.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_prompt_caching::conformance_agent_loop_keeps_hitting_across_tool_turns",
+      "seconds": 2.623506666,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_prompt_caching::chat_completions_agent_loop_keeps_hitting_across_tool_turns",
+      "seconds": 2.574609333,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_prompt_caching::responses_agent_loop_keeps_hitting_across_tool_turns",
+      "seconds": 2.587710042,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_prompt_caching::agent_loop_keeps_hitting_across_tool_turns",
+      "seconds": 2.627370417,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::ecs_prompt_caching::agent_loop_keeps_hitting_across_tool_turns",
+      "seconds": 2.612099791,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::venice$venice::cassette::ecs_prompt_caching::agent_loop_keeps_hitting_across_tool_turns",
+      "seconds": 2.584517458,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "d7adf62bcecbee1475962fafc3ec34976e7fbe77cf8d1d81b037faa2b47c420b.json",
+  "source_index_after": "d7adf62bcecbee1475962fafc3ec34976e7fbe77cf8d1d81b037faa2b47c420b.json",
+  "status": "executed",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

@@ -1,0 +1,13 @@
+    Blocking waiting for file lock on artifact directory
+   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 33.36s
+    Starting 7 tests across 1 binary (278 skipped)
+        PASS [   0.016s] rig::core core::rig_ecs_bus_module::nothing_in_the_bus_module_is_crate_scoped
+        PASS [   0.016s] rig::core core::rig_ecs_bus_module::no_serde_type_holds_an_entity
+        PASS [   0.017s] rig::core core::rig_ecs_bus_module::the_bus_module_imports_no_sibling
+        PASS [   0.024s] rig::core core::rig_ecs_bus_module::every_test_file_belongs_to_a_suite_and_the_bus_suite_is_agent_free
+        PASS [   0.025s] rig::core core::rig_ecs_bus_module::the_agent_modules_hold_the_discipline
+        PASS [   0.026s] rig::core core::rig_ecs_bus_module::the_bus_module_and_its_suites_are_agent_free
+        PASS [   0.041s] rig::core core::rig_ecs_bus_module::the_crate_source_holds_no_blocking_forks_clocks_or_side_channels
+------------
+     Summary [   0.043s] 7 tests run: 7 passed, 278 skipped

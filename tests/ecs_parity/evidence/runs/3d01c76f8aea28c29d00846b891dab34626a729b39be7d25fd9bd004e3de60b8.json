@@ -1,0 +1,155 @@
+{
+  "batch": "b1942388cbc361ba9c89f1b1335f4bf1606fbdfbfdec08a15bb93e447f51563e.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "gemini",
+    "--test",
+    "openai",
+    "--test",
+    "llamacpp",
+    "--test",
+    "copilot",
+    "--test",
+    "deepseek",
+    "--test",
+    "xai",
+    "--test",
+    "openrouter",
+    "--test",
+    "doubleword",
+    "--test",
+    "venice",
+    "-E",
+    "(binary_id(=rig::copilot) & test(=copilot::ecs_extractor::extractor_smoke)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_extractor::extractor_smoke)) | (binary_id(=rig::doubleword) & test(=doubleword::cassette::ecs_extractor::extractor_smoke)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_extractor::extractor_smoke)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_extractor::extractor_with_additional_params)) | (binary_id(=rig::llamacpp) & test(=llamacpp::cassette::ecs_extractor::extractor_smoke)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_extractor::extractor_smoke)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_extractor::extractor_smoke)) | (binary_id(=rig::venice) & test(=venice::cassette::ecs_extractor::extractor_smoke)) | (binary_id(=rig::xai) & test(=xai::ecs_extractor::extractor_smoke))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "999a02a3c811972719961ef0e599363f0516ee6564ce7827fc577277b19c2c20.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "gemini",
+    "--test",
+    "openai",
+    "--test",
+    "llamacpp",
+    "--test",
+    "copilot",
+    "--test",
+    "deepseek",
+    "--test",
+    "xai",
+    "--test",
+    "openrouter",
+    "--test",
+    "doubleword",
+    "--test",
+    "venice",
+    "-E",
+    "(binary_id(=rig::copilot) & test(=copilot::ecs_extractor::extractor_smoke)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_extractor::extractor_smoke)) | (binary_id(=rig::doubleword) & test(=doubleword::cassette::ecs_extractor::extractor_smoke)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_extractor::extractor_smoke)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_extractor::extractor_with_additional_params)) | (binary_id(=rig::llamacpp) & test(=llamacpp::cassette::ecs_extractor::extractor_smoke)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_extractor::extractor_smoke)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_extractor::extractor_smoke)) | (binary_id(=rig::venice) & test(=venice::cassette::ecs_extractor::extractor_smoke)) | (binary_id(=rig::xai) & test(=xai::ecs_extractor::extractor_smoke))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "701b079e1c8751ac88fa58823744cc4119a95d03cc1439d665386fba47e9b357.log",
+    "listing_stdout": "3bfb627f3ef2137e5c241df0d031ae11e293ed2de4579102e39ce0cdfdacd610.json",
+    "stderr": "0fea406737873af403e55c3c507dd7cbaf452b51411f2193f25b66e581212bc3.log",
+    "stdout": "1a46f39ecfc78a9a44f7d413d594bf026a2a3840bef382b2bbb7a75b506eef9d.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_extractor::extractor_smoke",
+      "seconds": 2.085230084,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_extractor::extractor_with_additional_params",
+      "seconds": 2.072213208,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_extractor::extractor_smoke",
+      "seconds": 2.0896485,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::llamacpp$llamacpp::cassette::ecs_extractor::extractor_smoke",
+      "seconds": 2.084635208,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::copilot$copilot::ecs_extractor::extractor_smoke",
+      "seconds": 2.089137708,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::ecs_extractor::extractor_smoke",
+      "seconds": 2.077552458,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::ecs_extractor::extractor_smoke",
+      "seconds": 2.074230916,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::ecs_extractor::extractor_smoke",
+      "seconds": 2.090436666,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::doubleword$doubleword::cassette::ecs_extractor::extractor_smoke",
+      "seconds": 2.08869425,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::venice$venice::cassette::ecs_extractor::extractor_smoke",
+      "seconds": 2.090267083,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "ce13e7832704d1e8b75bd8dd9ff0d3ba71eebd243072a306bc64f9cbc6fb94f6.json",
+  "source_index_after": "ce13e7832704d1e8b75bd8dd9ff0d3ba71eebd243072a306bc64f9cbc6fb94f6.json",
+  "status": "executed",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

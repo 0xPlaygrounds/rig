@@ -1,0 +1,244 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.33s
+    Starting 24 tests across 1 binary (443 skipped)
+        PASS [   0.163s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_agent
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_agent ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.15s
+
+
+        PASS [   0.164s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_agent
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_agent ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.15s
+
+
+        PASS [   0.164s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_agent
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_agent ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.15s
+
+
+        PASS [   0.165s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_agent
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_agent ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.15s
+
+
+        PASS [   0.165s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_agent
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_agent ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.16s
+
+
+        PASS [   0.164s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.15s
+
+
+        PASS [   0.166s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.15s
+
+
+        PASS [   0.165s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.15s
+
+
+        PASS [   0.165s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.15s
+
+
+        PASS [   0.165s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.15s
+
+
+        PASS [   0.166s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_agent
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_agent ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.16s
+
+
+        PASS [   0.164s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.15s
+
+
+        PASS [   0.098s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.09s
+
+
+        PASS [   0.098s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.09s
+
+
+        PASS [   0.103s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_agent
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_agent ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.09s
+
+
+        PASS [   0.102s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_agent
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_agent ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.09s
+
+
+        PASS [   0.113s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.10s
+
+
+        PASS [   0.118s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.10s
+
+
+        PASS [   0.120s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_agent
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_agent ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.11s
+
+
+        PASS [   0.123s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_agent
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_agent ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.11s
+
+
+        PASS [   0.137s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.13s
+
+
+        PASS [   0.138s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.13s
+
+
+        PASS [   0.140s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_agent
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_agent ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.13s
+
+
+        PASS [   0.146s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_agent
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_agent ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.13s
+
+
+------------
+     Summary [   0.311s] 24 tests run: 24 passed, 443 skipped

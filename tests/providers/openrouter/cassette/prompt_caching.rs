@@ -31,9 +31,9 @@ use crate::cache_conformance::{
 
 use super::super::support::with_openrouter_prompt_caching_cassette;
 
-const CACHE_MODEL: &str = "openai/gpt-4o-mini";
+pub(super) const CACHE_MODEL: &str = "openai/gpt-4o-mini";
 
-const OPENROUTER_CACHE_SUPPORT: CacheSupport = CacheSupport {
+pub(super) const OPENROUTER_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "openrouter",
     accounting: CacheAccounting::Subset,
     // OpenRouter *can* report cache writes (`cache_write_tokens`), and does for
@@ -47,7 +47,7 @@ const OPENROUTER_CACHE_SUPPORT: CacheSupport = CacheSupport {
     hit_ratio_floor: 0.80,
 };
 
-fn probe() -> CacheProbe {
+pub(super) fn probe() -> CacheProbe {
     CacheProbe::new("openrouter prompt caching")
 }
 

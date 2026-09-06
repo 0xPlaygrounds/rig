@@ -1,0 +1,86 @@
+   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.99s
+    Starting 7 tests across 1 binary (429 skipped)
+        PASS [   0.847s] rig::gemini gemini::cassette::ecs_stress_main::multi_tool_workflow_pairs_calls_and_results_per_turn_blocking
+        PASS [   0.854s] rig::gemini gemini::cassette::ecs_stress_main::skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking
+        PASS [   0.855s] rig::gemini gemini::cassette::ecs_stress_main::request_patch_injects_context_and_narrows_active_tools_blocking
+        PASS [   0.867s] rig::gemini gemini::cassette::ecs_stress_main::chained_arg_rewrite_then_result_redaction_blocking
+        FAIL [   0.867s] rig::gemini gemini::cassette::ecs_stress_main::lifecycle_and_scratchpad_thread_across_multi_turn_blocking
+
+--- STDOUT:              rig::gemini gemini::cassette::ecs_stress_main::lifecycle_and_scratchpad_thread_across_multi_turn_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_main::lifecycle_and_scratchpad_thread_across_multi_turn_blocking ... FAILED
+
+failures:
+
+failures:
+    gemini::cassette::ecs_stress_main::lifecycle_and_scratchpad_thread_across_multi_turn_blocking
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 435 filtered out; finished in 0.86s
+
+
+--- STDERR:              rig::gemini gemini::cassette::ecs_stress_main::lifecycle_and_scratchpad_thread_across_multi_turn_blocking ---
+
+thread 'gemini::cassette::ecs_stress_main::lifecycle_and_scratchpad_thread_across_multi_turn_blocking' (3426071) panicked at tests/providers/gemini/cassette/ecs_stress/main.rs:150:13:
+assertion `left == right` failed: committed result has one actual tool slot
+  left: 2
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Encountered a panic in system `<Enable the debug feature to see the name>`!
+Encountered a panic in system `<Enable the debug feature to see the name>`!
+Encountered a panic in system `<Enable the debug feature to see the name>`!
+
+        FAIL [   0.961s] rig::gemini gemini::cassette::ecs_stress_main::streaming_lifecycle_ordering_and_context_streaming_flag
+
+--- STDOUT:              rig::gemini gemini::cassette::ecs_stress_main::streaming_lifecycle_ordering_and_context_streaming_flag ---
+
+running 1 test
+test gemini::cassette::ecs_stress_main::streaming_lifecycle_ordering_and_context_streaming_flag ... FAILED
+
+failures:
+
+failures:
+    gemini::cassette::ecs_stress_main::streaming_lifecycle_ordering_and_context_streaming_flag
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 435 filtered out; finished in 0.95s
+
+
+--- STDERR:              rig::gemini gemini::cassette::ecs_stress_main::streaming_lifecycle_ordering_and_context_streaming_flag ---
+
+thread 'gemini::cassette::ecs_stress_main::streaming_lifecycle_ordering_and_context_streaming_flag' (3426073) panicked at tests/providers/gemini/cassette/ecs_stress/main.rs:150:13:
+assertion `left == right` failed: committed result has one actual tool slot
+  left: 2
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Encountered a panic in system `<Enable the debug feature to see the name>`!
+Encountered a panic in system `<Enable the debug feature to see the name>`!
+Encountered a panic in system `<Enable the debug feature to see the name>`!
+
+        FAIL [   0.966s] rig::gemini gemini::cassette::ecs_stress_main::tool_call_turns_effect_log_is_the_golden_fixture
+
+--- STDOUT:              rig::gemini gemini::cassette::ecs_stress_main::tool_call_turns_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test gemini::cassette::ecs_stress_main::tool_call_turns_effect_log_is_the_golden_fixture ... FAILED
+
+failures:
+
+failures:
+    gemini::cassette::ecs_stress_main::tool_call_turns_effect_log_is_the_golden_fixture
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 435 filtered out; finished in 0.96s
+
+
+--- STDERR:              rig::gemini gemini::cassette::ecs_stress_main::tool_call_turns_effect_log_is_the_golden_fixture ---
+
+thread 'gemini::cassette::ecs_stress_main::tool_call_turns_effect_log_is_the_golden_fixture' (3426072) panicked at tests/common/goldens.rs:81:9:
+no golden fixture at /Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-verify/fixtures/ecs_parity/gemini_tool_call_turns.effects.json; run with RIG_REGENERATE_GOLDEN=1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+------------
+     Summary [   0.968s] 7 tests run: 4 passed, 3 failed, 429 skipped
+        FAIL [   0.867s] rig::gemini gemini::cassette::ecs_stress_main::lifecycle_and_scratchpad_thread_across_multi_turn_blocking
+        FAIL [   0.961s] rig::gemini gemini::cassette::ecs_stress_main::streaming_lifecycle_ordering_and_context_streaming_flag
+        FAIL [   0.966s] rig::gemini gemini::cassette::ecs_stress_main::tool_call_turns_effect_log_is_the_golden_fixture
+error: test run failed

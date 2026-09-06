@@ -1,0 +1,2464 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.40s
+    Starting 246 tests across 14 binaries (3009 skipped)
+        PASS [   2.578s] rig::anthropic anthropic::cassette::ecs_endings::answer_turn_stop_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_endings::answer_turn_stop_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_endings::answer_turn_stop_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.57s
+
+
+        PASS [   2.584s] rig::anthropic anthropic::cassette::ecs_endings::answer_outcome_cancelled_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_endings::answer_outcome_cancelled_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_endings::answer_outcome_cancelled_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.57s
+
+
+        PASS [   2.593s] rig::anthropic anthropic::cassette::ecs_endings::tool_dispatch_cancelled_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_endings::tool_dispatch_cancelled_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_endings::tool_dispatch_cancelled_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.58s
+
+
+        PASS [   2.629s] rig::anthropic anthropic::cassette::ecs_endings::tool_outcome_cancelled_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_endings::tool_outcome_cancelled_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_endings::tool_outcome_cancelled_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.61s
+
+
+        PASS [   2.639s] rig::anthropic anthropic::cassette::ecs_causal::completion_serial_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_causal::completion_serial_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_causal::completion_serial_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.62s
+
+
+        PASS [   2.660s] rig::anthropic anthropic::cassette::ecs_causal::completion_concurrent_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_causal::completion_concurrent_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_causal::completion_concurrent_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.65s
+
+
+        PASS [   2.742s] rig::anthropic anthropic::cassette::ecs_endings::text_delta_stop_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_endings::text_delta_stop_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_endings::text_delta_stop_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.73s
+
+
+        PASS [   2.744s] rig::anthropic anthropic::cassette::ecs_endings::tool_call_delta_stop_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_endings::tool_call_delta_stop_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_endings::tool_call_delta_stop_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.73s
+
+
+        PASS [   2.836s] rig::anthropic anthropic::cassette::ecs_endings::tool_dispatch_cancelled_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_endings::tool_dispatch_cancelled_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_endings::tool_dispatch_cancelled_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.82s
+
+
+        PASS [   3.083s] rig::anthropic anthropic::cassette::ecs_concurrency::serial_serving_reproduces_the_recorded_request_order
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_concurrency::serial_serving_reproduces_the_recorded_request_order ---
+
+running 1 test
+test anthropic::cassette::ecs_concurrency::serial_serving_reproduces_the_recorded_request_order ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 3.07s
+
+
+        PASS [   3.090s] rig::anthropic anthropic::cassette::ecs_causal::completion_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_causal::completion_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_causal::completion_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 3.08s
+
+
+        PASS [   3.095s] rig::anthropic anthropic::cassette::ecs_concurrency::streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_settles
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_concurrency::streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_settles ---
+
+running 1 test
+test anthropic::cassette::ecs_concurrency::streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_settles ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 3.09s
+
+
+        PASS [   2.242s] rig::anthropic anthropic::cassette::ecs_endings::turn_finished_stop_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_endings::turn_finished_stop_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_endings::turn_finished_stop_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.23s
+
+
+        PASS [   2.342s] rig::anthropic anthropic::cassette::ecs_endings::tool_outcome_cancelled_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_endings::tool_outcome_cancelled_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_endings::tool_outcome_cancelled_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.33s
+
+
+        PASS [   2.415s] rig::anthropic anthropic::cassette::ecs_endings::turn_finished_stop_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_endings::turn_finished_stop_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_endings::turn_finished_stop_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.41s
+
+
+        PASS [   2.402s] rig::anthropic anthropic::cassette::ecs_hooks::demand_done_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_hooks::demand_done_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_hooks::demand_done_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.39s
+
+
+        PASS [   2.417s] rig::anthropic anthropic::cassette::ecs_hooks::deny_tool_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_hooks::deny_tool_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_hooks::deny_tool_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.41s
+
+
+        PASS [   2.491s] rig::anthropic anthropic::cassette::ecs_hooks::observe_everything_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_hooks::observe_everything_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_hooks::observe_everything_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.48s
+
+
+        PASS [   2.497s] rig::anthropic anthropic::cassette::ecs_hooks::lookup_before_run_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_hooks::lookup_before_run_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_hooks::lookup_before_run_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.48s
+
+
+        PASS [   2.689s] rig::anthropic anthropic::cassette::ecs_hooks::deny_tool_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_hooks::deny_tool_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_hooks::deny_tool_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.68s
+
+
+        PASS [   2.521s] rig::anthropic anthropic::cassette::ecs_hooks::patch_tool_args_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_hooks::patch_tool_args_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_hooks::patch_tool_args_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.51s
+
+
+        PASS [   2.582s] rig::anthropic anthropic::cassette::ecs_hooks::preamble_override_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_hooks::preamble_override_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_hooks::preamble_override_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.57s
+
+
+        PASS [   2.595s] rig::anthropic anthropic::cassette::ecs_hooks::replace_answer_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_hooks::replace_answer_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_hooks::replace_answer_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.58s
+
+
+        PASS [   2.884s] rig::anthropic anthropic::cassette::ecs_hooks::patch_tool_args_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_hooks::patch_tool_args_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_hooks::patch_tool_args_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.87s
+
+
+        PASS [   2.445s] rig::anthropic anthropic::cassette::ecs_hooks::replace_tool_result_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_hooks::replace_tool_result_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_hooks::replace_tool_result_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.43s
+
+
+        PASS [   2.474s] rig::anthropic anthropic::cassette::ecs_hooks::two_hooks_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_hooks::two_hooks_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_hooks::two_hooks_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.46s
+
+
+        PASS [   2.395s] rig::anthropic anthropic::cassette::ecs_host::custom_at_completion_call_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_at_completion_call_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_at_completion_call_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.38s
+
+
+        PASS [   2.416s] rig::anthropic anthropic::cassette::ecs_host::custom_at_outcome_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_at_outcome_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_at_outcome_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.40s
+
+
+        PASS [   2.411s] rig::anthropic anthropic::cassette::ecs_host::custom_at_start_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_at_start_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_at_start_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.40s
+
+
+        PASS [   2.465s] rig::anthropic anthropic::cassette::ecs_host::custom_at_settled_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_at_settled_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_at_settled_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.45s
+
+
+        PASS [   2.381s] rig::anthropic anthropic::cassette::ecs_host::custom_start_and_settled_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_start_and_settled_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_start_and_settled_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.37s
+
+
+        PASS [   2.714s] rig::anthropic anthropic::cassette::ecs_host::custom_at_outcome_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_at_outcome_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_at_outcome_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.70s
+
+
+        PASS [   2.483s] rig::anthropic anthropic::cassette::ecs_host::custom_at_start_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_at_start_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_at_start_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.47s
+
+
+        PASS [   2.359s] rig::anthropic anthropic::cassette::ecs_host::custom_twice_concurrent_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_twice_concurrent_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_twice_concurrent_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.34s
+
+
+        PASS [   2.354s] rig::anthropic anthropic::cassette::ecs_host::custom_twice_serial_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_twice_serial_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_twice_serial_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.34s
+
+
+        PASS [   2.349s] rig::anthropic anthropic::cassette::ecs_host::custom_unserved_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_unserved_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_unserved_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.33s
+
+
+        PASS [   2.436s] rig::anthropic anthropic::cassette::ecs_layers::deny_tool_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_layers::deny_tool_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_layers::deny_tool_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.42s
+
+
+        PASS [   2.466s] rig::anthropic anthropic::cassette::ecs_layers::memory_load_replaced_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_layers::memory_load_replaced_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_layers::memory_load_replaced_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.45s
+
+
+        PASS [   2.507s] rig::anthropic anthropic::cassette::ecs_layers::host_deny_over_host_bus_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_layers::host_deny_over_host_bus_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_layers::host_deny_over_host_bus_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.49s
+
+
+        PASS [   2.517s] rig::anthropic anthropic::cassette::ecs_layers::patch_beneath_hook_patch_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_layers::patch_beneath_hook_patch_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_layers::patch_beneath_hook_patch_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.48s
+
+
+        PASS [   2.555s] rig::anthropic anthropic::cassette::ecs_layers::patch_tool_args_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_layers::patch_tool_args_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_layers::patch_tool_args_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.54s
+
+
+        PASS [   2.528s] rig::anthropic anthropic::cassette::ecs_layers::replace_tool_result_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_layers::replace_tool_result_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_layers::replace_tool_result_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.51s
+
+
+        PASS [   2.568s] rig::anthropic anthropic::cassette::ecs_layers::two_layers_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_layers::two_layers_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_layers::two_layers_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.55s
+
+
+        PASS [   2.578s] rig::anthropic anthropic::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion ---
+
+running 1 test
+test anthropic::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.56s
+
+
+        PASS [   2.477s] rig::anthropic anthropic::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ---
+
+running 1 test
+test anthropic::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.47s
+
+
+        PASS [   2.898s] rig::anthropic anthropic::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ---
+
+running 1 test
+test anthropic::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.88s
+
+
+        PASS [   2.518s] rig::anthropic anthropic::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider ---
+
+running 1 test
+test anthropic::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.50s
+
+
+        PASS [   2.834s] rig::anthropic anthropic::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption ---
+
+running 1 test
+test anthropic::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.82s
+
+
+        PASS [   2.396s] rig::anthropic anthropic::cassette::ecs_memory::clear_at_settled_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_memory::clear_at_settled_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_memory::clear_at_settled_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.38s
+
+
+        PASS [   2.336s] rig::anthropic anthropic::cassette::ecs_memory::clear_at_settled_two_runs_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_memory::clear_at_settled_two_runs_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_memory::clear_at_settled_two_runs_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.32s
+
+
+        PASS [   2.306s] rig::anthropic anthropic::cassette::ecs_memory::clear_at_start_two_runs_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_memory::clear_at_start_two_runs_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_memory::clear_at_start_two_runs_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.29s
+
+
+        PASS [   2.379s] rig::anthropic anthropic::cassette::ecs_memory::clear_at_start_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_memory::clear_at_start_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_memory::clear_at_start_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.36s
+
+
+        PASS [   2.300s] rig::anthropic anthropic::cassette::ecs_memory::failing_append_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_memory::failing_append_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_memory::failing_append_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.29s
+
+
+        PASS [   2.419s] rig::anthropic anthropic::cassette::ecs_memory::failing_append_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_memory::failing_append_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_memory::failing_append_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.40s
+
+
+        PASS [   2.350s] rig::anthropic anthropic::cassette::ecs_memory::history_bypass_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_memory::history_bypass_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_memory::history_bypass_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.34s
+
+
+        PASS [   2.309s] rig::anthropic anthropic::cassette::ecs_memory::host_bus_memory_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_memory::host_bus_memory_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_memory::host_bus_memory_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.29s
+
+
+        PASS [   2.386s] rig::anthropic anthropic::cassette::ecs_memory::two_runs_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_memory::two_runs_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_memory::two_runs_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.37s
+
+
+        PASS [   2.754s] rig::anthropic anthropic::cassette::ecs_memory::serial_two_tools_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_memory::serial_two_tools_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_memory::serial_two_tools_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.74s
+
+
+        PASS [   2.447s] rig::anthropic anthropic::cassette::ecs_outcome::cancel_after_tool_call_delta_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_outcome::cancel_after_tool_call_delta_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_outcome::cancel_after_tool_call_delta_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.43s
+
+
+        PASS [   2.563s] rig::anthropic anthropic::cassette::ecs_memory::two_runs_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_memory::two_runs_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_memory::two_runs_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.55s
+
+
+        PASS [   2.274s] rig::anthropic anthropic::cassette::ecs_outcome::default_max_turns_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_outcome::default_max_turns_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_outcome::default_max_turns_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.26s
+
+
+        PASS [   2.221s] rig::anthropic anthropic::cassette::ecs_outcome::model_error_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_outcome::model_error_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_outcome::model_error_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.20s
+
+
+        PASS [   2.312s] rig::anthropic anthropic::cassette::ecs_outcome::max_turns_exhausted_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_outcome::max_turns_exhausted_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_outcome::max_turns_exhausted_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.30s
+
+
+        PASS [   2.344s] rig::anthropic anthropic::cassette::ecs_outcome::model_error_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_outcome::model_error_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_outcome::model_error_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.33s
+
+
+        PASS [   2.267s] rig::anthropic anthropic::cassette::ecs_outcome::tool_error_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_outcome::tool_error_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_outcome::tool_error_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.25s
+
+
+        PASS [   2.303s] rig::anthropic anthropic::cassette::ecs_output::prompted_unary_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_output::prompted_unary_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_output::prompted_unary_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.29s
+
+
+        PASS [   2.569s] rig::anthropic anthropic::cassette::ecs_output::prompted_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_output::prompted_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_output::prompted_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.56s
+
+
+        PASS [   2.635s] rig::anthropic anthropic::cassette::ecs_outcome::tool_error_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_outcome::tool_error_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_outcome::tool_error_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.62s
+
+
+        PASS [   2.243s] rig::anthropic anthropic::cassette::ecs_output::prompted_with_real_tool_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_output::prompted_with_real_tool_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_output::prompted_with_real_tool_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.23s
+
+
+        PASS [   2.344s] rig::anthropic anthropic::cassette::ecs_output::tool_choice_required_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_output::tool_choice_required_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_output::tool_choice_required_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.33s
+
+
+        PASS [   2.377s] rig::anthropic anthropic::cassette::ecs_output::tool_choice_specific_output_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_output::tool_choice_specific_output_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_output::tool_choice_specific_output_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.36s
+
+
+        PASS [   3.050s] rig::anthropic anthropic::cassette::ecs_output::tool_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_output::tool_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_output::tool_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 3.03s
+
+
+        PASS [   2.242s] rig::anthropic anthropic::cassette::ecs_output::tool_thinking_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_output::tool_thinking_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_output::tool_thinking_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.23s
+
+
+        PASS [   2.257s] rig::anthropic anthropic::cassette::ecs_output::tool_unary_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_output::tool_unary_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_output::tool_unary_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.24s
+
+
+        PASS [   2.238s] rig::anthropic anthropic::cassette::ecs_output::tool_under_none_degrades_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_output::tool_under_none_degrades_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_output::tool_under_none_degrades_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.23s
+
+
+        PASS [   2.227s] rig::anthropic anthropic::cassette::ecs_output::tool_with_real_tool_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_output::tool_with_real_tool_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_output::tool_with_real_tool_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.21s
+
+
+        PASS [   2.242s] rig::anthropic anthropic::cassette::ecs_request_shape::append_preamble_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_request_shape::append_preamble_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_request_shape::append_preamble_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.23s
+
+
+        PASS [   2.232s] rig::anthropic anthropic::cassette::ecs_request_shape::max_tokens_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_request_shape::max_tokens_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_request_shape::max_tokens_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.22s
+
+
+        PASS [   2.272s] rig::anthropic anthropic::cassette::ecs_request_shape::prior_history_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_request_shape::prior_history_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_request_shape::prior_history_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.26s
+
+
+        PASS [   2.287s] rig::anthropic anthropic::cassette::ecs_request_shape::output_schema_unary_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_request_shape::output_schema_unary_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_request_shape::output_schema_unary_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.27s
+
+
+        PASS [   2.404s] rig::anthropic anthropic::cassette::ecs_request_shape::output_schema_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_request_shape::output_schema_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_request_shape::output_schema_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.39s
+
+
+        PASS [   2.252s] rig::anthropic anthropic::cassette::ecs_request_shape::static_context_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_request_shape::static_context_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_request_shape::static_context_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.24s
+
+
+        PASS [   2.454s] rig::anthropic anthropic::cassette::ecs_request_shape::thinking_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_request_shape::thinking_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_request_shape::thinking_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.44s
+
+
+        PASS [   2.285s] rig::anthropic anthropic::cassette::ecs_request_shape::thinking_unary_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_request_shape::thinking_unary_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_request_shape::thinking_unary_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.27s
+
+
+        PASS [   2.403s] rig::anthropic anthropic::cassette::ecs_request_shape::tool_choice_auto_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_request_shape::tool_choice_auto_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_request_shape::tool_choice_auto_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.39s
+
+
+        PASS [   2.346s] rig::anthropic anthropic::cassette::ecs_request_shape::tool_choice_none_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_request_shape::tool_choice_none_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_request_shape::tool_choice_none_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.33s
+
+
+        PASS [   2.370s] rig::anthropic anthropic::cassette::ecs_request_shape::tool_choice_required_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_request_shape::tool_choice_required_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_request_shape::tool_choice_required_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.36s
+
+
+        PASS [   2.324s] rig::anthropic anthropic::cassette::ecs_request_shape::tool_choice_specific_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_request_shape::tool_choice_specific_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_request_shape::tool_choice_specific_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.31s
+
+
+        PASS [   2.307s] rig::anthropic anthropic::cassette::ecs_request_shape::without_preamble_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_request_shape::without_preamble_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_request_shape::without_preamble_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.29s
+
+
+        PASS [   2.710s] rig::anthropic anthropic::cassette::ecs_serving::capacity_one_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::capacity_one_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::capacity_one_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.70s
+
+
+        PASS [   2.283s] rig::anthropic anthropic::cassette::ecs_serving::host_bus_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::host_bus_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::host_bus_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.27s
+
+
+        PASS [   2.750s] rig::anthropic anthropic::cassette::ecs_serving::concurrent_concurrency_one_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::concurrent_concurrency_one_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::concurrent_concurrency_one_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.73s
+
+
+        PASS [   2.754s] rig::anthropic anthropic::cassette::ecs_serving::concurrent_concurrency_two_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::concurrent_concurrency_two_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::concurrent_concurrency_two_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.74s
+
+
+        PASS [   2.721s] rig::anthropic anthropic::cassette::ecs_serving::concurrent_concurrency_two_events_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::concurrent_concurrency_two_events_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::concurrent_concurrency_two_events_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.71s
+
+
+        PASS [   2.459s] rig::anthropic anthropic::cassette::ecs_serving::host_bus_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::host_bus_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::host_bus_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.45s
+
+
+        PASS [   2.107s] rig::anthropic anthropic::cassette::ecs_serving::model_route_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::model_route_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::model_route_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.09s
+
+
+        PASS [   2.194s] rig::anthropic anthropic::cassette::ecs_serving::model_route_unselected_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::model_route_unselected_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::model_route_unselected_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.18s
+
+
+        PASS [   2.169s] rig::anthropic anthropic::cassette::ecs_serving::serial_memory_tools_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::serial_memory_tools_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::serial_memory_tools_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.15s
+
+
+        PASS [   2.135s] rig::anthropic anthropic::cassette::ecs_shaping::active_tools_none_second_turn_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_shaping::active_tools_none_second_turn_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_shaping::active_tools_none_second_turn_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.12s
+
+
+        PASS [   2.132s] rig::anthropic anthropic::cassette::ecs_shaping::extra_context_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_shaping::extra_context_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_shaping::extra_context_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.12s
+
+
+        PASS [   2.466s] rig::anthropic anthropic::cassette::ecs_serving::serial_concurrency_one_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_serving::serial_concurrency_one_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_serving::serial_concurrency_one_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.45s
+
+
+        PASS [   2.210s] rig::anthropic anthropic::cassette::ecs_shaping::extra_context_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_shaping::extra_context_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_shaping::extra_context_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.20s
+
+
+        PASS [   2.187s] rig::anthropic anthropic::cassette::ecs_shaping::history_first_turn_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_shaping::history_first_turn_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_shaping::history_first_turn_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.17s
+
+
+        PASS [   2.255s] rig::anthropic anthropic::cassette::ecs_shaping::late_route_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_shaping::late_route_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_shaping::late_route_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.24s
+
+
+        PASS [   2.254s] rig::anthropic anthropic::cassette::ecs_shaping::max_tokens_second_turn_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_shaping::max_tokens_second_turn_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_shaping::max_tokens_second_turn_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.24s
+
+
+        PASS [   2.249s] rig::anthropic anthropic::cassette::ecs_shaping::merged_three_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_shaping::merged_three_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_shaping::merged_three_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.24s
+
+
+        PASS [   2.300s] rig::anthropic anthropic::cassette::ecs_shaping::preamble_second_turn_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_shaping::preamble_second_turn_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_shaping::preamble_second_turn_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.28s
+
+
+        PASS [   2.258s] rig::anthropic anthropic::cassette::ecs_shaping::route_on_first_turn_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_shaping::route_on_first_turn_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_shaping::route_on_first_turn_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.24s
+
+
+        PASS [   2.258s] rig::anthropic anthropic::cassette::ecs_shaping::thinking_second_turn_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_shaping::thinking_second_turn_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_shaping::thinking_second_turn_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.24s
+
+
+        PASS [   2.234s] rig::anthropic anthropic::cassette::ecs_shaping::tool_choice_required_first_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_shaping::tool_choice_required_first_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_shaping::tool_choice_required_first_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.22s
+
+
+        PASS [   2.300s] rig::anthropic anthropic::cassette::ecs_shaping::tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_shaping::tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_shaping::tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.29s
+
+
+        PASS [   2.232s] rig::anthropic anthropic::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap ---
+
+running 1 test
+test anthropic::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.22s
+
+
+        PASS [   2.237s] rig::anthropic anthropic::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap ---
+
+running 1 test
+test anthropic::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.22s
+
+
+        PASS [   2.320s] rig::anthropic anthropic::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls ---
+
+running 1 test
+test anthropic::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.31s
+
+
+        PASS [   2.304s] rig::anthropic anthropic::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap ---
+
+running 1 test
+test anthropic::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.29s
+
+
+        PASS [   2.446s] rig::anthropic anthropic::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap ---
+
+running 1 test
+test anthropic::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.43s
+
+
+        PASS [   2.605s] rig::anthropic anthropic::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap ---
+
+running 1 test
+test anthropic::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.59s
+
+
+        PASS [   2.650s] rig::anthropic anthropic::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls ---
+
+running 1 test
+test anthropic::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.64s
+
+
+        PASS [   2.385s] rig::anthropic anthropic::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap ---
+
+running 1 test
+test anthropic::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 2.37s
+
+
+        PASS [   2.398s] rig::bedrock bedrock::cassette::ecs_completion::completion_smoke
+
+--- OUTPUT:              rig::bedrock bedrock::cassette::ecs_completion::completion_smoke ---
+
+running 1 test
+test bedrock::cassette::ecs_completion::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 110 filtered out; finished in 2.38s
+
+
+        PASS [   2.376s] rig::bedrock bedrock::cassette::ecs_completion::completion_with_context_smoke
+
+--- OUTPUT:              rig::bedrock bedrock::cassette::ecs_completion::completion_with_context_smoke ---
+
+running 1 test
+test bedrock::cassette::ecs_completion::completion_with_context_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 110 filtered out; finished in 2.36s
+
+
+        PASS [   2.197s] rig::cohere cohere::cassette::ecs_completion::completion_smoke
+
+--- OUTPUT:              rig::cohere cohere::cassette::ecs_completion::completion_smoke ---
+
+running 1 test
+test cohere::cassette::ecs_completion::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 109 filtered out; finished in 2.18s
+
+
+        PASS [   2.149s] rig::copilot copilot::ecs_completion::completion_smoke
+
+--- OUTPUT:              rig::copilot copilot::ecs_completion::completion_smoke ---
+
+running 1 test
+test copilot::ecs_completion::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 117 filtered out; finished in 2.13s
+
+
+        PASS [   2.426s] rig::bedrock bedrock::cassette::ecs_completion::prompt_caching_completion_smoke
+
+--- OUTPUT:              rig::bedrock bedrock::cassette::ecs_completion::prompt_caching_completion_smoke ---
+
+running 1 test
+test bedrock::cassette::ecs_completion::prompt_caching_completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 110 filtered out; finished in 2.41s
+
+
+        PASS [   2.429s] rig::bedrock bedrock::cassette::ecs_completion::tool_roundtrip_smoke
+
+--- OUTPUT:              rig::bedrock bedrock::cassette::ecs_completion::tool_roundtrip_smoke ---
+
+running 1 test
+test bedrock::cassette::ecs_completion::tool_roundtrip_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 110 filtered out; finished in 2.42s
+
+
+        PASS [   2.168s] rig::copilot copilot::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data
+
+--- OUTPUT:              rig::copilot copilot::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data ---
+
+running 1 test
+test copilot::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 117 filtered out; finished in 2.15s
+
+
+        PASS [   2.125s] rig::copilot copilot::ecs_extractor_usage::extract_backward_compatibility
+
+--- OUTPUT:              rig::copilot copilot::ecs_extractor_usage::extract_backward_compatibility ---
+
+running 1 test
+test copilot::ecs_extractor_usage::extract_backward_compatibility ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 117 filtered out; finished in 2.11s
+
+
+        PASS [   2.186s] rig::copilot copilot::ecs_extractor_usage::extract_with_chat_history_with_usage_works
+
+--- OUTPUT:              rig::copilot copilot::ecs_extractor_usage::extract_with_chat_history_with_usage_works ---
+
+running 1 test
+test copilot::ecs_extractor_usage::extract_with_chat_history_with_usage_works ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 117 filtered out; finished in 2.17s
+
+
+        PASS [   2.242s] rig::copilot copilot::ecs_extractor_usage::extract_with_usage_returns_data_and_usage
+
+--- OUTPUT:              rig::copilot copilot::ecs_extractor_usage::extract_with_usage_returns_data_and_usage ---
+
+running 1 test
+test copilot::ecs_extractor_usage::extract_with_usage_returns_data_and_usage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 117 filtered out; finished in 2.23s
+
+
+        PASS [   2.239s] rig::copilot copilot::ecs_extractor_usage::usage_tracking_works_for_different_schemas
+
+--- OUTPUT:              rig::copilot copilot::ecs_extractor_usage::usage_tracking_works_for_different_schemas ---
+
+running 1 test
+test copilot::ecs_extractor_usage::usage_tracking_works_for_different_schemas ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 117 filtered out; finished in 2.23s
+
+
+        PASS [   2.247s] rig::deepseek deepseek::ecs_completion::completion_smoke
+
+--- OUTPUT:              rig::deepseek deepseek::ecs_completion::completion_smoke ---
+
+running 1 test
+test deepseek::ecs_completion::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 197 filtered out; finished in 2.23s
+
+
+        PASS [   2.308s] rig::deepseek deepseek::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data
+
+--- OUTPUT:              rig::deepseek deepseek::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data ---
+
+running 1 test
+test deepseek::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 197 filtered out; finished in 2.29s
+
+
+        PASS [   2.311s] rig::deepseek deepseek::ecs_extractor_usage::extract_backward_compatibility
+
+--- OUTPUT:              rig::deepseek deepseek::ecs_extractor_usage::extract_backward_compatibility ---
+
+running 1 test
+test deepseek::ecs_extractor_usage::extract_backward_compatibility ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 197 filtered out; finished in 2.30s
+
+
+        PASS [   2.345s] rig::deepseek deepseek::ecs_extractor_usage::extract_with_chat_history_with_usage_works
+
+--- OUTPUT:              rig::deepseek deepseek::ecs_extractor_usage::extract_with_chat_history_with_usage_works ---
+
+running 1 test
+test deepseek::ecs_extractor_usage::extract_with_chat_history_with_usage_works ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 197 filtered out; finished in 2.33s
+
+
+        PASS [   2.285s] rig::deepseek deepseek::ecs_extractor_usage::extract_with_usage_returns_data_and_usage
+
+--- OUTPUT:              rig::deepseek deepseek::ecs_extractor_usage::extract_with_usage_returns_data_and_usage ---
+
+running 1 test
+test deepseek::ecs_extractor_usage::extract_with_usage_returns_data_and_usage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 197 filtered out; finished in 2.27s
+
+
+        PASS [   2.350s] rig::deepseek deepseek::ecs_extractor_usage::usage_tracking_works_for_different_schemas
+
+--- OUTPUT:              rig::deepseek deepseek::ecs_extractor_usage::usage_tracking_works_for_different_schemas ---
+
+running 1 test
+test deepseek::ecs_extractor_usage::usage_tracking_works_for_different_schemas ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 197 filtered out; finished in 2.34s
+
+
+        PASS [   2.372s] rig::doubleword doubleword::cassette::ecs_completion::completion_smoke
+
+--- OUTPUT:              rig::doubleword doubleword::cassette::ecs_completion::completion_smoke ---
+
+running 1 test
+test doubleword::cassette::ecs_completion::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 153 filtered out; finished in 2.36s
+
+
+        PASS [   2.456s] rig::gemini gemini::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ---
+
+running 1 test
+test gemini::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.44s
+
+
+        PASS [   2.385s] rig::gemini gemini::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion ---
+
+running 1 test
+test gemini::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.37s
+
+
+        PASS [   2.469s] rig::gemini gemini::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption ---
+
+running 1 test
+test gemini::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.45s
+
+
+        PASS [   2.331s] rig::gemini gemini::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ---
+
+running 1 test
+test gemini::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.32s
+
+
+        PASS [   2.401s] rig::gemini gemini::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider ---
+
+running 1 test
+test gemini::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.39s
+
+
+        PASS [   2.387s] rig::gemini gemini::cassette::ecs_stress_context::add_hook_appends_across_builder_and_request_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_context::add_hook_appends_across_builder_and_request_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_context::add_hook_appends_across_builder_and_request_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.37s
+
+
+        PASS [   2.433s] rig::gemini gemini::cassette::ecs_stress_context::agent_name_absent_when_unconfigured_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_context::agent_name_absent_when_unconfigured_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_context::agent_name_absent_when_unconfigured_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.42s
+
+
+        PASS [   2.447s] rig::gemini gemini::cassette::ecs_stress_context::block_id_correlates_tool_call_and_result_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_context::block_id_correlates_tool_call_and_result_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_context::block_id_correlates_tool_call_and_result_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.43s
+
+
+        PASS [   2.395s] rig::gemini gemini::cassette::ecs_stress_context::completion_call_patches_accumulate_from_two_hooks_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_context::completion_call_patches_accumulate_from_two_hooks_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_context::completion_call_patches_accumulate_from_two_hooks_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.38s
+
+
+        PASS [   2.508s] rig::gemini gemini::cassette::ecs_stress_context::hook_context_identity_stable_and_turn_advances_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_context::hook_context_identity_stable_and_turn_advances_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_context::hook_context_identity_stable_and_turn_advances_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.50s
+
+
+        PASS [   2.386s] rig::gemini gemini::cassette::ecs_stress_context::two_hooks_narrow_active_tools_to_intersection_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_context::two_hooks_narrow_active_tools_to_intersection_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_context::two_hooks_narrow_active_tools_to_intersection_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.37s
+
+
+        PASS [   2.471s] rig::gemini gemini::cassette::ecs_stress_context::scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_context::scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_context::scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.46s
+
+
+        PASS [   2.430s] rig::gemini gemini::cassette::ecs_stress_context::two_observe_only_hooks_both_observe_the_run_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_context::two_observe_only_hooks_both_observe_the_run_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_context::two_observe_only_hooks_both_observe_the_run_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.41s
+
+
+        PASS [   2.445s] rig::gemini gemini::cassette::ecs_stress_main::chained_arg_rewrite_then_result_redaction_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_main::chained_arg_rewrite_then_result_redaction_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_main::chained_arg_rewrite_then_result_redaction_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.43s
+
+
+        PASS [   2.391s] rig::gemini gemini::cassette::ecs_stress_main::lifecycle_and_scratchpad_thread_across_multi_turn_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_main::lifecycle_and_scratchpad_thread_across_multi_turn_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_main::lifecycle_and_scratchpad_thread_across_multi_turn_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.38s
+
+
+        PASS [   2.406s] rig::gemini gemini::cassette::ecs_stress_main::multi_tool_workflow_pairs_calls_and_results_per_turn_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_main::multi_tool_workflow_pairs_calls_and_results_per_turn_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_main::multi_tool_workflow_pairs_calls_and_results_per_turn_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.39s
+
+
+        PASS [   2.336s] rig::gemini gemini::cassette::ecs_stress_main::request_patch_injects_context_and_narrows_active_tools_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_main::request_patch_injects_context_and_narrows_active_tools_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_main::request_patch_injects_context_and_narrows_active_tools_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.32s
+
+
+        PASS [   2.459s] rig::gemini gemini::cassette::ecs_stress_main::skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_main::skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_main::skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.44s
+
+
+        PASS [   2.492s] rig::gemini gemini::cassette::ecs_stress_main::streaming_lifecycle_ordering_and_context_streaming_flag
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_main::streaming_lifecycle_ordering_and_context_streaming_flag ---
+
+running 1 test
+test gemini::cassette::ecs_stress_main::streaming_lifecycle_ordering_and_context_streaming_flag ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.48s
+
+
+        PASS [   2.302s] rig::gemini gemini::cassette::ecs_stress_patch::history_replacement_injects_prior_fact_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_patch::history_replacement_injects_prior_fact_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_patch::history_replacement_injects_prior_fact_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.29s
+
+
+        PASS [   2.443s] rig::gemini gemini::cassette::ecs_stress_main::tool_call_turns_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_main::tool_call_turns_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test gemini::cassette::ecs_stress_main::tool_call_turns_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.43s
+
+
+        PASS [   2.381s] rig::gemini gemini::cassette::ecs_stress_patch::multi_field_patch_applies_preamble_and_context_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_patch::multi_field_patch_applies_preamble_and_context_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_patch::multi_field_patch_applies_preamble_and_context_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.37s
+
+
+        PASS [   2.341s] rig::gemini gemini::cassette::ecs_stress_patch::preamble_override_forces_codeword_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_patch::preamble_override_forces_codeword_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_patch::preamble_override_forces_codeword_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.33s
+
+
+        PASS [   2.398s] rig::gemini gemini::cassette::ecs_stress_patch::tool_choice_required_forces_a_tool_call_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_patch::tool_choice_required_forces_a_tool_call_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_patch::tool_choice_required_forces_a_tool_call_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.39s
+
+
+        PASS [   2.650s] rig::gemini gemini::cassette::ecs_stress_streaming::blocking_and_streaming_produce_same_final_answer
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_streaming::blocking_and_streaming_produce_same_final_answer ---
+
+running 1 test
+test gemini::cassette::ecs_stress_streaming::blocking_and_streaming_produce_same_final_answer ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.63s
+
+
+        PASS [   2.647s] rig::gemini gemini::cassette::ecs_stress_streaming::streaming_active_tools_narrowing_filters_a_tool
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_streaming::streaming_active_tools_narrowing_filters_a_tool ---
+
+running 1 test
+test gemini::cassette::ecs_stress_streaming::streaming_active_tools_narrowing_filters_a_tool ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.63s
+
+
+        PASS [   2.356s] rig::gemini gemini::cassette::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish ---
+
+running 1 test
+test gemini::cassette::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.34s
+
+
+        PASS [   2.552s] rig::gemini gemini::cassette::ecs_stress_streaming::streaming_result_redaction_reaches_final_response
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_streaming::streaming_result_redaction_reaches_final_response ---
+
+running 1 test
+test gemini::cassette::ecs_stress_streaming::streaming_result_redaction_reaches_final_response ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.54s
+
+
+        PASS [   2.552s] rig::gemini gemini::cassette::ecs_stress_streaming::streaming_skip_leaves_tool_unexecuted
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_streaming::streaming_skip_leaves_tool_unexecuted ---
+
+running 1 test
+test gemini::cassette::ecs_stress_streaming::streaming_skip_leaves_tool_unexecuted ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.54s
+
+
+        PASS [   2.498s] rig::gemini gemini::cassette::ecs_stress_streaming::streaming_tool_turns_fire_model_turn_finished
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_streaming::streaming_tool_turns_fire_model_turn_finished ---
+
+running 1 test
+test gemini::cassette::ecs_stress_streaming::streaming_tool_turns_fire_model_turn_finished ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.48s
+
+
+        PASS [   2.347s] rig::gemini gemini::cassette::ecs_stress_tools::arg_rewrite_sets_one_key_preserving_rest_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_tools::arg_rewrite_sets_one_key_preserving_rest_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_tools::arg_rewrite_sets_one_key_preserving_rest_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.33s
+
+
+        PASS [   2.278s] rig::gemini gemini::cassette::ecs_stress_tools::result_truncation_reaches_model_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_tools::result_truncation_reaches_model_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_tools::result_truncation_reaches_model_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.26s
+
+
+        PASS [   2.244s] rig::gemini gemini::cassette::ecs_stress_tools::terminate_from_tool_result_cancels_after_execution_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_tools::terminate_from_tool_result_cancels_after_execution_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_tools::terminate_from_tool_result_cancels_after_execution_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.23s
+
+
+        PASS [   2.270s] rig::gemini gemini::cassette::ecs_stress_tools::tool_error_guidance_drives_model_retry_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_tools::tool_error_guidance_drives_model_retry_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_tools::tool_error_guidance_drives_model_retry_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.25s
+
+
+        PASS [   2.274s] rig::gemini gemini::cassette::ecs_stress_tools::two_arg_rewrites_chain_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_tools::two_arg_rewrites_chain_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_tools::two_arg_rewrites_chain_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.26s
+
+
+        PASS [   2.317s] rig::gemini gemini::cassette::ecs_stress_tools::two_result_rewrites_chain_redact_then_wrap_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_tools::two_result_rewrites_chain_redact_then_wrap_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_tools::two_result_rewrites_chain_redact_then_wrap_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.30s
+
+
+        PASS [   2.236s] rig::gemini gemini::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap ---
+
+running 1 test
+test gemini::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.22s
+
+
+        PASS [   2.241s] rig::gemini gemini::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap ---
+
+running 1 test
+test gemini::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.22s
+
+
+        PASS [   2.298s] rig::gemini gemini::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls ---
+
+running 1 test
+test gemini::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.28s
+
+
+        PASS [   2.277s] rig::gemini gemini::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap ---
+
+running 1 test
+test gemini::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.26s
+
+
+        PASS [   2.344s] rig::gemini gemini::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap ---
+
+running 1 test
+test gemini::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.33s
+
+
+        PASS [   2.620s] rig::gemini gemini::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap ---
+
+running 1 test
+test gemini::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.61s
+
+
+        PASS [   2.428s] rig::gemini gemini::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls ---
+
+running 1 test
+test gemini::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.41s
+
+
+        PASS [   2.275s] rig::llamacpp llamacpp::cassette::ecs_completion::completion_smoke
+
+--- OUTPUT:              rig::llamacpp llamacpp::cassette::ecs_completion::completion_smoke ---
+
+running 1 test
+test llamacpp::cassette::ecs_completion::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 215 filtered out; finished in 2.26s
+
+
+        PASS [   2.401s] rig::gemini gemini::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap ---
+
+running 1 test
+test gemini::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 435 filtered out; finished in 2.39s
+
+
+        PASS [   2.300s] rig::llamacpp llamacpp::cassette::ecs_extractor_usage::extract_backward_compatibility
+
+--- OUTPUT:              rig::llamacpp llamacpp::cassette::ecs_extractor_usage::extract_backward_compatibility ---
+
+running 1 test
+test llamacpp::cassette::ecs_extractor_usage::extract_backward_compatibility ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 215 filtered out; finished in 2.29s
+
+
+        PASS [   2.313s] rig::llamacpp llamacpp::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data
+
+--- OUTPUT:              rig::llamacpp llamacpp::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data ---
+
+running 1 test
+test llamacpp::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 215 filtered out; finished in 2.30s
+
+
+        PASS [   2.239s] rig::llamacpp llamacpp::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works
+
+--- OUTPUT:              rig::llamacpp llamacpp::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works ---
+
+running 1 test
+test llamacpp::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 215 filtered out; finished in 2.23s
+
+
+        PASS [   2.296s] rig::llamacpp llamacpp::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage
+
+--- OUTPUT:              rig::llamacpp llamacpp::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage ---
+
+running 1 test
+test llamacpp::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 215 filtered out; finished in 2.28s
+
+
+        PASS [   2.349s] rig::llamacpp llamacpp::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas
+
+--- OUTPUT:              rig::llamacpp llamacpp::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas ---
+
+running 1 test
+test llamacpp::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 215 filtered out; finished in 2.34s
+
+
+        PASS [   2.617s] rig::ollama ollama::cassette::ecs_completion::completion_respects_max_tokens
+
+--- OUTPUT:              rig::ollama ollama::cassette::ecs_completion::completion_respects_max_tokens ---
+
+running 1 test
+test ollama::cassette::ecs_completion::completion_respects_max_tokens ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 101 filtered out; finished in 2.60s
+
+
+        PASS [   2.657s] rig::ollama ollama::cassette::ecs_completion::completion_smoke
+
+--- OUTPUT:              rig::ollama ollama::cassette::ecs_completion::completion_smoke ---
+
+running 1 test
+test ollama::cassette::ecs_completion::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 101 filtered out; finished in 2.64s
+
+
+        PASS [   2.649s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.63s
+
+
+        PASS [   2.976s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.96s
+
+
+        PASS [   3.126s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.11s
+
+
+        PASS [   3.230s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.22s
+
+
+        PASS [   3.290s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.28s
+
+
+        PASS [   3.354s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.34s
+
+
+        PASS [   3.349s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.34s
+
+
+        PASS [   3.349s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.33s
+
+
+        PASS [   3.742s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.73s
+
+
+        PASS [   3.678s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.66s
+
+
+        PASS [   3.505s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.49s
+
+
+        PASS [   3.611s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_model
+
+--- OUTPUT:              rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_model ---
+
+running 1 test
+test openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.59s
+
+
+        PASS [   3.483s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_nested_agent
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_nested_agent ---
+
+running 1 test
+test openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_nested_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.47s
+
+
+        PASS [   3.309s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_parallel_agent
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_parallel_agent ---
+
+running 1 test
+test openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_parallel_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.29s
+
+
+        PASS [   3.247s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_zero_agent
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_zero_agent ---
+
+running 1 test
+test openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_zero_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.23s
+
+
+        PASS [   3.109s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_nested_agent
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_nested_agent ---
+
+running 1 test
+test openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_nested_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.10s
+
+
+        PASS [   3.184s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_parallel_agent
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_parallel_agent ---
+
+running 1 test
+test openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_parallel_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.17s
+
+
+        PASS [   3.184s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_zero_agent
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_zero_agent ---
+
+running 1 test
+test openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_zero_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.17s
+
+
+        PASS [   3.616s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_parallel_agent
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_parallel_agent ---
+
+running 1 test
+test openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_parallel_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.60s
+
+
+        PASS [   4.070s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_nested_agent
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_nested_agent ---
+
+running 1 test
+test openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_nested_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 4.05s
+
+
+        PASS [   2.925s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_zero_agent
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_zero_agent ---
+
+running 1 test
+test openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_zero_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.91s
+
+
+        PASS [   2.687s] rig::openai openai::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data ---
+
+running 1 test
+test openai::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.67s
+
+
+        PASS [   2.915s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_zero_agent
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_zero_agent ---
+
+running 1 test
+test openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_zero_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.90s
+
+
+        PASS [   3.699s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_nested_agent
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_nested_agent ---
+
+running 1 test
+test openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_nested_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.68s
+
+
+        PASS [   3.229s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_parallel_agent
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_parallel_agent ---
+
+running 1 test
+test openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_parallel_agent ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.21s
+
+
+        PASS [   2.541s] rig::openai openai::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works ---
+
+running 1 test
+test openai::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.52s
+
+
+        PASS [   2.625s] rig::openai openai::cassette::ecs_extractor_usage::extract_backward_compatibility
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_extractor_usage::extract_backward_compatibility ---
+
+running 1 test
+test openai::cassette::ecs_extractor_usage::extract_backward_compatibility ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.61s
+
+
+        PASS [   2.578s] rig::openai openai::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage ---
+
+running 1 test
+test openai::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.56s
+
+
+        PASS [   2.507s] rig::openai openai::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas ---
+
+running 1 test
+test openai::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.49s
+
+
+        PASS [   2.587s] rig::openai openai::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion ---
+
+running 1 test
+test openai::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.57s
+
+
+        PASS [   2.574s] rig::openai openai::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ---
+
+running 1 test
+test openai::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.56s
+
+
+        PASS [   4.028s] rig::openai openai::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ---
+
+running 1 test
+test openai::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 4.01s
+
+
+        PASS [   2.512s] rig::openai openai::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider ---
+
+running 1 test
+test openai::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.50s
+
+
+        PASS [   2.543s] rig::openai openai::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap ---
+
+running 1 test
+test openai::cassette::ecs_termination::blocking_completed_turn_reports_stop_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.53s
+
+
+        PASS [   2.573s] rig::openai openai::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap ---
+
+running 1 test
+test openai::cassette::ecs_termination::blocking_escalating_retry_reports_each_attempts_own_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.56s
+
+
+        PASS [   2.609s] rig::openai openai::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls ---
+
+running 1 test
+test openai::cassette::ecs_termination::blocking_tool_turn_reports_tool_calls ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.59s
+
+
+        PASS [   2.613s] rig::openai openai::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap ---
+
+running 1 test
+test openai::cassette::ecs_termination::blocking_truncated_turn_reports_length_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.60s
+
+
+        PASS [   2.828s] rig::openai openai::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap ---
+
+running 1 test
+test openai::cassette::ecs_termination::streaming_completed_turn_reports_stop_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 2.81s
+
+
+        PASS [   2.338s] rig::openrouter openrouter::cassette::ecs_completion::completion_smoke
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::ecs_completion::completion_smoke ---
+
+running 1 test
+test openrouter::cassette::ecs_completion::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 304 filtered out; finished in 2.31s
+
+
+        PASS [   2.169s] rig::openrouter openrouter::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data ---
+
+running 1 test
+test openrouter::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 304 filtered out; finished in 2.15s
+
+
+        PASS [   2.095s] rig::openrouter openrouter::cassette::ecs_extractor_usage::extract_backward_compatibility
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::ecs_extractor_usage::extract_backward_compatibility ---
+
+running 1 test
+test openrouter::cassette::ecs_extractor_usage::extract_backward_compatibility ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 304 filtered out; finished in 2.08s
+
+
+        PASS [   3.226s] rig::openai openai::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap ---
+
+running 1 test
+test openai::cassette::ecs_termination::streaming_truncated_turn_reports_length_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.21s
+
+
+        PASS [   4.001s] rig::openai openai::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls ---
+
+running 1 test
+test openai::cassette::ecs_termination::streaming_tool_turn_reports_tool_calls ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 3.98s
+
+
+        PASS [   5.450s] rig::openai openai::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption ---
+
+running 1 test
+test openai::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 5.44s
+
+
+        PASS [   2.025s] rig::openrouter openrouter::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works ---
+
+running 1 test
+test openrouter::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 304 filtered out; finished in 2.01s
+
+
+        PASS [   2.039s] rig::openrouter openrouter::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage ---
+
+running 1 test
+test openrouter::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 304 filtered out; finished in 2.02s
+
+
+        PASS [   2.096s] rig::openrouter openrouter::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas ---
+
+running 1 test
+test openrouter::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 304 filtered out; finished in 2.08s
+
+
+        PASS [   2.081s] rig::perplexity perplexity::cassette::ecs_completion::completion_smoke
+
+--- OUTPUT:              rig::perplexity perplexity::cassette::ecs_completion::completion_smoke ---
+
+running 1 test
+test perplexity::cassette::ecs_completion::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 81 filtered out; finished in 2.06s
+
+
+        PASS [   2.005s] rig::perplexity perplexity::cassette::ecs_completion::completion_with_perplexity_options
+
+--- OUTPUT:              rig::perplexity perplexity::cassette::ecs_completion::completion_with_perplexity_options ---
+
+running 1 test
+test perplexity::cassette::ecs_completion::completion_with_perplexity_options ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 81 filtered out; finished in 1.99s
+
+
+        PASS [   4.774s] rig::openai openai::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap ---
+
+running 1 test
+test openai::cassette::ecs_termination::streaming_escalating_retry_reports_each_attempts_own_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 510 filtered out; finished in 4.76s
+
+
+        PASS [   1.905s] rig::venice venice::cassette::ecs_completion::completion_smoke
+
+--- OUTPUT:              rig::venice venice::cassette::ecs_completion::completion_smoke ---
+
+running 1 test
+test venice::cassette::ecs_completion::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 110 filtered out; finished in 1.88s
+
+
+        PASS [   1.774s] rig::xai xai::ecs_extractor_usage::extract_with_chat_history_with_usage_works
+
+--- OUTPUT:              rig::xai xai::ecs_extractor_usage::extract_with_chat_history_with_usage_works ---
+
+running 1 test
+test xai::ecs_extractor_usage::extract_with_chat_history_with_usage_works ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 117 filtered out; finished in 1.76s
+
+
+        PASS [   1.894s] rig::xai xai::ecs_completion::completion_smoke
+
+--- OUTPUT:              rig::xai xai::ecs_completion::completion_smoke ---
+
+running 1 test
+test xai::ecs_completion::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 117 filtered out; finished in 1.87s
+
+
+        PASS [   1.755s] rig::xai xai::ecs_extractor_usage::extract_with_usage_returns_data_and_usage
+
+--- OUTPUT:              rig::xai xai::ecs_extractor_usage::extract_with_usage_returns_data_and_usage ---
+
+running 1 test
+test xai::ecs_extractor_usage::extract_with_usage_returns_data_and_usage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 117 filtered out; finished in 1.74s
+
+
+        PASS [   1.804s] rig::xai xai::ecs_extractor_usage::extract_backward_compatibility
+
+--- OUTPUT:              rig::xai xai::ecs_extractor_usage::extract_backward_compatibility ---
+
+running 1 test
+test xai::ecs_extractor_usage::extract_backward_compatibility ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 117 filtered out; finished in 1.79s
+
+
+        PASS [   1.849s] rig::xai xai::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data
+
+--- OUTPUT:              rig::xai xai::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data ---
+
+running 1 test
+test xai::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 117 filtered out; finished in 1.84s
+
+
+        PASS [   1.747s] rig::xai xai::ecs_extractor_usage::usage_tracking_works_for_different_schemas
+
+--- OUTPUT:              rig::xai xai::ecs_extractor_usage::usage_tracking_works_for_different_schemas ---
+
+running 1 test
+test xai::ecs_extractor_usage::usage_tracking_works_for_different_schemas ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 117 filtered out; finished in 1.73s
+
+
+------------
+     Summary [  52.339s] 246 tests run: 246 passed, 3009 skipped

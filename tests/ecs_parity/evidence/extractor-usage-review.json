@@ -1,0 +1,165 @@
+{
+  "checks": [
+    {
+      "command": "initial cargo nextest run --locked -p rig-ecs --test output_tool_config --retries 0",
+      "log": "tests/ecs_parity/evidence/logs/31254f456b5d23f8693e451c9271adea4a89dafd2e4e9d8843eed17f7d672456.log",
+      "outcome": "failed: wrong fixture preamble and schedule-boundary assumption; fixed",
+      "sha256": "31254f456b5d23f8693e451c9271adea4a89dafd2e4e9d8843eed17f7d672456"
+    },
+    {
+      "command": "cargo nextest run --locked -p rig-ecs --all-features --retries 0",
+      "log": "tests/ecs_parity/evidence/logs/b8f140faf5373c1afed56ba9a88d58a4118432829fc0b67f7a8ae013c451844a.log",
+      "outcome": "failed: exclusive test steering system introduced ambiguity; replaced with targeted queries",
+      "sha256": "b8f140faf5373c1afed56ba9a88d58a4118432829fc0b67f7a8ae013c451844a"
+    },
+    {
+      "command": "cargo nextest run --locked -p rig-ecs --all-features --retries 0",
+      "log": "tests/ecs_parity/evidence/logs/47689710862edcadb907d942f1d7e95c0ccbc22d84a7fac83edf68fef0bef560.log",
+      "outcome": "passed: 170 tests, 0 skipped",
+      "sha256": "47689710862edcadb907d942f1d7e95c0ccbc22d84a7fac83edf68fef0bef560"
+    },
+    {
+      "command": "cargo test --locked -p rig-ecs --no-default-features --lib",
+      "log": "tests/ecs_parity/evidence/logs/3b2cd8e06c14f4dc319821f8eb44b132b1c4304c8f228721278045af4ca3cd0b.log",
+      "outcome": "passed: 13 tests",
+      "sha256": "3b2cd8e06c14f4dc319821f8eb44b132b1c4304c8f228721278045af4ca3cd0b"
+    },
+    {
+      "command": "cargo check --locked -p rig-ecs --no-default-features --lib --target wasm32-unknown-unknown",
+      "log": "tests/ecs_parity/evidence/logs/6f1610afa65fad5a1a281b823f3be7229de72d03bda1dde99675fe166504aa57.log",
+      "outcome": "passed",
+      "sha256": "6f1610afa65fad5a1a281b823f3be7229de72d03bda1dde99675fe166504aa57"
+    },
+    {
+      "command": "cargo clippy --locked -p rig-ecs --all-features --all-targets -- -D warnings",
+      "log": "tests/ecs_parity/evidence/logs/05532fc805ed8091c07cbaaf28f198fc56af2d7972bba3b0588577fb54907a91.log",
+      "outcome": "passed",
+      "sha256": "05532fc805ed8091c07cbaaf28f198fc56af2d7972bba3b0588577fb54907a91"
+    },
+    {
+      "command": "cargo xtask check-test-layout",
+      "log": "tests/ecs_parity/evidence/logs/88cdbd2fb92f4203cd5355ef6327511f9871108f8a15c27505e2fb76347e5815.log",
+      "outcome": "passed",
+      "sha256": "88cdbd2fb92f4203cd5355ef6327511f9871108f8a15c27505e2fb76347e5815"
+    },
+    {
+      "command": "git diff --check",
+      "log": "tests/ecs_parity/evidence/logs/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.log",
+      "outcome": "passed",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": "cargo clippy --locked -p rig --test copilot --test deepseek --test llamacpp --test openai --test openrouter --test xai -- -D warnings",
+      "log": "tests/ecs_parity/evidence/logs/892159c7ab0803bc7896360e4921e8ade19033e9da8b459d3e83f67958332180.log",
+      "outcome": "passed",
+      "sha256": "892159c7ab0803bc7896360e4921e8ade19033e9da8b459d3e83f67958332180"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "log": "tests/ecs_parity/evidence/logs/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.log",
+      "outcome": "passed before scanner-only edit; scanner formatted afterward",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": "cargo test --locked -p xtask",
+      "log": "tests/ecs_parity/evidence/logs/79123b47d9e8b3454d84b9c969f1582ecbc6438bfaccca93383307db615f0a3c.log",
+      "outcome": "40passed",
+      "sha256": "79123b47d9e8b3454d84b9c969f1582ecbc6438bfaccca93383307db615f0a3c"
+    },
+    {
+      "command": "cargo clippy --locked -p xtask --all-targets -- -D warnings",
+      "log": "tests/ecs_parity/evidence/logs/5c2b6f81ec9f777c58ae30ff931c05e20e262af0a7850f7043435a517d3408be.log",
+      "outcome": "passed",
+      "sha256": "5c2b6f81ec9f777c58ae30ff931c05e20e262af0a7850f7043435a517d3408be"
+    }
+  ],
+  "evidence_status": "Independent review passed runtime, thirty original/native scenarios,246+246 exact execution/log/source/fixture checks, usage mutation/restoration, and all150 source-symbol anchors/156 assertion entries against regenerated immutable baseline v4. Full programme remains incomplete.",
+  "final_documentation": [
+    {
+      "path": "crates/rig-ecs/README.md",
+      "sha256": "5ca13eabbd9489f6a1746805f65d062da08ce94ed98533719faee4479044e74f"
+    },
+    {
+      "path": "crates/rig-ecs/CONTRACT.md",
+      "sha256": "e7f1d1694bb160c3ca8c9b4871903a12132aeeea2624138de15019522454c4fc"
+    },
+    {
+      "path": "tests/ecs_parity/extractor-usage-contract.md",
+      "sha256": "0a0cbc2e3319d6022c6e007efe28839426da267a22030827965257bf58e64288"
+    }
+  ],
+  "final_regression": {
+    "assertion_review": "required separately",
+    "batch": "output-config-regression",
+    "cells": 246,
+    "runs": {
+      "native": "2926e487db962cbee5222e2af58c2e06d6e00a2b3743d76a2a168287cca66ade.json",
+      "original": "042710ecce8148fe37fcae1bce1f87e28128b306995312084f101bf23161a685.json"
+    },
+    "schema": 2,
+    "status": "executed"
+  },
+  "findings_disposition": [
+    "Added reserved name with Auto/Native mode test",
+    "Added description-only configuration with real final_result collision test",
+    "Nondefault reflection configuration remains a suggested strengthening; scene test already uses custom values"
+  ],
+  "manual_support_closure": "Reviewer checked tests/common/cassettes.rs unchanged and Copilot mod.rs unchanged except native module registrations. Original batch guards other support files; regression batch adds common/cassettes.rs. New files later relocated into cassette/ with path attributes, no test-body change.",
+  "negative_control": "tests/ecs_parity/evidence/extractor-usage-mutation.json",
+  "result": "final bounded pass",
+  "reviewer": "/root/output_config_review",
+  "scanner_correction": {
+    "baseline_discovery": "tests/ecs_parity/evidence/discovery/d3a739d2b5e2a4c84e4cba924a3445c3211f921e11485df0268ce27a445119ce.json",
+    "baseline_discovery_sha256": "d3a739d2b5e2a4c84e4cba924a3445c3211f921e11485df0268ce27a445119ce",
+    "finding": "Qualified/unqualified ensure macros were absent from direct assertion arrays",
+    "fix": "Rust scanner captures exact ensure path segment with token/line evidence; regression test and independent review passed",
+    "limits": "Aliases and custom macro expansion remain separate discovery obligations",
+    "original_denominator": 3521,
+    "populated_extractor_direct_and_helper_anchors": 156
+  },
+  "schema": 1,
+  "scope": "Native output-tool configuration and thirty recorded extractor-usage counterparts; programme incomplete",
+  "source_review": "No confirmed correctness defects. Reviewed six original/native files and shared schemas/validators/wrappers/typed semantics. Added two recommended branch tests; final source review found no issues.",
+  "sources": [
+    {
+      "path": "crates/rig-ecs/src/agent/mod.rs",
+      "sha256": "bdcb3ef6afa3da39e7f0097db4e185d16a8eea4924942ee704b37051607c8422"
+    },
+    {
+      "path": "crates/rig-ecs/src/agent/scene.rs",
+      "sha256": "2a16f961700bcde33a404b9b94fc5985b5e4502f909b5476b32af43abd473dd8"
+    },
+    {
+      "path": "crates/rig-ecs/src/policy/mod.rs",
+      "sha256": "4ad7b77146f5d9932c0c85d7749141cd171b6fde7eb029eeafa5c9e4709dfb02"
+    },
+    {
+      "path": "crates/rig-ecs/src/systems/mod.rs",
+      "sha256": "c63b7e9b7374f3c1dfa8b72df8ec957a74edf3b196b7356980b05c1554583bf8"
+    },
+    {
+      "path": "crates/rig-ecs/src/replay/mod.rs",
+      "sha256": "c99f594ff2d4fe64adbfad9556f5182db9ab5569bb3f4e26d49af1b1861e7de1"
+    },
+    {
+      "path": "crates/rig-ecs/src/reflect.rs",
+      "sha256": "2abb9bfe8de1a1ac22ea205ebe1df997bae094bb6d150a75f88508b78a3cf16a"
+    },
+    {
+      "path": "crates/rig-ecs/tests/output_tool_config.rs",
+      "sha256": "0c1742b0e35401bc63225169442b62445f952a4d6738d774274c605ae7c6ce8e"
+    },
+    {
+      "path": "crates/rig-ecs/tests/reflect_roundtrip.rs",
+      "sha256": "fd63f14304e0d60a0e4f7e0b7ac3291e0ff5e3cc5219027adb3eb82cb9f5d4c8"
+    },
+    {
+      "path": "tests/common/ecs_extractor.rs",
+      "sha256": "2337d319f96c71a7369191281ecf700502e9179cdae6483158475abc84271b0e"
+    },
+    {
+      "path": "tests/common/ecs_extractor/preamble.rs",
+      "sha256": "22798c08f781c0ab382b5b507361ba55c1ede49ad62280fce8b10ee114f4114b"
+    }
+  ]
+}

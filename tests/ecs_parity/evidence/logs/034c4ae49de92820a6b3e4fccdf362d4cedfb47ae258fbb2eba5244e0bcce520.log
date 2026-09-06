@@ -1,0 +1,62 @@
+   Compiling ring v0.17.14
+   Compiling rustls v0.23.39
+   Compiling rustls-webpki v0.103.13
+   Compiling tokio-rustls v0.26.4
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling ureq v3.3.0
+   Compiling hyper-rustls v0.27.9
+   Compiling tonic v0.12.3
+   Compiling mongodb v3.7.0
+   Compiling neo4rs v0.8.0
+   Compiling bollard-buildkit-proto v0.7.0
+   Compiling reqwest v0.13.4
+   Compiling httpmock v0.8.3
+   Compiling qdrant-client v1.17.0
+   Compiling bollard-stubs v1.52.1-rc.29.1.3
+   Compiling reqwest-middleware v0.5.2
+   Compiling opentelemetry-http v0.32.0
+   Compiling rig-reqwest v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-reqwest)
+   Compiling rmcp v2.2.0
+   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+   Compiling reqwest-retry v0.9.1
+   Compiling opentelemetry-otlp v0.32.0
+   Compiling bollard v0.20.2
+   Compiling testcontainers v0.27.3
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.50s
+    Starting 34 tests across 1 binary (644 skipped)
+        PASS [   1.289s] rig::anthropic anthropic::cassette::ecs_layers::host_deny_over_host_bus_effect_log_is_the_golden_fixture
+        PASS [   1.291s] rig::anthropic anthropic::cassette::ecs_layers::deny_tool_effect_log_is_the_golden_fixture
+        PASS [   1.295s] rig::anthropic anthropic::cassette::ecs_layers::memory_load_replaced_effect_log_is_the_golden_fixture
+        PASS [   1.298s] rig::anthropic anthropic::cassette::ecs_layers::patch_beneath_hook_patch_effect_log_is_the_golden_fixture
+        PASS [   1.303s] rig::anthropic anthropic::cassette::ecs_layers::two_layers_effect_log_is_the_golden_fixture
+        PASS [   1.308s] rig::anthropic anthropic::cassette::ecs_layers::replace_tool_result_effect_log_is_the_golden_fixture
+        PASS [   1.310s] rig::anthropic anthropic::cassette::ecs_layers::patch_tool_args_effect_log_is_the_golden_fixture
+        PASS [   1.313s] rig::anthropic anthropic::cassette::ecs_causal::completion_concurrent_effect_log_is_the_golden_fixture
+        PASS [   1.321s] rig::anthropic anthropic::cassette::ecs_causal::completion_serial_effect_log_is_the_golden_fixture
+        PASS [   1.688s] rig::anthropic anthropic::cassette::ecs_serving::concurrent_concurrency_one_effect_log_is_the_golden_fixture
+        PASS [   1.699s] rig::anthropic anthropic::cassette::ecs_serving::capacity_one_effect_log_is_the_golden_fixture
+        PASS [   0.023s] rig::anthropic ecs_agent::tests::clean_stream_returns_final_answer
+        PASS [   1.742s] rig::anthropic anthropic::cassette::ecs_causal::completion_streamed_effect_log_is_the_golden_fixture
+        PASS [   0.026s] rig::anthropic ecs_agent::tests::error_after_final_is_not_success
+        PASS [   0.028s] rig::anthropic ecs_agent::tests::error_after_final_without_recorded_events_is_not_success
+        PASS [   0.031s] rig::anthropic ecs_agent::tests::expected_budget_failure_retains_completed_effects_and_run_identity
+        PASS [   0.030s] rig::anthropic ecs_agent::tests::run_turn_override_does_not_change_agent_default
+        PASS [   0.031s] rig::anthropic ecs_agent::tests::successful_response_waits_for_actual_memory_append
+        PASS [   0.015s] rig::anthropic ecs_goldens::tests::multi_run_comparison_rejects_missing_first_run_identity
+        PASS [   0.014s] rig::anthropic ecs_goldens::tests::native_metadata_normalization_keeps_original_program_fingerprint
+        PASS [   0.014s] rig::anthropic ecs_goldens::tests::nominal_error_ids_do_not_hide_changed_stream_error_position
+        PASS [   0.012s] rig::anthropic ecs_goldens::tests::nominal_error_ids_reject_an_unrecorded_effect
+        PASS [   0.013s] rig::anthropic ecs_goldens::tests::nominal_id_normalization_does_not_hide_changed_request_cap
+        PASS [   0.012s] rig::anthropic ecs_goldens::tests::nominal_id_normalization_rejects_reordered_effects
+        PASS [   0.833s] rig::anthropic anthropic::cassette::ecs_serving::model_route_unselected_effect_log_is_the_golden_fixture
+        PASS [   0.849s] rig::anthropic anthropic::cassette::ecs_serving::host_bus_effect_log_is_the_golden_fixture
+        PASS [   0.844s] rig::anthropic anthropic::cassette::ecs_serving::model_route_effect_log_is_the_golden_fixture
+        PASS [   0.838s] rig::anthropic anthropic::cassette::ecs_serving::serial_memory_tools_effect_log_is_the_golden_fixture
+        PASS [   1.115s] rig::anthropic anthropic::cassette::ecs_serving::host_bus_streamed_effect_log_is_the_golden_fixture
+        PASS [   1.137s] rig::anthropic anthropic::cassette::ecs_serving::concurrent_concurrency_two_events_effect_log_is_the_golden_fixture
+        PASS [   1.150s] rig::anthropic anthropic::cassette::ecs_serving::concurrent_concurrency_two_effect_log_is_the_golden_fixture
+        PASS [   1.141s] rig::anthropic anthropic::cassette::ecs_serving::serial_concurrency_one_effect_log_is_the_golden_fixture
+        PASS [   1.579s] rig::anthropic cassette_safety::cassette_files_match_registered_scenarios
+        PASS [   6.688s] rig::anthropic cassette_safety::cassettes_do_not_contain_obvious_secrets
+------------
+     Summary [   8.379s] 34 tests run: 34 passed, 644 skipped

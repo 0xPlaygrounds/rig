@@ -1,0 +1,31 @@
+{
+  "command": "cargo test --locked -p rig-ecs --test run_stream_boundary -- --nocapture",
+  "exit_code": 101,
+  "limits": "Synthetic native gap probe, not provider evidence or a passing mutation control. No production fix implemented; required suite currently red.",
+  "log": "tests/ecs_parity/evidence/logs/7f222c13a4185bd9949e05919ce331b232678d20e2eb3ea4f7cc739ed61ad3a5.log",
+  "observed": "ToolName delivered, extra full schedule pass, producer blocked by live oneshot, zero EffectOutcome; native InvalidCall/UnknownToolCall not yet visible",
+  "required_fix": "Native early invalid policy with real delivered-prefix diagnostics, persistent repair across final fold, skipped/abandoned completion usage and history; subsequent tests must cover all behaviors",
+  "required_test": "rig-ecs::run_stream_boundary::invalid_tool_name_is_actionable_before_completion_outcome",
+  "reviewer": "/root/gemini_stream_boundary_review",
+  "schema": 1,
+  "sha256": "7f222c13a4185bd9949e05919ce331b232678d20e2eb3ea4f7cc739ed61ad3a5",
+  "source_hashes_at_review": [
+    {
+      "path": "crates/rig-ecs/tests/run_stream_boundary.rs",
+      "sha256": "6094e23971f8243eb126670d145ee4f320b51d4a73546cd340f669c5ce370e5f"
+    },
+    {
+      "path": "crates/rig-ecs/src/systems/mod.rs",
+      "sha256": "c63b7e9b7374f3c1dfa8b72df8ec957a74edf3b196b7356980b05c1554583bf8"
+    },
+    {
+      "path": "crates/rig-ecs/src/agent/mod.rs",
+      "sha256": "bdcb3ef6afa3da39e7f0097db4e185d16a8eea4924942ee704b37051607c8422"
+    },
+    {
+      "path": "crates/rig-ecs/src/policy/mod.rs",
+      "sha256": "4ad7b77146f5d9932c0c85d7749141cd171b6fde7eb029eeafa5c9e4709dfb02"
+    }
+  ],
+  "status": "confirmed_missing_capability"
+}

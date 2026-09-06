@@ -14,6 +14,18 @@ mod cache_prefix;
 mod cassette_safety;
 #[path = "common/cassettes.rs"]
 mod cassettes;
+#[path = "common/ecs_agent.rs"]
+mod ecs_agent;
+#[path = "common/ecs_extractor.rs"]
+mod ecs_extractor;
+#[path = "common/ecs_goldens.rs"]
+mod ecs_goldens;
+#[path = "common/ecs_lifecycle.rs"]
+mod ecs_lifecycle;
+#[path = "common/ecs_observation.rs"]
+mod ecs_observation;
+#[path = "common/ecs_termination.rs"]
+mod ecs_termination;
 #[path = "common/goldens.rs"]
 mod goldens;
 #[path = "common/reasoning.rs"]
@@ -23,3 +35,6 @@ mod support;
 
 #[path = "providers/gemini/mod.rs"]
 mod gemini;
+
+#[path = "common/ecs_cache.rs"]
+mod ecs_cache;

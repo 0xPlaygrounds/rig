@@ -1,0 +1,9 @@
+{
+  "assertion_review": "required separately",
+  "batch": "extractor-usage",
+  "cells": 30,
+  "error": "original source changed beyond sibling visibility: tests/providers/copilot/extractor_usage.rs",
+  "runs": {},
+  "schema": 2,
+  "status": "incomplete"
+}

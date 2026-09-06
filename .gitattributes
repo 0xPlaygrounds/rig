@@ -4,3 +4,9 @@ tests/cassettes/doubleword/**/*.yaml whitespace=-blank-at-eof
 # blank-at-eof whitespace check so `git diff --check` stays meaningful
 # elsewhere without corrupting recordings.
 tests/cassettes/** whitespace=-blank-at-eof
+# Captured parity logs are hashed verbatim, including terminal newlines.
+tests/ecs_parity/evidence/**/*.log whitespace=-blank-at-eof
+tests/ecs_parity/evidence/*.log whitespace=-blank-at-eof
+tests/ecs_parity/evidence/** linguist-generated=true
+tests/ecs_parity/provider-baseline.json linguist-generated=true
+tests/ecs_parity/remaining-work-queue.json linguist-generated=true

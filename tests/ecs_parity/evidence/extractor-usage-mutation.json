@@ -1,0 +1,30 @@
+{
+  "caught": true,
+  "command": [
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--test",
+    "openai",
+    "-E",
+    "test(=openai::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage)",
+    "--no-fail-fast",
+    "--retries",
+    "0"
+  ],
+  "exit_code": 100,
+  "expected_tests": 1,
+  "limits": "Usage-observation control only; not exact per-attempt accounting or a network barrier",
+  "log": "tests/ecs_parity/evidence/logs/5b97759ad4794f93559ec5862be5a36edbb9943eb9c13ed97e78b034bb5c411c.log",
+  "log_sha256": "5b97759ad4794f93559ec5862be5a36edbb9943eb9c13ed97e78b034bb5c411c",
+  "mode": "replay",
+  "mutated_sha256": "30750112bcf45bfb4ec34851331a2660db0926eb02ef6d8f677e910a7e41118b",
+  "mutation": "Replace observed native Usage with zero after actual successful extraction",
+  "rejected_by": "Original preserved ensure!(response.usage.input_tokens > 0)",
+  "schema": 1,
+  "source": "tests/common/ecs_extractor.rs",
+  "source_before_sha256": "2337d319f96c71a7369191281ecf700502e9179cdae6483158475abc84271b0e",
+  "source_restored_sha256": "2337d319f96c71a7369191281ecf700502e9179cdae6483158475abc84271b0e"
+}

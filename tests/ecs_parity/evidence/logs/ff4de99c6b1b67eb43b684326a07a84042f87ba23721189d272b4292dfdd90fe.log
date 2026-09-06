@@ -1,0 +1,64 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.34s
+    Starting 6 tests across 1 binary (417 skipped)
+        PASS [   0.737s] rig::gemini gemini::cassette::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish ---
+
+running 1 test
+test gemini::cassette::ecs_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 422 filtered out; finished in 0.73s
+
+
+        PASS [   0.867s] rig::gemini gemini::cassette::ecs_stress_streaming::streaming_tool_turns_fire_model_turn_finished
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_streaming::streaming_tool_turns_fire_model_turn_finished ---
+
+running 1 test
+test gemini::cassette::ecs_stress_streaming::streaming_tool_turns_fire_model_turn_finished ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 422 filtered out; finished in 0.86s
+
+
+        PASS [   0.881s] rig::gemini gemini::cassette::ecs_stress_streaming::streaming_skip_leaves_tool_unexecuted
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_streaming::streaming_skip_leaves_tool_unexecuted ---
+
+running 1 test
+test gemini::cassette::ecs_stress_streaming::streaming_skip_leaves_tool_unexecuted ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 422 filtered out; finished in 0.87s
+
+
+        PASS [   0.890s] rig::gemini gemini::cassette::ecs_stress_streaming::streaming_result_redaction_reaches_final_response
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_streaming::streaming_result_redaction_reaches_final_response ---
+
+running 1 test
+test gemini::cassette::ecs_stress_streaming::streaming_result_redaction_reaches_final_response ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 422 filtered out; finished in 0.88s
+
+
+        PASS [   0.899s] rig::gemini gemini::cassette::ecs_stress_streaming::streaming_active_tools_narrowing_filters_a_tool
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_streaming::streaming_active_tools_narrowing_filters_a_tool ---
+
+running 1 test
+test gemini::cassette::ecs_stress_streaming::streaming_active_tools_narrowing_filters_a_tool ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 422 filtered out; finished in 0.89s
+
+
+        PASS [   0.901s] rig::gemini gemini::cassette::ecs_stress_streaming::blocking_and_streaming_produce_same_final_answer
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_streaming::blocking_and_streaming_produce_same_final_answer ---
+
+running 1 test
+test gemini::cassette::ecs_stress_streaming::blocking_and_streaming_produce_same_final_answer ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 422 filtered out; finished in 0.89s
+
+
+------------
+     Summary [   0.901s] 6 tests run: 6 passed, 417 skipped

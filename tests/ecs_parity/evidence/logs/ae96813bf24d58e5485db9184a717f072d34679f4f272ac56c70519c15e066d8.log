@@ -1,0 +1,11 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.36s
+    Starting 7 tests across 1 binary (668 skipped)
+        PASS [   0.692s] rig::anthropic anthropic::cassette::ecs_layers::patch_beneath_hook_patch_effect_log_is_the_golden_fixture
+        PASS [   0.693s] rig::anthropic anthropic::cassette::ecs_layers::memory_load_replaced_effect_log_is_the_golden_fixture
+        PASS [   0.694s] rig::anthropic anthropic::cassette::ecs_layers::replace_tool_result_effect_log_is_the_golden_fixture
+        PASS [   0.695s] rig::anthropic anthropic::cassette::ecs_layers::deny_tool_effect_log_is_the_golden_fixture
+        PASS [   0.696s] rig::anthropic anthropic::cassette::ecs_layers::host_deny_over_host_bus_effect_log_is_the_golden_fixture
+        PASS [   0.696s] rig::anthropic anthropic::cassette::ecs_layers::two_layers_effect_log_is_the_golden_fixture
+        PASS [   0.700s] rig::anthropic anthropic::cassette::ecs_layers::patch_tool_args_effect_log_is_the_golden_fixture
+------------
+     Summary [   0.701s] 7 tests run: 7 passed, 668 skipped

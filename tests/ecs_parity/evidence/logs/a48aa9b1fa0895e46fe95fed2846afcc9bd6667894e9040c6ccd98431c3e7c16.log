@@ -1,0 +1,274 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.35s
+    Starting 27 tests across 3 binaries (617 skipped)
+        PASS [   2.931s] rig::deepseek deepseek::agent_tool_sessions::tool_choice_required_specific_and_none
+
+--- OUTPUT:              rig::deepseek deepseek::agent_tool_sessions::tool_choice_required_specific_and_none ---
+
+running 1 test
+test deepseek::agent_tool_sessions::tool_choice_required_specific_and_none ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 204 filtered out; finished in 2.92s
+
+
+        PASS [   2.951s] rig::deepseek deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior
+
+--- OUTPUT:              rig::deepseek deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior ---
+
+running 1 test
+test deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 204 filtered out; finished in 2.94s
+
+
+        PASS [   2.984s] rig::deepseek deepseek::agent_tool_sessions::json_object_response_format_roundtrip
+
+--- OUTPUT:              rig::deepseek deepseek::agent_tool_sessions::json_object_response_format_roundtrip ---
+
+running 1 test
+test deepseek::agent_tool_sessions::json_object_response_format_roundtrip ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 204 filtered out; finished in 2.97s
+
+
+        PASS [   2.985s] rig::openrouter openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation ---
+
+running 1 test
+test openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 312 filtered out; finished in 2.97s
+
+
+        PASS [   2.989s] rig::deepseek deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation
+
+--- OUTPUT:              rig::deepseek deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation ---
+
+running 1 test
+test deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 204 filtered out; finished in 2.98s
+
+
+        PASS [   3.020s] rig::deepseek deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming
+
+--- OUTPUT:              rig::deepseek deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming ---
+
+running 1 test
+test deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 204 filtered out; finished in 3.01s
+
+
+        PASS [   3.050s] rig::deepseek deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage
+
+--- OUTPUT:              rig::deepseek deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage ---
+
+running 1 test
+test deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 204 filtered out; finished in 3.04s
+
+
+        PASS [   3.052s] rig::deepseek deepseek::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming
+
+--- OUTPUT:              rig::deepseek deepseek::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming ---
+
+running 1 test
+test deepseek::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 204 filtered out; finished in 3.04s
+
+
+        PASS [   3.092s] rig::openrouter openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments ---
+
+running 1 test
+test openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 312 filtered out; finished in 3.08s
+
+
+        PASS [   3.136s] rig::deepseek deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments
+
+--- OUTPUT:              rig::deepseek deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments ---
+
+running 1 test
+test deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 204 filtered out; finished in 3.12s
+
+
+        PASS [   3.969s] rig::deepseek deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming
+
+--- OUTPUT:              rig::deepseek deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming ---
+
+running 1 test
+test deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 204 filtered out; finished in 3.95s
+
+
+        PASS [   2.496s] rig::openrouter openrouter::cassette::ecs_tool_sessions::nested_structured_output_schema_roundtrip
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::ecs_tool_sessions::nested_structured_output_schema_roundtrip ---
+
+running 1 test
+test openrouter::cassette::ecs_tool_sessions::nested_structured_output_schema_roundtrip ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 312 filtered out; finished in 2.48s
+
+
+        PASS [   2.522s] rig::openrouter openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming ---
+
+running 1 test
+test openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 312 filtered out; finished in 2.51s
+
+
+        PASS [   2.570s] rig::openrouter openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming ---
+
+running 1 test
+test openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 312 filtered out; finished in 2.56s
+
+
+        PASS [   2.595s] rig::xai xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation
+
+--- OUTPUT:              rig::xai xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation ---
+
+running 1 test
+test xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 125 filtered out; finished in 2.59s
+
+
+        PASS [   2.591s] rig::xai xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip
+
+--- OUTPUT:              rig::xai xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip ---
+
+running 1 test
+test xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 125 filtered out; finished in 2.58s
+
+
+        PASS [   2.609s] rig::xai xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage
+
+--- OUTPUT:              rig::xai xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage ---
+
+running 1 test
+test xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 125 filtered out; finished in 2.60s
+
+
+        PASS [   2.591s] rig::xai xai::agent_tool_sessions::tool_choice_required_specific_and_none
+
+--- OUTPUT:              rig::xai xai::agent_tool_sessions::tool_choice_required_specific_and_none ---
+
+running 1 test
+test xai::agent_tool_sessions::tool_choice_required_specific_and_none ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 125 filtered out; finished in 2.58s
+
+
+        PASS [   2.743s] rig::xai xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments
+
+--- OUTPUT:              rig::xai xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments ---
+
+running 1 test
+test xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 125 filtered out; finished in 2.73s
+
+
+        PASS [   1.194s] rig::xai xai::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming
+
+--- OUTPUT:              rig::xai xai::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming ---
+
+running 1 test
+test xai::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 125 filtered out; finished in 1.18s
+
+
+        PASS [   1.145s] rig::xai xai::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming
+
+--- OUTPUT:              rig::xai xai::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming ---
+
+running 1 test
+test xai::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 125 filtered out; finished in 1.13s
+
+
+        PASS [   2.831s] rig::xai xai::ecs_tool_sessions::multimodal_image_input_mixed_text_ordering
+
+--- OUTPUT:              rig::xai xai::ecs_tool_sessions::multimodal_image_input_mixed_text_ordering ---
+
+running 1 test
+test xai::ecs_tool_sessions::multimodal_image_input_mixed_text_ordering ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 125 filtered out; finished in 2.81s
+
+
+        PASS [   3.866s] rig::openrouter openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming ---
+
+running 1 test
+test openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 312 filtered out; finished in 3.85s
+
+
+        PASS [   9.620s] rig::deepseek deepseek::ecs_tool_sessions::sequential_complex_tool_calls_streaming
+
+--- OUTPUT:              rig::deepseek deepseek::ecs_tool_sessions::sequential_complex_tool_calls_streaming ---
+
+running 1 test
+test deepseek::ecs_tool_sessions::sequential_complex_tool_calls_streaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 204 filtered out; finished in 9.61s
+
+
+        PASS [   4.522s] rig::xai xai::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming
+
+--- OUTPUT:              rig::xai xai::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming ---
+
+running 1 test
+test xai::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 125 filtered out; finished in 4.51s
+
+
+        PASS [   7.561s] rig::openrouter openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_streaming
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_streaming ---
+
+running 1 test
+test openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_streaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 312 filtered out; finished in 7.55s
+
+
+        PASS [   7.625s] rig::xai xai::ecs_tool_sessions::sequential_complex_tool_calls_streaming
+
+--- OUTPUT:              rig::xai xai::ecs_tool_sessions::sequential_complex_tool_calls_streaming ---
+
+running 1 test
+test xai::ecs_tool_sessions::sequential_complex_tool_calls_streaming ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 125 filtered out; finished in 7.61s
+
+
+------------
+     Summary [  13.242s] 27 tests run: 27 passed, 617 skipped

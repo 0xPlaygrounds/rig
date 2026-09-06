@@ -237,7 +237,7 @@ async fn streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_s
 }
 
 #[derive(Clone, Default)]
-struct OutOfOrderSignalOrder {
+pub(super) struct OutOfOrderSignalOrder {
     gate: Arc<tokio::sync::Notify>,
     order: Arc<AtomicU32>,
 }
@@ -254,7 +254,7 @@ impl OutOfOrderSignalOrder {
 }
 
 #[derive(Clone)]
-struct OutOfOrderAlphaSignal(OutOfOrderSignalOrder);
+pub(super) struct OutOfOrderAlphaSignal(pub(super) OutOfOrderSignalOrder);
 
 impl Tool for OutOfOrderAlphaSignal {
     const NAME: &'static str = AlphaSignal::NAME;
@@ -281,7 +281,7 @@ impl Tool for OutOfOrderAlphaSignal {
 }
 
 #[derive(Clone)]
-struct OutOfOrderBetaSignal(OutOfOrderSignalOrder);
+pub(super) struct OutOfOrderBetaSignal(pub(super) OutOfOrderSignalOrder);
 
 impl Tool for OutOfOrderBetaSignal {
     const NAME: &'static str = BetaSignal::NAME;
@@ -462,7 +462,7 @@ fn tool_name_for_result(
         .unwrap_or_else(|| format!("<unknown tool result id {call}>"))
 }
 
-fn assert_events_emit_all_tool_calls_before_results(events: &[&'static str]) {
+pub(super) fn assert_events_emit_all_tool_calls_before_results(events: &[&'static str]) {
     let first_result = events
         .iter()
         .position(|event| *event == "tool_result")

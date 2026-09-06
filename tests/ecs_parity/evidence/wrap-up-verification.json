@@ -1,0 +1,136 @@
+{
+  "artifacts": {
+    "clippy": {
+      "path": "tests/ecs_parity/evidence/wrap-up/5e0510880a392f97e6861fd332234d8e9e6683a1d10937375c4fdbe476f95441.log",
+      "sha256": "5e0510880a392f97e6861fd332234d8e9e6683a1d10937375c4fdbe476f95441"
+    },
+    "clippy-xtask": {
+      "path": "tests/ecs_parity/evidence/wrap-up/ca2a058a5c906b44dbd2c3e998ab0586acbb552e4db899773bd4f8abcc3868fa.log",
+      "sha256": "ca2a058a5c906b44dbd2c3e998ab0586acbb552e4db899773bd4f8abcc3868fa"
+    },
+    "consumer-derive": {
+      "path": "tests/ecs_parity/evidence/wrap-up/39a337750e0ca05ed578f2820e664d40b82b4ca868de00ed1da66970cff5dd8e.log",
+      "sha256": "39a337750e0ca05ed578f2820e664d40b82b4ca868de00ed1da66970cff5dd8e"
+    },
+    "consumer-promote": {
+      "path": "tests/ecs_parity/evidence/wrap-up/43c955ea04eb7e57338a171a21acebcd4f03897c1701bf0991d5d2ced32e2a06.log",
+      "sha256": "43c955ea04eb7e57338a171a21acebcd4f03897c1701bf0991d5d2ced32e2a06"
+    },
+    "consumer-tests-final": {
+      "path": "tests/ecs_parity/evidence/wrap-up/588da96e700294e1e3d30447062194add5a8f002597da861b294efa76c21b042.log",
+      "sha256": "588da96e700294e1e3d30447062194add5a8f002597da861b294efa76c21b042"
+    },
+    "core-clippy-final": {
+      "path": "tests/ecs_parity/evidence/wrap-up/70949016be58811f248e48ed9f9544f1f37d990608f1481689a1ddfd8f799193.log",
+      "sha256": "70949016be58811f248e48ed9f9544f1f37d990608f1481689a1ddfd8f799193"
+    },
+    "default-tests-check": {
+      "path": "tests/ecs_parity/evidence/wrap-up/a2fda6aa4a0454651776c576092f509c68fba861a7939eeb7b188277702d3a6f.log",
+      "sha256": "a2fda6aa4a0454651776c576092f509c68fba861a7939eeb7b188277702d3a6f"
+    },
+    "docs": {
+      "path": "tests/ecs_parity/evidence/wrap-up/d9a0e8e0f9d28f15609d2fb1acab60ba54c0acb37511509183f4de97bf6902fb.log",
+      "sha256": "d9a0e8e0f9d28f15609d2fb1acab60ba54c0acb37511509183f4de97bf6902fb"
+    },
+    "doctests": {
+      "path": "tests/ecs_parity/evidence/wrap-up/274f2badb6acfe1d186ec38db5de9b097854317a524fe704d01c1a5198e7e6c8.log",
+      "sha256": "274f2badb6acfe1d186ec38db5de9b097854317a524fe704d01c1a5198e7e6c8"
+    },
+    "ecs-clippy-final": {
+      "path": "tests/ecs_parity/evidence/wrap-up/4348eb98d10f6ca419cef57d6b076974041bf1318cfad7a75ff3d7e65f50cfa2.log",
+      "sha256": "4348eb98d10f6ca419cef57d6b076974041bf1318cfad7a75ff3d7e65f50cfa2"
+    },
+    "ecs-tests-final": {
+      "path": "tests/ecs_parity/evidence/wrap-up/41a737c9daa50b1a3cd835c67a0e983b86114040af80bcb44db510560d6795f9.log",
+      "sha256": "41a737c9daa50b1a3cd835c67a0e983b86114040af80bcb44db510560d6795f9"
+    },
+    "fmt-final": {
+      "path": "tests/ecs_parity/evidence/wrap-up/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "golden-guard-final": {
+      "path": "tests/ecs_parity/evidence/wrap-up/3ecf201c2817bec5250aed89c2c6a78fdc041104827e49394212bf390aae73c9.log",
+      "sha256": "3ecf201c2817bec5250aed89c2c6a78fdc041104827e49394212bf390aae73c9"
+    },
+    "layout": {
+      "path": "tests/ecs_parity/evidence/wrap-up/3af3feaa5981ba20a0e3301689cad94482df76631953912cce4c9d0ecf04868b.log",
+      "sha256": "3af3feaa5981ba20a0e3301689cad94482df76631953912cce4c9d0ecf04868b"
+    },
+    "llamacpp-index-final": {
+      "path": "tests/ecs_parity/evidence/wrap-up/b8666ba75285d344af7c0364f8d5d2cd190d28450b2214ebca12178cb3689d6c.log",
+      "sha256": "b8666ba75285d344af7c0364f8d5d2cd190d28450b2214ebca12178cb3689d6c"
+    },
+    "native-no-default": {
+      "path": "tests/ecs_parity/evidence/wrap-up/de3dcee428ec2f874a240fc6f4598f5c439e539bde5af80f18f50509450d55c3.log",
+      "sha256": "de3dcee428ec2f874a240fc6f4598f5c439e539bde5af80f18f50509450d55c3"
+    },
+    "nextest": {
+      "path": "tests/ecs_parity/evidence/wrap-up/2e5c213298c186a44dfa941f15a47808f054774427e127730bb0d1b27a85e75d.log",
+      "sha256": "2e5c213298c186a44dfa941f15a47808f054774427e127730bb0d1b27a85e75d"
+    },
+    "nextest-final": {
+      "path": "tests/ecs_parity/evidence/wrap-up/dc3f70c1ba7d82b4adeb58936d19c7c1f72febb823862b9bd9912065c66ed90d.log",
+      "sha256": "dc3f70c1ba7d82b4adeb58936d19c7c1f72febb823862b9bd9912065c66ed90d"
+    },
+    "provider-clippy-final": {
+      "path": "tests/ecs_parity/evidence/wrap-up/56fb56415bc7eca9c69816b9759c2039659cf618d00ee1fa92cc25c49c71c683.log",
+      "sha256": "56fb56415bc7eca9c69816b9759c2039659cf618d00ee1fa92cc25c49c71c683"
+    },
+    "raw-fix": {
+      "path": "tests/ecs_parity/evidence/wrap-up/01fc0e0bb58341a3546859e99f6ce55b5c6e652f84b469db1c8b0024b95b6c06.log",
+      "sha256": "01fc0e0bb58341a3546859e99f6ce55b5c6e652f84b469db1c8b0024b95b6c06"
+    },
+    "termination-fix": {
+      "path": "tests/ecs_parity/evidence/wrap-up/8b646e5bc2aabd10afd3762a1135453590725a62eda21b56897db31599bf4b2d.log",
+      "sha256": "8b646e5bc2aabd10afd3762a1135453590725a62eda21b56897db31599bf4b2d"
+    },
+    "wasm-all": {
+      "path": "tests/ecs_parity/evidence/wrap-up/09d0452a7a35cb8220dde6e1eeb05d730879f70ad0ab9db8986904883fd3eba7.log",
+      "sha256": "09d0452a7a35cb8220dde6e1eeb05d730879f70ad0ab9db8986904883fd3eba7"
+    },
+    "wasm-bus-final": {
+      "path": "tests/ecs_parity/evidence/wrap-up/63e8a1226c87878d8e080fe5be2f1658f7de76e6de8a521a640d936f13b51442.log",
+      "sha256": "63e8a1226c87878d8e080fe5be2f1658f7de76e6de8a521a640d936f13b51442"
+    },
+    "wasm-default": {
+      "path": "tests/ecs_parity/evidence/wrap-up/4718dd32585ee1609f247e0f75d01969a7fb4a92b6369b26ec070743b750d353.log",
+      "sha256": "4718dd32585ee1609f247e0f75d01969a7fb4a92b6369b26ec070743b750d353"
+    },
+    "wasm-no-default": {
+      "path": "tests/ecs_parity/evidence/wrap-up/f447689206452a0ab312f922d41c33ff188cf2d481d4f77c2c64cc232fdb01f5.log",
+      "sha256": "f447689206452a0ab312f922d41c33ff188cf2d481d4f77c2c64cc232fdb01f5"
+    },
+    "wasm-run-final": {
+      "path": "tests/ecs_parity/evidence/wrap-up/29d413011d17f97e5eb17897163da7b78546fd3aff383c37572e5e701ba45c4e.log",
+      "sha256": "29d413011d17f97e5eb17897163da7b78546fd3aff383c37572e5e701ba45c4e"
+    },
+    "xtask-tests": {
+      "path": "tests/ecs_parity/evidence/wrap-up/f61f58ed7fcf75509f71138c1e2a63e66e7140e8e242b5fa681568b9bcd93861.log",
+      "sha256": "f61f58ed7fcf75509f71138c1e2a63e66e7140e8e242b5fa681568b9bcd93861"
+    }
+  },
+  "base": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "consumer_refresh": {
+    "derived_cases": 42,
+    "effects_application_observations_changed": false,
+    "promoted_cases": 31,
+    "provider_cassettes_changed": false,
+    "unchanged_cases": 11
+  },
+  "kind": "bounded wrap-up verification; not a paired-parity verdict",
+  "local_sweep": {
+    "command": "cargo nextest run --locked --features bedrock --retries 0 --no-fail-fast -E 'not binary(macro_hygiene)'",
+    "failed": 7,
+    "note": "Test-only fixes were made during this run. All seven failures were resolved and their affected checks rerun successfully; this log is not a clean single-revision sweep. Committed-head CI supplies that check.",
+    "passed": 7932,
+    "skipped": 203
+  },
+  "resolutions": {
+    "consumer-tests-final": "all-case producer/replay, offline budgets, and fixture provenance checks pass after independently reviewed checkpoint refresh",
+    "golden-guard-final": "native and legacy golden namespaces retain exactly one producer each",
+    "llamacpp-index-final": "all 3 existing index guards pass with native cell documentation",
+    "raw-fix": "7 Anthropic tests pass after per-turn completion observation fix",
+    "termination-fix": "24 Anthropic/Gemini/OpenAI tests pass after shared completion observation fix"
+  },
+  "scope": "314 native mappings; exhaustive functional superset remains deferred"
+}

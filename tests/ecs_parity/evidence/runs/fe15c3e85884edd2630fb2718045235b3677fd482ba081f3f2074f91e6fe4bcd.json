@@ -1,0 +1,38 @@
+{
+  "batch": "63f600156170635320bf4e576bcf5adb680bf1686387778bd85a07858b27c709.json",
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "error": "listing/build failed; see retained compiler log",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "anthropic",
+    "-E",
+    "(binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_reasoning_usage::agent_blocking_thinking)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_stop_sequences::agent_prompt_empty_stop_sequence)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_stop_sequences::agent_stream_empty_stop_sequence)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_stop_sequences::agent_stream_single_sequence))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 101,
+  "logs": {
+    "listing_stderr": "b60e23ef62def0fc12614312ceeab40f08dc36da4da5128dc8477d4895f8549f.log",
+    "listing_stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.json"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "e0d7680e06fdaf8b1096ccdd1478ee83d355205d1515f9ca32dc2f554031ddf8.json",
+  "source_index_after": "e0d7680e06fdaf8b1096ccdd1478ee83d355205d1515f9ca32dc2f554031ddf8.json",
+  "status": "incomplete",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

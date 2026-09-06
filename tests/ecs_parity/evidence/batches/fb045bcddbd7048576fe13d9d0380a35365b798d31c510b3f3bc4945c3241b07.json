@@ -1,0 +1,59 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_main::lifecycle_and_scratchpad_thread_across_multi_turn_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress::lifecycle_and_scratchpad_thread_across_multi_turn_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_main::request_patch_injects_context_and_narrows_active_tools_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress::request_patch_injects_context_and_narrows_active_tools_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_main::chained_arg_rewrite_then_result_redaction_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress::chained_arg_rewrite_then_result_redaction_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_main::streaming_lifecycle_ordering_and_context_streaming_flag",
+      "original": "rig::gemini$gemini::cassette::hook_stress::streaming_lifecycle_ordering_and_context_streaming_flag"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_main::multi_tool_workflow_pairs_calls_and_results_per_turn_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress::multi_tool_workflow_pairs_calls_and_results_per_turn_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_main::skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress::skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_main::tool_call_turns_effect_log_is_the_golden_fixture",
+      "original": "rig::gemini$gemini::cassette::hook_stress::tool_call_turns_effect_log_is_the_golden_fixture"
+    }
+  ],
+  "features": [],
+  "fixtures": [
+    "tests/cassettes/gemini/hook_stress/lifecycle_and_scratchpad_thread_across_multi_turn_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress/request_patch_injects_context_and_narrows_active_tools_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress/chained_arg_rewrite_then_result_redaction_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress/streaming_lifecycle_ordering_and_context_streaming_flag.yaml",
+    "tests/cassettes/gemini/hook_stress/multi_tool_workflow_pairs_calls_and_results_per_turn_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress/skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking.yaml",
+    "crates/rig-verify/fixtures/gemini_tool_call_turns.effects.json"
+  ],
+  "name": "stress-main",
+  "original_sources": [
+    "tests/providers/gemini/cassette/hook_stress.rs",
+    "tests/common/support.rs",
+    "tests/common/goldens.rs",
+    "tests/providers/gemini/tools_support.rs"
+  ],
+  "package": "rig",
+  "schema": 1,
+  "semantic_skip_markers": [
+    "SKIP",
+    "skipping"
+  ],
+  "targets": [
+    "gemini"
+  ]
+}

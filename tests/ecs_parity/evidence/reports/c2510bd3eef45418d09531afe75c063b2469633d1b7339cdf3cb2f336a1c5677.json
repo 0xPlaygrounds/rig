@@ -1,0 +1,11 @@
+{
+  "assertion_review": "required separately",
+  "batch": "turn-termination",
+  "cells": 24,
+  "runs": {
+    "native": "c5057d8066e58cf5e8e376f543c8cfe7c600669620af9522a07854d947ff21dd.json",
+    "original": "9e0d1bb1ee457725e905a0a06be4d4705b1f1ea29fa5a1c2306a993284a22e0a.json"
+  },
+  "schema": 1,
+  "status": "executed"
+}

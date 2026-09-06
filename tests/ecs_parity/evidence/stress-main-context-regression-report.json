@@ -1,0 +1,11 @@
+{
+  "assertion_review": "required separately",
+  "batch": "stress-main-context-regression",
+  "cells": 12,
+  "runs": {
+    "native": "d50f09bf6aa21e066454286bf3911a8fb76428607abc36fac27f286022ff5123.json",
+    "original": "90ff130806e9be69fb6562c56c6b25a6bf595d010db78d11e5d1e582163de4a6.json"
+  },
+  "schema": 2,
+  "status": "executed"
+}

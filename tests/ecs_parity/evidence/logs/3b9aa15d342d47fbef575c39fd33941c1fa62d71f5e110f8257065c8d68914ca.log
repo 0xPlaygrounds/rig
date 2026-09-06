@@ -1,0 +1,12 @@
+   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.51s
+    Starting 7 tests across 1 binary (429 skipped)
+        PASS [   1.123s] rig::gemini gemini::cassette::ecs_stress_main::chained_arg_rewrite_then_result_redaction_blocking
+        PASS [   1.129s] rig::gemini gemini::cassette::ecs_stress_main::lifecycle_and_scratchpad_thread_across_multi_turn_blocking
+        PASS [   1.133s] rig::gemini gemini::cassette::ecs_stress_main::multi_tool_workflow_pairs_calls_and_results_per_turn_blocking
+        PASS [   1.136s] rig::gemini gemini::cassette::ecs_stress_main::skip_in_multi_tool_workflow_leaves_tool_unexecuted_blocking
+        PASS [   1.136s] rig::gemini gemini::cassette::ecs_stress_main::request_patch_injects_context_and_narrows_active_tools_blocking
+        PASS [   1.240s] rig::gemini gemini::cassette::ecs_stress_main::tool_call_turns_effect_log_is_the_golden_fixture
+        PASS [   1.266s] rig::gemini gemini::cassette::ecs_stress_main::streaming_lifecycle_ordering_and_context_streaming_flag
+------------
+     Summary [   1.267s] 7 tests run: 7 passed, 429 skipped

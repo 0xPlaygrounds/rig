@@ -1,0 +1,64 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.34s
+    Starting 6 tests across 1 binary (366 skipped)
+        PASS [   0.169s] rig::gemini gemini::cassette::agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream
+
+--- OUTPUT:              rig::gemini gemini::cassette::agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream ---
+
+running 1 test
+test gemini::cassette::agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.15s
+
+
+        PASS [   0.169s] rig::gemini gemini::cassette::agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn
+
+--- OUTPUT:              rig::gemini gemini::cassette::agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn ---
+
+running 1 test
+test gemini::cassette::agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.16s
+
+
+        PASS [   0.171s] rig::gemini gemini::cassette::agent_run_streamed::streamed_skip_abandons_the_turn_and_recovers
+
+--- OUTPUT:              rig::gemini gemini::cassette::agent_run_streamed::streamed_skip_abandons_the_turn_and_recovers ---
+
+running 1 test
+test gemini::cassette::agent_run_streamed::streamed_skip_abandons_the_turn_and_recovers ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.15s
+
+
+        PASS [   0.174s] rig::gemini gemini::cassette::agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message
+
+--- OUTPUT:              rig::gemini gemini::cassette::agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message ---
+
+running 1 test
+test gemini::cassette::agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.16s
+
+
+        PASS [   0.177s] rig::gemini gemini::cassette::agent_run_streamed::streamed_repair_continues_the_same_stream
+
+--- OUTPUT:              rig::gemini gemini::cassette::agent_run_streamed::streamed_repair_continues_the_same_stream ---
+
+running 1 test
+test gemini::cassette::agent_run_streamed::streamed_repair_continues_the_same_stream ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.16s
+
+
+        PASS [   0.179s] rig::gemini gemini::cassette::agent_run_streamed::streamed_hand_driven_multi_turn_run_completes
+
+--- OUTPUT:              rig::gemini gemini::cassette::agent_run_streamed::streamed_hand_driven_multi_turn_run_completes ---
+
+running 1 test
+test gemini::cassette::agent_run_streamed::streamed_hand_driven_multi_turn_run_completes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.17s
+
+
+------------
+     Summary [   0.179s] 6 tests run: 6 passed, 366 skipped

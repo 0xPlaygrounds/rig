@@ -1,0 +1,134 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "native": "rig::bedrock$bedrock::cassette::ecs_completion::completion_smoke",
+      "original": "rig::bedrock$bedrock::cassette::agent::completion_smoke"
+    },
+    {
+      "native": "rig::bedrock$bedrock::cassette::ecs_completion::completion_with_context_smoke",
+      "original": "rig::bedrock$bedrock::cassette::agent::completion_with_context_smoke"
+    },
+    {
+      "native": "rig::bedrock$bedrock::cassette::ecs_completion::prompt_caching_completion_smoke",
+      "original": "rig::bedrock$bedrock::cassette::agent::prompt_caching_completion_smoke"
+    },
+    {
+      "native": "rig::bedrock$bedrock::cassette::ecs_completion::tool_roundtrip_smoke",
+      "original": "rig::bedrock$bedrock::cassette::agent::tool_roundtrip_smoke"
+    },
+    {
+      "native": "rig::cohere$cohere::cassette::ecs_completion::completion_smoke",
+      "original": "rig::cohere$cohere::cassette::agent::completion_smoke"
+    },
+    {
+      "native": "rig::copilot$copilot::ecs_completion::completion_smoke",
+      "original": "rig::copilot$copilot::agent::completion_smoke"
+    },
+    {
+      "native": "rig::deepseek$deepseek::ecs_completion::completion_smoke",
+      "original": "rig::deepseek$deepseek::agent::completion_smoke"
+    },
+    {
+      "native": "rig::doubleword$doubleword::cassette::ecs_completion::completion_smoke",
+      "original": "rig::doubleword$doubleword::cassette::agent::completion_smoke"
+    },
+    {
+      "native": "rig::llamacpp$llamacpp::cassette::ecs_completion::completion_smoke",
+      "original": "rig::llamacpp$llamacpp::cassette::agent::completion_smoke"
+    },
+    {
+      "native": "rig::ollama$ollama::cassette::ecs_completion::completion_respects_max_tokens",
+      "original": "rig::ollama$ollama::cassette::agent::completion_respects_max_tokens"
+    },
+    {
+      "native": "rig::ollama$ollama::cassette::ecs_completion::completion_smoke",
+      "original": "rig::ollama$ollama::cassette::agent::completion_smoke"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::ecs_completion::completion_smoke",
+      "original": "rig::openrouter$openrouter::cassette::agent::completion_smoke"
+    },
+    {
+      "native": "rig::perplexity$perplexity::cassette::ecs_completion::completion_smoke",
+      "original": "rig::perplexity$perplexity::cassette::agent::completion_smoke"
+    },
+    {
+      "native": "rig::perplexity$perplexity::cassette::ecs_completion::completion_with_perplexity_options",
+      "original": "rig::perplexity$perplexity::cassette::agent::completion_with_perplexity_options"
+    },
+    {
+      "native": "rig::venice$venice::cassette::ecs_completion::completion_smoke",
+      "original": "rig::venice$venice::cassette::agent::completion_smoke"
+    },
+    {
+      "native": "rig::xai$xai::ecs_completion::completion_smoke",
+      "original": "rig::xai$xai::agent::completion_smoke"
+    }
+  ],
+  "features": [
+    "bedrock"
+  ],
+  "fixtures": [
+    "tests/cassettes/bedrock/agent/completion_smoke.yaml",
+    "tests/cassettes/bedrock/agent/completion_with_context_smoke.yaml",
+    "tests/cassettes/bedrock/agent/prompt_caching_completion_smoke.yaml",
+    "tests/cassettes/bedrock/agent/tool_roundtrip_smoke.yaml",
+    "tests/cassettes/cohere/agent/completion_smoke.yaml",
+    "tests/cassettes/copilot/agent/completion_smoke.yaml",
+    "tests/cassettes/deepseek/agent/completion_smoke.yaml",
+    "tests/cassettes/doubleword/agent/completion_smoke.yaml",
+    "tests/cassettes/llamacpp/agent/completion_smoke.yaml",
+    "tests/cassettes/ollama/agent/completion_smoke.yaml",
+    "tests/cassettes/ollama/agent/max_tokens.yaml",
+    "tests/cassettes/openrouter/agent/completion_smoke.yaml",
+    "tests/cassettes/perplexity/agent/completion_smoke.yaml",
+    "tests/cassettes/perplexity/agent/completion_with_perplexity_options.yaml",
+    "tests/cassettes/venice/agent/completion_smoke.yaml",
+    "tests/cassettes/xai/agent/completion_smoke.yaml"
+  ],
+  "name": "provider-completions",
+  "original_sources": [
+    "tests/common/support.rs",
+    "tests/providers/bedrock/cassette/agent.rs",
+    "tests/providers/bedrock/support.rs",
+    "tests/providers/cohere/cassette/agent.rs",
+    "tests/providers/cohere/support.rs",
+    "tests/providers/copilot/agent.rs",
+    "tests/providers/deepseek/agent.rs",
+    "tests/providers/deepseek/support.rs",
+    "tests/providers/doubleword/cassette/agent.rs",
+    "tests/providers/doubleword/support.rs",
+    "tests/providers/llamacpp/cassette/agent.rs",
+    "tests/providers/llamacpp/cassette_support.rs",
+    "tests/providers/ollama/cassette/agent.rs",
+    "tests/providers/ollama/support.rs",
+    "tests/providers/openrouter/cassette/agent.rs",
+    "tests/providers/openrouter/support.rs",
+    "tests/providers/perplexity/cassette/agent.rs",
+    "tests/providers/perplexity/support.rs",
+    "tests/providers/venice/cassette/agent.rs",
+    "tests/providers/venice/support.rs",
+    "tests/providers/xai/agent.rs",
+    "tests/providers/xai/support.rs"
+  ],
+  "package": "rig",
+  "schema": 1,
+  "semantic_skip_markers": [
+    "SKIP",
+    "skipping"
+  ],
+  "targets": [
+    "cohere",
+    "copilot",
+    "deepseek",
+    "doubleword",
+    "llamacpp",
+    "ollama",
+    "openrouter",
+    "perplexity",
+    "venice",
+    "xai",
+    "bedrock"
+  ]
+}

@@ -1,0 +1,164 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.35s
+    Starting 16 tests across 11 binaries (1502 skipped)
+        PASS [   0.318s] rig::ollama ollama::cassette::agent::completion_smoke
+
+--- OUTPUT:              rig::ollama ollama::cassette::agent::completion_smoke ---
+
+running 1 test
+test ollama::cassette::agent::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 93 filtered out; finished in 0.31s
+
+
+        PASS [   0.318s] rig::ollama ollama::cassette::agent::completion_respects_max_tokens
+
+--- OUTPUT:              rig::ollama ollama::cassette::agent::completion_respects_max_tokens ---
+
+running 1 test
+test ollama::cassette::agent::completion_respects_max_tokens ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 93 filtered out; finished in 0.31s
+
+
+        PASS [   0.341s] rig::cohere cohere::cassette::agent::completion_smoke
+
+--- OUTPUT:              rig::cohere cohere::cassette::agent::completion_smoke ---
+
+running 1 test
+test cohere::cassette::agent::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 102 filtered out; finished in 0.33s
+
+
+        PASS [   0.352s] rig::copilot copilot::agent::completion_smoke
+
+--- OUTPUT:              rig::copilot copilot::agent::completion_smoke ---
+
+running 1 test
+test copilot::agent::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.34s
+
+
+        PASS [   0.352s] rig::deepseek deepseek::agent::completion_smoke
+
+--- OUTPUT:              rig::deepseek deepseek::agent::completion_smoke ---
+
+running 1 test
+test deepseek::agent::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 185 filtered out; finished in 0.34s
+
+
+        PASS [   0.351s] rig::llamacpp llamacpp::cassette::agent::completion_smoke
+
+--- OUTPUT:              rig::llamacpp llamacpp::cassette::agent::completion_smoke ---
+
+running 1 test
+test llamacpp::cassette::agent::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 203 filtered out; finished in 0.34s
+
+
+        PASS [   0.357s] rig::doubleword doubleword::cassette::agent::completion_smoke
+
+--- OUTPUT:              rig::doubleword doubleword::cassette::agent::completion_smoke ---
+
+running 1 test
+test doubleword::cassette::agent::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 146 filtered out; finished in 0.35s
+
+
+        PASS [   0.360s] rig::openrouter openrouter::cassette::agent::completion_smoke
+
+--- OUTPUT:              rig::openrouter openrouter::cassette::agent::completion_smoke ---
+
+running 1 test
+test openrouter::cassette::agent::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 292 filtered out; finished in 0.35s
+
+
+        PASS [   0.123s] rig::perplexity perplexity::cassette::agent::completion_smoke
+
+--- OUTPUT:              rig::perplexity perplexity::cassette::agent::completion_smoke ---
+
+running 1 test
+test perplexity::cassette::agent::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 73 filtered out; finished in 0.11s
+
+
+        PASS [   0.123s] rig::perplexity perplexity::cassette::agent::completion_with_perplexity_options
+
+--- OUTPUT:              rig::perplexity perplexity::cassette::agent::completion_with_perplexity_options ---
+
+running 1 test
+test perplexity::cassette::agent::completion_with_perplexity_options ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 73 filtered out; finished in 0.11s
+
+
+        PASS [   0.123s] rig::venice venice::cassette::agent::completion_smoke
+
+--- OUTPUT:              rig::venice venice::cassette::agent::completion_smoke ---
+
+running 1 test
+test venice::cassette::agent::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 103 filtered out; finished in 0.12s
+
+
+        PASS [   0.114s] rig::xai xai::agent::completion_smoke
+
+--- OUTPUT:              rig::xai xai::agent::completion_smoke ---
+
+running 1 test
+test xai::agent::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 105 filtered out; finished in 0.11s
+
+
+        PASS [   0.583s] rig::bedrock bedrock::cassette::agent::completion_with_context_smoke
+
+--- OUTPUT:              rig::bedrock bedrock::cassette::agent::completion_with_context_smoke ---
+
+running 1 test
+test bedrock::cassette::agent::completion_with_context_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 100 filtered out; finished in 0.57s
+
+
+        PASS [   0.583s] rig::bedrock bedrock::cassette::agent::prompt_caching_completion_smoke
+
+--- OUTPUT:              rig::bedrock bedrock::cassette::agent::prompt_caching_completion_smoke ---
+
+running 1 test
+test bedrock::cassette::agent::prompt_caching_completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 100 filtered out; finished in 0.57s
+
+
+        PASS [   0.584s] rig::bedrock bedrock::cassette::agent::completion_smoke
+
+--- OUTPUT:              rig::bedrock bedrock::cassette::agent::completion_smoke ---
+
+running 1 test
+test bedrock::cassette::agent::completion_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 100 filtered out; finished in 0.57s
+
+
+        PASS [   0.585s] rig::bedrock bedrock::cassette::agent::tool_roundtrip_smoke
+
+--- OUTPUT:              rig::bedrock bedrock::cassette::agent::tool_roundtrip_smoke ---
+
+running 1 test
+test bedrock::cassette::agent::tool_roundtrip_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 100 filtered out; finished in 0.58s
+
+
+------------
+     Summary [   0.586s] 16 tests run: 16 passed, 1502 skipped

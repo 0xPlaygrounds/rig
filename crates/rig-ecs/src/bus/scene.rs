@@ -287,6 +287,7 @@ impl Scene {
             if effect.outcome.is_none()
                 && effect.streamed.as_ref().is_some_and(|streamed| {
                     !streamed.events.is_empty()
+                        || !streamed.errors.is_empty()
                         || !streamed.text.is_empty()
                         || streamed.outcome.is_some()
                 })

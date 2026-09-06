@@ -1,0 +1,244 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.35s
+    Starting 24 tests across 3 binaries (1354 skipped)
+        PASS [   0.079s] rig::anthropic anthropic::cassette::turn_termination_matrix::blocking_truncated_turn_reports_length_and_cap
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::turn_termination_matrix::blocking_truncated_turn_reports_length_and_cap ---
+
+running 1 test
+test anthropic::cassette::turn_termination_matrix::blocking_truncated_turn_reports_length_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.07s
+
+
+        PASS [   0.080s] rig::anthropic anthropic::cassette::turn_termination_matrix::blocking_completed_turn_reports_stop_and_cap
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::turn_termination_matrix::blocking_completed_turn_reports_stop_and_cap ---
+
+running 1 test
+test anthropic::cassette::turn_termination_matrix::blocking_completed_turn_reports_stop_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.07s
+
+
+        PASS [   0.080s] rig::anthropic anthropic::cassette::turn_termination_matrix::blocking_escalating_retry_reports_each_attempts_own_cap
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::turn_termination_matrix::blocking_escalating_retry_reports_each_attempts_own_cap ---
+
+running 1 test
+test anthropic::cassette::turn_termination_matrix::blocking_escalating_retry_reports_each_attempts_own_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.07s
+
+
+        PASS [   0.082s] rig::anthropic anthropic::cassette::turn_termination_matrix::blocking_tool_turn_reports_tool_calls
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::turn_termination_matrix::blocking_tool_turn_reports_tool_calls ---
+
+running 1 test
+test anthropic::cassette::turn_termination_matrix::blocking_tool_turn_reports_tool_calls ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.07s
+
+
+        PASS [   0.082s] rig::gemini gemini::cassette::turn_termination_matrix::blocking_completed_turn_reports_stop_and_cap
+
+--- OUTPUT:              rig::gemini gemini::cassette::turn_termination_matrix::blocking_completed_turn_reports_stop_and_cap ---
+
+running 1 test
+test gemini::cassette::turn_termination_matrix::blocking_completed_turn_reports_stop_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.07s
+
+
+        PASS [   0.082s] rig::gemini gemini::cassette::turn_termination_matrix::blocking_truncated_turn_reports_length_and_cap
+
+--- OUTPUT:              rig::gemini gemini::cassette::turn_termination_matrix::blocking_truncated_turn_reports_length_and_cap ---
+
+running 1 test
+test gemini::cassette::turn_termination_matrix::blocking_truncated_turn_reports_length_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.07s
+
+
+        PASS [   0.084s] rig::gemini gemini::cassette::turn_termination_matrix::blocking_escalating_retry_reports_each_attempts_own_cap
+
+--- OUTPUT:              rig::gemini gemini::cassette::turn_termination_matrix::blocking_escalating_retry_reports_each_attempts_own_cap ---
+
+running 1 test
+test gemini::cassette::turn_termination_matrix::blocking_escalating_retry_reports_each_attempts_own_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.07s
+
+
+        PASS [   0.084s] rig::gemini gemini::cassette::turn_termination_matrix::blocking_tool_turn_reports_tool_calls
+
+--- OUTPUT:              rig::gemini gemini::cassette::turn_termination_matrix::blocking_tool_turn_reports_tool_calls ---
+
+running 1 test
+test gemini::cassette::turn_termination_matrix::blocking_tool_turn_reports_tool_calls ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.08s
+
+
+        PASS [   0.090s] rig::anthropic anthropic::cassette::turn_termination_matrix::streaming_completed_turn_reports_stop_and_cap
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::turn_termination_matrix::streaming_completed_turn_reports_stop_and_cap ---
+
+running 1 test
+test anthropic::cassette::turn_termination_matrix::streaming_completed_turn_reports_stop_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.08s
+
+
+        PASS [   0.090s] rig::anthropic anthropic::cassette::turn_termination_matrix::streaming_truncated_turn_reports_length_and_cap
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::turn_termination_matrix::streaming_truncated_turn_reports_length_and_cap ---
+
+running 1 test
+test anthropic::cassette::turn_termination_matrix::streaming_truncated_turn_reports_length_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.08s
+
+
+        PASS [   0.105s] rig::anthropic anthropic::cassette::turn_termination_matrix::streaming_escalating_retry_reports_each_attempts_own_cap
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::turn_termination_matrix::streaming_escalating_retry_reports_each_attempts_own_cap ---
+
+running 1 test
+test anthropic::cassette::turn_termination_matrix::streaming_escalating_retry_reports_each_attempts_own_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.10s
+
+
+        PASS [   0.110s] rig::anthropic anthropic::cassette::turn_termination_matrix::streaming_tool_turn_reports_tool_calls
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::turn_termination_matrix::streaming_tool_turn_reports_tool_calls ---
+
+running 1 test
+test anthropic::cassette::turn_termination_matrix::streaming_tool_turn_reports_tool_calls ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.10s
+
+
+        PASS [   0.053s] rig::gemini gemini::cassette::turn_termination_matrix::streaming_completed_turn_reports_stop_and_cap
+
+--- OUTPUT:              rig::gemini gemini::cassette::turn_termination_matrix::streaming_completed_turn_reports_stop_and_cap ---
+
+running 1 test
+test gemini::cassette::turn_termination_matrix::streaming_completed_turn_reports_stop_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.04s
+
+
+        PASS [   0.059s] rig::gemini gemini::cassette::turn_termination_matrix::streaming_truncated_turn_reports_length_and_cap
+
+--- OUTPUT:              rig::gemini gemini::cassette::turn_termination_matrix::streaming_truncated_turn_reports_length_and_cap ---
+
+running 1 test
+test gemini::cassette::turn_termination_matrix::streaming_truncated_turn_reports_length_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.05s
+
+
+        PASS [   0.061s] rig::gemini gemini::cassette::turn_termination_matrix::streaming_tool_turn_reports_tool_calls
+
+--- OUTPUT:              rig::gemini gemini::cassette::turn_termination_matrix::streaming_tool_turn_reports_tool_calls ---
+
+running 1 test
+test gemini::cassette::turn_termination_matrix::streaming_tool_turn_reports_tool_calls ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.05s
+
+
+        PASS [   0.067s] rig::gemini gemini::cassette::turn_termination_matrix::streaming_escalating_retry_reports_each_attempts_own_cap
+
+--- OUTPUT:              rig::gemini gemini::cassette::turn_termination_matrix::streaming_escalating_retry_reports_each_attempts_own_cap ---
+
+running 1 test
+test gemini::cassette::turn_termination_matrix::streaming_escalating_retry_reports_each_attempts_own_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.06s
+
+
+        PASS [   0.068s] rig::openai openai::cassette::turn_termination_matrix::blocking_completed_turn_reports_stop_and_cap
+
+--- OUTPUT:              rig::openai openai::cassette::turn_termination_matrix::blocking_completed_turn_reports_stop_and_cap ---
+
+running 1 test
+test openai::cassette::turn_termination_matrix::blocking_completed_turn_reports_stop_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.06s
+
+
+        PASS [   0.067s] rig::openai openai::cassette::turn_termination_matrix::blocking_truncated_turn_reports_length_and_cap
+
+--- OUTPUT:              rig::openai openai::cassette::turn_termination_matrix::blocking_truncated_turn_reports_length_and_cap ---
+
+running 1 test
+test openai::cassette::turn_termination_matrix::blocking_truncated_turn_reports_length_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.06s
+
+
+        PASS [   0.069s] rig::openai openai::cassette::turn_termination_matrix::blocking_escalating_retry_reports_each_attempts_own_cap
+
+--- OUTPUT:              rig::openai openai::cassette::turn_termination_matrix::blocking_escalating_retry_reports_each_attempts_own_cap ---
+
+running 1 test
+test openai::cassette::turn_termination_matrix::blocking_escalating_retry_reports_each_attempts_own_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.06s
+
+
+        PASS [   0.068s] rig::openai openai::cassette::turn_termination_matrix::blocking_tool_turn_reports_tool_calls
+
+--- OUTPUT:              rig::openai openai::cassette::turn_termination_matrix::blocking_tool_turn_reports_tool_calls ---
+
+running 1 test
+test openai::cassette::turn_termination_matrix::blocking_tool_turn_reports_tool_calls ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.06s
+
+
+        PASS [   0.071s] rig::openai openai::cassette::turn_termination_matrix::streaming_completed_turn_reports_stop_and_cap
+
+--- OUTPUT:              rig::openai openai::cassette::turn_termination_matrix::streaming_completed_turn_reports_stop_and_cap ---
+
+running 1 test
+test openai::cassette::turn_termination_matrix::streaming_completed_turn_reports_stop_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.06s
+
+
+        PASS [   0.074s] rig::openai openai::cassette::turn_termination_matrix::streaming_truncated_turn_reports_length_and_cap
+
+--- OUTPUT:              rig::openai openai::cassette::turn_termination_matrix::streaming_truncated_turn_reports_length_and_cap ---
+
+running 1 test
+test openai::cassette::turn_termination_matrix::streaming_truncated_turn_reports_length_and_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.06s
+
+
+        PASS [   0.105s] rig::openai openai::cassette::turn_termination_matrix::streaming_tool_turn_reports_tool_calls
+
+--- OUTPUT:              rig::openai openai::cassette::turn_termination_matrix::streaming_tool_turn_reports_tool_calls ---
+
+running 1 test
+test openai::cassette::turn_termination_matrix::streaming_tool_turn_reports_tool_calls ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.09s
+
+
+        PASS [   0.157s] rig::openai openai::cassette::turn_termination_matrix::streaming_escalating_retry_reports_each_attempts_own_cap
+
+--- OUTPUT:              rig::openai openai::cassette::turn_termination_matrix::streaming_escalating_retry_reports_each_attempts_own_cap ---
+
+running 1 test
+test openai::cassette::turn_termination_matrix::streaming_escalating_retry_reports_each_attempts_own_cap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.15s
+
+
+------------
+     Summary [   0.249s] 24 tests run: 24 passed, 1354 skipped

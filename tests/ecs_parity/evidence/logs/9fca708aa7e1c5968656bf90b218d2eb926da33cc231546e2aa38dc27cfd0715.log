@@ -1,0 +1,84 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.35s
+    Starting 8 tests across 2 binaries (656 skipped)
+        PASS [   3.655s] rig::deepseek deepseek::ecs_truncation::agent_blocking_truncated_call_is_not_invoked
+
+--- OUTPUT:              rig::deepseek deepseek::ecs_truncation::agent_blocking_truncated_call_is_not_invoked ---
+
+running 1 test
+test deepseek::ecs_truncation::agent_blocking_truncated_call_is_not_invoked ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 208 filtered out; finished in 3.65s
+
+
+        PASS [   3.665s] rig::deepseek deepseek::ecs_truncation::agent_blocking_empty_arguments_on_length_are_not_invoked
+
+--- OUTPUT:              rig::deepseek deepseek::ecs_truncation::agent_blocking_empty_arguments_on_length_are_not_invoked ---
+
+running 1 test
+test deepseek::ecs_truncation::agent_blocking_empty_arguments_on_length_are_not_invoked ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 208 filtered out; finished in 3.66s
+
+
+        PASS [   3.720s] rig::gemini gemini::cassette::ecs_code_execution::blocking_agent_prompt_answers_after_code_execution
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_code_execution::blocking_agent_prompt_answers_after_code_execution ---
+
+running 1 test
+test gemini::cassette::ecs_code_execution::blocking_agent_prompt_answers_after_code_execution ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 454 filtered out; finished in 3.71s
+
+
+        PASS [   3.720s] rig::gemini gemini::cassette::ecs_code_execution::blocking_code_execution_replayed_in_chat_history
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_code_execution::blocking_code_execution_replayed_in_chat_history ---
+
+running 1 test
+test gemini::cassette::ecs_code_execution::blocking_code_execution_replayed_in_chat_history ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 454 filtered out; finished in 3.71s
+
+
+        PASS [   3.807s] rig::deepseek deepseek::ecs_truncation::agent_streaming_empty_arguments_on_length_are_not_invoked
+
+--- OUTPUT:              rig::deepseek deepseek::ecs_truncation::agent_streaming_empty_arguments_on_length_are_not_invoked ---
+
+running 1 test
+test deepseek::ecs_truncation::agent_streaming_empty_arguments_on_length_are_not_invoked ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 208 filtered out; finished in 3.80s
+
+
+        PASS [   3.907s] rig::gemini gemini::cassette::ecs_code_execution::streaming_agent_prompt_answers_after_code_execution
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_code_execution::streaming_agent_prompt_answers_after_code_execution ---
+
+running 1 test
+test gemini::cassette::ecs_code_execution::streaming_agent_prompt_answers_after_code_execution ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 454 filtered out; finished in 3.90s
+
+
+        PASS [   3.981s] rig::gemini gemini::cassette::ecs_code_execution::two_terminal_stream_agent_prompt_keeps_the_answer
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_code_execution::two_terminal_stream_agent_prompt_keeps_the_answer ---
+
+running 1 test
+test gemini::cassette::ecs_code_execution::two_terminal_stream_agent_prompt_keeps_the_answer ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 454 filtered out; finished in 3.97s
+
+
+        PASS [   4.074s] rig::deepseek deepseek::ecs_truncation::agent_streaming_truncated_call_is_not_invoked
+
+--- OUTPUT:              rig::deepseek deepseek::ecs_truncation::agent_streaming_truncated_call_is_not_invoked ---
+
+running 1 test
+test deepseek::ecs_truncation::agent_streaming_truncated_call_is_not_invoked ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 208 filtered out; finished in 4.07s
+
+
+------------
+     Summary [   4.075s] 8 tests run: 8 passed, 656 skipped

@@ -1,0 +1,124 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.34s
+    Starting 12 tests across 1 binary (399 skipped)
+        PASS [   1.389s] rig::gemini gemini::cassette::ecs_stress_patch::preamble_override_forces_codeword_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_patch::preamble_override_forces_codeword_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_patch::preamble_override_forces_codeword_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 410 filtered out; finished in 1.38s
+
+
+        PASS [   1.392s] rig::gemini gemini::cassette::ecs_stress_context::scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_context::scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_context::scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 410 filtered out; finished in 1.38s
+
+
+        PASS [   1.395s] rig::gemini gemini::cassette::ecs_stress_patch::multi_field_patch_applies_preamble_and_context_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_patch::multi_field_patch_applies_preamble_and_context_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_patch::multi_field_patch_applies_preamble_and_context_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 410 filtered out; finished in 1.38s
+
+
+        PASS [   1.401s] rig::gemini gemini::cassette::ecs_stress_patch::history_replacement_injects_prior_fact_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_patch::history_replacement_injects_prior_fact_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_patch::history_replacement_injects_prior_fact_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 410 filtered out; finished in 1.39s
+
+
+        PASS [   1.402s] rig::gemini gemini::cassette::ecs_stress_context::completion_call_patches_accumulate_from_two_hooks_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_context::completion_call_patches_accumulate_from_two_hooks_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_context::completion_call_patches_accumulate_from_two_hooks_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 410 filtered out; finished in 1.39s
+
+
+        PASS [   1.405s] rig::gemini gemini::cassette::ecs_stress_context::two_observe_only_hooks_both_observe_the_run_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_context::two_observe_only_hooks_both_observe_the_run_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_context::two_observe_only_hooks_both_observe_the_run_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 410 filtered out; finished in 1.39s
+
+
+        PASS [   1.408s] rig::gemini gemini::cassette::ecs_stress_context::add_hook_appends_across_builder_and_request_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_context::add_hook_appends_across_builder_and_request_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_context::add_hook_appends_across_builder_and_request_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 410 filtered out; finished in 1.40s
+
+
+        PASS [   1.409s] rig::gemini gemini::cassette::ecs_stress_context::block_id_correlates_tool_call_and_result_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_context::block_id_correlates_tool_call_and_result_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_context::block_id_correlates_tool_call_and_result_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 410 filtered out; finished in 1.40s
+
+
+        PASS [   1.409s] rig::gemini gemini::cassette::ecs_stress_context::agent_name_absent_when_unconfigured_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_context::agent_name_absent_when_unconfigured_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_context::agent_name_absent_when_unconfigured_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 410 filtered out; finished in 1.40s
+
+
+        PASS [   1.411s] rig::gemini gemini::cassette::ecs_stress_patch::tool_choice_required_forces_a_tool_call_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_patch::tool_choice_required_forces_a_tool_call_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_patch::tool_choice_required_forces_a_tool_call_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 410 filtered out; finished in 1.40s
+
+
+        PASS [   1.412s] rig::gemini gemini::cassette::ecs_stress_context::two_hooks_narrow_active_tools_to_intersection_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_context::two_hooks_narrow_active_tools_to_intersection_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_context::two_hooks_narrow_active_tools_to_intersection_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 410 filtered out; finished in 1.40s
+
+
+        PASS [   1.416s] rig::gemini gemini::cassette::ecs_stress_context::hook_context_identity_stable_and_turn_advances_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_stress_context::hook_context_identity_stable_and_turn_advances_blocking ---
+
+running 1 test
+test gemini::cassette::ecs_stress_context::hook_context_identity_stable_and_turn_advances_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 410 filtered out; finished in 1.40s
+
+
+------------
+     Summary [   1.417s] 12 tests run: 12 passed, 399 skipped

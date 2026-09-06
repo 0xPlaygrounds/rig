@@ -28,11 +28,11 @@ use crate::support::{
 
 use super::support::with_xai_cassette_result;
 
-const SESSION_MODEL: &str = "grok-4.3";
+pub(super) const SESSION_MODEL: &str = "grok-4.3";
 const REASONING_MODEL: &str = xai::GROK_3_MINI;
-const VISION_MODEL: &str = "grok-4.3";
+pub(super) const VISION_MODEL: &str = "grok-4.3";
 
-const COMPLEX_SESSION_PREAMBLE: &str = "\
+pub(super) const COMPLEX_SESSION_PREAMBLE: &str = "\
 You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. \
 For the production-readiness scenario, call exactly one tool at a time in this order: \
 1. ping_empty with an empty JSON object. \
@@ -41,12 +41,12 @@ For the production-readiness scenario, call exactly one tool at a time in this o
 4. escape_echo with the exact escaped text from the user. \
 After all tool results are available, answer in one short sentence that includes EMPTY-OK, MANIFEST-OK, LABELS-OK, and ESCAPE-OK.";
 
-const COMPLEX_SESSION_PROMPT: &str = "\
+pub(super) const COMPLEX_SESSION_PROMPT: &str = "\
 Run the production-readiness scenario. The manifest note is `line one; line two says \"hello\" and path C:\\rig\\xai`. \
 The escaped text is `Line 1\nLine \"2\" with backslash \\ and unicode snowman ☃`.";
 
 #[derive(Clone, Debug, PartialEq)]
-struct ToolInvocation {
+pub(super) struct ToolInvocation {
     name: &'static str,
     args: serde_json::Value,
 }
@@ -63,30 +63,30 @@ fn push_invocation<T: Serialize>(log: &InvocationLog, name: &'static str, args: 
 }
 
 #[derive(Clone)]
-struct PingEmpty {
+pub(super) struct PingEmpty {
     log: InvocationLog,
 }
 
 #[derive(Clone)]
-struct InspectManifest {
+pub(super) struct InspectManifest {
     log: InvocationLog,
 }
 
 #[derive(Clone)]
-struct JoinLabels {
+pub(super) struct JoinLabels {
     log: InvocationLog,
 }
 
 #[derive(Clone)]
-struct EscapeEcho {
+pub(super) struct EscapeEcho {
     log: InvocationLog,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct EmptyArgs {}
+pub(super) struct EmptyArgs {}
 
 #[derive(Debug, Deserialize, Serialize)]
-struct ManifestArgs {
+pub(super) struct ManifestArgs {
     project: String,
     flags: ManifestFlags,
     steps: Vec<ManifestStep>,
@@ -94,31 +94,31 @@ struct ManifestArgs {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct ManifestFlags {
+pub(super) struct ManifestFlags {
     critical: bool,
     retries: u8,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct ManifestStep {
-    name: String,
+pub(super) struct ManifestStep {
+    pub(super) name: String,
     weight: i32,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct JoinArgs {
+pub(super) struct JoinArgs {
     labels: Vec<String>,
     separator: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct EchoArgs {
+pub(super) struct EchoArgs {
     text: String,
 }
 
 #[derive(Debug, thiserror::Error)]
 #[error("session tool error")]
-struct SessionToolError;
+pub(super) struct SessionToolError;
 
 impl Tool for PingEmpty {
     const NAME: &'static str = "ping_empty";
@@ -267,7 +267,9 @@ impl Tool for EscapeEcho {
     }
 }
 
-fn complex_tools(log: &InvocationLog) -> (PingEmpty, InspectManifest, JoinLabels, EscapeEcho) {
+pub(super) fn complex_tools(
+    log: &InvocationLog,
+) -> (PingEmpty, InspectManifest, JoinLabels, EscapeEcho) {
     (
         PingEmpty { log: log.clone() },
         InspectManifest { log: log.clone() },
@@ -276,7 +278,7 @@ fn complex_tools(log: &InvocationLog) -> (PingEmpty, InspectManifest, JoinLabels
     )
 }
 
-fn assert_complex_invocations(log: &InvocationLog) {
+pub(super) fn assert_complex_invocations(log: &InvocationLog) {
     let invocations = log
         .lock()
         .expect("tool invocation log lock should not be poisoned")
@@ -320,12 +322,12 @@ fn assert_complex_invocations(log: &InvocationLog) {
     );
 }
 
-struct ToolEvent {
-    message_index: usize,
-    name: String,
+pub(super) struct ToolEvent {
+    pub(super) message_index: usize,
+    pub(super) name: String,
 }
 
-fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
+pub(super) fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
     let mut calls = Vec::new();
     for (message_index, message) in history.iter().enumerate() {
         if let Message::Assistant { content, .. } = message {
@@ -342,7 +344,7 @@ fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
     calls
 }
 
-fn history_tool_results(history: &[Message]) -> Vec<ToolEvent> {
+pub(super) fn history_tool_results(history: &[Message]) -> Vec<ToolEvent> {
     let mut results = Vec::new();
     for (message_index, message) in history.iter().enumerate() {
         if let Message::User { content } = message {
@@ -359,7 +361,10 @@ fn history_tool_results(history: &[Message]) -> Vec<ToolEvent> {
     results
 }
 
-fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expected_tools: &[&str]) {
+pub(super) fn assert_history_records_sequential_tool_roundtrips(
+    history: &[Message],
+    expected_tools: &[&str],
+) {
     let calls = history_tool_calls(history);
     let results = history_tool_results(history);
 
@@ -433,7 +438,7 @@ fn assert_response_metadata(response: &rig::completion::CompletionResponse) {
     );
 }
 
-fn image_content() -> UserContent {
+pub(super) fn image_content() -> UserContent {
     let bytes = std::fs::read(IMAGE_FIXTURE_PATH).expect("fixture image should be readable");
     UserContent::image_base64(
         BASE64_STANDARD.encode(bytes),

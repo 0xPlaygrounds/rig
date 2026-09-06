@@ -1,0 +1,142 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "native": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_model",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_model"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_zero_agent",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_agent"
+    },
+    {
+      "native": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_model",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_model"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_nested_agent",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_agent"
+    },
+    {
+      "native": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_model",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_model"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_parallel_agent",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_agent"
+    },
+    {
+      "native": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_model",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_model"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_zero_agent",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_agent"
+    },
+    {
+      "native": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_model",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_model"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_nested_agent",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_agent"
+    },
+    {
+      "native": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_model",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_model"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_parallel_agent",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_agent"
+    },
+    {
+      "native": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_model",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_model"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_zero_agent",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_agent"
+    },
+    {
+      "native": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_model",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_model"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_nested_agent",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_agent"
+    },
+    {
+      "native": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_model",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_model"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_parallel_agent",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_agent"
+    },
+    {
+      "native": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_model",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_model"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_zero_agent",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_agent"
+    },
+    {
+      "native": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_model",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_model"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_nested_agent",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_agent"
+    },
+    {
+      "native": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_model",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_model"
+    },
+    {
+      "native": "rig::openai$openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_parallel_agent",
+      "original": "rig::openai$openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_agent"
+    }
+  ],
+  "features": [],
+  "fixtures": [
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/blocking_gpt4o_zero_model.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/blocking_gpt4o_zero_agent.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/blocking_gpt4o_nested_model.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/blocking_gpt4o_nested_agent.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/blocking_gpt4o_parallel_model.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/blocking_gpt4o_parallel_agent.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/blocking_gpt41_zero_model.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/blocking_gpt41_zero_agent.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/blocking_gpt41_nested_model.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/blocking_gpt41_nested_agent.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/blocking_gpt41_parallel_model.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/blocking_gpt41_parallel_agent.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt4o_zero_model.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt4o_zero_agent.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt4o_nested_model.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt4o_nested_agent.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt4o_parallel_model.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt4o_parallel_agent.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt41_zero_model.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt41_zero_agent.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt41_nested_model.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt41_nested_agent.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt41_parallel_model.yaml",
+    "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt41_parallel_agent.yaml"
+  ],
+  "name": "chat-tools",
+  "original_sources": [
+    "tests/providers/openai/cassette/chat_tool_lifecycle_matrix.rs",
+    "tests/common/support.rs"
+  ],
+  "package": "rig",
+  "schema": 1,
+  "semantic_skip_markers": [
+    "SKIP",
+    "skipping"
+  ],
+  "targets": [
+    "openai"
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_serving::serial_concurrency_one_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_serving::serial_concurrency_one_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_serving::concurrent_concurrency_one_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_serving::concurrent_concurrency_one_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_serving::concurrent_concurrency_two_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_serving::concurrent_concurrency_two_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_serving::concurrent_concurrency_two_events_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_serving::concurrent_concurrency_two_events_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_serving::capacity_one_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_serving::capacity_one_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_serving::serial_memory_tools_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_serving::serial_memory_tools_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_serving::model_route_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_serving::model_route_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_serving::model_route_unselected_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_serving::model_route_unselected_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_serving::host_bus_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_serving::host_bus_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_serving::host_bus_streamed_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::corpus_serving::host_bus_streamed_effect_log_is_the_golden_fixture"
+    }
+  ],
+  "features": [],
+  "fixtures": [
+    "crates/rig-verify/fixtures/anthropic_serving_capacity_one.effects.json",
+    "crates/rig-verify/fixtures/anthropic_serving_concurrent_concurrency_one.effects.json",
+    "crates/rig-verify/fixtures/anthropic_serving_concurrent_concurrency_two.effects.json",
+    "crates/rig-verify/fixtures/anthropic_serving_concurrent_concurrency_two_events.effects.json",
+    "crates/rig-verify/fixtures/anthropic_serving_host_bus.effects.json",
+    "crates/rig-verify/fixtures/anthropic_serving_host_bus_streamed.effects.json",
+    "crates/rig-verify/fixtures/anthropic_serving_model_route.effects.json",
+    "crates/rig-verify/fixtures/anthropic_serving_model_route_unselected.effects.json",
+    "crates/rig-verify/fixtures/anthropic_serving_serial_concurrency_one.effects.json",
+    "crates/rig-verify/fixtures/anthropic_serving_serial_memory_tools.effects.json",
+    "tests/cassettes/anthropic/corpus_hooks/observe_everything.yaml",
+    "tests/cassettes/anthropic/corpus_serving/host_bus.yaml",
+    "tests/cassettes/anthropic/corpus_serving/host_bus_streamed.yaml",
+    "tests/cassettes/anthropic/corpus_serving/model_route.yaml",
+    "tests/cassettes/anthropic/effect_corpus/tool_call_turn.yaml",
+    "tests/cassettes/anthropic/streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order.yaml"
+  ],
+  "name": "serving",
+  "original_sources": [
+    "tests/providers/anthropic/cassette/corpus_serving.rs",
+    "tests/common/goldens.rs",
+    "tests/common/support.rs"
+  ],
+  "package": "rig",
+  "schema": 1,
+  "semantic_skip_markers": [
+    "SKIP",
+    "skipping"
+  ],
+  "targets": [
+    "anthropic"
+  ]
+}

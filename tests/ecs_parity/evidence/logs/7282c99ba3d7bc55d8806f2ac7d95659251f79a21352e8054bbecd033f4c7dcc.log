@@ -1,0 +1,104 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.35s
+    Starting 10 tests across 1 binary (658 skipped)
+        PASS [   1.011s] rig::anthropic anthropic::cassette::ecs_host::custom_at_settled_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_at_settled_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_at_settled_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 667 filtered out; finished in 1.00s
+
+
+        PASS [   1.013s] rig::anthropic anthropic::cassette::ecs_host::custom_at_start_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_at_start_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_at_start_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 667 filtered out; finished in 1.00s
+
+
+        PASS [   1.017s] rig::anthropic anthropic::cassette::ecs_host::custom_twice_concurrent_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_twice_concurrent_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_twice_concurrent_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 667 filtered out; finished in 1.01s
+
+
+        PASS [   1.019s] rig::anthropic anthropic::cassette::ecs_host::custom_at_completion_call_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_at_completion_call_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_at_completion_call_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 667 filtered out; finished in 1.01s
+
+
+        PASS [   1.020s] rig::anthropic anthropic::cassette::ecs_host::custom_twice_serial_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_twice_serial_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_twice_serial_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 667 filtered out; finished in 1.00s
+
+
+        PASS [   1.021s] rig::anthropic anthropic::cassette::ecs_host::custom_start_and_settled_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_start_and_settled_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_start_and_settled_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 667 filtered out; finished in 1.01s
+
+
+        PASS [   1.020s] rig::anthropic anthropic::cassette::ecs_host::custom_unserved_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_unserved_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_unserved_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 667 filtered out; finished in 1.01s
+
+
+        PASS [   1.023s] rig::anthropic anthropic::cassette::ecs_host::custom_at_outcome_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_at_outcome_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_at_outcome_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 667 filtered out; finished in 1.01s
+
+
+        PASS [   1.087s] rig::anthropic anthropic::cassette::ecs_host::custom_at_start_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_at_start_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_at_start_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 667 filtered out; finished in 1.08s
+
+
+        PASS [   1.179s] rig::anthropic anthropic::cassette::ecs_host::custom_at_outcome_streamed_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_host::custom_at_outcome_streamed_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_host::custom_at_outcome_streamed_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 667 filtered out; finished in 1.17s
+
+
+------------
+     Summary [   1.179s] 10 tests run: 10 passed, 658 skipped

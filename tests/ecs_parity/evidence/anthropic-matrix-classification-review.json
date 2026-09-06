@@ -1,0 +1,618 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::agent_blocking_thinking"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::blocking_adaptive_declines_to_think"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::blocking_budget_thinking"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::blocking_haiku_no_thinking_control"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::blocking_larger_budget"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::blocking_long_reasoning"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::blocking_max_tokens_truncation"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::blocking_opus_model"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::blocking_redacted_thinking"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::blocking_thinking_disabled_control"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::blocking_tool_use_terminal"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::blocking_with_preamble"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::blocking_with_prompt_caching"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::blocking_with_tools"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::normalized_stream_budget_thinking"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::streaming_adaptive_declines_to_think"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::streaming_budget_thinking"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::streaming_larger_budget"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::streaming_long_reasoning"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::streaming_max_tokens_truncation"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::streaming_opus_model"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::streaming_redacted_thinking"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::streaming_thinking_disabled_control"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::streaming_tool_use_terminal"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::streaming_with_preamble"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::streaming_with_prompt_caching"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::streaming_with_tools"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::unit_absent_details_reports_zero"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::unit_streaming_and_blocking_share_the_mapping"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::unit_thinking_tokens_stay_out_of_the_total"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "13 blocking_usage→model.completion,12 streamed_usage→model.stream,1 direct normalized model.stream,4 provider-usage unit conversions; explicit agent_blocking_thinking executes agent.prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::reasoning_usage_matrix::unit_unknown_detail_bucket_is_ignored"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::agent_stream_single_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::blocking_end_turn_control"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::blocking_max_tokens_control"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::blocking_second_listed_sequence_parity"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::blocking_single_sequence_parity"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::normalized_stream_single_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_case_mismatch_does_not_fire"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_case_sensitive_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_earliest_in_output_wins"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_empty_content_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_end_turn_control"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_first_listed_sequence_fires"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_four_sequences"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_long_multi_token_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_max_tokens_control"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_newline_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_punctuation_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_second_listed_sequence_fires"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_single_sequence_fires"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_sonnet_sequence_fires"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_tool_use_control"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_unicode_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_whitespace_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_with_preamble_sequence_fires"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_with_prompt_caching_sequence_fires"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::raw_with_tools_sequence_fires"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::terminal_record_omits_absent_stop_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "20 raw_terminal→model.stream,4 raw_completion,1 direct normalized stream,2 provider-terminal serde unit cases; explicit agent_stream_single_sequence executes agent.stream_prompt."
+      },
+      "id": "rig::anthropic::anthropic::cassette::stop_sequence_terminal_matrix::terminal_record_round_trips_stop_sequence"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::agent_prompt_empty_stop_sequence"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::agent_stream_empty_stop_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::completion_empty_stop_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::finish_reason_is_stop_on_empty_stop"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::followup_after_empty_stop_turn"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::identity_survives_empty_stop"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::long_sequence_empty_stop"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::nonempty_stop_sequence_control"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::punctuation_empty_stop_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::raw_normalize_empty_stop_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::sonnet_empty_stop_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::streaming_empty_stop_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::two_sequences_empty_stop"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::unicode_empty_stop_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::unit_empty_assistant_turn_cannot_be_replayed"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::unit_empty_end_turn_still_allowed"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::unit_empty_max_tokens_still_rejected"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::unit_empty_pause_turn_still_rejected"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::unit_empty_refusal_still_rejected"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::unit_empty_stop_sequence_without_a_sequence_still_rejected"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::unit_empty_tool_use_still_rejected"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::unit_empty_without_stop_reason_still_rejected"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::whitespace_empty_stop_sequence"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::with_preamble_empty_stop"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::with_prompt_caching_empty_stop"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "16 raw/provider completion or stream cases,8 provider-response/request conversion unit cases; explicit agent_prompt_empty_stop_sequence and agent_stream_empty_stop_sequence execute agent. followup_after_empty_stop_turn is two independent model completions."
+      },
+      "id": "rig::anthropic::anthropic::cassette::empty_stop_sequence_matrix::with_tools_empty_stop"
+    }
+  ],
+  "kind": "classification",
+  "limits": "Classification only; fixture/assertion inventories and parity remain independently tracked.",
+  "reviewer": "/root/parity_workflow_review",
+  "rule": "Exhaustive entry/helper/compiled-listing review of85 cases:81 shared provider,4 explicit agent exceptions. Wrappers instantiate provider clients and use common cassette teardown. Tool schemas alone do not execute tools.",
+  "schema": 1,
+  "sources": {
+    "tests/common/cassettes.rs": "0d26d322265b22088f9fb873b3ee0f8a07bb2bef1ac5ca4f16bdda3c6ac754a4",
+    "tests/common/support.rs": "a0f495e031171f27e1de754fb334e336e2461b44cfc9202bc17499e004d2e26a",
+    "tests/providers/anthropic/cassette/empty_stop_sequence_matrix.rs": "13c66279b23d7c2cba756523df756acfac6e9cfb8fd576c5615717195d6422fe",
+    "tests/providers/anthropic/cassette/reasoning_usage_matrix.rs": "535469b6e33ff409fde4e161a8c1eefd27fb46108584761aa1db2bec3336a29a",
+    "tests/providers/anthropic/cassette/stop_sequence_terminal_matrix.rs": "965182510df10fc0e4d9bdf3f5decf3845cd092cc19cca0759929912e03d1b7a",
+    "tests/providers/anthropic/support.rs": "edabccc54e620ada50c9f468c55d898afdca76075ef485785f230074610a0fe8"
+  },
+  "status": "accepted"
+}

@@ -1,0 +1,99 @@
+{
+  "batch": "f3083e456ec7e437191328282f42abfefcf0789c3b651eb65b9bad000308c980.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "gemini",
+    "-E",
+    "(binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_tools::arg_rewrite_sets_one_key_preserving_rest_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_tools::result_truncation_reaches_model_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_tools::terminate_from_tool_result_cancels_after_execution_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_tools::tool_error_guidance_drives_model_retry_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_tools::two_arg_rewrites_chain_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_tools::two_result_rewrites_chain_redact_then_wrap_blocking))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "b01766d345cb7e4a73458d178635a5e86a1f81f404032563e67f30a1376c6dd0.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "gemini",
+    "-E",
+    "(binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_tools::arg_rewrite_sets_one_key_preserving_rest_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_tools::result_truncation_reaches_model_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_tools::terminate_from_tool_result_cancels_after_execution_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_tools::tool_error_guidance_drives_model_retry_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_tools::two_arg_rewrites_chain_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_tools::two_result_rewrites_chain_redact_then_wrap_blocking))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "aa1d5486b74d233c234fe5c9ba19fa38a9248b51804c407b0916ba829b592a6f.log",
+    "listing_stdout": "903f270735b864a7770b294ff3f52cf186c7b9b2a38c32a8992106292981ba7c.json",
+    "stderr": "cf965973c8f04d147d0945f1301b1e90ed26c135239f24b2d5f749b57f903bfb.log",
+    "stdout": "2ca56983947e6f5c2016335b98d59f9c0560996fea4ac7f718f15e8b6af4f0fd.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_tools::arg_rewrite_sets_one_key_preserving_rest_blocking",
+      "seconds": 0.653832375,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_tools::two_arg_rewrites_chain_blocking",
+      "seconds": 0.653948333,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_tools::two_result_rewrites_chain_redact_then_wrap_blocking",
+      "seconds": 0.651221667,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_tools::result_truncation_reaches_model_blocking",
+      "seconds": 0.652434416,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_tools::terminate_from_tool_result_cancels_after_execution_blocking",
+      "seconds": 0.634844458,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_tools::tool_error_guidance_drives_model_retry_blocking",
+      "seconds": 0.658925375,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "d9c955867b8dce4f5c8c4b60e981f43cc99c1c754ae0633f257846f6a74b2490.json",
+  "source_index_after": "d9c955867b8dce4f5c8c4b60e981f43cc99c1c754ae0633f257846f6a74b2490.json",
+  "status": "executed",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

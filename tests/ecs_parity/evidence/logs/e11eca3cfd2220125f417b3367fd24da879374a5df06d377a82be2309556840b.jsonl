@@ -1,0 +1,8 @@
+{"type":"suite","event":"started","test_count":3,"nextest":{"crate":"rig","test_binary":"anthropic","kind":"test"}}
+{"type":"test","event":"started","name":"rig::anthropic$anthropic::cassette::corpus_causal::completion_concurrent_effect_log_is_the_golden_fixture"}
+{"type":"test","event":"started","name":"rig::anthropic$anthropic::cassette::corpus_causal::completion_serial_effect_log_is_the_golden_fixture"}
+{"type":"test","event":"started","name":"rig::anthropic$anthropic::cassette::corpus_causal::completion_streamed_effect_log_is_the_golden_fixture"}
+{"type":"test","event":"ok","name":"rig::anthropic$anthropic::cassette::corpus_causal::completion_concurrent_effect_log_is_the_golden_fixture","exec_time":0.037335333}
+{"type":"test","event":"ok","name":"rig::anthropic$anthropic::cassette::corpus_causal::completion_serial_effect_log_is_the_golden_fixture","exec_time":0.037159042}
+{"type":"test","event":"ok","name":"rig::anthropic$anthropic::cassette::corpus_causal::completion_streamed_effect_log_is_the_golden_fixture","exec_time":0.042284375}
+{"type":"suite","event":"ok","passed":3,"failed":0,"ignored":0,"measured":0,"filtered_out":536,"exec_time":0.11677875,"nextest":{"crate":"rig","test_binary":"anthropic","kind":"test"}}

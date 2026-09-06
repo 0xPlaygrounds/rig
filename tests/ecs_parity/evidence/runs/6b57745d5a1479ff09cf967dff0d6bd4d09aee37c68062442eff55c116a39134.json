@@ -1,0 +1,99 @@
+{
+  "batch": "7aca0d8ec5668606012776e3c266817af7e74dc481a421929192f00479c31db6.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/private/tmp/rig-superset-baseline/target",
+    "--test",
+    "gemini",
+    "-E",
+    "(binary_id(=rig::gemini) & test(=gemini::cassette::hook_stress_streaming::blocking_and_streaming_produce_same_final_answer)) | (binary_id(=rig::gemini) & test(=gemini::cassette::hook_stress_streaming::streaming_active_tools_narrowing_filters_a_tool)) | (binary_id(=rig::gemini) & test(=gemini::cassette::hook_stress_streaming::streaming_result_redaction_reaches_final_response)) | (binary_id(=rig::gemini) & test(=gemini::cassette::hook_stress_streaming::streaming_skip_leaves_tool_unexecuted)) | (binary_id(=rig::gemini) & test(=gemini::cassette::hook_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish)) | (binary_id(=rig::gemini) & test(=gemini::cassette::hook_stress_streaming::streaming_tool_turns_fire_model_turn_finished))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "a5f67a46d18c4a03b1c41cd22216fdbc891e225639727da54b5bf1ecb7066ee7.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/private/tmp/rig-superset-baseline/target",
+    "--test",
+    "gemini",
+    "-E",
+    "(binary_id(=rig::gemini) & test(=gemini::cassette::hook_stress_streaming::blocking_and_streaming_produce_same_final_answer)) | (binary_id(=rig::gemini) & test(=gemini::cassette::hook_stress_streaming::streaming_active_tools_narrowing_filters_a_tool)) | (binary_id(=rig::gemini) & test(=gemini::cassette::hook_stress_streaming::streaming_result_redaction_reaches_final_response)) | (binary_id(=rig::gemini) & test(=gemini::cassette::hook_stress_streaming::streaming_skip_leaves_tool_unexecuted)) | (binary_id(=rig::gemini) & test(=gemini::cassette::hook_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish)) | (binary_id(=rig::gemini) & test(=gemini::cassette::hook_stress_streaming::streaming_tool_turns_fire_model_turn_finished))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "495bbb545bbeb03f233024a11d82c51f75712a9333c6c674e4a8550d25f10ca8.log",
+    "listing_stdout": "fc172f801eeee67f0b6be363620299923929d20802463695c3a610e1a5c022b8.json",
+    "stderr": "784c2019979114310845b41cd2e4cbda1177059de79058cc0391cc4510a60e87.log",
+    "stdout": "478a7181f1ee15a0b98579a3555de97afc30b14e80e93af810251e21f7109af8.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::hook_stress_streaming::streaming_text_only_emits_text_deltas_and_stream_finish",
+      "seconds": 0.049840166,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::hook_stress_streaming::streaming_tool_turns_fire_model_turn_finished",
+      "seconds": 0.06057175,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::hook_stress_streaming::streaming_result_redaction_reaches_final_response",
+      "seconds": 0.058328833,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::hook_stress_streaming::streaming_active_tools_narrowing_filters_a_tool",
+      "seconds": 0.058783,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::hook_stress_streaming::streaming_skip_leaves_tool_unexecuted",
+      "seconds": 0.060564375,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::hook_stress_streaming::blocking_and_streaming_produce_same_final_answer",
+      "seconds": 0.069794666,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "64293ec9a51357865a243a2733535a437f0845e84fa4c7ac087860d31384b9b7.json",
+  "source_index_after": "64293ec9a51357865a243a2733535a437f0845e84fa4c7ac087860d31384b9b7.json",
+  "status": "executed",
+  "surface": "original",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

@@ -1,0 +1,76 @@
+{
+  "batch": "8b17707f5fce0748deb2c744c9d65f630abfc9fb8bfad6a018c8d7c96b53be43.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "gemini",
+    "-E",
+    "(binary_id(=rig::gemini) & test(=gemini::cassette::ecs_agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_agent_run_streamed::streamed_repair_continues_the_same_stream))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "error": "failed or semantically skipped selected case",
+  "exit_code": 100,
+  "listing": "8da4b47faaca509fe1d24f69a636b4c8af9f9dcd4c86a1f48fd47884846e527e.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "gemini",
+    "-E",
+    "(binary_id(=rig::gemini) & test(=gemini::cassette::ecs_agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_agent_run_streamed::streamed_repair_continues_the_same_stream))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "52f61f3bef110fe59346a2b2419b9c93f046205deb3ab3424cf17af5bdbe6571.log",
+    "listing_stdout": "9d3ddeaefeaf099edd1a9c315560e8e9713d295e43b5d099a38fcc9dbbedb046.json",
+    "stderr": "60aed13f437681a1c2020cec538af4579cdfbad939f95f0b629eb0c2dbb105a4.log",
+    "stdout": "684d1d054572111c48c015bb4ebc007a3bb11cff2d9ac4954528104ee6c587e5.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream",
+      "seconds": 0.787208833,
+      "status": "failed"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_agent_run_streamed::streamed_repair_continues_the_same_stream",
+      "seconds": 0.787011583,
+      "status": "failed"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "49b9448e5fcb4d1b28db78a4440539de326437021bb16a9990572a4f4400194b.json",
+  "source_index_after": "49b9448e5fcb4d1b28db78a4440539de326437021bb16a9990572a4f4400194b.json",
+  "status": "incomplete",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

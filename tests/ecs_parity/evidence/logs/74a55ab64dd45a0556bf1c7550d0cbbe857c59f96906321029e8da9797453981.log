@@ -1,0 +1,154 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.32s
+    Starting 15 tests across 3 binaries (1363 skipped)
+        PASS [   0.171s] rig::anthropic anthropic::cassette::lifecycle_matrix::middleware_phases_observe_a_unary_completion
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::lifecycle_matrix::middleware_phases_observe_a_unary_completion ---
+
+running 1 test
+test anthropic::cassette::lifecycle_matrix::middleware_phases_observe_a_unary_completion ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.16s
+
+
+        PASS [   0.171s] rig::anthropic anthropic::cassette::lifecycle_matrix::run_start_rewrite_reaches_the_provider
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::lifecycle_matrix::run_start_rewrite_reaches_the_provider ---
+
+running 1 test
+test anthropic::cassette::lifecycle_matrix::run_start_rewrite_reaches_the_provider ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.16s
+
+
+        PASS [   0.172s] rig::anthropic anthropic::cassette::lifecycle_matrix::run_settles_once_across_a_multi_turn_tool_run_with_durable_state
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::lifecycle_matrix::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ---
+
+running 1 test
+test anthropic::cassette::lifecycle_matrix::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.16s
+
+
+        PASS [   0.182s] rig::anthropic anthropic::cassette::lifecycle_matrix::middleware_response_phase_precedes_stream_consumption
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::lifecycle_matrix::middleware_response_phase_precedes_stream_consumption ---
+
+running 1 test
+test anthropic::cassette::lifecycle_matrix::middleware_response_phase_precedes_stream_consumption ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.17s
+
+
+        PASS [   0.181s] rig::openai openai::cassette::lifecycle_matrix::middleware_phases_observe_a_unary_completion
+
+--- OUTPUT:              rig::openai openai::cassette::lifecycle_matrix::middleware_phases_observe_a_unary_completion ---
+
+running 1 test
+test openai::cassette::lifecycle_matrix::middleware_phases_observe_a_unary_completion ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.17s
+
+
+        PASS [   0.183s] rig::gemini gemini::cassette::lifecycle_matrix::middleware_phases_observe_a_unary_completion
+
+--- OUTPUT:              rig::gemini gemini::cassette::lifecycle_matrix::middleware_phases_observe_a_unary_completion ---
+
+running 1 test
+test gemini::cassette::lifecycle_matrix::middleware_phases_observe_a_unary_completion ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.17s
+
+
+        PASS [   0.183s] rig::gemini gemini::cassette::lifecycle_matrix::run_start_rewrite_reaches_the_provider
+
+--- OUTPUT:              rig::gemini gemini::cassette::lifecycle_matrix::run_start_rewrite_reaches_the_provider ---
+
+running 1 test
+test gemini::cassette::lifecycle_matrix::run_start_rewrite_reaches_the_provider ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.17s
+
+
+        PASS [   0.185s] rig::anthropic anthropic::cassette::lifecycle_matrix::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::lifecycle_matrix::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ---
+
+running 1 test
+test anthropic::cassette::lifecycle_matrix::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.18s
+
+
+        PASS [   0.184s] rig::gemini gemini::cassette::lifecycle_matrix::run_settles_once_across_a_multi_turn_tool_run_with_durable_state
+
+--- OUTPUT:              rig::gemini gemini::cassette::lifecycle_matrix::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ---
+
+running 1 test
+test gemini::cassette::lifecycle_matrix::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.16s
+
+
+        PASS [   0.187s] rig::gemini gemini::cassette::lifecycle_matrix::middleware_response_phase_precedes_stream_consumption
+
+--- OUTPUT:              rig::gemini gemini::cassette::lifecycle_matrix::middleware_response_phase_precedes_stream_consumption ---
+
+running 1 test
+test gemini::cassette::lifecycle_matrix::middleware_response_phase_precedes_stream_consumption ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.18s
+
+
+        PASS [   0.189s] rig::gemini gemini::cassette::lifecycle_matrix::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run
+
+--- OUTPUT:              rig::gemini gemini::cassette::lifecycle_matrix::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ---
+
+running 1 test
+test gemini::cassette::lifecycle_matrix::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.18s
+
+
+        PASS [   0.031s] rig::openai openai::cassette::lifecycle_matrix::run_start_rewrite_reaches_the_provider
+
+--- OUTPUT:              rig::openai openai::cassette::lifecycle_matrix::run_start_rewrite_reaches_the_provider ---
+
+running 1 test
+test openai::cassette::lifecycle_matrix::run_start_rewrite_reaches_the_provider ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.02s
+
+
+        PASS [   0.034s] rig::openai openai::cassette::lifecycle_matrix::run_settles_once_across_a_multi_turn_tool_run_with_durable_state
+
+--- OUTPUT:              rig::openai openai::cassette::lifecycle_matrix::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ---
+
+running 1 test
+test openai::cassette::lifecycle_matrix::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.02s
+
+
+        PASS [   0.279s] rig::openai openai::cassette::lifecycle_matrix::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run
+
+--- OUTPUT:              rig::openai openai::cassette::lifecycle_matrix::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ---
+
+running 1 test
+test openai::cassette::lifecycle_matrix::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.27s
+
+
+        PASS [   0.151s] rig::openai openai::cassette::lifecycle_matrix::middleware_response_phase_precedes_stream_consumption
+
+--- OUTPUT:              rig::openai openai::cassette::lifecycle_matrix::middleware_response_phase_precedes_stream_consumption ---
+
+running 1 test
+test openai::cassette::lifecycle_matrix::middleware_response_phase_precedes_stream_consumption ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 466 filtered out; finished in 0.14s
+
+
+------------
+     Summary [   0.323s] 15 tests run: 15 passed, 1363 skipped

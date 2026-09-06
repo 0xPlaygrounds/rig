@@ -6,6 +6,11 @@
     clippy::unreachable
 )]
 
+#[cfg(feature = "bedrock")]
+#[allow(dead_code)]
+#[path = "common/ecs_agent.rs"]
+mod ecs_agent;
+
 #[path = "common/cassette_safety.rs"]
 mod cassette_safety;
 #[path = "common/cassettes.rs"]

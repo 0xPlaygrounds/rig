@@ -1,0 +1,75 @@
+{
+  "batch": "4b9cf4d71772a11b1e7c6d6c8f2b464b36fdd480d78eb4bbef0a020e49613a57.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "anthropic",
+    "-E",
+    "(binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_concurrency::serial_serving_reproduces_the_recorded_request_order)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_concurrency::streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_settles))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "dc44068026f9d1ba5ab30717086932fc4e5d2299ca4c4f256e61a48ee9b57f80.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "anthropic",
+    "-E",
+    "(binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_concurrency::serial_serving_reproduces_the_recorded_request_order)) | (binary_id(=rig::anthropic) & test(=anthropic::cassette::ecs_concurrency::streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_settles))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "d281866f8703bcf684ddd6c04077316b8c310268de1c5652d7172294ca2e74e2.log",
+    "listing_stdout": "223dd07300829e5413468e20cacce67743584c5fc752ab1efaff0f63be3adbd5.json",
+    "stderr": "2327c404f81a84b0b16950796494fd21d2039a53e012abba988cdab3ad514631.log",
+    "stdout": "b30974e8751dbd9480847ecc6da5c8976d04f2eb6ec2bcaef06b9c024561c488.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_concurrency::serial_serving_reproduces_the_recorded_request_order",
+      "seconds": 0.435574625,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::anthropic$anthropic::cassette::ecs_concurrency::streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_settles",
+      "seconds": 0.328800709,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "6faed17ff35b49481904df3279e2395ba640b34e7474ac709c76397190f493a8.json",
+  "source_index_after": "6faed17ff35b49481904df3279e2395ba640b34e7474ac709c76397190f493a8.json",
+  "status": "executed",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

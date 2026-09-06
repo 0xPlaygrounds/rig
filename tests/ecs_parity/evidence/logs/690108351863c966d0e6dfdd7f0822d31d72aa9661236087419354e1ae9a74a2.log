@@ -1,0 +1,154 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.33s
+    Starting 15 tests across 3 binaries (1561 skipped)
+        PASS [   1.307s] rig::anthropic anthropic::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion ---
+
+running 1 test
+test anthropic::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 1.30s
+
+
+        PASS [   1.315s] rig::gemini gemini::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider ---
+
+running 1 test
+test gemini::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 398 filtered out; finished in 1.30s
+
+
+        PASS [   1.317s] rig::anthropic anthropic::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider ---
+
+running 1 test
+test anthropic::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 1.30s
+
+
+        PASS [   1.321s] rig::anthropic anthropic::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ---
+
+running 1 test
+test anthropic::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 1.31s
+
+
+        PASS [   1.322s] rig::gemini gemini::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion ---
+
+running 1 test
+test gemini::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 398 filtered out; finished in 1.31s
+
+
+        PASS [   1.322s] rig::openai openai::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion ---
+
+running 1 test
+test openai::cassette::ecs_lifecycle::middleware_phases_observe_a_unary_completion ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 493 filtered out; finished in 1.31s
+
+
+        PASS [   1.323s] rig::gemini gemini::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ---
+
+running 1 test
+test gemini::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 398 filtered out; finished in 1.31s
+
+
+        PASS [   1.460s] rig::gemini gemini::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption ---
+
+running 1 test
+test gemini::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 398 filtered out; finished in 1.45s
+
+
+        PASS [   1.487s] rig::gemini gemini::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run
+
+--- OUTPUT:              rig::gemini gemini::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ---
+
+running 1 test
+test gemini::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 398 filtered out; finished in 1.48s
+
+
+        PASS [   1.614s] rig::anthropic anthropic::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ---
+
+running 1 test
+test anthropic::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 1.60s
+
+
+        PASS [   1.617s] rig::anthropic anthropic::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption ---
+
+running 1 test
+test anthropic::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 682 filtered out; finished in 1.61s
+
+
+        PASS [   0.330s] rig::openai openai::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider ---
+
+running 1 test
+test openai::cassette::ecs_lifecycle::run_start_rewrite_reaches_the_provider ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 493 filtered out; finished in 0.32s
+
+
+        PASS [   0.339s] rig::openai openai::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ---
+
+running 1 test
+test openai::cassette::ecs_lifecycle::run_settles_once_across_a_multi_turn_tool_run_with_durable_state ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 493 filtered out; finished in 0.33s
+
+
+        PASS [   2.439s] rig::openai openai::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ---
+
+running 1 test
+test openai::cassette::ecs_lifecycle::entry_log_orders_and_turn_stamps_across_a_streamed_tool_run ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 493 filtered out; finished in 2.43s
+
+
+        PASS [   1.894s] rig::openai openai::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption
+
+--- OUTPUT:              rig::openai openai::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption ---
+
+running 1 test
+test openai::cassette::ecs_lifecycle::middleware_response_phase_precedes_stream_consumption ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 493 filtered out; finished in 1.88s
+
+
+------------
+     Summary [   3.202s] 15 tests run: 15 passed, 1561 skipped

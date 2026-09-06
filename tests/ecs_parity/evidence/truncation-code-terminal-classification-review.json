@@ -1,0 +1,560 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::a_truncated_call_is_dropped_at_decode_and_the_turn_survives"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::agent_blocking_empty_arguments_on_length_are_not_invoked"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::agent_blocking_truncated_call_is_not_invoked"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::agent_streaming_empty_arguments_on_length_are_not_invoked"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::agent_streaming_truncated_call_is_not_invoked"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_budget_12_truncates_before_any_tool_call"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_budget_16_empty_arguments_are_dropped_on_length"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_budget_20_empty_arguments_are_dropped_on_length"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_budget_24_truncated_arguments_keep_the_turn"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_budget_32_truncated_arguments_keep_the_turn"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_budget_48_truncated_arguments_keep_the_turn"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_budget_64_truncated_arguments_keep_the_turn"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_budget_96_complete_arguments_are_untouched"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_parallel_calls_keep_the_complete_one"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_reasoner_truncated_call_keeps_the_reasoning_block"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_text_before_a_truncated_call_survives"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_budget_12_truncates_before_any_tool_call"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_budget_16_empty_arguments_are_dropped_on_length"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_budget_24_truncated_arguments_keep_the_turn"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_budget_32_truncated_arguments_keep_the_turn"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_budget_48_truncated_arguments_keep_the_turn"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_budget_64_truncated_arguments_keep_the_turn"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_budget_96_complete_arguments_are_untouched"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_parallel_calls_keep_the_complete_one"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_reasoner_truncated_call_keeps_the_reasoning_block"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases."
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_text_before_a_truncated_call_survives"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::blocking_agent_prompt_answers_after_code_execution"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::blocking_code_execution_capped_by_max_tokens"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::blocking_code_execution_large_stdout"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::blocking_code_execution_on_gemini_3_flash"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::blocking_code_execution_replayed_in_chat_history"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::blocking_code_execution_unicode_output"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::blocking_code_execution_with_preamble"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::blocking_code_execution_with_visible_thoughts"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::blocking_failed_code_execution_outcome"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::blocking_multiple_code_execution_rounds"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::blocking_raw_completion_keeps_native_code_parts"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::blocking_raw_model_answers_after_code_execution"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::streaming_agent_prompt_answers_after_code_execution"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::streaming_code_execution_capped_by_max_tokens"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::streaming_code_execution_large_stdout"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::streaming_code_execution_on_gemini_3_flash"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::streaming_code_execution_unicode_output"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::streaming_code_execution_with_preamble"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::streaming_code_execution_with_visible_thoughts"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::streaming_failed_code_execution_outcome"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::streaming_multiple_code_execution_rounds"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::streaming_raw_model_answers_after_code_execution"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::unit::code_execution_only_turn_is_an_empty_response"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::unit::code_execution_parts_are_skipped_in_every_position"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "19 recorded CompletionModel completion/stream/raw_completion and3synthetic provider parts normalization;3explicit agent prompt/stream/chat cases."
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::unit::unmodeled_part_kinds_still_fail_loudly"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::gemini_3_flash_does_not_emit_the_intermediate_finish"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::max_tokens_truncated_stream_still_reports_length"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::single_terminal_text_stream_is_unchanged"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::single_terminal_tool_call_stream_is_unchanged"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::thinking_stream_terminal_is_unchanged"
+    },
+    {
+      "fields": {
+        "classification": "agent",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case.",
+        "evidence_scope": "cassette_agent"
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::two_terminal_stream_agent_prompt_keeps_the_answer"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::two_terminal_stream_blocking_twin_has_the_same_answer"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::two_terminal_stream_keeps_the_text_after_the_first_finish"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::two_terminal_stream_terminal_carries_the_last_usage"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::two_terminal_stream_through_raw_stream"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::two_terminal_stream_unicode_answer_after_the_first_finish"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::two_terminal_stream_with_visible_thoughts"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::unit::a_tool_call_after_the_first_finish_reason_reaches_the_choice"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::unit::a_tool_protocol_failure_still_ends_the_stream_immediately"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::unit::a_transport_error_after_a_finish_reason_yields_no_terminal_record"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::unit::a_transport_error_after_the_real_terminal_also_reports_truncation"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::unit::a_usage_only_trailer_after_the_finish_reason_reaches_the_terminal"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::unit::an_intermediate_finish_reason_does_not_end_the_stream"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::unit::an_unknown_frame_after_the_first_finish_reason_is_passed_through"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::unit::eof_without_any_finish_reason_yields_no_terminal_record"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::unit::later_metadata_wins_on_the_terminal_record"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::unit::reasoning_after_the_first_finish_reason_reaches_the_choice"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::unit::the_last_finish_reason_wins_over_an_earlier_one"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::unit::the_terminal_record_is_the_last_item_yielded"
+    },
+    {
+      "fields": {
+        "classification": "shared_provider",
+        "classification_reason": "11 recorded direct provider completion/stream and13synthetic run/run_client→CompletionModel.stream over mock HTTP;1explicit agent stream_prompt case."
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::unit::three_finish_reason_chunks_still_yield_one_terminal"
+    }
+  ],
+  "kind": "classification",
+  "limits": "Classification only; fixture/assertion inventory and native parity separate.",
+  "reviewer": "/root/parity_workflow_review",
+  "rule": "All76 entries/helper closures/compiled registrations reviewed:68shared provider+8agent. No live-only or ignored exceptions. Wrapper/fixture/collector/mockHTTP paths reviewed positively.",
+  "schema": 1,
+  "sources": {
+    "tests/common/cassettes.rs": "0d26d322265b22088f9fb873b3ee0f8a07bb2bef1ac5ca4f16bdda3c6ac754a4",
+    "tests/common/support.rs": "a0f495e031171f27e1de754fb334e336e2461b44cfc9202bc17499e004d2e26a",
+    "tests/providers/deepseek/support.rs": "e5bcce9315ff8ef302c30fb5b764c51ca14cc008e5df0ad4ce1ad4f2eccd4d8c",
+    "tests/providers/deepseek/truncation_matrix.rs": "50a150421eb3bc1bce81f666ff77c4a925df932fe7738fad7f8e32b06a837043",
+    "tests/providers/gemini/cassette/code_execution_matrix.rs": "c1a9bf21106852cf6267fa4847c9d626058cfa84e88a66b0e1db9b5794c5a590",
+    "tests/providers/gemini/cassette/stream_terminal_matrix.rs": "a4fd81299f05a0f153770c0e7deb5e4c5bf62ad77f3f0355445920b9e4694324",
+    "tests/providers/gemini/support.rs": "fb45f0487dc88c60c266c5aebae186555318c0454452b038317479832f349ce5"
+  },
+  "status": "accepted"
+}

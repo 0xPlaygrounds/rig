@@ -1,0 +1,310 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "gemini::cassette::agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream",
+            "comparison": "All scenario predicates and helper obligations described in the reviewed family contract are asserted on actual native graph, provider streams, requests, outcomes and dispatch",
+            "ecs_symbol": "gemini::cassette::ecs_agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream",
+            "id": "rig::gemini::gemini::cassette::agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream::scenario-observations",
+            "review_state": "independent final family review accepted"
+          },
+          {
+            "baseline_symbol": "run_streamed_turn plus provider and cassette wrappers",
+            "comparison": "Same effective request settings, prompts, grants/permissions and budgets; native streaming context and name validation, actual stream assembly/drain, independent execution, strict cassette matching and consumption",
+            "ecs_symbol": "gemini::cassette::ecs_agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream",
+            "id": "rig::gemini::gemini::cassette::agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream::stream-and-teardown",
+            "review_state": "independent final family review accepted"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "gemini::cassette::ecs_agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream",
+          "path": "tests/ecs_parity/evidence/gemini-stream-access-report.json"
+        },
+        "ecs": {
+          "binary": "gemini",
+          "execution_path": "Native provider adapter/bus and ECS agent systems; real ToolAccess snapshots, policy intervention, history, completion usage and tool effects",
+          "source": "tests/providers/gemini/cassette/ecs_agent_run_streamed.rs",
+          "test": "gemini::cassette::ecs_agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream"
+        },
+        "family_contract": "tests/ecs_parity/gemini-stream-access-contract.md",
+        "helper_obligations": {
+          "chain": "Original run_streamed_turn/context/resolve/drain, neutral arithmetic/history/canonical-order predicates, provider and cassette wrappers; native completed-turn observations and public graph policy",
+          "limits": "Phantom-record rejection remains original API-contract evidence; native graph starts with no completion/usage. Controlled tests prove early timing separately from transport replay.",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::gemini::gemini::cassette::agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream",
+      "native": "rig::gemini$gemini::cassette::ecs_agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream",
+      "original": "rig::gemini$gemini::cassette::agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream"
+    },
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "gemini::cassette::agent_run_streamed::streamed_repair_continues_the_same_stream",
+            "comparison": "All scenario predicates and helper obligations described in the reviewed family contract are asserted on actual native graph, provider streams, requests, outcomes and dispatch",
+            "ecs_symbol": "gemini::cassette::ecs_agent_run_streamed::streamed_repair_continues_the_same_stream",
+            "id": "rig::gemini::gemini::cassette::agent_run_streamed::streamed_repair_continues_the_same_stream::scenario-observations",
+            "review_state": "independent final family review accepted"
+          },
+          {
+            "baseline_symbol": "run_streamed_turn plus provider and cassette wrappers",
+            "comparison": "Same effective request settings, prompts, grants/permissions and budgets; native streaming context and name validation, actual stream assembly/drain, independent execution, strict cassette matching and consumption",
+            "ecs_symbol": "gemini::cassette::ecs_agent_run_streamed::streamed_repair_continues_the_same_stream",
+            "id": "rig::gemini::gemini::cassette::agent_run_streamed::streamed_repair_continues_the_same_stream::stream-and-teardown",
+            "review_state": "independent final family review accepted"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "gemini::cassette::ecs_agent_run_streamed::streamed_repair_continues_the_same_stream",
+          "path": "tests/ecs_parity/evidence/gemini-stream-access-report.json"
+        },
+        "ecs": {
+          "binary": "gemini",
+          "execution_path": "Native provider adapter/bus and ECS agent systems; real ToolAccess snapshots, policy intervention, history, completion usage and tool effects",
+          "source": "tests/providers/gemini/cassette/ecs_agent_run_streamed.rs",
+          "test": "gemini::cassette::ecs_agent_run_streamed::streamed_repair_continues_the_same_stream"
+        },
+        "family_contract": "tests/ecs_parity/gemini-stream-access-contract.md",
+        "helper_obligations": {
+          "chain": "Original run_streamed_turn/context/resolve/drain, neutral arithmetic/history/canonical-order predicates, provider and cassette wrappers; native completed-turn observations and public graph policy",
+          "limits": "Phantom-record rejection remains original API-contract evidence; native graph starts with no completion/usage. Controlled tests prove early timing separately from transport replay.",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::gemini::gemini::cassette::agent_run_streamed::streamed_repair_continues_the_same_stream",
+      "native": "rig::gemini$gemini::cassette::ecs_agent_run_streamed::streamed_repair_continues_the_same_stream",
+      "original": "rig::gemini$gemini::cassette::agent_run_streamed::streamed_repair_continues_the_same_stream"
+    },
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "gemini::cassette::agent_run_streamed::streamed_skip_abandons_the_turn_and_recovers",
+            "comparison": "All scenario predicates and helper obligations described in the reviewed family contract are asserted on actual native graph, provider streams, requests, outcomes and dispatch",
+            "ecs_symbol": "gemini::cassette::ecs_agent_run_streamed::streamed_skip_abandons_the_turn_and_recovers",
+            "id": "rig::gemini::gemini::cassette::agent_run_streamed::streamed_skip_abandons_the_turn_and_recovers::scenario-observations",
+            "review_state": "independent final family review accepted"
+          },
+          {
+            "baseline_symbol": "run_streamed_turn plus provider and cassette wrappers",
+            "comparison": "Same effective request settings, prompts, grants/permissions and budgets; native streaming context and name validation, actual stream assembly/drain, independent execution, strict cassette matching and consumption",
+            "ecs_symbol": "gemini::cassette::ecs_agent_run_streamed::streamed_skip_abandons_the_turn_and_recovers",
+            "id": "rig::gemini::gemini::cassette::agent_run_streamed::streamed_skip_abandons_the_turn_and_recovers::stream-and-teardown",
+            "review_state": "independent final family review accepted"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "gemini::cassette::ecs_agent_run_streamed::streamed_skip_abandons_the_turn_and_recovers",
+          "path": "tests/ecs_parity/evidence/gemini-stream-access-report.json"
+        },
+        "ecs": {
+          "binary": "gemini",
+          "execution_path": "Native provider adapter/bus and ECS agent systems; real ToolAccess snapshots, policy intervention, history, completion usage and tool effects",
+          "source": "tests/providers/gemini/cassette/ecs_agent_run_streamed.rs",
+          "test": "gemini::cassette::ecs_agent_run_streamed::streamed_skip_abandons_the_turn_and_recovers"
+        },
+        "family_contract": "tests/ecs_parity/gemini-stream-access-contract.md",
+        "helper_obligations": {
+          "chain": "Original run_streamed_turn/context/resolve/drain, neutral arithmetic/history/canonical-order predicates, provider and cassette wrappers; native completed-turn observations and public graph policy",
+          "limits": "Phantom-record rejection remains original API-contract evidence; native graph starts with no completion/usage. Controlled tests prove early timing separately from transport replay.",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::gemini::gemini::cassette::agent_run_streamed::streamed_skip_abandons_the_turn_and_recovers",
+      "native": "rig::gemini$gemini::cassette::ecs_agent_run_streamed::streamed_skip_abandons_the_turn_and_recovers",
+      "original": "rig::gemini$gemini::cassette::agent_run_streamed::streamed_skip_abandons_the_turn_and_recovers"
+    },
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "gemini::cassette::agent_run_streamed::streamed_hand_driven_multi_turn_run_completes",
+            "comparison": "All scenario predicates and helper obligations described in the reviewed family contract are asserted on actual native graph, provider streams, requests, outcomes and dispatch",
+            "ecs_symbol": "gemini::cassette::ecs_agent_run_streamed::streamed_hand_driven_multi_turn_run_completes",
+            "id": "rig::gemini::gemini::cassette::agent_run_streamed::streamed_hand_driven_multi_turn_run_completes::scenario-observations",
+            "review_state": "independent final family review accepted"
+          },
+          {
+            "baseline_symbol": "run_streamed_turn plus provider and cassette wrappers",
+            "comparison": "Same effective request settings, prompts, grants/permissions and budgets; native streaming context and name validation, actual stream assembly/drain, independent execution, strict cassette matching and consumption",
+            "ecs_symbol": "gemini::cassette::ecs_agent_run_streamed::streamed_hand_driven_multi_turn_run_completes",
+            "id": "rig::gemini::gemini::cassette::agent_run_streamed::streamed_hand_driven_multi_turn_run_completes::stream-and-teardown",
+            "review_state": "independent final family review accepted"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "gemini::cassette::ecs_agent_run_streamed::streamed_hand_driven_multi_turn_run_completes",
+          "path": "tests/ecs_parity/evidence/gemini-stream-access-report.json"
+        },
+        "ecs": {
+          "binary": "gemini",
+          "execution_path": "Native provider adapter/bus and ECS agent systems; real ToolAccess snapshots, policy intervention, history, completion usage and tool effects",
+          "source": "tests/providers/gemini/cassette/ecs_agent_run_streamed.rs",
+          "test": "gemini::cassette::ecs_agent_run_streamed::streamed_hand_driven_multi_turn_run_completes"
+        },
+        "family_contract": "tests/ecs_parity/gemini-stream-access-contract.md",
+        "helper_obligations": {
+          "chain": "Original run_streamed_turn/context/resolve/drain, neutral arithmetic/history/canonical-order predicates, provider and cassette wrappers; native completed-turn observations and public graph policy",
+          "limits": "Phantom-record rejection remains original API-contract evidence; native graph starts with no completion/usage. Controlled tests prove early timing separately from transport replay.",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::gemini::gemini::cassette::agent_run_streamed::streamed_hand_driven_multi_turn_run_completes",
+      "native": "rig::gemini$gemini::cassette::ecs_agent_run_streamed::streamed_hand_driven_multi_turn_run_completes",
+      "original": "rig::gemini$gemini::cassette::agent_run_streamed::streamed_hand_driven_multi_turn_run_completes"
+    },
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "gemini::cassette::agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message",
+            "comparison": "Actual native failure enum; identical portable predicates on reason/budget/history/pending message; original additional history checks; cancellation final-publication absence observed through native schedule.",
+            "ecs_symbol": "gemini::cassette::ecs_agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message",
+            "id": "rig::gemini::gemini::cassette::agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message::failure-and-diagnostics",
+            "review_state": "independent final bounded review passed"
+          },
+          {
+            "baseline_symbol": "original streamed runner and cassette wrapper",
+            "comparison": "Exact model/preamble/Add schema/required choice/default and run limit; actual unissued-tool cancellation intervention; unchanged strict ordered replay and consumption.",
+            "ecs_symbol": "gemini::cassette::ecs_agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message",
+            "id": "rig::gemini::gemini::cassette::agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message::execution-and-teardown",
+            "review_state": "independent final bounded review passed"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "gemini::cassette::ecs_agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message",
+          "path": "tests/ecs_parity/evidence/gemini-stream-access-report.json"
+        },
+        "ecs": {
+          "binary": "gemini",
+          "execution_path": "Native provider adapter/bus and ECS agent systems; real ToolAccess snapshots, policy intervention, history, completion usage and tool effects",
+          "source": "tests/providers/gemini/cassette/ecs_agent_run_streamed.rs",
+          "test": "gemini::cassette::ecs_agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message"
+        },
+        "family_contract": "tests/ecs_parity/gemini-stream-access-contract.md",
+        "helper_obligations": {
+          "chain": "Original run_streamed_turn/context/resolve/drain, neutral arithmetic/history/canonical-order predicates, provider and cassette wrappers; native completed-turn observations and public graph policy",
+          "limits": "Phantom-record rejection remains original API-contract evidence; native graph starts with no completion/usage. Controlled tests prove early timing separately from transport replay.",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::gemini::gemini::cassette::agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message",
+      "native": "rig::gemini$gemini::cassette::ecs_agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message",
+      "original": "rig::gemini$gemini::cassette::agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message"
+    },
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "gemini::cassette::agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn",
+            "comparison": "Actual native failure enum; identical portable predicates on reason/budget/history/pending message; original additional history checks; cancellation final-publication absence observed through native schedule.",
+            "ecs_symbol": "gemini::cassette::ecs_agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn",
+            "id": "rig::gemini::gemini::cassette::agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn::failure-and-diagnostics",
+            "review_state": "independent final bounded review passed"
+          },
+          {
+            "baseline_symbol": "original streamed runner and cassette wrapper",
+            "comparison": "Exact model/preamble/Add schema/required choice/default and run limit; actual unissued-tool cancellation intervention; unchanged strict ordered replay and consumption.",
+            "ecs_symbol": "gemini::cassette::ecs_agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn",
+            "id": "rig::gemini::gemini::cassette::agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn::execution-and-teardown",
+            "review_state": "independent final bounded review passed"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "gemini::cassette::ecs_agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn",
+          "path": "tests/ecs_parity/evidence/gemini-stream-access-report.json"
+        },
+        "ecs": {
+          "binary": "gemini",
+          "execution_path": "Native provider adapter/bus and ECS agent systems; real ToolAccess snapshots, policy intervention, history, completion usage and tool effects",
+          "source": "tests/providers/gemini/cassette/ecs_agent_run_streamed.rs",
+          "test": "gemini::cassette::ecs_agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn"
+        },
+        "family_contract": "tests/ecs_parity/gemini-stream-access-contract.md",
+        "helper_obligations": {
+          "chain": "Original run_streamed_turn/context/resolve/drain, neutral arithmetic/history/canonical-order predicates, provider and cassette wrappers; native completed-turn observations and public graph policy",
+          "limits": "Phantom-record rejection remains original API-contract evidence; native graph starts with no completion/usage. Controlled tests prove early timing separately from transport replay.",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::gemini::gemini::cassette::agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn",
+      "native": "rig::gemini$gemini::cassette::ecs_agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn",
+      "original": "rig::gemini$gemini::cassette::agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn"
+    }
+  ],
+  "configuration": "root default features native host explicit replay",
+  "findings_fixed": [
+    "Buffered EOF bypass",
+    "Whole-block calls without name delta bypass",
+    "Unadvertised output-tool collision",
+    "Retained execution snapshot dependency omitted from replay row"
+  ],
+  "kind": "parity",
+  "limits": "Six streamed family cases; before-EOF timing supplied by controlled tests, phantom-record API difference explicitly mapped. Not full programme parity.",
+  "reviewer": "/root/allowed_tools_review",
+  "runs": {
+    "native": "003a26d7283455012f06700adfe1878e70b21eafddbcf4c9b02542cabd0e5e6c.json",
+    "original": "3be25532d50ca23ef89cbc96a54625ce051499fa2ad29c962cc7abd2f1fb646c.json"
+  },
+  "schema": 1,
+  "source_hash_scope": "Reviewed changes and unchanged execution dependencies; not a full inherited-source audit",
+  "sources": {
+    "Cargo.lock": "ff366b4a2f594cc5761ab6a2b5d3447cc3657f5733842e938387175548f393fa",
+    "Cargo.toml": "08bcc347a944bf00d9280a79b67152c52e3e8a01fa6e697d5f164da7149fce02",
+    "crates/rig-ecs/Cargo.toml": "312b19ae5d91525b0f63bc0004701e6ba7c86175ba3432bdc933413235057e19",
+    "crates/rig-ecs/src/agent/mod.rs": "5d7587af4f042acef21edd8f668e89dcafe17c979404b04aacc7531c1d48c7fc",
+    "crates/rig-ecs/src/agent/reflect.rs": "96e2c73985d5e18090be9fa6dc1fabd2e8a89277cc7e53531caf10d36bcbfb86",
+    "crates/rig-ecs/src/agent/scene.rs": "bf11c15e1967a3d22893ef3d8495a30367d9e3d3d3dc62184017ffc57485f0cf",
+    "crates/rig-ecs/src/assets.rs": "356fdb354e200144fe91f1aadd4515d3c6a5716feb2cd2efa035b88ce503c30f",
+    "crates/rig-ecs/src/bus/collect.rs": "8f4aeb45a7d5a15baf6816fb660d0cf3fc3c380aedebfa16aebd2faa2b15175e",
+    "crates/rig-ecs/src/bus/delivery.rs": "b00657528029ec35b26e1d49dcc10af2f23252ff94a1ea2e4db0865694bb8657",
+    "crates/rig-ecs/src/bus/dispatch.rs": "d20522156f00b1aca6180c863c306d41fabd8de15c46bee68a50d690f7368321",
+    "crates/rig-ecs/src/bus/effect.rs": "9b1aadceacea8d1e57841fd3ea75094633ed11249e81a2f294c6774f12ddc84b",
+    "crates/rig-ecs/src/bus/handlers.rs": "dcaf75fd3e54109340dc490c44361d4441c84c2f15efa87b8c1ab4bf7134b9b0",
+    "crates/rig-ecs/src/bus/mod.rs": "af1105cf6f4a399effb001a4cc2a43a4d4ad2f51a3b2345c1bc7d36271b8d5cc",
+    "crates/rig-ecs/src/bus/plugin.rs": "ee3c01b07627c1d1e852c5b57cfbc7c3bc00d43ad513657aa2ad1655a7f580de",
+    "crates/rig-ecs/src/bus/record.rs": "07bc658121942da7d52a90bef77b3eb92e6f02b61ebb4f2292e9bc6748e5332c",
+    "crates/rig-ecs/src/bus/reflect.rs": "dd44a74eeeb7517dbb37d0d0ee73b52948a2d3acc76ae3f60f4f5068b23bbaaa",
+    "crates/rig-ecs/src/bus/replay.rs": "b91fa260aa57ff8253db262466ed709da7b1d0cdae8eddb877c2afc65a70de5a",
+    "crates/rig-ecs/src/bus/scene.rs": "cdea2e9419c9bcf33ea493d45b5270aa3eae4a0ac581e2848035204a5b4e20ed",
+    "crates/rig-ecs/src/lib.rs": "9a19bbea05700efde1b904f027f4d34c7daa62d329d290f41f61d39d9fd81705",
+    "crates/rig-ecs/src/policy/mod.rs": "4ad7b77146f5d9932c0c85d7749141cd171b6fde7eb029eeafa5c9e4709dfb02",
+    "crates/rig-ecs/src/policy/tests.rs": "8540e370f9b76a49d5d61c0ece3736c878b821e5409a18023fa9b911bcd476c5",
+    "crates/rig-ecs/src/prelude.rs": "fe3fec4ea8330a2e0481220f6f01a65c8ff4adcb76aefc22a6bebf24e32b9318",
+    "crates/rig-ecs/src/reflect.rs": "38704f5d02b6f173575c7a216acac5adb1fe03cc4f39dee740ccfc8136e01616",
+    "crates/rig-ecs/src/replay/mod.rs": "2a5014f6aea398a58957694c6dfd00262161657092e2886590c2d3c57793d31c",
+    "crates/rig-ecs/src/systems/mod.rs": "59dd9912f118762961b0725c0917f363e78873b74f50509e78397302f84d12a3",
+    "crates/rig-ecs/src/systems/stream_invalid.rs": "7e96cc2b015e859f1f695cf396d2d5ac8a84e16f50f5ce3d8f725cccb268f6f1",
+    "tests/common/cassettes.rs": "0d26d322265b22088f9fb873b3ee0f8a07bb2bef1ac5ca4f16bdda3c6ac754a4",
+    "tests/common/ecs_agent.rs": "3a571cf4f3cffdaca132d98cd57a9ad3cb006e5959294f2f560b3d8b48f71268",
+    "tests/common/ecs_agent/tests.rs": "71ac9856f22a59c175cd8d6925ac1c999cdd7e5fdbf6480690d99cd44f3c170e",
+    "tests/common/support.rs": "a0f495e031171f27e1de754fb334e336e2461b44cfc9202bc17499e004d2e26a",
+    "tests/providers/gemini/agent_run_support.rs": "818a9a37c2047548b9ae47ee765eae3db8c26ef4c9995f713c79121e53fd5ea7",
+    "tests/providers/gemini/cassette/agent_run_streamed.rs": "14df0030d72e45220f4ebbdf89299d26d8ae46aeaf9e24297cbae36d780965fd",
+    "tests/providers/gemini/cassette/ecs_agent_run_streamed.rs": "5dbf346cec68d911ef520b99ceeb5938a9e4db3edf4473d3bfca38456efc03a3",
+    "tests/providers/gemini/support.rs": "fb45f0487dc88c60c266c5aebae186555318c0454452b038317479832f349ce5"
+  },
+  "status": "accepted"
+}

@@ -1,0 +1,21 @@
+Running /Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target/debug/deps/llamacpp-795ee1b059d3f6de --exact llamacpp::cassette::matrix_index::every_matrix_module_names_all_of_its_cells_in_its_table --nocapture
+
+running 1 test
+test llamacpp::cassette::matrix_index::every_matrix_module_names_all_of_its_cells_in_its_table ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 216 filtered out; finished in 0.03s
+
+Running /Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target/debug/deps/llamacpp-795ee1b059d3f6de --exact llamacpp::cassette::matrix_index::the_suite_index_mentions_every_cassette_module --nocapture
+
+running 1 test
+test llamacpp::cassette::matrix_index::the_suite_index_mentions_every_cassette_module ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 216 filtered out; finished in 0.01s
+
+Running /Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target/debug/deps/llamacpp-795ee1b059d3f6de --exact llamacpp::cassette::matrix_index::the_untabulated_list_has_no_stale_entries --nocapture
+
+running 1 test
+test llamacpp::cassette::matrix_index::the_untabulated_list_has_no_stale_entries ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 216 filtered out; finished in 0.00s
+

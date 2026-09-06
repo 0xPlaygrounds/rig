@@ -1,0 +1,36 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_agent_goldens::completion_smoke_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::agent::completion_smoke_effect_log_is_the_golden_fixture"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_agent_goldens::memory_conversation_effect_log_is_the_golden_fixture",
+      "original": "rig::anthropic$anthropic::cassette::agent::memory_conversation_effect_log_is_the_golden_fixture"
+    }
+  ],
+  "features": [],
+  "fixtures": [
+    "tests/cassettes/anthropic/agent/completion_smoke.yaml",
+    "crates/rig-verify/fixtures/anthropic_completion_smoke.effects.json",
+    "crates/rig-verify/fixtures/anthropic_memory_conversation.effects.json"
+  ],
+  "name": "agent-goldens",
+  "original_sources": [
+    "tests/providers/anthropic/cassette/agent.rs",
+    "tests/providers/anthropic/support.rs",
+    "tests/common/support.rs",
+    "tests/common/cassettes.rs",
+    "tests/common/goldens.rs"
+  ],
+  "package": "rig",
+  "schema": 1,
+  "semantic_skip_markers": [
+    "SKIP",
+    "skipping"
+  ],
+  "targets": [
+    "anthropic"
+  ]
+}

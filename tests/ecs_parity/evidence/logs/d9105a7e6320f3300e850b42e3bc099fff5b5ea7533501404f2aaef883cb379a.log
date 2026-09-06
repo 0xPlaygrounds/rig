@@ -1,0 +1,74 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.39s
+    Starting 7 tests across 1 binary (668 skipped)
+        PASS [   0.699s] rig::anthropic anthropic::cassette::ecs_layers::host_deny_over_host_bus_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_layers::host_deny_over_host_bus_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_layers::host_deny_over_host_bus_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 674 filtered out; finished in 0.69s
+
+
+        PASS [   0.699s] rig::anthropic anthropic::cassette::ecs_layers::memory_load_replaced_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_layers::memory_load_replaced_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_layers::memory_load_replaced_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 674 filtered out; finished in 0.69s
+
+
+        PASS [   0.699s] rig::anthropic anthropic::cassette::ecs_layers::patch_tool_args_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_layers::patch_tool_args_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_layers::patch_tool_args_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 674 filtered out; finished in 0.69s
+
+
+        PASS [   0.699s] rig::anthropic anthropic::cassette::ecs_layers::replace_tool_result_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_layers::replace_tool_result_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_layers::replace_tool_result_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 674 filtered out; finished in 0.69s
+
+
+        PASS [   0.704s] rig::anthropic anthropic::cassette::ecs_layers::deny_tool_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_layers::deny_tool_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_layers::deny_tool_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 674 filtered out; finished in 0.70s
+
+
+        PASS [   0.704s] rig::anthropic anthropic::cassette::ecs_layers::two_layers_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_layers::two_layers_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_layers::two_layers_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 674 filtered out; finished in 0.69s
+
+
+        PASS [   0.704s] rig::anthropic anthropic::cassette::ecs_layers::patch_beneath_hook_patch_effect_log_is_the_golden_fixture
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::ecs_layers::patch_beneath_hook_patch_effect_log_is_the_golden_fixture ---
+
+running 1 test
+test anthropic::cassette::ecs_layers::patch_beneath_hook_patch_effect_log_is_the_golden_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 674 filtered out; finished in 0.69s
+
+
+------------
+     Summary [   0.705s] 7 tests run: 7 passed, 668 skipped

@@ -1,0 +1,44 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.33s
+    Starting 4 tests across 1 binary (535 skipped)
+        PASS [   0.147s] rig::anthropic anthropic::cassette::empty_stop_sequence_matrix::agent_prompt_empty_stop_sequence
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::empty_stop_sequence_matrix::agent_prompt_empty_stop_sequence ---
+
+running 1 test
+test anthropic::cassette::empty_stop_sequence_matrix::agent_prompt_empty_stop_sequence ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.14s
+
+
+        PASS [   0.147s] rig::anthropic anthropic::cassette::empty_stop_sequence_matrix::agent_stream_empty_stop_sequence
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::empty_stop_sequence_matrix::agent_stream_empty_stop_sequence ---
+
+running 1 test
+test anthropic::cassette::empty_stop_sequence_matrix::agent_stream_empty_stop_sequence ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.14s
+
+
+        PASS [   0.147s] rig::anthropic anthropic::cassette::reasoning_usage_matrix::agent_blocking_thinking
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::reasoning_usage_matrix::agent_blocking_thinking ---
+
+running 1 test
+test anthropic::cassette::reasoning_usage_matrix::agent_blocking_thinking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.14s
+
+
+        PASS [   0.149s] rig::anthropic anthropic::cassette::stop_sequence_terminal_matrix::agent_stream_single_sequence
+
+--- OUTPUT:              rig::anthropic anthropic::cassette::stop_sequence_terminal_matrix::agent_stream_single_sequence ---
+
+running 1 test
+test anthropic::cassette::stop_sequence_terminal_matrix::agent_stream_single_sequence ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 538 filtered out; finished in 0.14s
+
+
+------------
+     Summary [   0.150s] 4 tests run: 4 passed, 535 skipped

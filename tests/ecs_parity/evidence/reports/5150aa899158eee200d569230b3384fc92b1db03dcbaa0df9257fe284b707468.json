@@ -1,0 +1,12 @@
+{
+  "assertion_review": "required separately",
+  "batch": "anthropic-agent-matrices",
+  "cells": 4,
+  "error": "native batch incomplete; inspect retained run evidence",
+  "runs": {
+    "native": "fe15c3e85884edd2630fb2718045235b3677fd482ba081f3f2074f91e6fe4bcd.json",
+    "original": "0aa8019c702c94161bba03f3166e7f42e816d37b49ed10f0463bd3c38f25a7c5.json"
+  },
+  "schema": 2,
+  "status": "incomplete"
+}

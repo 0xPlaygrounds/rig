@@ -1,0 +1,7 @@
+   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.90s
+    Starting 2 tests across 1 binary (683 skipped)
+        PASS [   0.559s] rig::anthropic anthropic::cassette::ecs_agent_goldens::completion_smoke_effect_log_is_the_golden_fixture
+        PASS [   0.559s] rig::anthropic anthropic::cassette::ecs_agent_goldens::memory_conversation_effect_log_is_the_golden_fixture
+------------
+     Summary [   0.559s] 2 tests run: 2 passed, 683 skipped

@@ -1,0 +1,515 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "deepseek::truncation_matrix::agent_blocking_truncated_call_is_not_invoked",
+            "comparison": "Real invocation counters remain zero, actual materialised tool calls empty, original truncation/length fixture predicates retained. Native completion success strengthens original tolerated-error checks; declared blocking and run-local stream budgets preserved.",
+            "ecs_symbol": "deepseek::ecs_truncation::agent_blocking_truncated_call_is_not_invoked",
+            "id": "rig::deepseek::deepseek::truncation_matrix::agent_blocking_truncated_call_is_not_invoked::scenario-and-helpers",
+            "review_state": "independent final family review accepted"
+          }
+        ],
+        "assertion_sources": [
+          {
+            "direct_assertions": [
+              {
+                "expression_sha256": "232242462c7197cfba96ce1237a4fe1b2d878122bc68051a38b7b7220c083ee9",
+                "line": 1098
+              },
+              {
+                "expression_sha256": "2ab3c97a393bdfeebabce0dec83c8e42a8e59dd2dbc804759ea4b68366a16520",
+                "line": 1103
+              }
+            ],
+            "path": "tests/providers/deepseek/truncation_matrix.rs",
+            "symbol": "deepseek::truncation_matrix::agent_blocking_truncated_call_is_not_invoked"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "deepseek::ecs_truncation::agent_blocking_truncated_call_is_not_invoked",
+          "path": "tests/ecs_parity/evidence/code-and-truncation-report.json"
+        },
+        "ecs": {
+          "binary": "deepseek",
+          "execution_path": "Independent native ECS/provider bus with actual observers and real tools",
+          "source": "tests/providers/deepseek/ecs_truncation.rs",
+          "test": "deepseek::ecs_truncation::agent_blocking_truncated_call_is_not_invoked"
+        },
+        "family_contract": "tests/ecs_parity/code-and-truncation-contract.md",
+        "fixture_inventory_complete": true,
+        "fixtures": [
+          {
+            "path": "tests/cassettes/deepseek/truncation_matrix/agent_blocking_truncated_call_is_not_invoked.yaml",
+            "provenance": "unchanged original cassette",
+            "sha256": "7d31b559dfa245c8e3018f47de9f2fb704f5b0ae6ce616e1b788c0948cb5fedb"
+          }
+        ],
+        "helper_obligations": {
+          "chain": "Pinned full original sources plus provider/cassette wrappers and unchanged fixture-reading/assertion helpers; real neutral tool methods and native text/call observers",
+          "limits": "Direct machine anchors supplemented by complete source-bound helper review; eight recorded cases only",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::agent_blocking_truncated_call_is_not_invoked",
+      "native": "rig::deepseek$deepseek::ecs_truncation::agent_blocking_truncated_call_is_not_invoked",
+      "original": "rig::deepseek$deepseek::truncation_matrix::agent_blocking_truncated_call_is_not_invoked"
+    },
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "deepseek::truncation_matrix::agent_streaming_truncated_call_is_not_invoked",
+            "comparison": "Real invocation counters remain zero, actual materialised tool calls empty, original truncation/length fixture predicates retained. Native completion success strengthens original tolerated-error checks; declared blocking and run-local stream budgets preserved.",
+            "ecs_symbol": "deepseek::ecs_truncation::agent_streaming_truncated_call_is_not_invoked",
+            "id": "rig::deepseek::deepseek::truncation_matrix::agent_streaming_truncated_call_is_not_invoked::scenario-and-helpers",
+            "review_state": "independent final family review accepted"
+          }
+        ],
+        "assertion_sources": [
+          {
+            "direct_assertions": [
+              {
+                "expression_sha256": "1c37036e8305c9c9f0be2101fcc17bb4e256b8561b9caaea3c8b7d27e8fca2f6",
+                "line": 1141
+              },
+              {
+                "expression_sha256": "2ab3c97a393bdfeebabce0dec83c8e42a8e59dd2dbc804759ea4b68366a16520",
+                "line": 1146
+              }
+            ],
+            "path": "tests/providers/deepseek/truncation_matrix.rs",
+            "symbol": "deepseek::truncation_matrix::agent_streaming_truncated_call_is_not_invoked"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "deepseek::ecs_truncation::agent_streaming_truncated_call_is_not_invoked",
+          "path": "tests/ecs_parity/evidence/code-and-truncation-report.json"
+        },
+        "ecs": {
+          "binary": "deepseek",
+          "execution_path": "Independent native ECS/provider bus with actual observers and real tools",
+          "source": "tests/providers/deepseek/ecs_truncation.rs",
+          "test": "deepseek::ecs_truncation::agent_streaming_truncated_call_is_not_invoked"
+        },
+        "family_contract": "tests/ecs_parity/code-and-truncation-contract.md",
+        "fixture_inventory_complete": true,
+        "fixtures": [
+          {
+            "path": "tests/cassettes/deepseek/truncation_matrix/agent_streaming_truncated_call_is_not_invoked.yaml",
+            "provenance": "unchanged original cassette",
+            "sha256": "8c42f659ff2409d16b5d2f586ddeee148534dd70b4dc0aa7244bd281b9552b41"
+          }
+        ],
+        "helper_obligations": {
+          "chain": "Pinned full original sources plus provider/cassette wrappers and unchanged fixture-reading/assertion helpers; real neutral tool methods and native text/call observers",
+          "limits": "Direct machine anchors supplemented by complete source-bound helper review; eight recorded cases only",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::agent_streaming_truncated_call_is_not_invoked",
+      "native": "rig::deepseek$deepseek::ecs_truncation::agent_streaming_truncated_call_is_not_invoked",
+      "original": "rig::deepseek$deepseek::truncation_matrix::agent_streaming_truncated_call_is_not_invoked"
+    },
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "deepseek::truncation_matrix::agent_blocking_empty_arguments_on_length_are_not_invoked",
+            "comparison": "Real invocation counters remain zero, actual materialised tool calls empty, original truncation/length fixture predicates retained. Native completion success strengthens original tolerated-error checks; declared blocking and run-local stream budgets preserved.",
+            "ecs_symbol": "deepseek::ecs_truncation::agent_blocking_empty_arguments_on_length_are_not_invoked",
+            "id": "rig::deepseek::deepseek::truncation_matrix::agent_blocking_empty_arguments_on_length_are_not_invoked::scenario-and-helpers",
+            "review_state": "independent final family review accepted"
+          }
+        ],
+        "assertion_sources": [
+          {
+            "direct_assertions": [
+              {
+                "expression_sha256": "4fe936e2202602220293fb17500f145044c0648b00f328a705b20dc6b2237ef8",
+                "line": 1185
+              },
+              {
+                "expression_sha256": "131d9b81dcabb892ead73c3845b7c5d8e3f1b37e56114447b376c0c3048548ee",
+                "line": 1190
+              },
+              {
+                "expression_sha256": "747e5f3da8c8fbb8a530dc532aedb5ac30fa8aed928795ba236558f3c415801f",
+                "line": 1201
+              },
+              {
+                "expression_sha256": "e1ac6a28eaa40df3d7c72ae43e4cf43f2a16e32f5d0c5688019c11babe1cc4ba",
+                "line": 1202
+              }
+            ],
+            "path": "tests/providers/deepseek/truncation_matrix.rs",
+            "symbol": "deepseek::truncation_matrix::agent_blocking_empty_arguments_on_length_are_not_invoked"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "deepseek::ecs_truncation::agent_blocking_empty_arguments_on_length_are_not_invoked",
+          "path": "tests/ecs_parity/evidence/code-and-truncation-report.json"
+        },
+        "ecs": {
+          "binary": "deepseek",
+          "execution_path": "Independent native ECS/provider bus with actual observers and real tools",
+          "source": "tests/providers/deepseek/ecs_truncation.rs",
+          "test": "deepseek::ecs_truncation::agent_blocking_empty_arguments_on_length_are_not_invoked"
+        },
+        "family_contract": "tests/ecs_parity/code-and-truncation-contract.md",
+        "fixture_inventory_complete": true,
+        "fixtures": [
+          {
+            "path": "tests/cassettes/deepseek/truncation_matrix/agent_blocking_empty_arguments_on_length_are_not_invoked.yaml",
+            "provenance": "unchanged original cassette",
+            "sha256": "0676ab35ce43ba5591acebd5bb9be7aa6e7c4df4dcd5922496628cc6bf7da298"
+          }
+        ],
+        "helper_obligations": {
+          "chain": "Pinned full original sources plus provider/cassette wrappers and unchanged fixture-reading/assertion helpers; real neutral tool methods and native text/call observers",
+          "limits": "Direct machine anchors supplemented by complete source-bound helper review; eight recorded cases only",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::agent_blocking_empty_arguments_on_length_are_not_invoked",
+      "native": "rig::deepseek$deepseek::ecs_truncation::agent_blocking_empty_arguments_on_length_are_not_invoked",
+      "original": "rig::deepseek$deepseek::truncation_matrix::agent_blocking_empty_arguments_on_length_are_not_invoked"
+    },
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "deepseek::truncation_matrix::agent_streaming_empty_arguments_on_length_are_not_invoked",
+            "comparison": "Real invocation counters remain zero, actual materialised tool calls empty, original truncation/length fixture predicates retained. Native completion success strengthens original tolerated-error checks; declared blocking and run-local stream budgets preserved.",
+            "ecs_symbol": "deepseek::ecs_truncation::agent_streaming_empty_arguments_on_length_are_not_invoked",
+            "id": "rig::deepseek::deepseek::truncation_matrix::agent_streaming_empty_arguments_on_length_are_not_invoked::scenario-and-helpers",
+            "review_state": "independent final family review accepted"
+          }
+        ],
+        "assertion_sources": [
+          {
+            "direct_assertions": [
+              {
+                "expression_sha256": "cba2f18cff270bc817078fa8c140716403d65644078203b74f34559928cc9ca0",
+                "line": 1229
+              },
+              {
+                "expression_sha256": "131d9b81dcabb892ead73c3845b7c5d8e3f1b37e56114447b376c0c3048548ee",
+                "line": 1230
+              },
+              {
+                "expression_sha256": "f39662fe75b943aa9dbb64ead3823b822ad7c2335210bb6a4c2a62f7c38ae70d",
+                "line": 1241
+              },
+              {
+                "expression_sha256": "925f06cbe0bc47cdf9f5d3ec1051f3a121b83c5a2dbff5edcaba225ede4f4306",
+                "line": 1242
+              }
+            ],
+            "path": "tests/providers/deepseek/truncation_matrix.rs",
+            "symbol": "deepseek::truncation_matrix::agent_streaming_empty_arguments_on_length_are_not_invoked"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "deepseek::ecs_truncation::agent_streaming_empty_arguments_on_length_are_not_invoked",
+          "path": "tests/ecs_parity/evidence/code-and-truncation-report.json"
+        },
+        "ecs": {
+          "binary": "deepseek",
+          "execution_path": "Independent native ECS/provider bus with actual observers and real tools",
+          "source": "tests/providers/deepseek/ecs_truncation.rs",
+          "test": "deepseek::ecs_truncation::agent_streaming_empty_arguments_on_length_are_not_invoked"
+        },
+        "family_contract": "tests/ecs_parity/code-and-truncation-contract.md",
+        "fixture_inventory_complete": true,
+        "fixtures": [
+          {
+            "path": "tests/cassettes/deepseek/truncation_matrix/agent_streaming_empty_arguments_on_length_are_not_invoked.yaml",
+            "provenance": "unchanged original cassette",
+            "sha256": "076d1d17a35a9f9edbb05be651d7ee5bbd553511b9d5ec3ada82c25c350f19ee"
+          }
+        ],
+        "helper_obligations": {
+          "chain": "Pinned full original sources plus provider/cassette wrappers and unchanged fixture-reading/assertion helpers; real neutral tool methods and native text/call observers",
+          "limits": "Direct machine anchors supplemented by complete source-bound helper review; eight recorded cases only",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::agent_streaming_empty_arguments_on_length_are_not_invoked",
+      "native": "rig::deepseek$deepseek::ecs_truncation::agent_streaming_empty_arguments_on_length_are_not_invoked",
+      "original": "rig::deepseek$deepseek::truncation_matrix::agent_streaming_empty_arguments_on_length_are_not_invoked"
+    },
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "gemini::cassette::code_execution_matrix::blocking_agent_prompt_answers_after_code_execution",
+            "comparison": "Same request settings, actual native final or streamed text (not substituted final text), unchanged code markers/intermediate-terminal premise, and real first-output text history projection; all original predicates retained.",
+            "ecs_symbol": "gemini::cassette::ecs_code_execution::blocking_agent_prompt_answers_after_code_execution",
+            "id": "rig::gemini::gemini::cassette::code_execution_matrix::blocking_agent_prompt_answers_after_code_execution::scenario-and-helpers",
+            "review_state": "independent final family review accepted"
+          }
+        ],
+        "assertion_sources": [
+          {
+            "direct_assertions": [
+              {
+                "expression_sha256": "451e1f705c8a5ab35ca8e85512a35179616335bd4aa244557c45870848ee8c88",
+                "line": 309
+              }
+            ],
+            "path": "tests/providers/gemini/cassette/code_execution_matrix.rs",
+            "symbol": "gemini::cassette::code_execution_matrix::blocking_agent_prompt_answers_after_code_execution"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "gemini::cassette::ecs_code_execution::blocking_agent_prompt_answers_after_code_execution",
+          "path": "tests/ecs_parity/evidence/code-and-truncation-report.json"
+        },
+        "ecs": {
+          "binary": "gemini",
+          "execution_path": "Independent native ECS/provider bus with actual observers and real tools",
+          "source": "tests/providers/gemini/cassette/ecs_code_execution.rs",
+          "test": "gemini::cassette::ecs_code_execution::blocking_agent_prompt_answers_after_code_execution"
+        },
+        "family_contract": "tests/ecs_parity/code-and-truncation-contract.md",
+        "fixture_inventory_complete": true,
+        "fixtures": [
+          {
+            "path": "tests/cassettes/gemini/code_execution_matrix/blocking_agent_prompt_answers_after_code_execution.yaml",
+            "provenance": "unchanged original cassette",
+            "sha256": "e2893672de1bdc25272dcb47ab7a1243ea46f9abb2fe9f215c60157f5691bf5d"
+          }
+        ],
+        "helper_obligations": {
+          "chain": "Pinned full original sources plus provider/cassette wrappers and unchanged fixture-reading/assertion helpers; real neutral tool methods and native text/call observers",
+          "limits": "Direct machine anchors supplemented by complete source-bound helper review; eight recorded cases only",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::blocking_agent_prompt_answers_after_code_execution",
+      "native": "rig::gemini$gemini::cassette::ecs_code_execution::blocking_agent_prompt_answers_after_code_execution",
+      "original": "rig::gemini$gemini::cassette::code_execution_matrix::blocking_agent_prompt_answers_after_code_execution"
+    },
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "gemini::cassette::code_execution_matrix::streaming_agent_prompt_answers_after_code_execution",
+            "comparison": "Same request settings, actual native final or streamed text (not substituted final text), unchanged code markers/intermediate-terminal premise, and real first-output text history projection; all original predicates retained.",
+            "ecs_symbol": "gemini::cassette::ecs_code_execution::streaming_agent_prompt_answers_after_code_execution",
+            "id": "rig::gemini::gemini::cassette::code_execution_matrix::streaming_agent_prompt_answers_after_code_execution::scenario-and-helpers",
+            "review_state": "independent final family review accepted"
+          }
+        ],
+        "assertion_sources": [
+          {
+            "direct_assertions": [
+              {
+                "expression_sha256": "64862ba431f406a2127beeb0babd3d5a2eb0890fc49420644bdbcb9aeee49ebb",
+                "line": 353
+              }
+            ],
+            "path": "tests/providers/gemini/cassette/code_execution_matrix.rs",
+            "symbol": "gemini::cassette::code_execution_matrix::streaming_agent_prompt_answers_after_code_execution"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "gemini::cassette::ecs_code_execution::streaming_agent_prompt_answers_after_code_execution",
+          "path": "tests/ecs_parity/evidence/code-and-truncation-report.json"
+        },
+        "ecs": {
+          "binary": "gemini",
+          "execution_path": "Independent native ECS/provider bus with actual observers and real tools",
+          "source": "tests/providers/gemini/cassette/ecs_code_execution.rs",
+          "test": "gemini::cassette::ecs_code_execution::streaming_agent_prompt_answers_after_code_execution"
+        },
+        "family_contract": "tests/ecs_parity/code-and-truncation-contract.md",
+        "fixture_inventory_complete": true,
+        "fixtures": [
+          {
+            "path": "tests/cassettes/gemini/code_execution_matrix/streaming_agent_prompt_answers_after_code_execution.yaml",
+            "provenance": "unchanged original cassette",
+            "sha256": "fac9c55d982d95328571e651174311932229ca800043e8a3f2c78c3c5b720eb8"
+          }
+        ],
+        "helper_obligations": {
+          "chain": "Pinned full original sources plus provider/cassette wrappers and unchanged fixture-reading/assertion helpers; real neutral tool methods and native text/call observers",
+          "limits": "Direct machine anchors supplemented by complete source-bound helper review; eight recorded cases only",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::streaming_agent_prompt_answers_after_code_execution",
+      "native": "rig::gemini$gemini::cassette::ecs_code_execution::streaming_agent_prompt_answers_after_code_execution",
+      "original": "rig::gemini$gemini::cassette::code_execution_matrix::streaming_agent_prompt_answers_after_code_execution"
+    },
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "gemini::cassette::code_execution_matrix::blocking_code_execution_replayed_in_chat_history",
+            "comparison": "Same request settings, actual native final or streamed text (not substituted final text), unchanged code markers/intermediate-terminal premise, and real first-output text history projection; all original predicates retained.",
+            "ecs_symbol": "gemini::cassette::ecs_code_execution::blocking_code_execution_replayed_in_chat_history",
+            "id": "rig::gemini::gemini::cassette::code_execution_matrix::blocking_code_execution_replayed_in_chat_history::scenario-and-helpers",
+            "review_state": "independent final family review accepted"
+          }
+        ],
+        "assertion_sources": [
+          {
+            "direct_assertions": [
+              {
+                "expression_sha256": "fb3b00818f3c5100ac9ee4dc439960ad59ba31516aa7f82cd4bc00b89604bcab",
+                "line": 941
+              },
+              {
+                "expression_sha256": "e04fab9816a3d6efaf99b26fe6af354676d3394e2d1b9399ba93b0ac2f7092c0",
+                "line": 956
+              }
+            ],
+            "path": "tests/providers/gemini/cassette/code_execution_matrix.rs",
+            "symbol": "gemini::cassette::code_execution_matrix::blocking_code_execution_replayed_in_chat_history"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "gemini::cassette::ecs_code_execution::blocking_code_execution_replayed_in_chat_history",
+          "path": "tests/ecs_parity/evidence/code-and-truncation-report.json"
+        },
+        "ecs": {
+          "binary": "gemini",
+          "execution_path": "Independent native ECS/provider bus with actual observers and real tools",
+          "source": "tests/providers/gemini/cassette/ecs_code_execution.rs",
+          "test": "gemini::cassette::ecs_code_execution::blocking_code_execution_replayed_in_chat_history"
+        },
+        "family_contract": "tests/ecs_parity/code-and-truncation-contract.md",
+        "fixture_inventory_complete": true,
+        "fixtures": [
+          {
+            "path": "tests/cassettes/gemini/code_execution_matrix/blocking_code_execution_replayed_in_chat_history.yaml",
+            "provenance": "unchanged original cassette",
+            "sha256": "7b40d3f74199e4556a222659939c4d3a3608bcb6698a7130f65fb95e96f676cd"
+          }
+        ],
+        "helper_obligations": {
+          "chain": "Pinned full original sources plus provider/cassette wrappers and unchanged fixture-reading/assertion helpers; real neutral tool methods and native text/call observers",
+          "limits": "Direct machine anchors supplemented by complete source-bound helper review; eight recorded cases only",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::gemini::gemini::cassette::code_execution_matrix::blocking_code_execution_replayed_in_chat_history",
+      "native": "rig::gemini$gemini::cassette::ecs_code_execution::blocking_code_execution_replayed_in_chat_history",
+      "original": "rig::gemini$gemini::cassette::code_execution_matrix::blocking_code_execution_replayed_in_chat_history"
+    },
+    {
+      "fields": {
+        "assertion_mappings": [
+          {
+            "baseline_symbol": "gemini::cassette::stream_terminal_matrix::two_terminal_stream_agent_prompt_keeps_the_answer",
+            "comparison": "Same request settings, actual native final or streamed text (not substituted final text), unchanged code markers/intermediate-terminal premise, and real first-output text history projection; all original predicates retained.",
+            "ecs_symbol": "gemini::cassette::ecs_code_execution::two_terminal_stream_agent_prompt_keeps_the_answer",
+            "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::two_terminal_stream_agent_prompt_keeps_the_answer::scenario-and-helpers",
+            "review_state": "independent final family review accepted"
+          }
+        ],
+        "assertion_sources": [
+          {
+            "direct_assertions": [
+              {
+                "expression_sha256": "c919cbc2f28c8fb17689d8845d154a9d18219b8f9138591cd46e008baefb5c69",
+                "line": 302
+              }
+            ],
+            "path": "tests/providers/gemini/cassette/stream_terminal_matrix.rs",
+            "symbol": "gemini::cassette::stream_terminal_matrix::two_terminal_stream_agent_prompt_keeps_the_answer"
+          }
+        ],
+        "candidate_execution_evidence": {
+          "configuration": "root default features native host cassette replay",
+          "kind": "clean_baseline_and_native_exact_id_batch",
+          "native_test": "gemini::cassette::ecs_code_execution::two_terminal_stream_agent_prompt_keeps_the_answer",
+          "path": "tests/ecs_parity/evidence/code-and-truncation-report.json"
+        },
+        "ecs": {
+          "binary": "gemini",
+          "execution_path": "Independent native ECS/provider bus with actual observers and real tools",
+          "source": "tests/providers/gemini/cassette/ecs_code_execution.rs",
+          "test": "gemini::cassette::ecs_code_execution::two_terminal_stream_agent_prompt_keeps_the_answer"
+        },
+        "family_contract": "tests/ecs_parity/code-and-truncation-contract.md",
+        "fixture_inventory_complete": true,
+        "fixtures": [
+          {
+            "path": "tests/cassettes/gemini/stream_terminal_matrix/two_terminal_stream_agent_prompt_keeps_the_answer.yaml",
+            "provenance": "unchanged original cassette",
+            "sha256": "7095f63a82015b91d343332c1c01f6d01025a9146fa3816c85f4177433f2f790"
+          }
+        ],
+        "helper_obligations": {
+          "chain": "Pinned full original sources plus provider/cassette wrappers and unchanged fixture-reading/assertion helpers; real neutral tool methods and native text/call observers",
+          "limits": "Direct machine anchors supplemented by complete source-bound helper review; eight recorded cases only",
+          "review_state": "independent final family review accepted"
+        },
+        "inventory_complete": true
+      },
+      "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::two_terminal_stream_agent_prompt_keeps_the_answer",
+      "native": "rig::gemini$gemini::cassette::ecs_code_execution::two_terminal_stream_agent_prompt_keeps_the_answer",
+      "original": "rig::gemini$gemini::cassette::stream_terminal_matrix::two_terminal_stream_agent_prompt_keeps_the_answer"
+    }
+  ],
+  "configuration": "root default features native host explicit cassette replay",
+  "kind": "parity",
+  "limits": "Eight recorded scenarios; not exhaustive superset or aggregate current-runtime proof",
+  "reviewer": "/root/allowed_tools_review",
+  "runs": {
+    "native": "10973e5ebccee9486d48562c87c57bd8d20f267bf0dab07317209bf87f1532db.json",
+    "original": "9a8c3f782ff5ccd6d5741e5634aba87a06aa8fd73d11f37f9a502da2e1f3b522.json"
+  },
+  "schema": 1,
+  "sources": {
+    "crates/rig-ecs/src/agent/mod.rs": "5d7587af4f042acef21edd8f668e89dcafe17c979404b04aacc7531c1d48c7fc",
+    "crates/rig-ecs/src/systems/mod.rs": "59dd9912f118762961b0725c0917f363e78873b74f50509e78397302f84d12a3",
+    "tests/cassettes/deepseek/truncation_matrix/agent_blocking_empty_arguments_on_length_are_not_invoked.yaml": "0676ab35ce43ba5591acebd5bb9be7aa6e7c4df4dcd5922496628cc6bf7da298",
+    "tests/cassettes/deepseek/truncation_matrix/agent_blocking_truncated_call_is_not_invoked.yaml": "7d31b559dfa245c8e3018f47de9f2fb704f5b0ae6ce616e1b788c0948cb5fedb",
+    "tests/cassettes/deepseek/truncation_matrix/agent_streaming_empty_arguments_on_length_are_not_invoked.yaml": "076d1d17a35a9f9edbb05be651d7ee5bbd553511b9d5ec3ada82c25c350f19ee",
+    "tests/cassettes/deepseek/truncation_matrix/agent_streaming_truncated_call_is_not_invoked.yaml": "8c42f659ff2409d16b5d2f586ddeee148534dd70b4dc0aa7244bd281b9552b41",
+    "tests/cassettes/gemini/code_execution_matrix/blocking_agent_prompt_answers_after_code_execution.yaml": "e2893672de1bdc25272dcb47ab7a1243ea46f9abb2fe9f215c60157f5691bf5d",
+    "tests/cassettes/gemini/code_execution_matrix/blocking_code_execution_replayed_in_chat_history.yaml": "7b40d3f74199e4556a222659939c4d3a3608bcb6698a7130f65fb95e96f676cd",
+    "tests/cassettes/gemini/code_execution_matrix/streaming_agent_prompt_answers_after_code_execution.yaml": "fac9c55d982d95328571e651174311932229ca800043e8a3f2c78c3c5b720eb8",
+    "tests/cassettes/gemini/stream_terminal_matrix/two_terminal_stream_agent_prompt_keeps_the_answer.yaml": "7095f63a82015b91d343332c1c01f6d01025a9146fa3816c85f4177433f2f790",
+    "tests/common/cassettes.rs": "0d26d322265b22088f9fb873b3ee0f8a07bb2bef1ac5ca4f16bdda3c6ac754a4",
+    "tests/common/ecs_agent.rs": "3a571cf4f3cffdaca132d98cd57a9ad3cb006e5959294f2f560b3d8b48f71268",
+    "tests/common/ecs_lifecycle.rs": "e8180ddf255aed1f3a49b6c948b3e8fb68ff6d8435102ce1fc96423a50b0ea59",
+    "tests/common/ecs_observation.rs": "277b9abca563dad2484a2fe37076cb3e06bbe05944ea9dcf8066a453fcbd143c",
+    "tests/common/support.rs": "a0f495e031171f27e1de754fb334e336e2461b44cfc9202bc17499e004d2e26a",
+    "tests/providers/deepseek/ecs_truncation.rs": "b7cc936e6469c134de456fd8ac52360dda886cff3f6cf963f57b8821abcc45ae",
+    "tests/providers/deepseek/support.rs": "e5bcce9315ff8ef302c30fb5b764c51ca14cc008e5df0ad4ce1ad4f2eccd4d8c",
+    "tests/providers/deepseek/truncation_matrix.rs": "cc411b6f41fd27e6e000ee0f9e0984e4e021f4847f10dda85ce10d106c697546",
+    "tests/providers/gemini/cassette/code_execution_matrix.rs": "ff4e158a8f0f02590b67098a5c1add1e130040a33f510a86083c09e5bee9259f",
+    "tests/providers/gemini/cassette/ecs_code_execution.rs": "649b8c2f00c36cf279409d96dfa1f456de7f48413c822e1ca3e9c3ff07e759cd",
+    "tests/providers/gemini/cassette/stream_terminal_matrix.rs": "40d7654c12431858cd76cbfc288a1cfa601d383bcc9b937cfe08da4f8b21cb74",
+    "tests/providers/gemini/support.rs": "fb45f0487dc88c60c266c5aebae186555318c0454452b038317479832f349ce5"
+  },
+  "status": "accepted"
+}

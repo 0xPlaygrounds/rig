@@ -437,6 +437,8 @@ fn a_patch_and_a_resolution_written_before_a_save_are_read_after_the_load() {
             id: rig_core::message::ToolCallId::new("c1").unwrap(),
             name: "multiply".to_owned(),
             arguments: serde_json::json!({"x": 2, "y": 3}),
+            prefix: Vec::new(),
+            stream_offset: None,
         },
         resolution.clone(),
         ChildOf(turn),
@@ -475,6 +477,8 @@ fn scene_preserves_invalid_call_identity_namespaces() {
                 id: id.clone(),
                 name: "multiply".into(),
                 arguments: serde_json::json!({"x": 2, "y": 3}),
+                prefix: vec![AssistantContent::text("before call")],
+                stream_offset: Some(4),
             },
             Resolution::Repair { to: "add".into() },
             ChildOf(turn),
@@ -496,6 +500,8 @@ fn scene_preserves_invalid_call_identity_namespaces() {
         let call = calls.iter().find(|call| &call.id == id).unwrap();
         assert_eq!(call.name, "multiply");
         assert_eq!(call.arguments, serde_json::json!({"x": 2, "y": 3}));
+        assert_eq!(call.prefix, vec![AssistantContent::text("before call")]);
+        assert_eq!(call.stream_offset, Some(4));
     }
     assert_ne!(calls[0].id, calls[1].id);
 

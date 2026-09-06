@@ -92,15 +92,15 @@ use super::super::support::{
 
 /// The prompt that reliably makes Gemini take two code-execution rounds, and
 /// therefore emit an intermediate `finishReason`.
-const TWO_ROUND_PROMPT: &str = "You must call the code execution tool twice as two separate executions. \
+pub(super) const TWO_ROUND_PROMPT: &str = "You must call the code execution tool twice as two separate executions. \
      Execution 1: run only print(987654321 * 123456789). Then, after seeing that number, \
      Execution 2: run only print(sum(int(d) for d in str(N))) where N is the exact number \
      from Execution 1. Never combine them. Finally state both numbers.";
 
 /// The product printed by the first round, which the answer must restate.
-const FIRST_ROUND_VALUE: &str = "121932631112635269";
+pub(super) const FIRST_ROUND_VALUE: &str = "121932631112635269";
 
-fn code_execution_params() -> Value {
+pub(super) fn code_execution_params() -> Value {
     json!({ "tools": [{ "codeExecution": {} }] })
 }
 
@@ -122,7 +122,7 @@ fn text_of(choice: &[AssistantContent]) -> String {
 /// `value` must not be a fragment of a longer number — "2880" in "28800" is
 /// not the answer — so digit-adjacency is rejected. An empty or non-numeric
 /// `value` keeps plain substring semantics.
-fn states(text: &str, value: &str) -> bool {
+pub(super) fn states(text: &str, value: &str) -> bool {
     let text: String = text
         .char_indices()
         .filter(|(index, ch)| {

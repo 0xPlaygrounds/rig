@@ -310,6 +310,9 @@ jobs:
       - name: Check test modules are sibling files
         run: cargo xtask check-test-layout
 
+      - name: Test inventory and parity tooling
+        run: cargo test --locked -p xtask
+
   clippy:
     name: stable / clippy
     runs-on: ubuntu-latest

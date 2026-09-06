@@ -1,0 +1,95 @@
+{
+  "execution_report": "tests/ecs_parity/evidence/chat-tools-report.json",
+  "final_runs": {
+    "native": "3619eb023b8c98e8b589f987a9084d9b2aaa06fd7deddd87a3e4bbc7b2f298c9.json",
+    "original": "4c37630bdd8a56ce6b5b6aa804d7ab724835e6983d2669ffbd8590c869a0a242.json"
+  },
+  "findings": [],
+  "limits": [
+    "Shared provider Model cells retain original runner and do not count as migrated agent behavior.",
+    "Expected actual MaxTurns ending, not final-answer success.",
+    "Original agent call IDs/arguments oracle is wire fixture, while additional native graph checks are separately labeled.",
+    "Observed invocation order does not prove arbitrary concurrent scheduler behavior.",
+    "Full inventory/feature/network/interruption/capability/performance/aggregate/publication/CI remain unfinished."
+  ],
+  "result": "scoped pass, no findings",
+  "reviewed_implementation": [
+    {
+      "path": "tests/providers/openai/cassette/ecs_chat_tool_lifecycle.rs",
+      "sha256": "973f4fbfa0af5edefcda22bc9355f99b5c7f20791cd444e052ab964acb44187a"
+    },
+    {
+      "path": "tests/providers/openai/cassette/chat_tool_lifecycle_matrix.rs",
+      "sha256": "d6b4014adb420e9eb351ba5873e8488349a1494d2b8dff59aee61d2ec9c0c1a8"
+    },
+    {
+      "path": "tests/common/ecs_agent.rs",
+      "sha256": "3a571cf4f3cffdaca132d98cd57a9ad3cb006e5959294f2f560b3d8b48f71268"
+    },
+    {
+      "path": "tests/common/support.rs",
+      "sha256": "a0f495e031171f27e1de754fb334e336e2461b44cfc9202bc17499e004d2e26a"
+    },
+    {
+      "path": "xtask/src/parity/batch.rs",
+      "sha256": "c9ff3db62cff90046fffc4cc8faa1eb043f93337ae5e32e9568c513a63a13ef8"
+    },
+    {
+      "path": "xtask/src/parity/batch/tests.rs",
+      "sha256": "68eb99633b1ed38f0036a56a189a9b6a77ea2ae51d682ebae098b868bc1a6a48"
+    },
+    {
+      "path": "tests/ecs_parity/chat-tools-contract.md",
+      "sha256": "2e1640a418f17fee520a75db5c0e926c43d6dd28c4d6ff5019bff55a847bf301"
+    }
+  ],
+  "reviewer": "/root/chat_tools_review",
+  "schema": 1,
+  "scope": "OpenAI Chat tool-lifecycle matrix: twelve native Agent counterparts and twelve unchanged Model cases",
+  "supplemental_verification": [
+    {
+      "command": "cargo clippy --locked -p rig --test openai -- -D warnings",
+      "log": "tests/ecs_parity/evidence/logs/8db39b1d5986b8304ba28f4fa5ad18803b448dd76e784266880bb86d07293d9e.log",
+      "sha256": "8db39b1d5986b8304ba28f4fa5ad18803b448dd76e784266880bb86d07293d9e"
+    },
+    {
+      "command": "cargo clippy --locked -p xtask --all-targets -- -D warnings",
+      "log": "tests/ecs_parity/evidence/logs/372c560b29751fc59ea5a61c06ec5ad97a8968ad1c9eb4fa6486845feaa1b28b.log",
+      "sha256": "372c560b29751fc59ea5a61c06ec5ad97a8968ad1c9eb4fa6486845feaa1b28b"
+    },
+    {
+      "command": "credential-stripped RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig --test openai -E 'test(::ecs_chat_tool_lifecycle::) | test(::chat_tool_lifecycle_matrix::) | test(ecs_agent::tests::) | test(cassette_files_match_registered_scenarios) | test(cassettes_do_not_contain_obvious_secrets)' --no-fail-fast --retries 0",
+      "log": "tests/ecs_parity/evidence/logs/00f5590f3da200ec1600f0687ea3a8fe29516d02a458d1e957d3b860a4929f3d.log",
+      "sha256": "00f5590f3da200ec1600f0687ea3a8fe29516d02a458d1e957d3b860a4929f3d"
+    },
+    {
+      "command": "cargo test --locked -p xtask parity::batch::tests",
+      "log": "tests/ecs_parity/evidence/logs/210a4b234a0bef669d4f18c32804f08dba929273249ac14b3ee1a302bb762eab.log",
+      "sha256": "210a4b234a0bef669d4f18c32804f08dba929273249ac14b3ee1a302bb762eab"
+    },
+    {
+      "command": "cargo test --locked -p xtask",
+      "log": "tests/ecs_parity/evidence/logs/0dc28d2594e65a7b556510b416aa3a2a4a1b0981564057a5ea582def0bd11f0f.log",
+      "sha256": "0dc28d2594e65a7b556510b416aa3a2a4a1b0981564057a5ea582def0bd11f0f"
+    },
+    {
+      "command": "cargo xtask check-test-layout",
+      "log": "tests/ecs_parity/evidence/logs/88cdbd2fb92f4203cd5355ef6327511f9871108f8a15c27505e2fb76347e5815.log",
+      "sha256": "88cdbd2fb92f4203cd5355ef6327511f9871108f8a15c27505e2fb76347e5815"
+    },
+    {
+      "command": "RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig --test openai -E 'test(::ecs_chat_tool_lifecycle::)' --retries 0 (initial native12 pass)",
+      "log": "tests/ecs_parity/evidence/logs/0800ba1b306aec3270c50ad155ed3b91cd8ae02972f0df02620a03953540a8e9.log",
+      "sha256": "0800ba1b306aec3270c50ad155ed3b91cd8ae02972f0df02620a03953540a8e9"
+    }
+  ],
+  "verification_counts": {
+    "all_xtask_tests": 32,
+    "batch_guard_tests": 12,
+    "candidate_total": 24,
+    "migrated_agent": 12,
+    "original_total": 24,
+    "shared_provider": 12,
+    "targeted_controls": 44
+  }
+}

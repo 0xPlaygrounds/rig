@@ -51,7 +51,7 @@ The request the model sees is derived, never authored: a run entity, utterances 
 
 | design (§3.1) | here |
 |---|---|
-| Agent | `Owner`, `Preamble`, `Temperature`, `MaxTokens`, `AdditionalParams`, `ToolChoiceSpec`, `Output { mode, schema }`, `MaxTurns`, `DefaultMaxTurns`, `InvalidCalls`; `UsesModel` → the model's handler entity; `Grant` link entities → tool handler entities; `Context` link entities → documents |
+| Agent | `Owner`, `Preamble`, `Temperature`, `MaxTokens`, `AdditionalParams`, `ToolChoiceSpec`, `Output { mode, schema }`, `OutputToolConfig`, `MaxTurns`, `DefaultMaxTurns`, `InvalidCalls`; `UsesModel` → the model's handler entity; `Grant` link entities → tool handler entities; `Context` link entities → documents |
 | Document | `DocumentId`, `DocumentText`, `DocumentProps`; attached to a turn by an `Attachment` link |
 | Utterance | `Utterance`, `Role`, `Parts` (the message's parts, verbatim), `Order`; `ChildOf` the run |
 | Run | `Run`, `RunOf` → agent, `RunSeq`, `Streamed`, `Cursor`, a phase (`Assembling`, `AwaitingModel`, `Settled`, `Failed(Failure)`), `RunResult`, `Usage`, `OutputRetries`, `OutputToolName`, the run's own overrides of the agent's settings, the bus's `Scope` |
@@ -59,6 +59,12 @@ The request the model sees is derived, never authored: a run entity, utterances 
 | Effect | the bus module's, `ChildOf` the turn: the completion, then one per call to a granted tool (`ToolCallSlot` says which call; the bus's `ToolInputs` carries the run's `ToolContextSpec`) — the batch is the turn's children, `ToolPolicy { concurrency }` on the run or the agent says how many fly at once |
 | Invalid call | `InvalidCall` + `Resolution`, `ChildOf` the turn |
 | the scene | `agent::scene::RunScene` beside the bus's `Scene` |
+
+`OutputToolConfig` optionally sets the output tool's reserved name, description,
+and preamble augmentation. A run's component overrides the agent's. With a
+schema, an explicit name commits tool output; a conflicting granted tool fails
+before dispatch. Once minted, the name remains fixed for the run. Scene saves
+and replay identity retain this configuration.
 
 The agent's sets, around the bus's:
 
@@ -123,7 +129,7 @@ Every hook cell of the corpus is written against the public sets and components 
 | the effect's id | `Issued` after `Dispatch`; `Reserved` before it, for a scene's or a log's id |
 | taken, in flight | `InFlight { key }` plus `Serving(Task)` (unary) or `Streaming { task, events, fold }` (stream) |
 | a handler that is a system was asked | `Asked<E>`; the system answers with `Answer<E>` — or, for a key bound open (`Handlers::register_open`, any family), the effect entity itself, answered by submitting `WorldOutcome` |
-| the answer | `EffectOutcome(Result<Outcome, ErrorReport>)`; a stream's per-tick fold in `Streamed { events, text, outcome }` |
+| the answer | `EffectOutcome(Result<Outcome, ErrorReport>)`; a stream's per-tick fold in `Streamed { events, errors, text, outcome }`, with every error and its item position retained independently of recording |
 | held by a decision | `Held` |
 | a program's scope | `Scope(String)` on an ancestor; read into the record |
 | a tool call's context (format 5: beside the effect, never in it) | `ToolInputs(ToolContext)` on the effect entity, attached to the handler's sink by `Dispatch`; what the tool published lands as `ToolOutputs(ToolContext)` when the outcome does (`Publishing` holds the slot in flight) |

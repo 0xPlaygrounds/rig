@@ -1,0 +1,85 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_patch::preamble_override_forces_codeword_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_patch::preamble_override_forces_codeword_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_patch::tool_choice_required_forces_a_tool_call_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_patch::tool_choice_required_forces_a_tool_call_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_patch::history_replacement_injects_prior_fact_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_patch::history_replacement_injects_prior_fact_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_patch::multi_field_patch_applies_preamble_and_context_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_patch::multi_field_patch_applies_preamble_and_context_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_context::hook_context_identity_stable_and_turn_advances_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_context::hook_context_identity_stable_and_turn_advances_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_context::agent_name_absent_when_unconfigured_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_context::agent_name_absent_when_unconfigured_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_context::scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_context::scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_context::block_id_correlates_tool_call_and_result_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_context::block_id_correlates_tool_call_and_result_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_context::two_observe_only_hooks_both_observe_the_run_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_context::two_observe_only_hooks_both_observe_the_run_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_context::add_hook_appends_across_builder_and_request_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_context::add_hook_appends_across_builder_and_request_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_context::completion_call_patches_accumulate_from_two_hooks_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_context::completion_call_patches_accumulate_from_two_hooks_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_context::two_hooks_narrow_active_tools_to_intersection_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_context::two_hooks_narrow_active_tools_to_intersection_blocking"
+    }
+  ],
+  "features": [],
+  "fixtures": [
+    "tests/cassettes/gemini/hook_stress_patch/preamble_override_forces_codeword_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress_patch/tool_choice_required_forces_a_tool_call_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress_patch/history_replacement_injects_prior_fact_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress_patch/multi_field_patch_applies_preamble_and_context_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress_context/hook_context_identity_stable_and_turn_advances_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress_context/agent_name_absent_when_unconfigured_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress_context/scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress_context/block_id_correlates_tool_call_and_result_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress_context/two_observe_only_hooks_both_observe_the_run_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress_context/add_hook_appends_across_builder_and_request_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress_context/completion_call_patches_accumulate_from_two_hooks_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress_context/two_hooks_narrow_active_tools_to_intersection_blocking.yaml"
+  ],
+  "name": "stress-context",
+  "original_sources": [
+    "tests/common/support.rs",
+    "tests/providers/gemini/hook_stress_support.rs",
+    "tests/providers/gemini/tools_support.rs",
+    "tests/providers/gemini/cassette/hook_stress_patch.rs",
+    "tests/providers/gemini/cassette/hook_stress_context.rs"
+  ],
+  "package": "rig",
+  "schema": 1,
+  "semantic_skip_markers": [
+    "SKIP",
+    "skipping"
+  ],
+  "targets": [
+    "gemini"
+  ]
+}

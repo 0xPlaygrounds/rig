@@ -1,0 +1,76 @@
+{
+  "execution_report": "tests/ecs_parity/evidence/causal-report.json",
+  "final_runs": {
+    "native": "db723b2495578402d008f9a364d460f76198ad469b78a784722d691448e839f0.json",
+    "original": "d0c5bb41a9b81d15f1911a0a4917c18e1115b13e3e197f85371f696add90803c.json"
+  },
+  "findings": [],
+  "limits": [
+    "Completion nesting only, no same-key/thread/detached/relay/cancellation variant claim.",
+    "Existing shared installer allocation leak bounded to three test Apps; no lifetime/performance advantage claimed.",
+    "Existing shared negative controls only; no new dedicated causal mutation control.",
+    "Full inventory/feature/network/interruption/performance programme, aggregate verification, publication and CI unfinished."
+  ],
+  "result": "scoped pass, no findings",
+  "reviewed_implementation": [
+    {
+      "path": "tests/providers/anthropic/cassette/ecs_causal.rs",
+      "sha256": "106027df7f750c12c6e2831b94b893f1c18ad6a92597d31971fbe6aa34b4ef7b"
+    },
+    {
+      "path": "tests/providers/anthropic/cassette/corpus_causal.rs",
+      "sha256": "28ea96f3f2e5beccfc9736d0b0c2ca24f89b7b501cbeb28eb92db52b0f9f2256"
+    },
+    {
+      "path": "crates/rig-verify/tests/corpus/world_nesting.rs",
+      "sha256": "906f2dfeea2c5bf51c7e55bff63eb1d1bf9b05ff0e334e1b6f94cbf31af4881b"
+    },
+    {
+      "path": "tests/common/ecs_agent.rs",
+      "sha256": "3a571cf4f3cffdaca132d98cd57a9ad3cb006e5959294f2f560b3d8b48f71268"
+    },
+    {
+      "path": "tests/common/ecs_goldens.rs",
+      "sha256": "c4e37b31e1fbe9b87161b786137b90de8d39233bdcfa6d667764adaa6c7c7c0d"
+    },
+    {
+      "path": "tests/ecs_parity/causal-contract.md",
+      "sha256": "1080dba467c18ee8b759d55d1ee405208fd619b6ce6d121cebb08cc524ce54e9"
+    }
+  ],
+  "reviewer": "/root/causal_review",
+  "schema": 1,
+  "scope": "all three provider-backed nested completion corpus cells",
+  "supplemental_verification": [
+    {
+      "command": "cargo clippy --locked -p rig --test anthropic -- -D warnings",
+      "log": "tests/ecs_parity/evidence/logs/3edd723769d2a438ca8d7bd0b6588a385a20dcb45c1c51afee9319b070b5bf87.log",
+      "sha256": "3edd723769d2a438ca8d7bd0b6588a385a20dcb45c1c51afee9319b070b5bf87"
+    },
+    {
+      "command": "credential-stripped RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig --test anthropic -E 'test(::ecs_causal::) | test(::ecs_layers::) | test(::ecs_serving::) | test(ecs_agent::tests::) | test(ecs_goldens::tests::) | test(cassette_files_match_registered_scenarios) | test(cassettes_do_not_contain_obvious_secrets)' --no-fail-fast --retries 0",
+      "log": "tests/ecs_parity/evidence/logs/034c4ae49de92820a6b3e4fccdf362d4cedfb47ae258fbb2eba5244e0bcce520.log",
+      "sha256": "034c4ae49de92820a6b3e4fccdf362d4cedfb47ae258fbb2eba5244e0bcce520"
+    },
+    {
+      "command": "cargo xtask check-test-layout",
+      "log": "tests/ecs_parity/evidence/logs/88cdbd2fb92f4203cd5355ef6327511f9871108f8a15c27505e2fb76347e5815.log",
+      "sha256": "88cdbd2fb92f4203cd5355ef6327511f9871108f8a15c27505e2fb76347e5815"
+    },
+    {
+      "command": "RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig --test anthropic -E 'test(::ecs_causal::)' --retries 0 (absent native goldens, original comparisons passed)",
+      "log": "tests/ecs_parity/evidence/logs/94982127854c7671ef90d1ce97a76272318f3a3e4f83d10daaec4abb8d436910.log",
+      "sha256": "94982127854c7671ef90d1ce97a76272318f3a3e4f83d10daaec4abb8d436910"
+    },
+    {
+      "command": "credential-stripped RIG_PROVIDER_TEST_MODE=replay RIG_REGENERATE_GOLDEN=1 cargo nextest run --locked -p rig --test anthropic -E 'test(anthropic::cassette::ecs_causal::)' --retries 0 (native goldens only)",
+      "log": "tests/ecs_parity/evidence/logs/885c5410e87e9b765ce6f82bbd75b03f0cb10bb9effeeeadda853a81d8d6bc01.log",
+      "sha256": "885c5410e87e9b765ce6f82bbd75b03f0cb10bb9effeeeadda853a81d8d6bc01"
+    }
+  ],
+  "verification_counts": {
+    "native_cells": 3,
+    "original_cells": 3,
+    "targeted_controls": 34
+  }
+}

@@ -10,5 +10,8 @@ description = "Workspace maintenance tasks for rig. Not published."
 workspace = true
 
 [dependencies]
-syn = { workspace = true, features = ["full"] }
+syn = { workspace = true, features = ["full", "visit"] }
 proc-macro2 = { workspace = true, features = ["span-locations"] }
+quote = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }

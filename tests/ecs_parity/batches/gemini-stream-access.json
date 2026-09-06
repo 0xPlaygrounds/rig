@@ -1,0 +1,56 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream",
+      "original": "rig::gemini$gemini::cassette::agent_run_streamed::streamed_invalid_tool_call_fails_fast_mid_stream"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_agent_run_streamed::streamed_repair_continues_the_same_stream",
+      "original": "rig::gemini$gemini::cassette::agent_run_streamed::streamed_repair_continues_the_same_stream"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_agent_run_streamed::streamed_skip_abandons_the_turn_and_recovers",
+      "original": "rig::gemini$gemini::cassette::agent_run_streamed::streamed_skip_abandons_the_turn_and_recovers"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_agent_run_streamed::streamed_hand_driven_multi_turn_run_completes",
+      "original": "rig::gemini$gemini::cassette::agent_run_streamed::streamed_hand_driven_multi_turn_run_completes"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message",
+      "original": "rig::gemini$gemini::cassette::agent_run_streamed::builtin_streaming_max_turns_error_carries_pending_message"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn",
+      "original": "rig::gemini$gemini::cassette::agent_run_streamed::builtin_streaming_cancellation_history_includes_assistant_turn"
+    }
+  ],
+  "features": [],
+  "fixtures": [
+    "tests/cassettes/gemini/agent_run_streamed/streamed_invalid_tool_call_fails_fast_mid_stream.yaml",
+    "tests/cassettes/gemini/agent_run_streamed/streamed_repair_continues_the_same_stream.yaml",
+    "tests/cassettes/gemini/agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers.yaml",
+    "tests/cassettes/gemini/agent_run_streamed/streamed_hand_driven_multi_turn_run_completes.yaml",
+    "tests/cassettes/gemini/agent_run_streamed/builtin_streaming_max_turns_error_carries_pending_message.yaml",
+    "tests/cassettes/gemini/agent_run_streamed/builtin_streaming_cancellation_history_includes_assistant_turn.yaml"
+  ],
+  "name": "gemini-stream-access",
+  "original_sources": [
+    "tests/providers/gemini/cassette/agent_run_streamed.rs",
+    "tests/providers/gemini/agent_run_support.rs",
+    "tests/providers/gemini/support.rs",
+    "tests/common/support.rs",
+    "tests/common/cassettes.rs",
+    "crates/rig-agent/src/test_utils/model_conformance.rs"
+  ],
+  "package": "rig",
+  "schema": 1,
+  "semantic_skip_markers": [
+    "SKIP",
+    "skipping"
+  ],
+  "targets": [
+    "gemini"
+  ]
+}

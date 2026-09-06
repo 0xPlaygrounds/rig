@@ -1,0 +1,11 @@
+{
+  "assertion_review": "required separately",
+  "batch": "agent-goldens",
+  "cells": 2,
+  "runs": {
+    "native": "26a12d79380ac4993215574f0b5c8dd4ce5887f7f0241450631d624b17960f0a.json",
+    "original": "660d5f32c135426c0ca0be11d3bb54f2ba23643aa30aa115ce2f3e314e55ab7b.json"
+  },
+  "schema": 2,
+  "status": "executed"
+}

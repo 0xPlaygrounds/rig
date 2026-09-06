@@ -1,0 +1,22 @@
+    Blocking waiting for file lock on artifact directory
+   Compiling rig-ecs v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-ecs)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.31s
+     Running unittests src/lib.rs (target/debug/deps/rig_ecs-16dd40df6f5fa37b)
+
+running 13 tests
+test policy::tests::output_resolution_follows_the_goldens ... ok
+test policy::tests::the_output_tool_name_numbers_from_one ... ok
+test policy::tests::an_empty_turn_is_not_history ... ok
+test policy::tests::args_only_invalid_call_retains_completed_identity_and_provenance ... ok
+test policy::tests::message_parts_round_trip_but_never_a_system_message ... ok
+test policy::tests::valid_name_then_invalid_final_retains_completed_call ... ok
+test policy::tests::the_fold_reproduces_the_smoke_request ... ok
+test policy::tests::the_tool_augmentation_is_the_goldens ... ok
+test policy::tests::the_prompted_augmentation_is_the_goldens ... ok
+test policy::tests::the_output_tool_is_the_goldens ... ok
+test policy::tests::the_text_reprompt_is_the_goldens ... ok
+test policy::tests::documents_and_tools_fold_from_the_graph ... ok
+test policy::tests::the_missing_field_reprompt_is_the_goldens ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -1,0 +1,41 @@
+   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.27s
+    Starting 36 tests across 3 binaries (1472 skipped)
+        PASS [   0.867s] rig::anthropic anthropic::cassette::ecs_memory::host_bus_memory_effect_log_is_the_golden_fixture
+        PASS [   0.868s] rig::anthropic anthropic::cassette::ecs_memory::failing_append_effect_log_is_the_golden_fixture
+        PASS [   0.870s] rig::anthropic anthropic::cassette::ecs_memory::history_bypass_effect_log_is_the_golden_fixture
+        PASS [   0.873s] rig::anthropic anthropic::cassette::ecs_memory::clear_at_settled_effect_log_is_the_golden_fixture
+        PASS [   0.878s] rig::anthropic anthropic::cassette::ecs_memory::clear_at_start_effect_log_is_the_golden_fixture
+        PASS [   0.881s] rig::anthropic anthropic::cassette::ecs_memory::two_runs_effect_log_is_the_golden_fixture
+        PASS [   0.888s] rig::anthropic anthropic::cassette::ecs_memory::clear_at_start_two_runs_effect_log_is_the_golden_fixture
+        PASS [   0.890s] rig::anthropic anthropic::cassette::ecs_memory::clear_at_settled_two_runs_effect_log_is_the_golden_fixture
+        PASS [   0.025s] rig::anthropic ecs_agent::tests::clean_stream_returns_final_answer
+        PASS [   0.024s] rig::anthropic ecs_agent::tests::error_after_final_is_not_success
+        PASS [   0.012s] rig::anthropic ecs_goldens::tests::multi_run_comparison_rejects_missing_first_run_identity
+        PASS [   0.010s] rig::anthropic ecs_goldens::tests::native_metadata_normalization_keeps_original_program_fingerprint
+        PASS [   0.027s] rig::anthropic ecs_agent::tests::run_turn_override_does_not_change_agent_default
+        PASS [   0.011s] rig::anthropic ecs_goldens::tests::nominal_id_normalization_does_not_hide_changed_request_cap
+        PASS [   0.038s] rig::anthropic ecs_agent::tests::expected_budget_failure_retains_completed_effects_and_run_identity
+        PASS [   0.017s] rig::anthropic ecs_goldens::tests::nominal_id_normalization_rejects_reordered_effects
+        PASS [   0.040s] rig::anthropic ecs_agent::tests::successful_response_waits_for_actual_memory_append
+        PASS [   0.038s] rig::gemini ecs_agent::tests::clean_stream_returns_final_answer
+        PASS [   0.040s] rig::gemini ecs_agent::tests::error_after_final_is_not_success
+        PASS [   0.039s] rig::gemini ecs_agent::tests::run_turn_override_does_not_change_agent_default
+        PASS [   0.054s] rig::gemini ecs_agent::tests::expected_budget_failure_retains_completed_effects_and_run_identity
+        PASS [   0.047s] rig::gemini ecs_agent::tests::successful_response_waits_for_actual_memory_append
+        PASS [   0.035s] rig::openai ecs_agent::tests::clean_stream_returns_final_answer
+        PASS [   0.029s] rig::openai ecs_agent::tests::error_after_final_is_not_success
+        PASS [   0.043s] rig::openai ecs_agent::tests::expected_budget_failure_retains_completed_effects_and_run_identity
+        PASS [   0.032s] rig::openai ecs_agent::tests::run_turn_override_does_not_change_agent_default
+        PASS [   0.034s] rig::openai ecs_agent::tests::successful_response_waits_for_actual_memory_append
+        PASS [   1.079s] rig::anthropic anthropic::cassette::ecs_memory::failing_append_streamed_effect_log_is_the_golden_fixture
+        PASS [   1.197s] rig::anthropic anthropic::cassette::ecs_memory::two_runs_streamed_effect_log_is_the_golden_fixture
+        PASS [   1.328s] rig::anthropic anthropic::cassette::ecs_memory::serial_two_tools_effect_log_is_the_golden_fixture
+        PASS [   1.662s] rig::anthropic cassette_safety::cassette_files_match_registered_scenarios
+        PASS [   1.372s] rig::gemini cassette_safety::cassette_files_match_registered_scenarios
+        PASS [   1.360s] rig::openai cassette_safety::cassette_files_match_registered_scenarios
+        PASS [   3.742s] rig::openai cassette_safety::cassettes_do_not_contain_obvious_secrets
+        PASS [   3.794s] rig::gemini cassette_safety::cassettes_do_not_contain_obvious_secrets
+        PASS [   6.747s] rig::anthropic cassette_safety::cassettes_do_not_contain_obvious_secrets
+------------
+     Summary [   7.615s] 36 tests run: 36 passed, 1472 skipped

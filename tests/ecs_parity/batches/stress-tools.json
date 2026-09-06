@@ -1,0 +1,55 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_tools::arg_rewrite_sets_one_key_preserving_rest_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_tools::arg_rewrite_sets_one_key_preserving_rest_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_tools::two_arg_rewrites_chain_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_tools::two_arg_rewrites_chain_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_tools::two_result_rewrites_chain_redact_then_wrap_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_tools::two_result_rewrites_chain_redact_then_wrap_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_tools::result_truncation_reaches_model_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_tools::result_truncation_reaches_model_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_tools::terminate_from_tool_result_cancels_after_execution_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_tools::terminate_from_tool_result_cancels_after_execution_blocking"
+    },
+    {
+      "native": "rig::gemini$gemini::cassette::ecs_stress_tools::tool_error_guidance_drives_model_retry_blocking",
+      "original": "rig::gemini$gemini::cassette::hook_stress_tools::tool_error_guidance_drives_model_retry_blocking"
+    }
+  ],
+  "features": [],
+  "fixtures": [
+    "tests/cassettes/gemini/hook_stress_tools/arg_rewrite_sets_one_key_preserving_rest_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress_tools/two_arg_rewrites_chain_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress_tools/two_result_rewrites_chain_redact_then_wrap_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress_tools/result_truncation_reaches_model_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress_tools/terminate_from_tool_result_cancels_after_execution_blocking.yaml",
+    "tests/cassettes/gemini/hook_stress_tools/tool_error_guidance_drives_model_retry_blocking.yaml"
+  ],
+  "name": "stress-tools",
+  "original_sources": [
+    "crates/rig-agent/src/test_utils/model_conformance.rs",
+    "tests/common/support.rs",
+    "tests/providers/gemini/hook_stress_support.rs",
+    "tests/providers/gemini/tools_support.rs",
+    "tests/providers/gemini/cassette/hook_stress_tools.rs"
+  ],
+  "package": "rig",
+  "schema": 1,
+  "semantic_skip_markers": [
+    "SKIP",
+    "skipping"
+  ],
+  "targets": [
+    "gemini"
+  ]
+}

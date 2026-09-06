@@ -1,0 +1,72 @@
+   Compiling ring v0.17.14
+   Compiling rustls-webpki v0.103.13
+   Compiling rustls v0.23.39
+   Compiling tokio-rustls v0.26.4
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling ureq v3.3.0
+   Compiling hyper-rustls v0.27.9
+   Compiling tonic v0.12.3
+   Compiling neo4rs v0.8.0
+   Compiling mongodb v3.7.0
+   Compiling bollard-buildkit-proto v0.7.0
+   Compiling reqwest v0.13.4
+   Compiling httpmock v0.8.3
+   Compiling qdrant-client v1.17.0
+   Compiling bollard-stubs v1.52.1-rc.29.1.3
+   Compiling reqwest-middleware v0.5.2
+   Compiling rig-reqwest v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/crates/rig-reqwest)
+   Compiling opentelemetry-http v0.32.0
+   Compiling rmcp v2.2.0
+   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+   Compiling reqwest-retry v0.9.1
+   Compiling opentelemetry-otlp v0.32.0
+   Compiling bollard v0.20.2
+   Compiling testcontainers v0.27.3
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.88s
+    Starting 44 tests across 1 binary (462 skipped)
+        PASS [   0.037s] rig::openai ecs_agent::tests::clean_stream_returns_final_answer
+        PASS [   0.044s] rig::openai ecs_agent::tests::error_after_final_without_recorded_events_is_not_success
+        PASS [   0.045s] rig::openai ecs_agent::tests::error_after_final_is_not_success
+        PASS [   0.045s] rig::openai ecs_agent::tests::run_turn_override_does_not_change_agent_default
+        PASS [   0.046s] rig::openai ecs_agent::tests::successful_response_waits_for_actual_memory_append
+        PASS [   0.047s] rig::openai ecs_agent::tests::expected_budget_failure_retains_completed_effects_and_run_identity
+        PASS [   1.029s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_agent
+        PASS [   1.038s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_model
+        PASS [   1.053s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_model
+        PASS [   1.062s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_agent
+        PASS [   1.082s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_agent
+        PASS [   1.074s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_model
+        PASS [   1.078s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_model
+        PASS [   1.080s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_agent
+        PASS [   1.084s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_model
+        PASS [   1.086s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_agent
+        PASS [   1.057s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_agent
+        PASS [   1.069s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_model
+        PASS [   2.153s] rig::openai cassette_safety::cassette_files_match_registered_scenarios
+        PASS [   1.105s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_model
+        PASS [   1.125s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_agent
+        PASS [   1.065s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_model
+        PASS [   1.072s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_agent
+        PASS [   1.109s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_model
+        PASS [   1.112s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_agent
+        PASS [   1.134s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_model
+        PASS [   1.142s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_agent
+        PASS [   1.136s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_agent
+        PASS [   1.129s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_model
+        PASS [   1.124s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_agent
+        PASS [   1.135s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_nested_agent
+        PASS [   1.154s] rig::openai openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_model
+        PASS [   1.165s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_zero_agent
+        PASS [   1.183s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_parallel_agent
+        PASS [   1.197s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_nested_agent
+        PASS [   1.187s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_zero_agent
+        PASS [   1.222s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_parallel_agent
+        PASS [   0.814s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_zero_agent
+        PASS [   0.751s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_zero_agent
+        PASS [   2.006s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_nested_agent
+        PASS [   1.127s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_parallel_agent
+        PASS [   1.042s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_parallel_agent
+        PASS [   1.291s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_nested_agent
+        PASS [   4.887s] rig::openai cassette_safety::cassettes_do_not_contain_obvious_secrets
+------------
+     Summary [   4.888s] 44 tests run: 44 passed, 462 skipped

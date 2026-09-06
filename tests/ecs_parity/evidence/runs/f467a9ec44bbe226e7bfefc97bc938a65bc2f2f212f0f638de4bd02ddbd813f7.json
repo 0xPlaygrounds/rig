@@ -1,0 +1,263 @@
+{
+  "batch": "677712ae7e7bea0c4230fa75b06402d0076392b7fe914ecacf62ffe10ddb87b3.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "copilot",
+    "--test",
+    "deepseek",
+    "--test",
+    "llamacpp",
+    "--test",
+    "openai",
+    "--test",
+    "openrouter",
+    "--test",
+    "xai",
+    "-E",
+    "(binary_id(=rig::copilot) & test(=copilot::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data)) | (binary_id(=rig::copilot) & test(=copilot::ecs_extractor_usage::extract_backward_compatibility)) | (binary_id(=rig::copilot) & test(=copilot::ecs_extractor_usage::extract_with_chat_history_with_usage_works)) | (binary_id(=rig::copilot) & test(=copilot::ecs_extractor_usage::extract_with_usage_returns_data_and_usage)) | (binary_id(=rig::copilot) & test(=copilot::ecs_extractor_usage::usage_tracking_works_for_different_schemas)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_extractor_usage::extract_backward_compatibility)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_extractor_usage::extract_with_chat_history_with_usage_works)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_extractor_usage::extract_with_usage_returns_data_and_usage)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_extractor_usage::usage_tracking_works_for_different_schemas)) | (binary_id(=rig::llamacpp) & test(=llamacpp::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data)) | (binary_id(=rig::llamacpp) & test(=llamacpp::cassette::ecs_extractor_usage::extract_backward_compatibility)) | (binary_id(=rig::llamacpp) & test(=llamacpp::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works)) | (binary_id(=rig::llamacpp) & test(=llamacpp::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage)) | (binary_id(=rig::llamacpp) & test(=llamacpp::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_extractor_usage::extract_backward_compatibility)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_extractor_usage::extract_backward_compatibility)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas)) | (binary_id(=rig::xai) & test(=xai::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data)) | (binary_id(=rig::xai) & test(=xai::ecs_extractor_usage::extract_backward_compatibility)) | (binary_id(=rig::xai) & test(=xai::ecs_extractor_usage::extract_with_chat_history_with_usage_works)) | (binary_id(=rig::xai) & test(=xai::ecs_extractor_usage::extract_with_usage_returns_data_and_usage)) | (binary_id(=rig::xai) & test(=xai::ecs_extractor_usage::usage_tracking_works_for_different_schemas))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "11c2b1b8edb89ff0dbb95b5ca479041400873c384fccdd10197d1c73b8190751.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "copilot",
+    "--test",
+    "deepseek",
+    "--test",
+    "llamacpp",
+    "--test",
+    "openai",
+    "--test",
+    "openrouter",
+    "--test",
+    "xai",
+    "-E",
+    "(binary_id(=rig::copilot) & test(=copilot::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data)) | (binary_id(=rig::copilot) & test(=copilot::ecs_extractor_usage::extract_backward_compatibility)) | (binary_id(=rig::copilot) & test(=copilot::ecs_extractor_usage::extract_with_chat_history_with_usage_works)) | (binary_id(=rig::copilot) & test(=copilot::ecs_extractor_usage::extract_with_usage_returns_data_and_usage)) | (binary_id(=rig::copilot) & test(=copilot::ecs_extractor_usage::usage_tracking_works_for_different_schemas)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_extractor_usage::extract_backward_compatibility)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_extractor_usage::extract_with_chat_history_with_usage_works)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_extractor_usage::extract_with_usage_returns_data_and_usage)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_extractor_usage::usage_tracking_works_for_different_schemas)) | (binary_id(=rig::llamacpp) & test(=llamacpp::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data)) | (binary_id(=rig::llamacpp) & test(=llamacpp::cassette::ecs_extractor_usage::extract_backward_compatibility)) | (binary_id(=rig::llamacpp) & test(=llamacpp::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works)) | (binary_id(=rig::llamacpp) & test(=llamacpp::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage)) | (binary_id(=rig::llamacpp) & test(=llamacpp::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_extractor_usage::extract_backward_compatibility)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage)) | (binary_id(=rig::openai) & test(=openai::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_extractor_usage::extract_backward_compatibility)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas)) | (binary_id(=rig::xai) & test(=xai::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data)) | (binary_id(=rig::xai) & test(=xai::ecs_extractor_usage::extract_backward_compatibility)) | (binary_id(=rig::xai) & test(=xai::ecs_extractor_usage::extract_with_chat_history_with_usage_works)) | (binary_id(=rig::xai) & test(=xai::ecs_extractor_usage::extract_with_usage_returns_data_and_usage)) | (binary_id(=rig::xai) & test(=xai::ecs_extractor_usage::usage_tracking_works_for_different_schemas))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "7daff33b73d4fd10a68c1b4955437ecfa0f4d1ef790eee49cc689fd61befff65.log",
+    "listing_stdout": "103b837793bba5bd7a6674f74965d198ff673cc7fe66b03e5e7734658bef998a.json",
+    "stderr": "87b9de7dd43d02a5e8ea51f7314abc6cb2990c7a9f8e82fada62a59346b89056.log",
+    "stdout": "869b15c991f69b674c72c6c351689d44091d4b6cf4a8f132f73fd11393acc260.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::copilot$copilot::ecs_extractor_usage::extract_backward_compatibility",
+      "seconds": 2.03630825,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::copilot$copilot::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+      "seconds": 2.015904083,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::copilot$copilot::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+      "seconds": 2.053784166,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::copilot$copilot::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "seconds": 2.036286167,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::copilot$copilot::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+      "seconds": 2.038534125,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::ecs_extractor_usage::extract_backward_compatibility",
+      "seconds": 1.99826125,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+      "seconds": 2.045004833,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+      "seconds": 2.003173292,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "seconds": 2.039252625,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+      "seconds": 2.05636725,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::llamacpp$llamacpp::cassette::ecs_extractor_usage::extract_backward_compatibility",
+      "seconds": 2.020881167,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::llamacpp$llamacpp::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+      "seconds": 1.893462416,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::llamacpp$llamacpp::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+      "seconds": 1.83784775,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::llamacpp$llamacpp::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "seconds": 2.073291792,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::llamacpp$llamacpp::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+      "seconds": 1.952444208,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_extractor_usage::extract_backward_compatibility",
+      "seconds": 1.974035083,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+      "seconds": 1.958558375,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+      "seconds": 1.963516167,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "seconds": 2.004717209,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openai$openai::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+      "seconds": 1.986365916,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::ecs_extractor_usage::extract_backward_compatibility",
+      "seconds": 1.973188708,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+      "seconds": 1.940820709,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+      "seconds": 1.959022417,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "seconds": 1.981587666,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+      "seconds": 1.083083583,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::ecs_extractor_usage::extract_backward_compatibility",
+      "seconds": 1.034233042,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+      "seconds": 1.044343542,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+      "seconds": 1.024114084,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "seconds": 1.085526125,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+      "seconds": 1.044629459,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "0126baf60c0cd727d13bb88879d7461ff689864694c191c54209d6d77b8dd072.json",
+  "source_index_after": "0126baf60c0cd727d13bb88879d7461ff689864694c191c54209d6d77b8dd072.json",
+  "status": "executed",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

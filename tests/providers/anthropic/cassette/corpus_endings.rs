@@ -24,16 +24,17 @@ use crate::goldens::{
 };
 use crate::support::{Adder, BASIC_PREAMBLE, BASIC_PROMPT, TOOLS_PREAMBLE};
 
-const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
+pub(super) const ADD_PROMPT: &str =
+    "Use the add tool to add 17 and 25, then reply with just the number.";
 /// The delta-stop cells stream long enough that the engine's drop lands
 /// mid-stream on a live wire (a short answer arrives whole before the
 /// first delta is observed): a long essay, a long tool argument, a long
 /// think.
-const ESSAY_PROMPT: &str =
+pub(super) const ESSAY_PROMPT: &str =
     "Write a 600-word essay on the history of the Rust programming language.";
-const NOTE_PREAMBLE: &str =
+pub(super) const NOTE_PREAMBLE: &str =
     "You are a note-taking assistant. Use the write_note tool to save notes.";
-const NOTE_PROMPT: &str = "Save a note titled 'Rust' whose body is a 400-word essay on the history of the Rust programming language, then reply with just the word saved.";
+pub(super) const NOTE_PROMPT: &str = "Save a note titled 'Rust' whose body is a 400-word essay on the history of the Rust programming language, then reply with just the word saved.";
 
 fn cancelled_reason(error: &PromptError) -> &str {
     match error {
@@ -169,7 +170,7 @@ async fn streamed_run(
     agent.take_effect_log().expect("recording")
 }
 
-fn last_outcome_kind(log: &rig::effect_log::EffectLog) -> Option<ErrorKind> {
+pub(super) fn last_outcome_kind(log: &rig::effect_log::EffectLog) -> Option<ErrorKind> {
     log.records
         .last()
         .and_then(|record| record.outcome.as_ref().err().map(|report| report.kind))

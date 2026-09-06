@@ -1,0 +1,10 @@
+   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.32s
+    Starting 4 tests across 1 binary (550 skipped)
+        PASS [   0.014s] rig::anthropic ecs_observation::tests::calls_follow_slot_order_instead_of_spawn_order
+        PASS [   0.144s] rig::anthropic anthropic::cassette::streaming_tools::streaming_tools_batches_multiple_tool_results_in_one_followup_message
+        PASS [   0.341s] rig::anthropic anthropic::cassette::ecs_ordering::streaming_tools_batches_multiple_tool_results_in_one_followup_message
+        PASS [   1.294s] rig::anthropic cassette_safety::cassette_files_match_registered_scenarios
+------------
+     Summary [   1.295s] 4 tests run: 4 passed, 550 skipped
+

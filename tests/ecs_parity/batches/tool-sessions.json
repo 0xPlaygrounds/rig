@@ -1,0 +1,171 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "native": "rig::deepseek$deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior",
+      "original": "rig::deepseek$deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior"
+    },
+    {
+      "native": "rig::deepseek$deepseek::agent_tool_sessions::json_object_response_format_roundtrip",
+      "original": "rig::deepseek$deepseek::agent_tool_sessions::json_object_response_format_roundtrip"
+    },
+    {
+      "native": "rig::deepseek$deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "original": "rig::deepseek$deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation"
+    },
+    {
+      "native": "rig::deepseek$deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "original": "rig::deepseek$deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming"
+    },
+    {
+      "native": "rig::deepseek$deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "original": "rig::deepseek$deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_streaming"
+    },
+    {
+      "native": "rig::deepseek$deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "original": "rig::deepseek$deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments"
+    },
+    {
+      "native": "rig::deepseek$deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
+      "original": "rig::deepseek$deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage"
+    },
+    {
+      "native": "rig::deepseek$deepseek::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "original": "rig::deepseek$deepseek::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming"
+    },
+    {
+      "native": "rig::deepseek$deepseek::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+      "original": "rig::deepseek$deepseek::agent_tool_sessions::sequential_complex_tool_calls_streaming"
+    },
+    {
+      "native": "rig::deepseek$deepseek::agent_tool_sessions::tool_choice_required_specific_and_none",
+      "original": "rig::deepseek$deepseek::agent_tool_sessions::tool_choice_required_specific_and_none"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "original": "rig::openrouter$openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::ecs_tool_sessions::nested_structured_output_schema_roundtrip",
+      "original": "rig::openrouter$openrouter::cassette::agent_tool_sessions::nested_structured_output_schema_roundtrip"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "original": "rig::openrouter$openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "original": "rig::openrouter$openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_streaming"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "original": "rig::openrouter$openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "original": "rig::openrouter$openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming"
+    },
+    {
+      "native": "rig::openrouter$openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+      "original": "rig::openrouter$openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_streaming"
+    },
+    {
+      "native": "rig::xai$xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "original": "rig::xai$xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation"
+    },
+    {
+      "native": "rig::xai$xai::ecs_tool_sessions::multimodal_image_input_mixed_text_ordering",
+      "original": "rig::xai$xai::agent_tool_sessions::multimodal_image_input_mixed_text_ordering"
+    },
+    {
+      "native": "rig::xai$xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip",
+      "original": "rig::xai$xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip"
+    },
+    {
+      "native": "rig::xai$xai::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "original": "rig::xai$xai::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming"
+    },
+    {
+      "native": "rig::xai$xai::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "original": "rig::xai$xai::agent_tool_sessions::parallel_tool_calls_single_turn_streaming"
+    },
+    {
+      "native": "rig::xai$xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "original": "rig::xai$xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments"
+    },
+    {
+      "native": "rig::xai$xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage",
+      "original": "rig::xai$xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage"
+    },
+    {
+      "native": "rig::xai$xai::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "original": "rig::xai$xai::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming"
+    },
+    {
+      "native": "rig::xai$xai::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+      "original": "rig::xai$xai::agent_tool_sessions::sequential_complex_tool_calls_streaming"
+    },
+    {
+      "native": "rig::xai$xai::agent_tool_sessions::tool_choice_required_specific_and_none",
+      "original": "rig::xai$xai::agent_tool_sessions::tool_choice_required_specific_and_none"
+    }
+  ],
+  "features": [],
+  "fixtures": [
+    "tests/data/camponotus_flavomarginatus_ant.jpg",
+    "tests/cassettes/deepseek/agent_tool_sessions/chat_alias_vs_reasoner_alias_behavior.yaml",
+    "tests/cassettes/deepseek/agent_tool_sessions/json_object_response_format_roundtrip.yaml",
+    "tests/cassettes/deepseek/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml",
+    "tests/cassettes/deepseek/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml",
+    "tests/cassettes/deepseek/agent_tool_sessions/parallel_tool_calls_single_turn_streaming.yaml",
+    "tests/cassettes/deepseek/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml",
+    "tests/cassettes/deepseek/agent_tool_sessions/reasoning_enabled_preserves_reasoning_content_deltas_and_usage.yaml",
+    "tests/cassettes/deepseek/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml",
+    "tests/cassettes/deepseek/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml",
+    "tests/cassettes/deepseek/agent_tool_sessions/tool_choice_required_specific_and_none.yaml",
+    "tests/cassettes/openrouter/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml",
+    "tests/cassettes/openrouter/agent_tool_sessions/nested_structured_output_schema_roundtrip.yaml",
+    "tests/cassettes/openrouter/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml",
+    "tests/cassettes/openrouter/agent_tool_sessions/parallel_tool_calls_single_turn_streaming.yaml",
+    "tests/cassettes/openrouter/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml",
+    "tests/cassettes/openrouter/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml",
+    "tests/cassettes/openrouter/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml",
+    "tests/cassettes/xai/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml",
+    "tests/cassettes/xai/agent_tool_sessions/multimodal_image_input_mixed_text_ordering.yaml",
+    "tests/cassettes/xai/agent_tool_sessions/nested_json_schema_response_format_roundtrip.yaml",
+    "tests/cassettes/xai/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml",
+    "tests/cassettes/xai/agent_tool_sessions/parallel_tool_calls_single_turn_streaming.yaml",
+    "tests/cassettes/xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml",
+    "tests/cassettes/xai/agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage.yaml",
+    "tests/cassettes/xai/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml",
+    "tests/cassettes/xai/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml",
+    "tests/cassettes/xai/agent_tool_sessions/tool_choice_required_specific_and_none.yaml"
+  ],
+  "name": "tool-sessions",
+  "original_sources": [
+    "tests/common/support.rs",
+    "tests/common/cassettes.rs",
+    "tests/providers/deepseek/agent_tool_sessions.rs",
+    "tests/providers/deepseek/support.rs",
+    "tests/providers/xai/agent_tool_sessions.rs",
+    "tests/providers/xai/support.rs",
+    "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+    "tests/providers/openrouter/support.rs",
+    "crates/rig-agent/src/agent/typed.rs"
+  ],
+  "package": "rig",
+  "partition": {
+    "agent": 14,
+    "shared_provider": 13
+  },
+  "schema": 1,
+  "semantic_skip_markers": [
+    "SKIP",
+    "skipping"
+  ],
+  "targets": [
+    "deepseek",
+    "xai",
+    "openrouter"
+  ]
+}

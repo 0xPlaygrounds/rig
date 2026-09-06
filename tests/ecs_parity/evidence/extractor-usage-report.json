@@ -1,0 +1,11 @@
+{
+  "assertion_review": "required separately",
+  "batch": "extractor-usage",
+  "cells": 30,
+  "runs": {
+    "native": "f467a9ec44bbe226e7bfefc97bc938a65bc2f2f212f0f638de4bd02ddbd813f7.json",
+    "original": "0e2276eaf029836685047b85e02bd44197946ab4422866c78069c7c987e1a557.json"
+  },
+  "schema": 2,
+  "status": "executed"
+}

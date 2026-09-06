@@ -1,0 +1,64 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.32s
+    Starting 6 tests across 1 binary (366 skipped)
+        PASS [   0.067s] rig::gemini gemini::cassette::hook_stress_tools::terminate_from_tool_result_cancels_after_execution_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::hook_stress_tools::terminate_from_tool_result_cancels_after_execution_blocking ---
+
+running 1 test
+test gemini::cassette::hook_stress_tools::terminate_from_tool_result_cancels_after_execution_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.06s
+
+
+        PASS [   0.069s] rig::gemini gemini::cassette::hook_stress_tools::result_truncation_reaches_model_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::hook_stress_tools::result_truncation_reaches_model_blocking ---
+
+running 1 test
+test gemini::cassette::hook_stress_tools::result_truncation_reaches_model_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.06s
+
+
+        PASS [   0.069s] rig::gemini gemini::cassette::hook_stress_tools::two_result_rewrites_chain_redact_then_wrap_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::hook_stress_tools::two_result_rewrites_chain_redact_then_wrap_blocking ---
+
+running 1 test
+test gemini::cassette::hook_stress_tools::two_result_rewrites_chain_redact_then_wrap_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.06s
+
+
+        PASS [   0.070s] rig::gemini gemini::cassette::hook_stress_tools::two_arg_rewrites_chain_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::hook_stress_tools::two_arg_rewrites_chain_blocking ---
+
+running 1 test
+test gemini::cassette::hook_stress_tools::two_arg_rewrites_chain_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.06s
+
+
+        PASS [   0.071s] rig::gemini gemini::cassette::hook_stress_tools::arg_rewrite_sets_one_key_preserving_rest_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::hook_stress_tools::arg_rewrite_sets_one_key_preserving_rest_blocking ---
+
+running 1 test
+test gemini::cassette::hook_stress_tools::arg_rewrite_sets_one_key_preserving_rest_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.06s
+
+
+        PASS [   0.072s] rig::gemini gemini::cassette::hook_stress_tools::tool_error_guidance_drives_model_retry_blocking
+
+--- OUTPUT:              rig::gemini gemini::cassette::hook_stress_tools::tool_error_guidance_drives_model_retry_blocking ---
+
+running 1 test
+test gemini::cassette::hook_stress_tools::tool_error_guidance_drives_model_retry_blocking ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.06s
+
+
+------------
+     Summary [   0.072s] 6 tests run: 6 passed, 366 skipped

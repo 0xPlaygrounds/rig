@@ -30,7 +30,7 @@ use crate::cache_conformance::{
 
 use super::super::support::with_venice_prompt_caching_cassette;
 
-const CACHE_MODEL: &str = venice::QWEN3_5_9B;
+pub(super) const CACHE_MODEL: &str = venice::QWEN3_5_9B;
 
 /// Venice with the explicit `prompt_cache_key` rig can send.
 const VENICE_KEYED_SUPPORT: CacheSupport = CacheSupport {
@@ -38,7 +38,7 @@ const VENICE_KEYED_SUPPORT: CacheSupport = CacheSupport {
     ..VENICE_CACHE_SUPPORT
 };
 
-const VENICE_CACHE_SUPPORT: CacheSupport = CacheSupport {
+pub(super) const VENICE_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "venice",
     accounting: CacheAccounting::Subset,
     explicit_breakpoints: false,
@@ -48,7 +48,7 @@ const VENICE_CACHE_SUPPORT: CacheSupport = CacheSupport {
     hit_ratio_floor: 0.80,
 };
 
-fn probe() -> CacheProbe {
+pub(super) fn probe() -> CacheProbe {
     CacheProbe::new("venice prompt caching")
 }
 

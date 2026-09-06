@@ -1,0 +1,11 @@
+{
+  "assertion_review": "required separately",
+  "batch": "anthropic-agent-matrices",
+  "cells": 4,
+  "runs": {
+    "native": "2b18e6f9a9ff41fad42f61e98cbf4edd9fd5ab7841c2e06bd9bc642f4cb2a0a5.json",
+    "original": "78f798d321a3cb400c9ea0ff4ead5a6e39f04b28846b666fea5c7e7a756c3ae7.json"
+  },
+  "schema": 2,
+  "status": "executed"
+}

@@ -1,0 +1,11 @@
+{
+  "assertion_review": "required separately",
+  "batch": "provider-completions",
+  "cells": 16,
+  "runs": {
+    "native": "2da227afd32682026616c8f61197d7791ac61239de9035a2202db628fee0a77b.json",
+    "original": "5b02c4e378e1d62b8a391d7aafd25f831b9779326cca51007841a9298750f24e.json"
+  },
+  "schema": 2,
+  "status": "executed"
+}

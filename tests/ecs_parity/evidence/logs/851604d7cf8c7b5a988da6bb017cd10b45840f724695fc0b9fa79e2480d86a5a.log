@@ -1,0 +1,68 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.33s
+    Starting 6 tests across 1 binary (366 skipped)
+        PASS [   0.175s] rig::gemini gemini::cassette::agent_tools_e2e::string_output_sent_verbatim_and_struct_output_serialized_as_json
+
+--- OUTPUT:              rig::gemini gemini::cassette::agent_tools_e2e::string_output_sent_verbatim_and_struct_output_serialized_as_json ---
+
+running 1 test
+[gemini] ScenarioReport { name: "tool_output_serialization", tool_calls: 2, prompt_tokens: 244, generated_tokens: 53, history_messages: 4, duration: 33.359667ms, response: "The workshop motto is \"steady hands, calm waters\" and the service configuration for the \"cassette-lab\" includes a maximum of 3 retries." }
+test gemini::cassette::agent_tools_e2e::string_output_sent_verbatim_and_struct_output_serialized_as_json ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.17s
+
+
+        PASS [   0.174s] rig::gemini gemini::cassette::agent_tools_e2e::zero_arg_tool_call_round_trips
+
+--- OUTPUT:              rig::gemini gemini::cassette::agent_tools_e2e::zero_arg_tool_call_round_trips ---
+
+running 1 test
+[gemini] ScenarioReport { name: "zero_argument_tool", tool_calls: 1, prompt_tokens: 145, generated_tokens: 26, history_messages: 4, duration: 33.038584ms, response: "The ping tool returned the marker: `pong-crimson-7423`." }
+test gemini::cassette::agent_tools_e2e::zero_arg_tool_call_round_trips ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.17s
+
+
+        PASS [   0.175s] rig::gemini gemini::cassette::agent_tools_e2e::tool_concurrency_one_preserves_parallel_call_contract
+
+--- OUTPUT:              rig::gemini gemini::cassette::agent_tools_e2e::tool_concurrency_one_preserves_parallel_call_contract ---
+
+running 1 test
+[gemini] ScenarioReport { name: "parallel_tools_serial_execution", tool_calls: 2, prompt_tokens: 447, generated_tokens: 62, history_messages: 4, duration: 34.336291ms, response: "The sum of 3 and 4 is 7. The difference of 10 and 2 is 8." }
+test gemini::cassette::agent_tools_e2e::tool_concurrency_one_preserves_parallel_call_contract ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.17s
+
+
+        PASS [   0.175s] rig::gemini gemini::cassette::agent_tools_e2e::parallel_tool_calls_land_in_one_tool_result_message
+
+--- OUTPUT:              rig::gemini gemini::cassette::agent_tools_e2e::parallel_tool_calls_land_in_one_tool_result_message ---
+
+running 1 test
+[gemini] ScenarioReport { name: "parallel_tools", tool_calls: 2, prompt_tokens: 447, generated_tokens: 40, history_messages: 4, duration: 34.514958ms, response: "7\n8" }
+test gemini::cassette::agent_tools_e2e::parallel_tool_calls_land_in_one_tool_result_message ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.17s
+
+
+        PASS [   0.178s] rig::gemini gemini::cassette::agent_tools_e2e::nonstreaming_multi_turn_executes_tools_and_reports_usage
+
+--- OUTPUT:              rig::gemini gemini::cassette::agent_tools_e2e::nonstreaming_multi_turn_executes_tools_and_reports_usage ---
+
+running 1 test
+test gemini::cassette::agent_tools_e2e::nonstreaming_multi_turn_executes_tools_and_reports_usage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.17s
+
+
+        PASS [   0.182s] rig::gemini gemini::cassette::agent_tools_e2e::streaming_multi_turn_executes_tools_via_builtin_driver
+
+--- OUTPUT:              rig::gemini gemini::cassette::agent_tools_e2e::streaming_multi_turn_executes_tools_via_builtin_driver ---
+
+running 1 test
+test gemini::cassette::agent_tools_e2e::streaming_multi_turn_executes_tools_via_builtin_driver ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 371 filtered out; finished in 0.17s
+
+
+------------
+     Summary [   0.182s] 6 tests run: 6 passed, 366 skipped

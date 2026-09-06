@@ -1,0 +1,17 @@
+   Compiling rig v0.42.0 (/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.43s
+    Starting 12 tests across 1 binary (494 skipped)
+        PASS [   1.366s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_nested_agent
+        PASS [   1.366s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_nested_agent
+        PASS [   1.367s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_parallel_agent
+        PASS [   1.367s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt41_zero_agent
+        PASS [   1.366s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_zero_agent
+        PASS [   1.367s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::blocking_gpt4o_parallel_agent
+        PASS [   1.559s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_zero_agent
+        PASS [   1.558s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_zero_agent
+        PASS [   1.848s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_parallel_agent
+        PASS [   1.851s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_parallel_agent
+        PASS [   2.134s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt4o_nested_agent
+        PASS [   2.142s] rig::openai openai::cassette::ecs_chat_tool_lifecycle::streaming_gpt41_nested_agent
+------------
+     Summary [   2.144s] 12 tests run: 12 passed, 494 skipped

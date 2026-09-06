@@ -85,7 +85,8 @@ const ANTHROPIC_PROVIDER: &str = "anthropic";
 
 /// Asks for exactly one word so a stop sequence naming that word matches
 /// before the model emits anything else.
-const IMMEDIATE_PROMPT: &str = "Reply with exactly this one word and nothing else: alpha";
+pub(super) const IMMEDIATE_PROMPT: &str =
+    "Reply with exactly this one word and nothing else: alpha";
 const IMMEDIATE_UNICODE_PROMPT: &str = "Reply with exactly this one character and nothing else: 🌊";
 const IMMEDIATE_PHRASE_PROMPT: &str =
     "Reply with exactly this phrase and nothing else: alpha bravo charlie";
@@ -121,7 +122,7 @@ fn weather_tool() -> ToolDefinition {
 /// The premise every empty-stop cell rests on: the recorded blocking body had
 /// **no** content blocks and stopped on a sequence. Read after the cassette
 /// wrapper returns — record mode writes the fixture on the way out.
-fn assert_recorded_empty_stop(scenario: &str) {
+pub(super) fn assert_recorded_empty_stop(scenario: &str) {
     let body = recorded_response_body(scenario);
     assert_eq!(
         body.get("stop_reason").and_then(serde_json::Value::as_str),
@@ -138,7 +139,7 @@ fn assert_recorded_empty_stop(scenario: &str) {
 
 /// Streaming premise: the recorded stream stopped on a sequence and never
 /// emitted a text delta.
-fn assert_recorded_streamed_empty_stop(scenario: &str) {
+pub(super) fn assert_recorded_streamed_empty_stop(scenario: &str) {
     let path = crate::cassettes::cassette_path("anthropic", scenario);
     let contents = std::fs::read_to_string(&path)
         .unwrap_or_else(|err| panic!("cassette {} should be readable: {err}", path.display()));

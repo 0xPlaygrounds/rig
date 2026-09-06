@@ -1,0 +1,31 @@
+{
+  "baseline_revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "cells": [
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_concurrency::serial_serving_reproduces_the_recorded_request_order",
+      "original": "rig::anthropic$anthropic::cassette::streaming_tools::serial_serving_reproduces_the_recorded_request_order"
+    },
+    {
+      "native": "rig::anthropic$anthropic::cassette::ecs_concurrency::streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_settles",
+      "original": "rig::anthropic$anthropic::cassette::streaming_tools::streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_settles"
+    }
+  ],
+  "features": [],
+  "fixtures": [
+    "tests/cassettes/anthropic/streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order.yaml"
+  ],
+  "name": "concurrency",
+  "original_sources": [
+    "tests/providers/anthropic/cassette/streaming_tools.rs",
+    "tests/common/support.rs"
+  ],
+  "package": "rig",
+  "schema": 1,
+  "semantic_skip_markers": [
+    "SKIP",
+    "skipping"
+  ],
+  "targets": [
+    "anthropic"
+  ]
+}

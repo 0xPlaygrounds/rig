@@ -1,0 +1,135 @@
+{
+  "batch": "0601491579564d9ddbe2cd9ae4c10681efa049303a6a039a4ccf65fcb26cae87.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "gemini",
+    "-E",
+    "(binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_context::add_hook_appends_across_builder_and_request_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_context::agent_name_absent_when_unconfigured_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_context::block_id_correlates_tool_call_and_result_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_context::completion_call_patches_accumulate_from_two_hooks_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_context::hook_context_identity_stable_and_turn_advances_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_context::scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_context::two_hooks_narrow_active_tools_to_intersection_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_context::two_observe_only_hooks_both_observe_the_run_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_patch::history_replacement_injects_prior_fact_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_patch::multi_field_patch_applies_preamble_and_context_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_patch::preamble_override_forces_codeword_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_patch::tool_choice_required_forces_a_tool_call_blocking))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "2413bf42fdca5904f0bc048b737f0b74879af9aa6d50a1a923e60b98379ed494.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "gemini",
+    "-E",
+    "(binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_context::add_hook_appends_across_builder_and_request_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_context::agent_name_absent_when_unconfigured_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_context::block_id_correlates_tool_call_and_result_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_context::completion_call_patches_accumulate_from_two_hooks_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_context::hook_context_identity_stable_and_turn_advances_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_context::scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_context::two_hooks_narrow_active_tools_to_intersection_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_context::two_observe_only_hooks_both_observe_the_run_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_patch::history_replacement_injects_prior_fact_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_patch::multi_field_patch_applies_preamble_and_context_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_patch::preamble_override_forces_codeword_blocking)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_stress_patch::tool_choice_required_forces_a_tool_call_blocking))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "4eed350b57a737defc2054833e632e5a5892fdfd353c170cd0c292ada0c9e77f.log",
+    "listing_stdout": "fc868294ababbe3927f5e7a8f3e2d8dedfef76d48c604d20ad8aac7813145844.json",
+    "stderr": "3158eecc4c292a39b2fd9a074de1decd1bde70f7550ce60c29ec435fb62ec4e5.log",
+    "stdout": "df8bfd2300f4d3230f524dd34b0837d137dee8a5b3b82ea1cb3b638462e4020e.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_patch::preamble_override_forces_codeword_blocking",
+      "seconds": 1.541233041,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_patch::tool_choice_required_forces_a_tool_call_blocking",
+      "seconds": 1.540804083,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_patch::history_replacement_injects_prior_fact_blocking",
+      "seconds": 1.536204125,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_patch::multi_field_patch_applies_preamble_and_context_blocking",
+      "seconds": 1.5293247920000002,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_context::hook_context_identity_stable_and_turn_advances_blocking",
+      "seconds": 1.552438125,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_context::agent_name_absent_when_unconfigured_blocking",
+      "seconds": 1.475962083,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_context::scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking",
+      "seconds": 1.554574917,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_context::block_id_correlates_tool_call_and_result_blocking",
+      "seconds": 1.529648541,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_context::two_observe_only_hooks_both_observe_the_run_blocking",
+      "seconds": 1.548649375,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_context::add_hook_appends_across_builder_and_request_blocking",
+      "seconds": 1.537327875,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_context::completion_call_patches_accumulate_from_two_hooks_blocking",
+      "seconds": 1.541890375,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_stress_context::two_hooks_narrow_active_tools_to_intersection_blocking",
+      "seconds": 1.505634583,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "15c0f24fae9f60c2e40894a13609b9919c378edf8ece4119ee0625c8050d2b91.json",
+  "source_index_after": "15c0f24fae9f60c2e40894a13609b9919c378edf8ece4119ee0625c8050d2b91.json",
+  "status": "executed",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

@@ -1,0 +1,233 @@
+{
+  "batch": "a36ae16d1656efd64c9ef35829dc7be9d4014b6a27ae8e6189a9d034ffd3f7bd.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "deepseek",
+    "--test",
+    "xai",
+    "--test",
+    "openrouter",
+    "-E",
+    "(binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::json_object_response_format_roundtrip)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::tool_choice_required_specific_and_none)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_tool_sessions::sequential_complex_tool_calls_streaming)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_tool_sessions::nested_structured_output_schema_roundtrip)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_streaming)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::tool_choice_required_specific_and_none)) | (binary_id(=rig::xai) & test(=xai::ecs_tool_sessions::multimodal_image_input_mixed_text_ordering)) | (binary_id(=rig::xai) & test(=xai::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming)) | (binary_id(=rig::xai) & test(=xai::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming)) | (binary_id(=rig::xai) & test(=xai::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming)) | (binary_id(=rig::xai) & test(=xai::ecs_tool_sessions::sequential_complex_tool_calls_streaming))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "9d22e220f222f3cb313202fbbb10d5886caa6b8bc73b0fee9af5d5ff44d1d9d4.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "deepseek",
+    "--test",
+    "xai",
+    "--test",
+    "openrouter",
+    "-E",
+    "(binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::json_object_response_format_roundtrip)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage)) | (binary_id(=rig::deepseek) & test(=deepseek::agent_tool_sessions::tool_choice_required_specific_and_none)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming)) | (binary_id(=rig::deepseek) & test(=deepseek::ecs_tool_sessions::sequential_complex_tool_calls_streaming)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_tool_sessions::nested_structured_output_schema_roundtrip)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming)) | (binary_id(=rig::openrouter) & test(=openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_streaming)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage)) | (binary_id(=rig::xai) & test(=xai::agent_tool_sessions::tool_choice_required_specific_and_none)) | (binary_id(=rig::xai) & test(=xai::ecs_tool_sessions::multimodal_image_input_mixed_text_ordering)) | (binary_id(=rig::xai) & test(=xai::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming)) | (binary_id(=rig::xai) & test(=xai::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming)) | (binary_id(=rig::xai) & test(=xai::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming)) | (binary_id(=rig::xai) & test(=xai::ecs_tool_sessions::sequential_complex_tool_calls_streaming))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "f6e016da2b7dcee7762f09bd7942072c6d7dfab223c546356d44c776e51f7ba3.log",
+    "listing_stdout": "e4c3fc109fe784821a027d5d590b65f7756e77671ab64e610ba094b2027c8d89.json",
+    "stderr": "a48aa9b1fa0895e46fe95fed2846afcc9bd6667894e9040c6ccd98431c3e7c16.log",
+    "stdout": "2b7dcb36665452926931df95ffecc948c08dadf9d3a110afec754fa8608e489b.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior",
+      "seconds": 2.951110791,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent_tool_sessions::json_object_response_format_roundtrip",
+      "seconds": 2.983544166,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "seconds": 2.988889542,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "seconds": 3.020174042,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "seconds": 3.968877541,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "seconds": 3.136125292,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
+      "seconds": 3.050037333,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "seconds": 3.051584333,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+      "seconds": 9.619576166,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::deepseek$deepseek::agent_tool_sessions::tool_choice_required_specific_and_none",
+      "seconds": 2.931124,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "seconds": 2.984587166,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::ecs_tool_sessions::nested_structured_output_schema_roundtrip",
+      "seconds": 2.49637525,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "seconds": 2.521904584,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "seconds": 3.866186792,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "seconds": 3.092091792,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "seconds": 2.5704255419999997,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::openrouter$openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+      "seconds": 7.56120525,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "seconds": 2.595381209,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::ecs_tool_sessions::multimodal_image_input_mixed_text_ordering",
+      "seconds": 2.830529125,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip",
+      "seconds": 2.591238541,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "seconds": 1.193502959,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "seconds": 4.521962792,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "seconds": 2.742556041,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage",
+      "seconds": 2.609216542,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "seconds": 1.145000708,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+      "seconds": 7.62534875,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::xai$xai::agent_tool_sessions::tool_choice_required_specific_and_none",
+      "seconds": 2.591447,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "ed78b13ebf43b0bb508b6bae6d03dcfe0a1972de7e72e50778f500ee2cc990f3.json",
+  "source_index_after": "ed78b13ebf43b0bb508b6bae6d03dcfe0a1972de7e72e50778f500ee2cc990f3.json",
+  "status": "executed",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

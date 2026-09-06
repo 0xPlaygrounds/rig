@@ -1,0 +1,30 @@
+{
+  "caught": true,
+  "command": [
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--test",
+    "gemini",
+    "-E",
+    "test(::ecs_stress_context::scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking)",
+    "--no-fail-fast",
+    "--retries",
+    "0"
+  ],
+  "exit_code": 100,
+  "expected_tests": 1,
+  "limits": "One shared-state mutation, not all event timing/correlation/patch composition faults.",
+  "log": "tests/ecs_parity/evidence/logs/e149a892cd33aad933c97d3e26246ba9041650cb69adba5b1421931456675ce2.log",
+  "log_sha256": "e149a892cd33aad933c97d3e26246ba9041650cb69adba5b1421931456675ce2",
+  "mode": "replay",
+  "mutated_sha256": "d8b5c414913fe56291daac56ef4e5685c3a9e1bc324c9e2996265be59811b403",
+  "mutation": "reader samples zero rather than actual run-owned Tally",
+  "rejected_by": "original cross-turn growth assertion",
+  "schema": 1,
+  "source": "tests/providers/gemini/cassette/ecs_stress/runtime.rs",
+  "source_before_sha256": "36e31e3b7e3fafcbf20f7ea3abc08c475c8489285376320e403a925c0eb4bef2",
+  "source_restored_sha256": "36e31e3b7e3fafcbf20f7ea3abc08c475c8489285376320e403a925c0eb4bef2"
+}

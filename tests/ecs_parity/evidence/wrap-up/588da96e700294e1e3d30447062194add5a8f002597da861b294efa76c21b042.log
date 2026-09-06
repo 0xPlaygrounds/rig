@@ -1,0 +1,22 @@
+Running /Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target/debug/deps/ecs_consumer-a285d52b9c6229c4 --exact consumer::runner::tests::every_registered_case_verifies_its_committed_producer_and_json_replay --nocapture
+
+running 1 test
+test consumer::runner::tests::every_registered_case_verifies_its_committed_producer_and_json_replay has been running for over 60 seconds
+test consumer::runner::tests::every_registered_case_verifies_its_committed_producer_and_json_replay ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 112 filtered out; finished in 82.77s
+
+Running /Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target/debug/deps/ecs_consumer-a285d52b9c6229c4 --exact consumer::runner::tests::offline_case_budgets_do_not_exhaust_the_shared_live_allowance --nocapture
+
+running 1 test
+test consumer::runner::tests::offline_case_budgets_do_not_exhaust_the_shared_live_allowance ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 112 filtered out; finished in 20.65s
+
+Running /Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target/debug/deps/ecs_consumer-a285d52b9c6229c4 --exact consumer_fixtures_match_the_executable_registry_and_producer_hashes --nocapture
+
+running 1 test
+test consumer_fixtures_match_the_executable_registry_and_producer_hashes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 112 filtered out; finished in 11.10s
+

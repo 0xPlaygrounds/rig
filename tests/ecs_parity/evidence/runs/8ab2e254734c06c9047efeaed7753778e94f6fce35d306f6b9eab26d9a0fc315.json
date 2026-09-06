@@ -1,0 +1,99 @@
+{
+  "batch": "0440a7d9a41c9b2826f4a5cb51de95e4644af917f5d200d60627581180bcae6d.json",
+  "command": [
+    "cargo",
+    "nextest",
+    "run",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "gemini",
+    "-E",
+    "(binary_id(=rig::gemini) & test(=gemini::cassette::ecs_tools_e2e::nonstreaming_multi_turn_executes_tools_and_reports_usage)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_tools_e2e::parallel_tool_calls_land_in_one_tool_result_message)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_tools_e2e::streaming_multi_turn_executes_tools_via_builtin_driver)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_tools_e2e::string_output_sent_verbatim_and_struct_output_serialized_as_json)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_tools_e2e::tool_concurrency_one_preserves_parallel_call_contract)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_tools_e2e::zero_arg_tool_call_round_trips))",
+    "--retries",
+    "0",
+    "--no-fail-fast",
+    "--message-format",
+    "libtest-json-plus",
+    "--success-output",
+    "immediate"
+  ],
+  "environment": {
+    "RIG_PROVIDER_TEST_MODE": "replay",
+    "credentials": "common credential suffixes removed; not an OS network barrier"
+  },
+  "exit_code": 0,
+  "listing": "00424371c887eceeb5650e3845516760a38b02fb29c07b8019d7fb005e721161.json",
+  "listing_command": [
+    "cargo",
+    "nextest",
+    "list",
+    "--locked",
+    "-p",
+    "rig",
+    "--target-dir",
+    "/Users/kisaczka/Desktop/code/many_rigs/rig1/rig-ecs-functional-superset/target",
+    "--test",
+    "gemini",
+    "-E",
+    "(binary_id(=rig::gemini) & test(=gemini::cassette::ecs_tools_e2e::nonstreaming_multi_turn_executes_tools_and_reports_usage)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_tools_e2e::parallel_tool_calls_land_in_one_tool_result_message)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_tools_e2e::streaming_multi_turn_executes_tools_via_builtin_driver)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_tools_e2e::string_output_sent_verbatim_and_struct_output_serialized_as_json)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_tools_e2e::tool_concurrency_one_preserves_parallel_call_contract)) | (binary_id(=rig::gemini) & test(=gemini::cassette::ecs_tools_e2e::zero_arg_tool_call_round_trips))",
+    "--message-format",
+    "json"
+  ],
+  "listing_exit_code": 0,
+  "logs": {
+    "listing_stderr": "16445d9acc7695c8a5fe4c93ff21fdd6b66206095d1354dd25c8ea4be2b5a061.log",
+    "listing_stdout": "354f93b65a69eac258913aa3e3efb297e83d296ff7f0933fa4032e6a3bf0eb73.json",
+    "stderr": "3e4d91f4b373401bfb4322e5d328b87526102da4d959cb7aadd90315727479ae.log",
+    "stdout": "dcd6cc121f4216c326fe3d3416c69127cd13e3129928824ea33a6583b2827fb1.jsonl"
+  },
+  "nextest": "cargo-nextest-nextest 0.9.67\n",
+  "results": [
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_tools_e2e::nonstreaming_multi_turn_executes_tools_and_reports_usage",
+      "seconds": 1.541343292,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_tools_e2e::parallel_tool_calls_land_in_one_tool_result_message",
+      "seconds": 1.535698833,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_tools_e2e::streaming_multi_turn_executes_tools_via_builtin_driver",
+      "seconds": 1.62931775,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_tools_e2e::string_output_sent_verbatim_and_struct_output_serialized_as_json",
+      "seconds": 1.5342200419999998,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_tools_e2e::tool_concurrency_one_preserves_parallel_call_contract",
+      "seconds": 1.530250542,
+      "status": "ok"
+    },
+    {
+      "expected": "ok",
+      "id": "rig::gemini$gemini::cassette::ecs_tools_e2e::zero_arg_tool_call_round_trips",
+      "seconds": 1.532105417,
+      "status": "ok"
+    }
+  ],
+  "revision": "805fb18e6135c9050ee7ca4295d96ddf08cb223f",
+  "schema": 2,
+  "source_index": "1cad6ca1536c408553ca131c146dd60b0bca9f92c41a33a94ee1648b67a411b5.json",
+  "source_index_after": "1cad6ca1536c408553ca131c146dd60b0bca9f92c41a33a94ee1648b67a411b5.json",
+  "status": "executed",
+  "surface": "native",
+  "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2\n"
+}

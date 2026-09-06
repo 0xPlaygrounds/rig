@@ -191,6 +191,7 @@ fn the_fold_reproduces_the_smoke_request() {
         output: OutputKind::Native,
         schema: None,
         output_tool: None,
+        output_tool_config: None,
     };
     let folded = serde_json::to_value(fold_request(&graph)).expect("serde");
     assert_eq!(folded, request("anthropic_completion_smoke", 0));
@@ -220,6 +221,7 @@ fn documents_and_tools_fold_from_the_graph() {
         output: OutputKind::Native,
         schema: None,
         output_tool: None,
+        output_tool_config: None,
     };
     assert_eq!(
         serde_json::to_value(fold_request(&graph)).expect("serde"),
@@ -258,6 +260,7 @@ fn documents_and_tools_fold_from_the_graph() {
         output: OutputKind::Native,
         schema: None,
         output_tool: None,
+        output_tool_config: None,
     };
     assert_eq!(
         serde_json::to_value(fold_request(&graph)).expect("serde"),
