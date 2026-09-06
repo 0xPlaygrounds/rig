@@ -650,22 +650,35 @@ pub(crate) fn stream_generate(
         loaded.profile.definition.protocol,
     )?;
     response.text = parsed.visible_text;
-    for item in parsed.items {
+    emit_parsed_items(parsed.items, emit)?;
+    Ok(response)
+}
+
+fn emit_parsed_items(
+    items: Vec<AssistantContent>,
+    mut emit: impl FnMut(GenerationEvent) -> Result<(), CandleError>,
+) -> Result<(), CandleError> {
+    for item in items {
         match item {
             AssistantContent::Text(text) => emit(GenerationEvent::Text(text.text))?,
             AssistantContent::ToolCall(call) => {
-                // The envelope-parsed call always carries a wire-issued id
-                // (`from_wire` adopted it), so key the stream by it; the
-                // same id is the durable tool id. `call_id` stays unset:
-                // local generation is a single-identifier wire.
-                let end = ToolCallEnd::whole(call.function.name, call.function.arguments)
-                    .with_tool_id(call.id.as_str())
+                let id = if let Some(provider) = &call.provider {
+                    BlockId::wire(provider.call_id.clone())
+                } else {
+                    call.id.generated().cloned().ok_or_else(|| {
+                        CandleError::Inference(
+                            "id-less parsed call has no normalized block identity".into(),
+                        )
+                    })?
+                };
+                let mut end = ToolCallEnd::whole(call.function.name, call.function.arguments)
+                    .with_durable_id(call.id)
                     .with_signature(call.signature)
                     .with_additional_params(call.additional_params);
-                emit(GenerationEvent::ToolCall {
-                    id: BlockId::wire(call.id),
-                    end,
-                })?;
+                if let Some(provider) = call.provider {
+                    end = end.with_tool_id(provider.call_id);
+                }
+                emit(GenerationEvent::ToolCall { id, end })?;
             }
             AssistantContent::Reasoning(reasoning) => {
                 // Same constant-id full-block shape as the gemini adapter's
@@ -692,5 +705,9 @@ pub(crate) fn stream_generate(
             }
         }
     }
-    Ok(response)
+    Ok(())
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests;

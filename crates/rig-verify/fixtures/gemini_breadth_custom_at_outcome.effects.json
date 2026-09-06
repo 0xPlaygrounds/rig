@@ -120,7 +120,10 @@
           "choice": [
             {
               "type": "toolcall",
-              "id": "tool-0",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
               "function": {
                 "name": "add",
                 "arguments": {
@@ -266,7 +269,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "tool-0",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "function": {
                     "name": "add",
                     "arguments": {
@@ -284,7 +290,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "tool-0",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "name": "add",
                   "content": [
                     {

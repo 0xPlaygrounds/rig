@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     effect::{
-        EffectOutcome, Held, Issued, PendingEffect, Reserved, Scope, Seq, Streamed, ToolInputs,
-        ToolOutputs,
+        EffectOutcome, Held, IdCounter, Issued, PendingEffect, Reserved, Scope, Seq, Streamed,
+        ToolInputs, ToolOutputs,
     },
     handlers::Bound,
 };
@@ -83,6 +83,11 @@ pub struct Scene {
     pub handlers: Vec<HandlerDescriptor>,
     /// The effect entities, in `Seq` order; parents before children.
     pub effects: Vec<SceneEffect>,
+    /// Additional allocator history not derivable from surviving effect IDs.
+    /// Absent when the saved IDs already determine the next unused ID. MAX
+    /// preserves exhaustion; it is never allocated to a fresh effect.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_id: Option<u64>,
 }
 
 impl Scene {
@@ -151,7 +156,20 @@ impl Scene {
                     .map(|outputs| outputs.0.clone()),
             });
         }
-        Self { handlers, effects }
+        let derived = effects
+            .iter()
+            .filter_map(|effect| effect.id)
+            .map(|id| id.as_u64().saturating_add(1))
+            .max()
+            .unwrap_or(0);
+        let counter = world
+            .get_resource::<IdCounter>()
+            .map_or(0, |counter| counter.0);
+        Self {
+            handlers,
+            effects,
+            next_id: (counter > derived).then_some(counter),
+        }
     }
 
     /// Spawn the scene's effects into `world`, in saved order: an answered
@@ -178,6 +196,10 @@ impl Scene {
         sibling: impl Fn(usize) -> Option<Entity>,
     ) -> Result<Vec<Entity>, ErrorReport> {
         self.validate_resume()?;
+        let next_id = self.id_floor()?;
+        world.init_resource::<IdCounter>();
+        let mut ids = world.resource_mut::<IdCounter>();
+        ids.0 = ids.0.max(next_id);
         let mut spawned: Vec<Entity> = Vec::with_capacity(self.effects.len());
         for effect in &self.effects {
             let mut entity = world.spawn(PendingEffect {
@@ -234,11 +256,33 @@ impl Scene {
         Ok(spawned)
     }
 
-    /// Validate the stream cut before spawning anything. A stream that has
+    /// Validate identities, parent ancestry, the allocator and stream cut before spawning anything. A stream that has
     /// delivered a prefix but has not closed needs a provider cursor or host
     /// reconciliation, neither of which a generic scene can supply. Save
     /// before stream progress or after completion for automatic restoration.
     pub fn validate_resume(&self) -> Result<(), ErrorReport> {
+        self.id_floor()?;
+        let invalid = |message| ErrorReport::new(rig_core::error::ErrorKind::Request, message);
+        let mut ids = std::collections::HashSet::new();
+        for effect in &self.effects {
+            if let Some(id) = effect.id
+                && !ids.insert(id)
+            {
+                return Err(invalid(format!(
+                    "scene contains duplicate effect ID {id:?}"
+                )));
+            }
+            if effect
+                .parent
+                .is_some_and(|parent| parent >= self.effects.len())
+            {
+                return Err(invalid("scene parent index is out of range".into()));
+            }
+            if effect.parent.is_some() && effect.parent_ref.is_some() {
+                return Err(invalid("scene effect has two parent references".into()));
+            }
+        }
+        validate_parent_indices(self.effects.iter().map(|effect| effect.parent))?;
         for effect in &self.effects {
             if effect.outcome.is_none()
                 && effect.streamed.as_ref().is_some_and(|streamed| {
@@ -259,6 +303,31 @@ impl Scene {
         Ok(())
     }
 
+    fn id_floor(&self) -> Result<u64, ErrorReport> {
+        let derived = self
+            .effects
+            .iter()
+            .filter_map(|effect| effect.id)
+            .try_fold(0, |floor: u64, id| {
+                id.as_u64()
+                    .checked_add(1)
+                    .map(|next| floor.max(next))
+                    .ok_or_else(|| {
+                        ErrorReport::new(
+                            rig_core::error::ErrorKind::Request,
+                            "scene contains an effect ID beyond the allocator range",
+                        )
+                    })
+            })?;
+        if self.next_id.is_some_and(|next| next < derived) {
+            return Err(ErrorReport::new(
+                rig_core::error::ErrorKind::Request,
+                "scene next_id contradicts its saved effect IDs",
+            ));
+        }
+        Ok(self.next_id.unwrap_or(derived))
+    }
+
     /// The first key the scene needs that `handlers` does not describe, or
     /// describes for another family.
     pub fn first_gap(&self, handlers: &[HandlerDescriptor]) -> Option<&HandlerDescriptor> {
@@ -268,4 +337,48 @@ impl Scene {
             })
         })
     }
+}
+
+/// Validate a scene's single-parent forest without recursion or world mutation.
+///
+/// Each iterator position names one entity; its value is the parent's position
+/// or `None` for a root. Missing parents and ancestry cycles are rejected in
+/// linear time. Consumers composing their own graph with an effect scene can
+/// use this preflight before spawning either graph.
+pub fn validate_parent_indices(
+    parents: impl IntoIterator<Item = Option<usize>>,
+) -> Result<(), ErrorReport> {
+    let parents: Vec<_> = parents.into_iter().collect();
+    let invalid = |message| ErrorReport::new(rig_core::error::ErrorKind::Request, message);
+    let mut visited = vec![0_u8; parents.len()];
+    for start in 0..parents.len() {
+        let mut cursor = Some(start);
+        while let Some(index) = cursor {
+            let state = visited
+                .get_mut(index)
+                .ok_or_else(|| invalid("scene parent index is out of range"))?;
+            match *state {
+                1 => return Err(invalid("scene ancestry contains a cycle")),
+                2 => break,
+                _ => *state = 1,
+            }
+            cursor = *parents
+                .get(index)
+                .ok_or_else(|| invalid("scene parent index is out of range"))?;
+        }
+        let mut cursor = Some(start);
+        while let Some(index) = cursor {
+            let state = visited
+                .get_mut(index)
+                .ok_or_else(|| invalid("scene parent index is out of range"))?;
+            if *state != 1 {
+                break;
+            }
+            *state = 2;
+            cursor = *parents
+                .get(index)
+                .ok_or_else(|| invalid("scene parent index is out of range"))?;
+        }
+    }
+    Ok(())
 }

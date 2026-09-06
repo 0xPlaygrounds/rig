@@ -145,6 +145,12 @@ jobs:
       - name: Run cargo check wasm target
         run: cargo check --package ${{ matrix.package }} --target wasm32-unknown-unknown
 
+      - name: Check ECS without replay
+        if: matrix.package == 'rig-ecs'
+        run: |
+          cargo check -p rig-ecs --no-default-features --lib
+          cargo check -p rig-ecs --no-default-features --lib --target wasm32-unknown-unknown
+
       # rig-core's features and rig-ecs's `reflect` and `assets` are off by
       # default; the wasm build of each is proven here, not only natively.
       - name: Run all-features wasm check
@@ -349,6 +355,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Prepare repository-repair process isolation
+        run: bash .github/scripts/setup-consumer-sandbox.sh
+
       # The raw lancedb dependency used by the facade's integration tests is
       # feature-gated with those tests. Neither graph below enables it, so a
       # cold PR run avoids the Lance/Arrow/DataFusion graph and needs no
@@ -358,6 +367,8 @@ jobs:
         with:
           sccache: "true"
           nextest: "true"
+          # Repository-repair tests format proposed patches inside isolation.
+          components: rustfmt
 
       # `nextest` below runs with `--features bedrock`, which does not compile
       # the pure default-feature test graph. Check the root integration tests

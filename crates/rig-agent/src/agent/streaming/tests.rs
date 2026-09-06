@@ -212,7 +212,7 @@ fn tool_result_output_preserves_multimodal_tool_output() {
         other => panic!("expected tool result content, got {other:?}"),
     };
 
-    assert_eq!(tool_result.call, "tool_call_1");
+    assert_eq!(tool_result.call.explicit(), Some("tool_call_1"));
     assert_eq!(
         tool_result
             .provider
@@ -272,7 +272,7 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), St
             if matches!(
                 content.first(),
                 Some(AssistantContent::ToolCall(tool_call))
-                    if tool_call.id == "call_1"
+                    if tool_call.id.explicit() == Some("call_1")
                         && tool_call.provider.as_ref().is_some_and(|provider| {
                             provider.call_id == "call_1"
                                 && provider.item_id.as_deref() == Some("tool_call_1")
@@ -290,7 +290,7 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), St
             if matches!(
                 content.first(),
                 Some(UserContent::ToolResult(tool_result))
-                    if tool_result.call == "call_1"
+                    if tool_result.call.explicit() == Some("call_1")
                         && tool_result.provider.as_ref().is_some_and(|provider| {
                             provider.call_id == "call_1"
                                 && provider.item_id.as_deref() == Some("tool_call_1")
@@ -327,34 +327,31 @@ fn assert_retry_transcript_ids_pair(assistant: &Message, results: &Message) {
     let Message::Assistant { content, .. } = assistant else {
         panic!("expected the assistant tool-call turn, got {assistant:?}");
     };
-    let call_ids: Vec<&str> = content
+    let call_ids: Vec<&rig_core::message::ToolCallId> = content
         .iter()
         .filter_map(|item| match item {
-            AssistantContent::ToolCall(tool_call) => Some(tool_call.id.as_str()),
+            AssistantContent::ToolCall(tool_call) => Some(&tool_call.id),
             _ => None,
         })
         .collect();
     let Message::User { content } = results else {
         panic!("expected the user retry-result turn, got {results:?}");
     };
-    let result_ids: Vec<&str> = content
+    let result_ids: Vec<&rig_core::message::ToolCallId> = content
         .iter()
         .filter_map(|item| match item {
-            UserContent::ToolResult(result) => Some(result.call.as_str()),
+            UserContent::ToolResult(result) => Some(&result.call),
             _ => None,
         })
         .collect();
-    assert!(
-        call_ids.iter().all(|id| !id.is_empty()),
-        "every tool call carries a non-empty id: {call_ids:?}"
-    );
-    let unique_calls: BTreeSet<&str> = call_ids.iter().copied().collect();
+    let unique_calls: BTreeSet<&rig_core::message::ToolCallId> = call_ids.iter().copied().collect();
     assert_eq!(
         unique_calls.len(),
         call_ids.len(),
         "tool-call ids must be unique: {call_ids:?}"
     );
-    let unique_results: BTreeSet<&str> = result_ids.iter().copied().collect();
+    let unique_results: BTreeSet<&rig_core::message::ToolCallId> =
+        result_ids.iter().copied().collect();
     assert_eq!(
         unique_results.len(),
         result_ids.len(),
@@ -2370,7 +2367,10 @@ async fn invalid_tool_call_context_uses_completed_streaming_tool_call_provider_i
     // The call COMPLETED with provider identifiers: the correlator
     // ("provider_call_1") drives rig's durable id, which is what the
     // context reports; the wire's item id travels on `provider`.
-    assert_eq!(context.tool_call_id.as_deref(), Some("provider_call_1"));
+    assert_eq!(
+        context.tool_call_id.as_ref().and_then(|id| id.explicit()),
+        Some("provider_call_1")
+    );
     assert!(context.block_id.is_some());
     assert!(context.is_streaming);
 }
@@ -2432,7 +2432,7 @@ async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
         skipped_tool_result.expect("skip recovery should emit a synthetic tool result");
     // The correlator ("call_1") is the durable id; the wire's item id
     // ("tool_call_1") travels on `provider`.
-    assert_eq!(skipped_tool_result.call, "call_1");
+    assert_eq!(skipped_tool_result.call.explicit(), Some("call_1"));
     assert!(
         skipped_tool_result
             .provider
@@ -2457,7 +2457,7 @@ async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
             if content.iter().any(|item| matches!(
                 item,
                 UserContent::ToolResult(result)
-                    if result.call == "call_1"
+                    if result.call.explicit() == Some("call_1")
                         && result.content.iter().any(|content| matches!(
                             content,
                             ToolResultContent::Text(text)
@@ -2552,13 +2552,13 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id == "call_1"
+                        if tool_call.id.explicit() == Some("call_1")
                             && tool_call.function.name == "add"
                 ))
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id == "call_2"
+                        if tool_call.id.explicit() == Some("call_2")
                             && tool_call.function.name == "default_api"
                 ))
     ));
@@ -2569,7 +2569,7 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call == "call_1"
+                        if result.call.explicit() == Some("call_1")
                             && result.content.iter().any(|content| matches!(
                                 content,
                                 ToolResultContent::Text(text)
@@ -2579,7 +2579,7 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call == "call_2"
+                        if result.call.explicit() == Some("call_2")
                             && result.content.iter().any(|content| matches!(
                                 content,
                                 ToolResultContent::Text(text)
@@ -2652,7 +2652,7 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
         skipped_tool_result.expect("skip recovery should emit a synthetic tool result");
     // The correlator ("call_2") is the durable id; the wire's item id
     // ("tool_call_2") travels on `provider`.
-    assert_eq!(skipped_tool_result.call, "call_2");
+    assert_eq!(skipped_tool_result.call.explicit(), Some("call_2"));
     assert!(
         skipped_tool_result
             .provider
@@ -2678,13 +2678,13 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id == "call_1"
+                        if tool_call.id.explicit() == Some("call_1")
                             && tool_call.function.name == "add"
                 ))
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id == "call_2"
+                        if tool_call.id.explicit() == Some("call_2")
                             && tool_call.function.name == "default_api"
                 ))
     ));
@@ -2695,7 +2695,7 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call == "call_1"
+                        if result.call.explicit() == Some("call_1")
                             && result.provider.as_ref().is_some_and(
                                 |provider| provider.call_id == "call_1"
                             )
@@ -2708,7 +2708,7 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call == "call_2"
+                        if result.call.explicit() == Some("call_2")
                             && result.provider.as_ref().is_some_and(
                                 |provider| provider.call_id == "call_2"
                             )
@@ -2962,7 +2962,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id == "call_0"
+                        if tool_call.id.explicit() == Some("call_0")
                             && tool_call.function.name == "add"
                 ))
                 && content.iter().any(|item| matches!(
@@ -2972,7 +2972,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
                 // handle at the boundary (wire schemas require a
                 // non-empty tool_call_id; stream keys never surface).
                 AssistantContent::ToolCall(tool_call)
-                    if !tool_call.id.is_empty()
+                    if tool_call.id.is_generated()
                         && tool_call.provider.is_none()
                         && tool_call.function.name == "default_api"
                         && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
@@ -2985,7 +2985,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call == "call_0"
+                        if result.call.explicit() == Some("call_0")
                             && result.provider.as_ref().is_some_and(
                                 |provider| provider.call_id == "call_0"
                             )
@@ -2998,7 +2998,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                 item,
                 UserContent::ToolResult(result)
-                    if !result.call.is_empty()
+                    if result.call.is_generated()
                         && result.name == "default_api"
                         && result.content.iter().any(|content| matches!(
                             content,
@@ -3062,8 +3062,8 @@ async fn invalid_tool_call_delta_context_includes_same_turn_history_and_tool_cal
     assert!(
         context
             .tool_call_id
-            .as_deref()
-            .is_some_and(|id| !id.is_empty()),
+            .as_ref()
+            .is_some_and(|id| id.is_generated()),
         "an unfinished call still carries a non-empty minted durable id, got {:?}",
         context.tool_call_id
     );
@@ -3195,7 +3195,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
     // `provider` faithfully records that absence, while the diagnostic
     // call mints rig's correlation handle at the boundary — the synthetic
     // result carries that non-empty minted id, never an empty sentinel.
-    assert!(!skipped_tool_result.call.is_empty());
+    assert!(skipped_tool_result.call.is_generated());
     assert_eq!(skipped_tool_result.name, "default_api");
     assert!(skipped_tool_result.provider.is_none());
     assert!(skipped_tool_result.content.iter().any(|content| matches!(
@@ -3219,7 +3219,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id == "call_0"
+                        if tool_call.id.explicit() == Some("call_0")
                             && tool_call.function.name == "add"
                 ))
                 && content.iter().any(|item| matches!(
@@ -3229,7 +3229,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
                 // handle at the boundary (wire schemas require a
                 // non-empty tool_call_id; stream keys never surface).
                 AssistantContent::ToolCall(tool_call)
-                    if !tool_call.id.is_empty()
+                    if tool_call.id.is_generated()
                         && tool_call.provider.is_none()
                         && tool_call.function.name == "default_api"
                         && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
@@ -3242,7 +3242,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call == "call_0"
+                        if result.call.explicit() == Some("call_0")
                             && result.provider.as_ref().is_some_and(
                                 |provider| provider.call_id == "call_0"
                             )
@@ -3255,7 +3255,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
                 && content.iter().any(|item| matches!(
                 item,
                 UserContent::ToolResult(result)
-                    if !result.call.is_empty()
+                    if result.call.is_generated()
                         && result.name == "default_api"
                         && result.content.iter().any(|content| matches!(
                             content,
@@ -3598,7 +3598,13 @@ async fn multiple_valid_streaming_tool_calls_execute_after_batch_validation() {
                 tool_result,
                 ..
             })) => {
-                tool_result_ids.push(tool_result.call.into_string());
+                tool_result_ids.push(
+                    tool_result
+                        .call
+                        .explicit()
+                        .expect("explicit provider ID")
+                        .to_owned(),
+                );
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                 final_response_text = Some(response.output().to_owned());

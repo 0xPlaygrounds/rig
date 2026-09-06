@@ -37,10 +37,11 @@
 //!
 //! # What the matrix found
 //!
-//! - The oracle was already total: the recorder keeps records in id order
-//!   and the replay is compared positionally across keys, so #2451's
+//! - The oracle was already total: these captured programs serve in ID order
+//!   and replay is compared positionally across keys, so #2451's
 //!   "per key only" risk was a misreading. The id assertion is now in
-//!   `assert_same_records`, and no golden failed it.
+//!   `assert_same_records`, and no golden failed it. The recorder preserves
+//!   serve order generally; futures may reserve IDs before they are polled.
 //! - The concurrent cell's pin is the interleaving shape — both tool
 //!   dispatches, then both notes (`[Tool, Tool, Custom, Custom]`), since
 //!   the engine mints both dispatches before the driver serves either

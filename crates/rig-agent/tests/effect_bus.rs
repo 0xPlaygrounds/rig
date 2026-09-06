@@ -1427,6 +1427,7 @@ async fn registering_an_explicit_key_that_is_live_keeps_it_served() {
     };
     server.add_registered_tool(registration());
     let snapshot = server.snapshot();
+    let retained = snapshot.clone();
     server.add_registered_tool(registration());
     drop(snapshot);
     let key = HandlerKey::from("host/tool:slow");
@@ -1435,6 +1436,187 @@ async fn registering_an_explicit_key_that_is_live_keeps_it_served() {
         "replacing a registration under its own key never deregisters the key"
     );
     assert!(dispatcher.descriptor(&key).is_some());
+    server.remove_tool("slow");
+    assert!(
+        dispatcher.descriptor(&key).is_some(),
+        "an in-place replacement shares the existing generation's lease"
+    );
+    drop(retained);
+    assert!(dispatcher.descriptor(&key).is_none());
+    drop(driver);
+}
+
+#[tokio::test]
+async fn reusing_a_retired_explicit_key_survives_the_old_snapshot() {
+    for remove_first in [true, false] {
+        let (dispatcher, registrar, driver) = Bus::channel();
+        let server = rig_agent::tool::server::ToolServer::new().run();
+        server.attach(&registrar);
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let key = HandlerKey::from("host/tool:slow");
+        let registration = |owner, key: HandlerKey| {
+            rig_agent::tool::RegisteredTool::from_tool(Tag {
+                owner,
+                calls: calls.clone(),
+            })
+            .with_key(rig_core::effect::Key::new_unchecked(key))
+        };
+        server.add_registered_tool(registration("old", key.clone()));
+        let old = server.snapshot();
+        if remove_first {
+            server.remove_tool("slow");
+        } else {
+            server.add_registered_tool(registration(
+                "intermediate",
+                HandlerKey::from("host/tool:other"),
+            ));
+        }
+        server.add_registered_tool(registration("replacement", key.clone()));
+        drop(old);
+        assert!(
+            dispatcher.descriptor(&key).is_some(),
+            "an old lease must not unpublish the replacement, remove_first={remove_first}"
+        );
+        let task = tokio::spawn(driver);
+        let outcome = within(dispatcher.dispatch(
+            &key,
+            EffectKind::ToolCall {
+                name: "slow".into(),
+                args: json!({"tag": "probe"}).to_string(),
+            },
+        ))
+        .await
+        .expect("replacement answers");
+        let rig_core::effect::Outcome::ToolResult { result } = outcome else {
+            panic!("expected tool result");
+        };
+        assert_eq!(result.output().render(), "replacement");
+        assert_eq!(*calls.lock().expect("calls"), ["replacement"]);
+        server.remove_tool("slow");
+        assert!(
+            !dispatcher.keys().contains(&key),
+            "the replacement still cleans up"
+        );
+        drop((server, dispatcher, registrar));
+        within(task).await.expect("driver task");
+    }
+}
+
+#[test]
+fn a_reused_explicit_key_waits_for_its_latest_retired_snapshot() {
+    for old_first in [true, false] {
+        let (dispatcher, registrar, driver) = Bus::channel();
+        let server = rig_agent::tool::server::ToolServer::new().run();
+        server.attach(&registrar);
+        let key = HandlerKey::from("host/tool:slow");
+        let registration = || {
+            rig_agent::tool::RegisteredTool::from_tool(Slow::default())
+                .with_key(rig_core::effect::Key::new_unchecked(key.clone()))
+        };
+        server.add_registered_tool(registration());
+        let old = server.snapshot();
+        server.remove_tool("slow");
+        server.add_registered_tool(registration());
+        let replacement = server.snapshot();
+        server.remove_tool("slow");
+        if old_first {
+            drop(old);
+            assert!(
+                dispatcher.descriptor(&key).is_some(),
+                "the latest retired lease still pins this key"
+            );
+            drop(replacement);
+        } else {
+            drop(replacement);
+            assert!(
+                dispatcher.descriptor(&key).is_none(),
+                "an obsolete lease cannot extend the replacement's lifetime"
+            );
+            drop(old);
+        }
+        assert!(
+            dispatcher.descriptor(&key).is_none(),
+            "the last current lease removes its key"
+        );
+        drop(driver);
+    }
+}
+
+#[tokio::test]
+async fn retiring_an_older_name_cannot_remove_the_latest_explicit_key_binding() {
+    let (dispatcher, registrar, driver) = Bus::channel();
+    let server = rig_agent::tool::server::ToolServer::new().run();
+    server.attach(&registrar);
+    let key = HandlerKey::from("host/tool:shared");
+    server.add_registered_tool(
+        rig_agent::tool::RegisteredTool::from_tool(Slow::default())
+            .with_key(rig_core::effect::Key::new_unchecked(key.clone())),
+    );
+    let replacement = rig_core::tool::PortableDynamicTool::new(
+        "other",
+        "replacement",
+        json!({"type": "object"}),
+        |_| Box::pin(async { Ok(rig_core::tool::ToolOutput::text("latest")) }),
+    );
+    server.add_registered_tool(
+        rig_agent::tool::RegisteredTool::from_dynamic(rig_agent::tool::DynamicTool::from_portable(
+            replacement,
+        ))
+        .with_key(rig_core::effect::Key::new_unchecked(key.clone())),
+    );
+    server.remove_tool("slow");
+    assert!(
+        dispatcher.descriptor(&key).is_some(),
+        "the newer name owns the shared binding"
+    );
+    let task = tokio::spawn(driver);
+    let outcome = within(dispatcher.dispatch(
+        &key,
+        EffectKind::ToolCall {
+            name: "other".into(),
+            args: "{}".into(),
+        },
+    ))
+    .await
+    .expect("latest binding answers");
+    let rig_core::effect::Outcome::ToolResult { result } = outcome else {
+        panic!("expected tool result");
+    };
+    assert_eq!(result.output().render(), "latest");
+    server.remove_tool("other");
+    assert!(dispatcher.descriptor(&key).is_none());
+    drop((server, dispatcher, registrar));
+    within(task).await.expect("driver task");
+}
+
+#[test]
+fn attaching_a_bus_preserves_the_latest_explicit_key_owner() {
+    let (dispatcher, registrar, driver) = Bus::channel();
+    let server = rig_agent::tool::server::ToolServer::new().run();
+    let key = HandlerKey::from("host/tool:shared");
+    for name in ["first", "second", "first"] {
+        let tool = rig_core::tool::PortableDynamicTool::new(
+            name,
+            "test binding",
+            json!({"type": "object"}),
+            |_| Box::pin(async { Ok(rig_core::tool::ToolOutput::text("answer")) }),
+        );
+        server.add_registered_tool(
+            rig_agent::tool::RegisteredTool::from_dynamic(
+                rig_agent::tool::DynamicTool::from_portable(tool),
+            )
+            .with_key(rig_core::effect::Key::new_unchecked(key.clone())),
+        );
+    }
+    server.attach(&registrar);
+    let descriptor = dispatcher.descriptor(&key).expect("latest binding");
+    let rig_core::effect::FamilyDescriptor::Tool { name, .. } = descriptor.family else {
+        panic!("expected tool descriptor");
+    };
+    assert_eq!(
+        name, "first",
+        "publication order, not name insertion order, owns the binding"
+    );
     drop(driver);
 }
 

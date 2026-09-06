@@ -796,7 +796,7 @@ fn user_parts(content: &[UserContent]) -> Vec<TelemetryPart> {
                 content: text.text.clone(),
             }),
             UserContent::ToolResult(result) => Some(TelemetryPart::ToolCallResponse {
-                id: Some(result.call.as_str().to_owned()),
+                id: Some(result.call.to_string()),
                 response: tool_result_response(result),
             }),
             UserContent::Image(image) => image_part(image),
@@ -821,7 +821,7 @@ fn assistant_parts(content: &[AssistantContent]) -> Vec<TelemetryPart> {
                 content: text.text.clone(),
             }],
             AssistantContent::ToolCall(tool_call) => vec![TelemetryPart::ToolCall {
-                id: Some(tool_call.id.as_str().to_owned()),
+                id: Some(tool_call.id.to_string()),
                 name: tool_call.function.name.clone(),
                 arguments: tool_call.function.arguments.clone(),
             }],

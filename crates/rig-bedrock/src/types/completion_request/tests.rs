@@ -27,6 +27,66 @@ fn aws_request(request: CompletionRequest, prompt_caching: bool) -> AwsCompletio
     }
 }
 
+/// Synthetic transcript checks wire correlation without a live Bedrock call.
+#[test]
+fn full_request_preserves_typed_tool_pairs_across_turns() {
+    use rig_core::message::{AssistantContent, ToolCall, ToolCallId, ToolFunction};
+    let generated = ToolCall::new(
+        ToolCallId::minted(0),
+        ToolFunction {
+            name: "test".into(),
+            arguments: serde_json::json!({}),
+        },
+    );
+    let hint = generated.id.wire_hint().into_owned();
+    let real = ToolCall::from_wire(&hint, generated.function.clone());
+    let call = |call: &ToolCall| Message::Assistant {
+        id: None,
+        content: vec![AssistantContent::ToolCall(call.clone())],
+    };
+    let result = |call: &ToolCall| Message::User {
+        content: vec![UserContent::tool_result_for(
+            call.id.clone(),
+            call.provider.clone(),
+            "test",
+            vec![rig_core::message::ToolResultContent::text("done")],
+        )],
+    };
+    let mut request = minimal_request();
+    request.chat_history = vec![
+        Message::system("system"),
+        call(&generated),
+        call(&real),
+        result(&real),
+        Message::assistant("intervening text"),
+        result(&generated),
+        call(&generated),
+        result(&generated),
+    ];
+    let messages = aws_request(request, false).messages().unwrap();
+    let mut calls = Vec::new();
+    let mut results = Vec::new();
+    for part in messages.iter().flat_map(|message| &message.content) {
+        match part {
+            aws_bedrock::ContentBlock::ToolUse(call) => calls.push(call.tool_use_id.clone()),
+            aws_bedrock::ContentBlock::ToolResult(result) => {
+                results.push(result.tool_use_id.clone())
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(calls.len(), 3);
+    assert_eq!(
+        results,
+        [calls[1].clone(), calls[0].clone(), calls[2].clone()]
+    );
+    assert_eq!(calls[1], hint);
+    assert_eq!(
+        calls.iter().collect::<std::collections::HashSet<_>>().len(),
+        3
+    );
+}
+
 #[test]
 fn test_tool_choice_auto_conversion() {
     // Test that rig's ToolChoice::Auto converts to AWS Auto

@@ -185,7 +185,10 @@
           "choice": [
             {
               "type": "toolcall",
-              "id": "call_REDACTED_1",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
               "provider": {
                 "call_id": "call_REDACTED_1",
                 "item_id": "fc_REDACTED_1"
@@ -375,7 +378,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "call_REDACTED_1",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "call_REDACTED_1",
                     "item_id": "fc_REDACTED_1"
@@ -397,7 +403,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "call_REDACTED_1",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
                   "provider": {
                     "call_id": "call_REDACTED_1",
                     "item_id": "fc_REDACTED_1"

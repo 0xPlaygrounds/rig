@@ -63,7 +63,7 @@ impl TryFrom<ConverseMessage> for RigMessage {
     fn try_from(message: ConverseMessage) -> Result<Self, Self::Error> {
         match message.role {
             ConversationRole::Assistant => {
-                let assistant_content = message
+                let mut assistant_content = message
                     .content
                     .into_iter()
                     .map(std::convert::TryInto::try_into)
@@ -72,6 +72,7 @@ impl TryFrom<ConverseMessage> for RigMessage {
                     .map(|rig_assistant_content| rig_assistant_content.0)
                     .collect::<Vec<AssistantContent>>();
 
+                rig_core::message::normalize_missing_tool_call_ids(&mut assistant_content);
                 let content = rig_core::message::require_non_empty_response(assistant_content)?;
 
                 Ok(RigMessage(Message::Assistant { content, id: None }))

@@ -32,6 +32,9 @@ pub(crate) enum Fault {
     LostWriteOutcome,
     CancelBackground,
     FoldedReplay,
+    RepairInsufficient,
+    RepairTimeout,
+    RepairStaleApproval,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -56,6 +59,8 @@ impl Provider {
 
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct Case {
+    #[serde(skip_serializing_if = "is_false")]
+    pub repair: bool,
     pub id: &'static str,
     pub matrix: &'static str,
     pub provider: Provider,
@@ -72,6 +77,20 @@ pub(crate) struct Case {
     pub interleaved: bool,
     pub capture_zero: bool,
     pub identity_checks: bool,
+}
+
+impl Case {
+    pub(crate) fn output_tokens(&self) -> u64 {
+        if self.repair && self.provider != Provider::Synthetic {
+            8192
+        } else {
+            512
+        }
+    }
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 pub(crate) fn cases() -> Vec<Case> {
@@ -106,6 +125,7 @@ pub(crate) fn cases() -> Vec<Case> {
             interleaved: false,
             capture_zero: false,
             identity_checks: false,
+            repair: false,
         });
     }
     for (
@@ -246,6 +266,7 @@ pub(crate) fn cases() -> Vec<Case> {
             interleaved: false,
             capture_zero: false,
             identity_checks: false,
+            repair: false,
         });
     }
     let Some(baseline) = cases.first().cloned() else {
@@ -361,6 +382,100 @@ pub(crate) fn cases() -> Vec<Case> {
             fault,
             stream,
             stream_batch: 1,
+            ..baseline.clone()
+        });
+    }
+    for (id, provider, approval, fault, stream, stream_batch) in [
+        (
+            "repair-synthetic-approve",
+            Provider::Synthetic,
+            Approval::Approve,
+            Fault::None,
+            false,
+            4096,
+        ),
+        (
+            "repair-denied",
+            Provider::Synthetic,
+            Approval::Deny,
+            Fault::None,
+            false,
+            4096,
+        ),
+        (
+            "repair-cancelled",
+            Provider::Synthetic,
+            Approval::Cancel,
+            Fault::None,
+            false,
+            4096,
+        ),
+        (
+            "repair-insufficient",
+            Provider::Synthetic,
+            Approval::Approve,
+            Fault::RepairInsufficient,
+            false,
+            4096,
+        ),
+        (
+            "repair-stale-approval",
+            Provider::Synthetic,
+            Approval::Approve,
+            Fault::RepairStaleApproval,
+            false,
+            4096,
+        ),
+        (
+            "repair-timeout",
+            Provider::Synthetic,
+            Approval::Approve,
+            Fault::RepairTimeout,
+            false,
+            4096,
+        ),
+        (
+            "repair-stream-events",
+            Provider::Synthetic,
+            Approval::Approve,
+            Fault::None,
+            true,
+            1,
+        ),
+        (
+            "repair-stream-groups",
+            Provider::Synthetic,
+            Approval::Approve,
+            Fault::None,
+            true,
+            3,
+        ),
+        (
+            "repair-lost-outcome",
+            Provider::Synthetic,
+            Approval::Approve,
+            Fault::LostWriteOutcome,
+            false,
+            4096,
+        ),
+        (
+            "repair-anthropic-unary",
+            Provider::Anthropic,
+            Approval::Approve,
+            Fault::None,
+            false,
+            4096,
+        ),
+    ] {
+        cases.push(Case {
+            id,
+            provider,
+            approval,
+            fault,
+            stream,
+            stream_batch,
+            repair: true,
+            matrix: "repository-repair",
             ..baseline.clone()
         });
     }

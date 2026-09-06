@@ -1,21 +1,22 @@
 //! Matrix S: the header's new types.
 //!
 //! The header carries `required: EffectRow`, `signature: EffectRow`,
-//! `bus: Option<ServingPolicy>` and `format`, and three readers check
+//! `bus: Option<ServingPolicy>` and handler descriptors. Three readers check
 //! them before the first dispatch: the agent (`check_replayable`), the
 //! replayer (`check_header`, `for_key`) and a host checking a row against
 //! the bus it runs (`EffectRow::is_subset_of` over
 //! `Dispatcher::descriptors()` — the Bevy startup check). Every cell edits
 //! one header field of an existing golden in memory and pins the *text*
-//! of the refusal: the key, and both families or both policies. No new
+//! of refusals or accepted compatibility cases. A legacy `format` field is
+//! ignored; it is not a current header requirement. No new
 //! recordings.
 //!
 //! # Dimensions
 //!
 //! | axis | values |
 //! |---|---|
-//! | field | `required` · `signature` · `bus` · `format` · the handler table |
-//! | mismatch | missing key · extra key · family change · policy differs · policy absent on one side · format · table entry missing |
+//! | field | `required` · `signature` · `bus` · legacy `format` input · the handler table |
+//! | mismatch | missing key · extra key · family change · policy differs · policy absent on one side · ignored legacy format · table entry missing |
 //! | who checks | `check_replayable` (the agent) · `check_header` / `for_key` (the replayer) · `is_subset_of` over a bare bus (a host) |
 //!
 //! Full cross-product: 5 × 7 × 3 = 105. Recorded: the 12 cells below.
@@ -37,7 +38,7 @@
 //! | `the_agent_names_a_signature_family_the_bus_serves_otherwise` | signature · family change · replayer first (the agent's check begins with `check_header`) |
 //! | `the_agent_names_both_policies` | bus · policy differs · agent |
 //! | `a_policy_absent_on_one_side_is_accepted` | bus · absent on one side · agent |
-//! | `a_log_of_another_format_is_refused_by_number` | format · format · replayer and agent |
+//! | `a_log_header_needs_no_global_format_number` | legacy format · ignored · replayer and agent |
 //! | `the_replayer_refuses_a_key_nothing_describes_by_name` | table · entry missing · replayer |
 //! | `a_host_checks_its_row_against_the_bus_it_built` | required · missing key and family change · host |
 //! | `a_policy_round_trips_through_the_header` | bus · none · replayer and driver |

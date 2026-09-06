@@ -8,7 +8,7 @@
     "model": "gemini-2.5-flash"
   },
   "generation": {
-    "revision": "25e8225be8a7c6b2b8af0e5a4cb0dd9993ffb503",
+    "revision": "6677bcfec51e3dd696a2a8ac88ad5cb0d478f5a8",
     "dirty": true
   },
   "capture": {
@@ -28,8 +28,8 @@
   },
   "artifacts_sha256": {
     "application": "92756a9e0e15b3d0183dc00a99698c80c3a03d7e353a471a1f228de2a8509411",
-    "checkpoints": "6164667d97450de33893f426c913845621ef85114ef1fcf92aba7b2a528eb780",
-    "effects": "1357c28d4f76b66a64748e06811e5e7a8931af3440e77304210087af8e615c5f",
-    "observations": "350c641b17a74f0c9a15e658e78d6c0d83fbd2f428b311ee8c89f7ecc62638fb"
+    "checkpoints": "4402df23b094b2dfcd61fad6f446f3eac3601708af11801ec049f924f50349cd",
+    "effects": "745a66a0e8b40698a7b4be54e0096f2ce21cd25f7ede4fc67a581297b129d230",
+    "observations": "2ab991b1018bd21baf2938fb23035e3dfeba8e64995b109bd4c4d482c94e84dd"
   }
 }

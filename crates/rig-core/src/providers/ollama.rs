@@ -504,6 +504,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
                 tc.function.arguments.clone(),
             ));
         }
+        crate::message::normalize_missing_tool_call_ids(&mut assistant_contents);
         let choice = crate::message::require_non_empty_response(assistant_contents)?;
 
         Ok(
@@ -1421,6 +1422,7 @@ impl From<Message> for crate::completion::Message {
                         ),
                     );
                 }
+                crate::message::normalize_missing_tool_call_ids(&mut assistant_contents);
                 crate::completion::Message::Assistant {
                     id: None,
                     content: assistant_contents,

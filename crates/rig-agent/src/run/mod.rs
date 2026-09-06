@@ -199,8 +199,9 @@ pub struct PendingToolCall {
     /// result without executing the tool or invoking tool hooks.
     pub preresolved_result: Option<UserContent>,
     /// The stream block this call arrived under — equal on the call's
-    /// deltas, its execution commit and its result; a buffered turn's call
-    /// is keyed by its durable `tool_call.id` (`BlockId::wire`). Required in
+    /// deltas, its execution commit and its result. Buffered turns assign
+    /// independent completion-local minted tool keys; `tool_call.id` remains
+    /// the durable correlation identity. Required in
     /// persisted run state: a resumed process keeps emitting the id its
     /// consumers already saw, never a re-minted one.
     pub block_id: BlockId,
@@ -351,7 +352,7 @@ pub enum ModelTurnOutcome {
     /// turn. The driver must decide how to recover (typically by asking its
     /// invalid tool-call hook) and answer via
     /// [`AgentRun::resolve_invalid_tool_call`].
-    NeedsResolution(InvalidToolCallContext),
+    NeedsResolution(Box<InvalidToolCallContext>),
     /// The turn was rolled back with corrective feedback appended to the
     /// history. Call [`AgentRun::next_step`] to obtain the retry
     /// [`AgentRunStep::CallModel`].
@@ -412,7 +413,7 @@ struct TurnState {
     /// `(tool_call_id, block_id)` pairs for streamed turns, in
     /// emission order; empty for non-streamed turns.
     #[serde(default)]
-    block_ids: Vec<(String, BlockId)>,
+    block_ids: Vec<(rig_core::message::ToolCallId, BlockId)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -958,10 +959,10 @@ impl AgentRun {
 
         Some(InvalidToolCallContext {
             tool_name: tool_call.function.name.clone(),
-            tool_call_id: Some(tool_call.id.as_str().to_owned()),
-            // A buffered turn's call is keyed by its durable id, live or
-            // resumed — the same key its pending call carries.
-            block_id: Some(BlockId::wire(tool_call.id.as_str())),
+            tool_call_id: Some(tool_call.id.clone()),
+            // A buffered/unary diagnostic has no live stream block.
+            // Correlation uses the typed call ID, including after resume.
+            block_id: None,
             args: Some(json_utils::serialize_json_value(
                 &tool_call.function.arguments,
             )),
@@ -1163,28 +1164,34 @@ impl AgentRun {
                     // single per-run allowance an early stray turn could burn
                     // before the model genuinely needs to produce output (#1928).
                     self.output_retries = 0;
+                    // Allocate assembly keys independently of durable tool identities.
+                    // Advance for every content position, matching buffered re-emission.
+                    let mut synthetic_blocks = rig_core::streaming::SyntheticIds::tool();
                     let calls: Vec<PendingToolCall> = items
                         .iter()
                         .enumerate()
-                        .filter_map(|(index, item)| match item {
-                            AssistantContent::ToolCall(tool_call) => {
-                                // Consume pairs positionally so duplicate
-                                // provider IDs within one turn stay
-                                // distinguishable.
-                                let block_id = block_ids
-                                    .iter()
-                                    .position(|(id, _)| tool_call.id == id.as_str())
-                                    .map_or_else(
-                                        || BlockId::wire(tool_call.id.as_str()),
-                                        |pair| block_ids.remove(pair).1,
-                                    );
-                                Some(PendingToolCall {
-                                    tool_call: tool_call.clone(),
-                                    preresolved_result: skipped.get(&index).cloned(),
-                                    block_id,
-                                })
+                        .filter_map(|(index, item)| {
+                            let synthetic_block = synthetic_blocks.mint();
+                            match item {
+                                AssistantContent::ToolCall(tool_call) => {
+                                    // Consume pairs positionally so duplicate
+                                    // provider IDs within one turn stay
+                                    // distinguishable.
+                                    let block_id = block_ids
+                                        .iter()
+                                        .position(|(id, _)| tool_call.id == *id)
+                                        .map_or_else(
+                                            || synthetic_block,
+                                            |pair| block_ids.remove(pair).1,
+                                        );
+                                    Some(PendingToolCall {
+                                        tool_call: tool_call.clone(),
+                                        preresolved_result: skipped.get(&index).cloned(),
+                                        block_id,
+                                    })
+                                }
+                                _ => None,
                             }
-                            _ => None,
                         })
                         .collect();
                     self.state = RunState::ExecutingTools(calls.clone());
@@ -1369,7 +1376,7 @@ impl AgentRun {
         items: Vec<AssistantContent>,
         has_tool_calls: bool,
         skipped: BTreeMap<usize, UserContent>,
-        block_ids: Vec<(String, BlockId)>,
+        block_ids: Vec<(rig_core::message::ToolCallId, BlockId)>,
     ) {
         self.state = RunState::AwaitingAdvance(Box::new(TurnState {
             message_id,
@@ -1569,9 +1576,9 @@ impl AgentRun {
         };
         // Match results against pending calls by tool call ID as a multiset,
         // so duplicate provider IDs within one turn stay answerable.
-        let mut unanswered: Vec<String> = pending
+        let mut unanswered: Vec<rig_core::message::ToolCallId> = pending
             .iter()
-            .map(|call| call.tool_call.id.as_str().to_owned())
+            .map(|call| call.tool_call.id.clone())
             .collect();
 
         if results.is_empty() {
@@ -1587,10 +1594,7 @@ impl AgentRun {
                     "tool_results received content that is not a tool result",
                 ));
             };
-            let Some(index) = unanswered
-                .iter()
-                .position(|id| tool_result.call == id.as_str())
-            else {
+            let Some(index) = unanswered.iter().position(|id| tool_result.call == *id) else {
                 return Err(self.protocol_violation(&format!(
                     "tool_results received a result for unknown or already-answered tool call id `{}`",
                     tool_result.call
@@ -1643,7 +1647,7 @@ impl AgentRun {
         if resolving.next_index < resolving.items.len() {
             self.state = RunState::ResolvingToolCalls(resolving);
             return match self.pending_invalid_tool_call() {
-                Some(context) => Ok(ModelTurnOutcome::NeedsResolution(context)),
+                Some(context) => Ok(ModelTurnOutcome::NeedsResolution(Box::new(context))),
                 None => Err(self.protocol_violation(
                     "internal: pending invalid tool call could not be derived",
                 )),
@@ -1734,7 +1738,7 @@ impl AgentRun {
     ) -> InvalidToolCallContext {
         InvalidToolCallContext {
             tool_name: invalid.tool_call.function.name.clone(),
-            tool_call_id: Some(invalid.tool_call.id.as_str().to_owned()),
+            tool_call_id: Some(invalid.tool_call.id.clone()),
             block_id: Some(invalid.block_id.clone()),
             args: invalid.args.clone(),
             available_tools: invalid.executable_tool_names.iter().cloned().collect(),

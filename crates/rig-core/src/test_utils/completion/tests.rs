@@ -46,7 +46,7 @@ async fn completion_consumes_scripted_turns_and_records_requests() {
     assert!(matches!(
         second.choice.first(),
         Some(AssistantContent::ToolCall(tool_call))
-            if tool_call.id == "tool_1"
+            if tool_call.id.explicit() == Some("tool_1")
                 && tool_call
                     .provider
                     .as_ref()

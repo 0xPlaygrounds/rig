@@ -43,7 +43,7 @@ fn aws_content_block_tool_to_user_content() {
     let content = content.unwrap();
     // Bedrock's wire id becomes the provider call id (and rig's id adopts
     // it); the wire carries no tool name, so the conversion is lossy there.
-    assert_eq!(content.call, "123");
+    assert_eq!(content.call.explicit(), Some("123"));
     assert_eq!(
         content.provider.as_ref().map(|p| p.call_id.as_str()),
         Some("123")

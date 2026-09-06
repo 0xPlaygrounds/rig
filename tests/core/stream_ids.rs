@@ -3,7 +3,10 @@
 //! provider adapters (which know their wire's boundaries) and the bus's own
 //! fold re-emitter may construct a `BlockId::minted`; a bus handler, a mock,
 //! a fixture or an agent-side test writes through `StreamWriter` and names
-//! none.
+//! none. Structural assembler/serialization tests may allocate keys through
+//! `SyntheticIds` when they need to preserve explicit durable metadata. The
+//! typed durable correlation constructor is a separate, narrowly checked owner:
+//! it creates a completion-local identity, not a handler-emitted stream block.
 
 use std::path::{Path, PathBuf};
 
@@ -18,6 +21,61 @@ fn may_mint(relative: &str) -> bool {
         || relative == "crates/rig-core/src/serve/handler.rs"
         || relative == "crates/rig-core/src/serve/writer.rs"
         || relative.starts_with("crates/rig-candle/src/")
+}
+
+/// Only the exact durable-ID constructor may construct a key in message.rs.
+/// Keeping the exception at the constructor body prevents this permission from
+/// spreading to unrelated message conversion code or its tests.
+fn is_durable_identity_constructor(relative: &str, source: &str, line: usize) -> bool {
+    if relative != "crates/rig-core/src/completion/message.rs" {
+        return false;
+    }
+    let constructor = [
+        "    pub fn minted(index: u64) -> Self {\n",
+        "        Self::from_block(&crate::streaming::BlockId::",
+        "minted(\n",
+        "            crate::streaming::MintKind::Tool,\n",
+        "            index,\n",
+        "        ))\n",
+        "    }",
+    ]
+    .concat();
+    source.match_indices(&constructor).any(|(offset, _)| {
+        let start = source[..offset]
+            .bytes()
+            .filter(|byte| *byte == b'\n')
+            .count();
+        line == start + 1
+    })
+}
+
+#[test]
+fn durable_identity_exception_is_limited_to_its_constructor() {
+    let constructor = [
+        "    pub fn minted(index: u64) -> Self {\n",
+        "        Self::from_block(&crate::streaming::BlockId::",
+        "minted(\n",
+        "            crate::streaming::MintKind::Tool,\n",
+        "            index,\n",
+        "        ))\n",
+        "    }",
+    ]
+    .concat();
+    let path = "crates/rig-core/src/completion/message.rs";
+    assert!(is_durable_identity_constructor(path, &constructor, 1));
+    assert!(!is_durable_identity_constructor(path, &constructor, 0));
+    assert!(!is_durable_identity_constructor(
+        "crates/rig-core/src/completion/message/tests.rs",
+        &constructor,
+        1,
+    ));
+    let unrelated = format!("{constructor}\n{}", ["BlockId::", "minted(0)"].concat());
+    assert!(!is_durable_identity_constructor(path, &unrelated, 7));
+    assert!(!is_durable_identity_constructor(
+        path,
+        &constructor.replace("pub fn minted", "pub fn other"),
+        1,
+    ));
 }
 
 fn scan(dir: &Path, offenders: &mut Vec<String>) {
@@ -50,7 +108,9 @@ fn scan(dir: &Path, offenders: &mut Vec<String>) {
                 if line.trim_start().starts_with("//") {
                     continue;
                 }
-                if line.contains(&needle) {
+                if line.contains(&needle)
+                    && !is_durable_identity_constructor(&relative, &text, number)
+                {
                     offenders.push(format!("{relative}:{}: {}", number + 1, line.trim()));
                 }
             }

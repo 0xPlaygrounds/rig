@@ -63,10 +63,9 @@ const GENERATE_SITES: &[(&str, &str)] = &[
     ),
 ];
 
-fn offenders(needle: &str, allowed: &[(&str, &str)]) -> Vec<String> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates");
+fn offenders(root: &Path, needle: &str, allowed: &[(&str, &str)]) -> Vec<String> {
     let mut offenders = Vec::new();
-    for path in source_files(&root) {
+    for path in source_files(root) {
         let relative = relative(&path);
         if relative.contains("/tests/") || relative.ends_with("tests.rs") {
             continue;
@@ -88,15 +87,30 @@ fn offenders(needle: &str, allowed: &[(&str, &str)]) -> Vec<String> {
     offenders
 }
 
+fn generator_offenders(root: &Path) -> Vec<String> {
+    offenders(root, "id::generate", GENERATE_SITES)
+}
+
+#[test]
+fn guard_detects_generator_calls_imports_and_function_references() {
+    let root = std::env::temp_dir().join(format!("rig-generator-guard-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("probe.rs"), "use rig_core::id::generate;\nlet a = rig_core::id::generate();\nlet b = value.unwrap_or_else(rig_core::id::generate);\n").unwrap();
+    let found = generator_offenders(&root);
+    std::fs::remove_dir_all(&root).unwrap();
+    assert_eq!(found.len(), 3, "{found:?}");
+}
+
 #[test]
 fn randomness_is_drawn_only_where_it_cannot_reach_a_record() {
-    let fastrand = offenders("fastrand::", FASTRAND_SITES);
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates");
+    let fastrand = offenders(&root, "fastrand::", FASTRAND_SITES);
     assert!(
         fastrand.is_empty(),
         "`fastrand` is drawn outside its allowed sites:\n{}",
         fastrand.join("\n")
     );
-    let generate = offenders("id::generate(", GENERATE_SITES);
+    let generate = generator_offenders(&root);
     assert!(
         generate.is_empty(),
         "`id::generate` is called outside the two transport headers:\n{}",

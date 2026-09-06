@@ -800,6 +800,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             }
         }
 
+        crate::message::normalize_missing_tool_call_ids(&mut content);
         let choice = crate::message::require_non_empty_response(content)?;
 
         let usage = response

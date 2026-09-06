@@ -18,6 +18,7 @@
 mod run_support;
 
 use bevy_ecs::{prelude::*, reflect::AppTypeRegistry};
+use bevy_reflect::{ReflectDeserialize, ReflectSerialize};
 use rig_core::message::AssistantContent;
 use rig_ecs::{
     agent::{
@@ -114,4 +115,27 @@ fn entity_references_are_scene_indexes() {
         grant["bevy_ecs::hierarchy::ChildOf"],
         serde_json::json!(agent)
     );
+}
+
+#[derive(Clone, Component, bevy_reflect::Reflect, serde::Serialize, serde::Deserialize)]
+#[reflect(opaque)]
+#[reflect(Component, Serialize, Deserialize)]
+#[serde(transparent)]
+struct OrderedNumbers(Vec<u64>);
+
+#[test]
+fn user_numeric_arrays_preserve_order_and_duplicates() {
+    use bevy_reflect::TypePath;
+    let mut app = app();
+    rig_ecs::reflect::register(&mut app);
+    app.register_type::<OrderedNumbers>();
+    app.world_mut().spawn(OrderedNumbers(vec![3, 1, 2, 1]));
+    let scene = json(&mut app);
+    let value = scene
+        .as_array()
+        .unwrap()
+        .iter()
+        .find_map(|entity| entity.get(OrderedNumbers::type_path()))
+        .expect("registered user component is exported");
+    assert_eq!(*value, serde_json::json!([3, 1, 2, 1]));
 }

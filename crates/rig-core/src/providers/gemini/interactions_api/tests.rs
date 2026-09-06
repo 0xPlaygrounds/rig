@@ -182,7 +182,7 @@ fn test_tool_result_without_provider_id_sends_minted_call_id() {
     let Content::FunctionResult(result) = converted else {
         panic!("expected function result");
     };
-    assert_eq!(result.call_id.as_deref(), Some(call.as_str()));
+    assert_eq!(result.call_id.as_deref(), Some(call.wire_hint().as_ref()));
     assert_eq!(result.name.as_deref(), Some("get_weather"));
 }
 
@@ -396,7 +396,7 @@ fn test_response_function_call_mapping() {
     match choice {
         Some(completion::AssistantContent::ToolCall(tool_call)) => {
             assert_eq!(tool_call.function.name, "get_weather");
-            assert_eq!(tool_call.id, "call-123");
+            assert_eq!(tool_call.id.explicit(), Some("call-123"));
             assert_eq!(
                 tool_call.provider.as_ref().expect("wire id").call_id,
                 "call-123"
@@ -1144,4 +1144,19 @@ fn a_tool_round_trip_is_top_level_steps() {
             "function_result"
         ]
     );
+}
+
+/// Synthetic transcript tests required-ID request correlation without a paid call.
+#[test]
+fn full_request_preserves_typed_tool_pairs_across_turns() {
+    use crate::providers::internal::tool_call_ids::tests::{
+        adapter_requests, assert_adapter_pairs,
+    };
+    for request in adapter_requests() {
+        for stream in [false, true] {
+            let wire =
+                create_request_body("test".to_owned(), request.clone(), Some(stream)).unwrap();
+            assert_adapter_pairs(serde_json::to_value(wire).unwrap());
+        }
+    }
 }

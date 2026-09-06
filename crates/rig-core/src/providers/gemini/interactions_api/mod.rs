@@ -284,14 +284,24 @@ pub(crate) fn create_request_body(
     crate::providers::internal::resolve_empty_tool_result_names(&mut history);
     let (history_system, history) = split_system_messages_from_history(history);
 
-    let steps = history
-        .into_iter()
-        .map(Step::from_message)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|err| CompletionError::RequestError(Box::new(err)))?
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    let tool_ids = crate::providers::internal::tool_call_ids::ToolCallIds::new(&history)
+        .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+    let mut steps = Vec::new();
+    for (position, message) in history.into_iter().enumerate() {
+        let mut converted = Step::from_message(message)
+            .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+        tool_ids
+            .apply(
+                position,
+                converted.iter_mut().filter_map(|step| match step {
+                    Step::FunctionCall(call) => call.id.as_mut(),
+                    Step::FunctionResult(result) => result.call_id.as_mut(),
+                    _ => None,
+                }),
+            )
+            .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+        steps.extend(converted);
+    }
 
     let input = InteractionInput::Steps(steps);
 
@@ -448,7 +458,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse {
             return Err(CompletionError::ResponseError(message));
         }
 
-        let content = output_contents
+        let mut content = output_contents
             .into_iter()
             .filter_map(|output| match assistant_content_from_output(output) {
                 Ok(Some(content)) => Some(Ok(content)),
@@ -457,6 +467,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
+        crate::message::normalize_missing_tool_call_ids(&mut content);
         let choice = crate::message::require_non_empty_response(content)?;
 
         let usage = response
@@ -1827,7 +1838,7 @@ pub mod interactions_api_types {
                     // when it exists, else rig's minted handle — always
                     // present, so the old "results require call_id" error
                     // is unrepresentable.
-                    let call_id = tool_result.wire_call_id().to_owned();
+                    let call_id = tool_result.wire_call_id().into_owned();
                     let name = tool_result.name;
 
                     let mut contents = tool_result.content.into_iter().collect::<Vec<_>>();
@@ -1979,7 +1990,7 @@ pub mod interactions_api_types {
                     }))
                 }
                 message::AssistantContent::ToolCall(tool_call) => {
-                    let call_id = tool_call.wire_call_id().to_owned();
+                    let call_id = tool_call.wire_call_id().into_owned();
                     Ok(Self::FunctionCall(FunctionCallContent {
                         name: Some(tool_call.function.name),
                         arguments: Some(tool_call.function.arguments),

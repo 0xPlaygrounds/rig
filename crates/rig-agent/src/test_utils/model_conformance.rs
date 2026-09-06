@@ -374,13 +374,16 @@ fn validate_tool_correlation(
 ) -> Result<(), ScenarioError> {
     let mut calls = Vec::new();
     let mut results = Vec::new();
+    let mut turn = 0usize;
     for message in messages {
         match message {
             Message::Assistant { content, .. } => {
+                turn += 1;
                 calls.extend(content.iter().filter_map(|item| {
                     match item {
                         AssistantContent::ToolCall(call) => Some((
-                            call.id.as_str(),
+                            turn,
+                            &call.id,
                             call.provider
                                 .as_ref()
                                 .map(|provider| provider.call_id.as_str()),
@@ -393,7 +396,8 @@ fn validate_tool_correlation(
                 results.extend(content.iter().filter_map(|item| {
                     match item {
                         UserContent::ToolResult(result) => Some((
-                            result.call.as_str(),
+                            turn,
+                            &result.call,
                             result
                                 .provider
                                 .as_ref()
@@ -412,10 +416,12 @@ fn validate_tool_correlation(
             format!("history has no assistant tool calls: {messages:?}"),
         ));
     }
-    for (id, call_id) in &calls {
+    for (turn, id, call_id) in &calls {
         let matches = results
             .iter()
-            .filter(|(result_id, result_call_id)| result_id == id && call_id == result_call_id)
+            .filter(|(result_turn, result_id, result_call_id)| {
+                result_turn == turn && result_id == id && call_id == result_call_id
+            })
             .count();
         if matches != 1 {
             return Err(ScenarioError::contract(

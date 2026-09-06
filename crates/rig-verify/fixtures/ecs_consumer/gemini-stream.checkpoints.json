@@ -195,7 +195,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "read_file",
                       "arguments": {}
@@ -219,7 +222,10 @@
                 "content": [
                   {
                     "type": "toolresult",
-                    "call": "tool-0",
+                    "call": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "name": "read_file",
                     "content": [
                       {
@@ -248,7 +254,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "search_file",
                       "arguments": {
@@ -274,7 +283,10 @@
                 "content": [
                   {
                     "type": "toolresult",
-                    "call": "tool-0",
+                    "call": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "name": "search_file",
                     "content": [
                       {
@@ -307,7 +319,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "propose_edit",
                       "arguments": {
@@ -333,7 +348,10 @@
                 "content": [
                   {
                     "type": "toolresult",
-                    "call": "tool-0",
+                    "call": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "name": "propose_edit",
                     "content": [
                       {
@@ -362,7 +380,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "apply_edit",
                       "arguments": {}
@@ -384,7 +405,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "read_file",
                       "arguments": {}
@@ -410,7 +434,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "search_file",
                       "arguments": {
@@ -438,7 +465,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "propose_edit",
                       "arguments": {
@@ -466,7 +496,10 @@
                 "content": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "apply_edit",
                       "arguments": {}
@@ -998,7 +1031,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "read_file",
                       "arguments": {}
@@ -1060,7 +1096,10 @@
                   },
                   "block": {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "read_file",
                       "arguments": {}
@@ -1111,7 +1150,10 @@
                   "choice": [
                     {
                       "type": "toolcall",
-                      "id": "tool-0",
+                      "id": {
+                        "origin": "generated",
+                        "id": "minted:tool:0"
+                      },
                       "function": {
                         "name": "read_file",
                         "arguments": {}
@@ -1213,7 +1255,10 @@
                     "content": [
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "read_file",
                           "arguments": {}
@@ -1228,7 +1273,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "read_file",
                         "content": [
                           {
@@ -1321,7 +1369,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "search_file",
                       "arguments": {
@@ -1387,7 +1438,10 @@
                   },
                   "block": {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "search_file",
                       "arguments": {
@@ -1440,7 +1494,10 @@
                   "choice": [
                     {
                       "type": "toolcall",
-                      "id": "tool-0",
+                      "id": {
+                        "origin": "generated",
+                        "id": "minted:tool:0"
+                      },
                       "function": {
                         "name": "search_file",
                         "arguments": {
@@ -1548,7 +1605,10 @@
                     "content": [
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "read_file",
                           "arguments": {}
@@ -1563,7 +1623,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "read_file",
                         "content": [
                           {
@@ -1583,7 +1646,10 @@
                     "content": [
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "search_file",
                           "arguments": {
@@ -1600,7 +1666,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "search_file",
                         "content": [
                           {
@@ -1697,7 +1766,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "propose_edit",
                       "arguments": {
@@ -1763,7 +1835,10 @@
                   },
                   "block": {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "propose_edit",
                       "arguments": {
@@ -1816,7 +1891,10 @@
                   "choice": [
                     {
                       "type": "toolcall",
-                      "id": "tool-0",
+                      "id": {
+                        "origin": "generated",
+                        "id": "minted:tool:0"
+                      },
                       "function": {
                         "name": "propose_edit",
                         "arguments": {
@@ -1920,7 +1998,10 @@
                     "content": [
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "read_file",
                           "arguments": {}
@@ -1935,7 +2016,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "read_file",
                         "content": [
                           {
@@ -1955,7 +2039,10 @@
                     "content": [
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "search_file",
                           "arguments": {
@@ -1972,7 +2059,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "search_file",
                         "content": [
                           {
@@ -1996,7 +2086,10 @@
                     "content": [
                       {
                         "type": "toolcall",
-                        "id": "tool-0",
+                        "id": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "function": {
                           "name": "propose_edit",
                           "arguments": {
@@ -2013,7 +2106,10 @@
                     "content": [
                       {
                         "type": "toolresult",
-                        "call": "tool-0",
+                        "call": {
+                          "origin": "generated",
+                          "id": "minted:tool:0"
+                        },
                         "name": "propose_edit",
                         "content": [
                           {
@@ -2106,7 +2202,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "apply_edit",
                       "arguments": {}
@@ -2168,7 +2267,10 @@
                   },
                   "block": {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "apply_edit",
                       "arguments": {}
@@ -2219,7 +2321,10 @@
                   "choice": [
                     {
                       "type": "toolcall",
-                      "id": "tool-0",
+                      "id": {
+                        "origin": "generated",
+                        "id": "minted:tool:0"
+                      },
                       "function": {
                         "name": "apply_edit",
                         "arguments": {}
@@ -2311,7 +2416,10 @@
           1,
           {
             "index": 0,
-            "id": "tool-0",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:0"
+            },
             "provider": null,
             "name": "read_file"
           }
@@ -2320,7 +2428,10 @@
           3,
           {
             "index": 0,
-            "id": "tool-0",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:0"
+            },
             "provider": null,
             "name": "search_file"
           }
@@ -2329,7 +2440,10 @@
           5,
           {
             "index": 0,
-            "id": "tool-0",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:0"
+            },
             "provider": null,
             "name": "propose_edit"
           }
@@ -2338,7 +2452,10 @@
           7,
           {
             "index": 0,
-            "id": "tool-0",
+            "id": {
+              "origin": "generated",
+              "id": "minted:tool:0"
+            },
             "provider": null,
             "name": "apply_edit"
           }
@@ -2378,7 +2495,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "read_file",
                       "arguments": {}
@@ -2476,7 +2596,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "search_file",
                       "arguments": {
@@ -2569,7 +2692,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "propose_edit",
                       "arguments": {
@@ -2658,7 +2784,10 @@
                 "choice": [
                   {
                     "type": "toolcall",
-                    "id": "tool-0",
+                    "id": {
+                      "origin": "generated",
+                      "id": "minted:tool:0"
+                    },
                     "function": {
                       "name": "apply_edit",
                       "arguments": {}

@@ -205,7 +205,10 @@ const GOLDEN: &str = r#"
               },
               "name": "add"
             },
-            "id": "tc1",
+            "id": {
+              "id": "tc1",
+              "origin": "explicit"
+            },
             "provider": {
               "call_id": "tc1"
             },
@@ -219,7 +222,10 @@ const GOLDEN: &str = r#"
       {
         "content": [
           {
-            "call": "tc1",
+            "call": {
+              "id": "tc1",
+              "origin": "explicit"
+            },
             "content": [
               {
                 "type": "json",
@@ -321,7 +327,10 @@ const GOLDEN: &str = r#"
               },
               "name": "add"
             },
-            "id": "tc1",
+            "id": {
+              "id": "tc1",
+              "origin": "explicit"
+            },
             "provider": {
               "call_id": "tc1"
             },
@@ -335,7 +344,10 @@ const GOLDEN: &str = r#"
       {
         "content": [
           {
-            "call": "tc1",
+            "call": {
+              "id": "tc1",
+              "origin": "explicit"
+            },
             "content": [
               {
                 "type": "json",

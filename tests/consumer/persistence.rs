@@ -31,6 +31,8 @@ pub(super) struct HostSnapshot {
     observations: Vec<Observation>,
     seen: BTreeMap<u64, (usize, bool)>,
     primary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    repair: Option<super::repair::Snapshot>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -88,13 +90,48 @@ pub(super) fn capture(world: &mut World) {
     // The cut is after the observed write, before the next model turn. It
     // contains no unfinished delivered stream prefix and no transient inbox.
     let wrote = host.observations.iter().any(|item| {
-        item.boundary == "collect.outcome"
-            && item.data.get("key").and_then(serde_json::Value::as_str)
-                == Some("maintenance/tool:apply_edit")
+        if let Some(state) = &host.repair {
+            item.boundary == "collect.publication"
+                && item
+                    .data
+                    .get("applied")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(true)
+                && item
+                    .data
+                    .get("operation")
+                    .and_then(serde_json::Value::as_str)
+                    == state
+                        .ledger
+                        .last()
+                        .map(|receipt| receipt.patch.operation.as_str())
+        } else {
+            item.boundary == "collect.outcome"
+                && item.data.get("key").and_then(serde_json::Value::as_str)
+                    == Some("maintenance/tool:apply_edit")
+        }
     });
-    if restart.is_none() && (host.workspace.writes != 1 || !wrote) {
+    let completed = host
+        .repair
+        .as_ref()
+        .map_or(host.workspace.writes == 1, |state| {
+            state.ledger.len() == 2 && state.final_report.is_none()
+        });
+    if restart.is_none() && (!completed || !wrote) {
         return;
     }
+    let repair = match host
+        .repair
+        .as_ref()
+        .map(|state| state.snapshot())
+        .transpose()
+    {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            world.resource_mut::<Host>().failure = Some(error.to_string());
+            return;
+        }
+    };
     let snapshot = match host.workspace.read() {
         Ok(contents) => HostSnapshot {
             contents,
@@ -105,6 +142,7 @@ pub(super) fn capture(world: &mut World) {
             observations: host.observations.clone(),
             seen: host.seen.clone(),
             primary: host.primary.clone(),
+            repair,
         },
         Err(error) => {
             world.resource_mut::<Host>().failure = Some(error.to_string());
@@ -231,6 +269,11 @@ pub(crate) async fn resume(
     checkpoint: &Checkpoint,
 ) -> Result<Evidence, Error> {
     let checkpoint: Checkpoint = serde_json::from_str(&serde_json::to_string(checkpoint)?)?;
+    if case.repair != checkpoint.host.repair.is_some() {
+        return Err(Error::Invariant(
+            "checkpoint application state does not match selected workflow".into(),
+        ));
+    }
     if !matches!(
         checkpoint.cut.as_str(),
         "after-write" | "before-first-delivery"
@@ -257,6 +300,12 @@ pub(crate) async fn resume(
         host.observations = checkpoint.host.observations.clone();
         host.seen = checkpoint.host.seen.clone();
         host.primary = checkpoint.host.primary.clone();
+        host.repair = checkpoint
+            .host
+            .repair
+            .clone()
+            .map(super::repair::State::restore)
+            .transpose()?;
     }
     let loaded = load_world(&checkpoint.scene, app.world_mut())?;
     for (saved, restored) in checkpoint.scene.effects.effects.iter().zip(&loaded.effects) {
@@ -335,7 +384,23 @@ pub(crate) async fn check_external_recovery(
         .ok_or_else(|| {
             Error::Invariant("write recovery requires an actual completed write".into())
         })?;
-    if cut.host.writes != 1 || cut.host.contents != super::TARGET {
+    let operation = if let Some(repair) = &cut.host.repair {
+        if repair.writes != 2 || repair.ledger.len() != 2 {
+            return Err(Error::Invariant(
+                "repair recovery probe has no completed production edit".into(),
+            ));
+        }
+        repair
+            .ledger
+            .get(1)
+            .ok_or_else(|| Error::Invariant("repair recovery lacks production receipt".into()))?
+            .patch
+            .operation
+            .clone()
+    } else {
+        "greeting-fix-v1".into()
+    };
+    if !case.repair && (cut.host.writes != 1 || cut.host.contents != super::TARGET) {
         return Err(Error::Invariant(
             "recovery probe has no external write to preserve".into(),
         ));
@@ -345,7 +410,11 @@ pub(crate) async fn check_external_recovery(
         .effects
         .effects
         .iter_mut()
-        .find(|effect| effect.key.as_str() == super::tool_key("apply_edit"))
+        .find(|effect| {
+            if case.repair {
+                effect.key.as_str()==super::tool_key("repo_apply_patch") && matches!(&effect.kind,rig_core::effect::EffectKind::ToolCall{args,..} if serde_json::from_str::<serde_json::Value>(args).ok().is_some_and(|args|args.get("operation").and_then(serde_json::Value::as_str)==Some(operation.as_str())))
+            } else {effect.key.as_str()==super::tool_key("apply_edit")}
+        })
         .ok_or_else(|| Error::Invariant("write effect absent from checkpoint".into()))?;
     let id = effect
         .id
@@ -362,12 +431,14 @@ pub(crate) async fn check_external_recovery(
     super::artifacts::write(&bundle.join("unanswered-write.checkpoint.json"), &cut)?;
     match resume(case, &evidence.effects, &cut).await {
         Err(error)
-            if error
-                .to_string()
-                .contains("duplicate write operation greeting-fix-v1") =>
+            if error.to_string().contains(if case.repair {
+                "external edit already happened; reconcile"
+            } else {
+                "duplicate write operation greeting-fix-v1"
+            }) =>
         {
             Ok(Some(
-                serde_json::json!({"check":"lost-write-outcome-requires-reconciliation","status":"passed","operation":"greeting-fix-v1","effect":id,"fault_input":bundle.join("unanswered-write.checkpoint.json")}),
+                serde_json::json!({"check":"lost-write-outcome-requires-reconciliation","status":"passed","operation":operation,"effect":id,"fault_input":bundle.join("unanswered-write.checkpoint.json")}),
             ))
         }
         _ => Err(Error::Invariant(

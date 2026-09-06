@@ -18,7 +18,7 @@
 //! |---|---|
 //! | completion transport | unary · streamed, events dropped · streamed, events kept · streamed on a delta wire (tool names and arguments as deltas) |
 //! | tool shape | none · one call then answer · two calls in one turn · two turns · zero-arg tool · a tool that errors |
-//! | tool id wire | provider id (anthropic) · id-less, minted `tool-<n>` (gemini) · dual `call_id`/`item_id` (openai) |
+//! | tool id wire | provider id (anthropic) · id-less, tagged generated tool identities (gemini) · dual `call_id`/`item_id` (openai) |
 //! | serving | `serial_per_handler` false · true; `tool_concurrency` 1 · 2; capacities default · 1 |
 //! | memory | none · `Load` + `Append` · `Load` of an empty conversation · `Clear` from a hook (after the load, or after the append) · two runs in one log · explicit history (bypassed) · a `Load` or `Append` that fails |
 //! | retrieval | none · `dynamic_context(n, index)` (`TopN`) · `retrieved_tools(n, index, toolset)` (`TopNIds`) · both |

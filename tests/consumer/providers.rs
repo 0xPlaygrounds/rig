@@ -19,7 +19,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::{Case, Error, Evidence, Provider, execute};
+use super::{Case, Error, Evidence, Provider, execute_with_deadline};
 use crate::cassettes::{CassetteMode, CassetteSpec, ProviderCassette};
 
 #[cfg(test)]
@@ -40,6 +40,15 @@ impl Default for Limits {
             output_tokens: 512,
             seconds: 300,
             retries: 0,
+        }
+    }
+}
+
+impl Limits {
+    pub(crate) fn for_case(case: &Case) -> Self {
+        Self {
+            output_tokens: case.output_tokens(),
+            ..Self::default()
         }
     }
 }
@@ -128,20 +137,28 @@ impl HttpMiddleware for Guard {
 }
 
 pub(crate) fn identity(
-    provider: Provider,
+    case: &Case,
 ) -> Result<(&'static str, &'static str, &'static str, &'static str), Error> {
-    Ok(match provider {
+    Ok(match case.provider {
         Provider::Anthropic => (
             "anthropic",
             "https://api.anthropic.com",
             "ANTHROPIC_API_KEY",
-            anthropic::completion::CLAUDE_HAIKU_4_5,
+            if case.repair {
+                "claude-opus-5"
+            } else {
+                anthropic::completion::CLAUDE_HAIKU_4_5
+            },
         ),
         Provider::Openai => (
             "openai",
             "https://api.openai.com/v1",
             "OPENAI_API_KEY",
-            openai::GPT_4_1_MINI,
+            if case.repair {
+                openai::GPT_5_6_SOL
+            } else {
+                openai::GPT_4_1_MINI
+            },
         ),
         Provider::Gemini => (
             "gemini",
@@ -163,7 +180,7 @@ pub(crate) async fn run(
     path: &Path,
     budget: &Budget,
 ) -> Result<Evidence, Error> {
-    let (provider, upstream, variable, model) = identity(case.provider)?;
+    let (provider, upstream, variable, model) = identity(case)?;
     if mode == CassetteMode::Record && std::env::var_os(variable).is_none() {
         return Err(Error::Invocation(format!("missing {variable}")));
     }
@@ -176,14 +193,18 @@ pub(crate) async fn run(
     if mode == CassetteMode::Replay {
         super::artifacts::safe_cassette(path)?;
     }
-    let cassette = ProviderCassette::start_at(
-        provider,
-        CassetteSpec::new(case.id),
-        upstream,
-        mode,
-        path.to_owned(),
+    let cassette = tokio::time::timeout_at(
+        execution_deadline(mode, budget).into(),
+        ProviderCassette::start_at(
+            provider,
+            CassetteSpec::new(case.id),
+            upstream,
+            mode,
+            path.to_owned(),
+        ),
     )
-    .await;
+    .await
+    .map_err(|_| Error::Invariant("provider cassette setup deadline exhausted".into()))?;
     let base = cassette.base_url();
     let authority = base
         .parse::<Uri>()
@@ -204,48 +225,116 @@ pub(crate) async fn run(
             budget: budget.clone(),
             authority,
         });
-    let result = match case.provider {
-        Provider::Anthropic => {
-            let client = anthropic::Client::builder()
-                .api_key(cassette.api_key(variable))
-                .base_url(&base)
-                .http_client(http)
-                .build()?;
-            execute(
-                case,
-                CompletionAdapter::new(model, client.completion_model(model)),
-            )
-            .await
+    let execution_deadline = execution_deadline(mode, budget);
+    let api_key = cassette.api_key(variable);
+    let execution = async {
+        match case.provider {
+            Provider::Anthropic => {
+                let client = anthropic::Client::builder()
+                    .api_key(api_key)
+                    .base_url(&base)
+                    .http_client(http)
+                    .build()?;
+                execute_with_deadline(
+                    case,
+                    CompletionAdapter::new(model, client.completion_model(model)),
+                    Some(execution_deadline),
+                )
+                .await
+            }
+            Provider::Openai => {
+                let client = openai::Client::builder()
+                    .api_key(api_key)
+                    .base_url(&base)
+                    .http_client(http)
+                    .build()?;
+                execute_with_deadline(
+                    case,
+                    CompletionAdapter::new(model, client.completion_model(model)),
+                    Some(execution_deadline),
+                )
+                .await
+            }
+            Provider::Gemini => {
+                let client = gemini::Client::builder()
+                    .api_key(api_key)
+                    .base_url(&base)
+                    .http_client(http)
+                    .build()?;
+                execute_with_deadline(
+                    case,
+                    CompletionAdapter::new(model, client.completion_model(model)),
+                    Some(execution_deadline),
+                )
+                .await
+            }
+            Provider::Synthetic => Err(Error::Invocation("synthetic cassette mode".into())),
         }
-        Provider::Openai => {
-            let client = openai::Client::builder()
-                .api_key(cassette.api_key(variable))
-                .base_url(&base)
-                .http_client(http)
-                .build()?;
-            execute(
-                case,
-                CompletionAdapter::new(model, client.completion_model(model)),
-            )
-            .await
-        }
-        Provider::Gemini => {
-            let client = gemini::Client::builder()
-                .api_key(cassette.api_key(variable))
-                .base_url(&base)
-                .http_client(http)
-                .build()?;
-            execute(
-                case,
-                CompletionAdapter::new(model, client.completion_model(model)),
-            )
-            .await
-        }
-        Provider::Synthetic => return Err(Error::Invocation("synthetic cassette mode".into())),
     };
-    let finalized = std::panic::AssertUnwindSafe(cassette.finish())
-        .catch_unwind()
+    complete_capture(cassette, path, budget, mode, execution).await
+}
+
+fn execution_deadline(mode: CassetteMode, budget: &Budget) -> Instant {
+    if mode == CassetteMode::Record {
+        budget
+            .deadline
+            .checked_sub(Duration::from_secs(10))
+            .unwrap_or(budget.deadline)
+    } else {
+        budget.deadline
+    }
+}
+
+async fn complete_capture(
+    cassette: ProviderCassette,
+    path: &Path,
+    budget: &Budget,
+    mode: CassetteMode,
+    execution: impl std::future::Future<Output = Result<Evidence, Error>>,
+) -> Result<Evidence, Error> {
+    let result = {
+        let execution = std::panic::AssertUnwindSafe(execution).catch_unwind();
+        tokio::pin!(execution);
+        if mode == CassetteMode::Record {
+            let deadline = execution_deadline(mode, budget);
+            let mut interval = tokio::time::interval(Duration::from_secs(1));
+            loop {
+                tokio::select! {
+                    result=&mut execution => break result.unwrap_or_else(|payload|Err(Error::Invariant(format!("consumer panicked: {}",panic_text(payload))))),
+                    _=tokio::time::sleep_until(deadline.into())=>break Err(Error::Invariant("provider execution deadline exhausted; remaining time reserved for recording finalization".into())),
+                    _=interval.tick()=> {
+                        let snapshot_deadline=deadline.min(Instant::now()+Duration::from_secs(1));
+                        let _=tokio::time::timeout_at(snapshot_deadline.into(),cassette.checkpoint_recording(&path.with_file_name("provider.partial.yaml"))).await;
+                    }
+                }
+            }
+        } else {
+            execution.await.unwrap_or_else(|payload| {
+                Err(Error::Invariant(format!(
+                    "consumer panicked: {}",
+                    panic_text(payload)
+                )))
+            })
+        }
+    };
+    if mode == CassetteMode::Record {
+        let snapshot_deadline = budget.deadline.min(Instant::now() + Duration::from_secs(2));
+        let _ = tokio::time::timeout_at(
+            snapshot_deadline.into(),
+            cassette.checkpoint_recording(&path.with_file_name("provider.partial.yaml")),
+        )
         .await;
+    }
+    let finalized = tokio::time::timeout_at(
+        budget.deadline.into(),
+        std::panic::AssertUnwindSafe(cassette.finish()).catch_unwind(),
+    )
+    .await;
+    let finalized = match finalized {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(payload)) => Err(panic_text(payload)),
+        Err(_) => Err("recording finalization deadline exhausted".into()),
+    };
     match (result, finalized) {
         (Ok(evidence), Ok(())) => Ok(evidence),
         (result, finalized) => Err(Error::Invariant(format!(
@@ -255,11 +344,28 @@ pub(crate) async fn run(
                 |error| error.to_string()
             ),
             path.display(),
-            if finalized.is_ok() {
-                "completed"
-            } else {
-                "failed; capture may be incomplete"
-            }
+            finalized.err().map_or_else(
+                || "completed".into(),
+                |error| {
+                    let partial = path.with_file_name("provider.partial.yaml");
+                    let retained = if partial.is_file() {
+                        format!("retained partial {}", partial.display())
+                    } else {
+                        "no partial recording available".into()
+                    };
+                    format!("failed: {error}; capture may be incomplete; {retained}")
+                }
+            )
         ))),
+    }
+}
+
+fn panic_text(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(text) = payload.downcast_ref::<String>() {
+        text.clone()
+    } else if let Some(text) = payload.downcast_ref::<&str>() {
+        (*text).into()
+    } else {
+        "non-text panic payload".into()
     }
 }

@@ -449,3 +449,112 @@ fn a_run_saved_while_retrieving_resumes_and_attaches() {
         .count();
     assert_eq!(attachments, 1, "the retrieved document is attached");
 }
+
+#[test]
+fn contradictory_effect_ids_refuse_the_paired_graph_before_spawning() {
+    use rig_core::effect::{EffectId, EffectKind};
+    use rig_ecs::{
+        agent::scene::{SceneEntity, SceneKind},
+        bus::{Reserved, Scene},
+    };
+    let mut live = run_support::app();
+    live.world_mut().spawn((
+        PendingEffect::new(
+            "custom",
+            EffectKind::Custom {
+                kind: "scene-preflight".into(),
+                payload: serde_json::Value::Null,
+            },
+        ),
+        Reserved(EffectId::from_raw(8)),
+    ));
+    let scene = Scene::save(live.world_mut());
+    for (id, next_id) in [(8, Some(4)), (u64::MAX, None)] {
+        let mut bad = scene.clone();
+        bad.effects[0].id = Some(EffectId::from_raw(id));
+        bad.next_id = next_id;
+        let bad: Scene = serde_json::from_value(serde_json::to_value(bad).unwrap()).unwrap();
+        let mut restored = run_support::app();
+        restored.world_mut().resource_mut::<IdCounter>().0 = 5;
+        let before = restored.world().entities().len();
+        let world_scene = WorldScene {
+            effects: bad,
+            graph: RunScene {
+                entities: vec![SceneEntity {
+                    kind: SceneKind::Agent,
+                    components: Default::default(),
+                    parent: None,
+                    relations: Vec::new(),
+                }],
+                ..RunScene::default()
+            },
+            ..WorldScene::default()
+        };
+        assert!(load_world(&world_scene, restored.world_mut()).is_err());
+        assert_eq!(
+            restored.world().entities().len(),
+            before,
+            "paired graph preflight must also refuse"
+        );
+        assert_eq!(restored.world().resource::<rig_ecs::bus::IdCounter>().0, 5);
+    }
+}
+
+#[test]
+fn malformed_run_graph_is_rejected_before_spawning() {
+    use rig_ecs::agent::scene::{SceneEntity, SceneKind, Target};
+    for fault in ["cycle", "self-parent", "missing-parent", "missing-relation"] {
+        let mut scene = RunScene {
+            entities: (0..2)
+                .map(|_| SceneEntity {
+                    kind: SceneKind::Agent,
+                    components: Default::default(),
+                    parent: None,
+                    relations: vec![],
+                })
+                .collect(),
+            ..Default::default()
+        };
+        match fault {
+            "cycle" => {
+                scene.entities[0].parent = Some(1);
+                scene.entities[1].parent = Some(0);
+            }
+            "self-parent" => scene.entities[0].parent = Some(0),
+            "missing-parent" => scene.entities[0].parent = Some(2),
+            "missing-relation" => scene.entities[0]
+                .relations
+                .push(("context".into(), Target::Scene { index: 2 })),
+            _ => panic!("unknown graph fault {fault}"),
+        }
+        let mut world = World::new();
+        let initial = world.entities().len();
+        assert!(scene.load(&mut world).is_err(), "{fault}");
+        assert_eq!(world.entities().len(), initial, "{fault} mutated the world");
+    }
+}
+
+#[test]
+fn paired_scene_missing_graph_parent_is_rejected_before_spawning() {
+    let mut source = World::new();
+    source.init_resource::<rig_ecs::bus::SeqCounter>();
+    source.init_resource::<IdCounter>();
+    source.spawn(PendingEffect::new(
+        "custom",
+        rig_core::effect::EffectKind::Custom {
+            kind: "test".into(),
+            payload: serde_json::Value::Null,
+        },
+    ));
+    let mut scene = WorldScene {
+        effects: rig_ecs::bus::Scene::save(&mut source),
+        ..Default::default()
+    };
+    scene.effects.effects[0].parent_ref = Some(0);
+    let mut destination = World::new();
+    destination.init_resource::<rig_ecs::bus::SeqCounter>();
+    destination.init_resource::<IdCounter>();
+    let initial = destination.entities().len();
+    assert!(load_world(&scene, &mut destination).is_err());
+    assert_eq!(destination.entities().len(), initial);
+}

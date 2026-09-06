@@ -110,7 +110,10 @@
           "choice": [
             {
               "type": "toolcall",
-              "id": "call-1",
+              "id": {
+                "origin": "explicit",
+                "id": "call-1"
+              },
               "provider": {
                 "call_id": "call-1"
               },
@@ -198,7 +201,10 @@
           },
           "block": {
             "type": "toolcall",
-            "id": "call-1",
+            "id": {
+              "origin": "explicit",
+              "id": "call-1"
+            },
             "provider": {
               "call_id": "call-1"
             },

@@ -339,7 +339,7 @@ async fn a_missing_step_stop_does_not_lose_the_announced_call() {
         serde_json::json!({"city": "Paris"}),
         "the streamed argument fragments finalize the call"
     );
-    assert_eq!(tool_call.id, "fc_1");
+    assert_eq!(tool_call.id.explicit(), Some("fc_1"));
 
     // The turn completed normally: the terminal record survives too.
     assert!(stream.response.is_some());

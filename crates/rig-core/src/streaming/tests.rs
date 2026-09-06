@@ -1376,7 +1376,7 @@ async fn test_stream_aggregates_assistant_items_in_arrival_order() {
     ));
     assert!(matches!(
         choice_items.get(2),
-        Some(AssistantContent::ToolCall(ToolCall { id, .. })) if id == "tool_1"
+        Some(AssistantContent::ToolCall(ToolCall { id, .. })) if id.explicit() == Some("tool_1")
     ));
 }
 
@@ -1430,7 +1430,7 @@ async fn test_stream_keeps_non_contiguous_text_chunks_split_by_tool_call() {
     ));
     assert!(matches!(
         choice_items.get(1),
-        Some(AssistantContent::ToolCall(ToolCall { id, .. })) if id == "tool_split"
+        Some(AssistantContent::ToolCall(ToolCall { id, .. })) if id.explicit() == Some("tool_split")
     ));
     assert!(matches!(
         choice_items.get(2),
@@ -1511,4 +1511,99 @@ async fn a_tool_end_carries_the_completed_call_or_nothing_when_dropped() {
         1,
         "only the completed call is in the choice"
     );
+}
+
+/// Synthetic identity law: future explicit IDs cannot alias generated IDs or
+/// force buffering. Provider serialization is tested at its request boundary.
+#[tokio::test]
+async fn typed_tool_identity_streams_colliding_spellings_without_lookahead() {
+    use crate::message::ToolCallId;
+    use futures::FutureExt;
+    for explicit_first in [false, true] {
+        let (sender, receiver) = futures::channel::mpsc::unbounded();
+        let mut response =
+            StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(receiver));
+        let mut generated = SyntheticIds::tool();
+        let key = generated.mint();
+        for (position, explicit) in [explicit_first, !explicit_first].into_iter().enumerate() {
+            let mut out = AdapterOutput::new();
+            if explicit {
+                out.tool_call(
+                    BlockId::wire("tool-0"),
+                    ToolCallEnd::whole("explicit", serde_json::json!({})).with_tool_id("tool-0"),
+                );
+            } else {
+                out.tool_call(
+                    key.clone(),
+                    ToolCallEnd::whole("generated", serde_json::json!({})),
+                );
+            }
+            for event in out.into_items() {
+                sender.unbounded_send(event).expect("send frame");
+            }
+            let completed = tokio::time::timeout(Duration::from_secs(1), async {
+                loop {
+                    let event = response
+                        .next()
+                        .await
+                        .expect("event before EOF")
+                        .expect("valid event");
+                    let encoded = serde_json::to_string(&event).expect("serialize event");
+                    let decoded: StreamEvent =
+                        serde_json::from_str(&encoded).expect("deserialize event");
+                    if let StreamEvent::BlockEnd {
+                        block: Some(AssistantContent::ToolCall(call)),
+                        ..
+                    } = decoded
+                    {
+                        break call;
+                    }
+                }
+            })
+            .await
+            .expect("completed call must not wait for later frames");
+            let expected = if explicit {
+                ToolCallId::new("tool-0").expect("explicit")
+            } else {
+                ToolCallId::from_block(&key)
+            };
+            assert_eq!(completed.id, expected);
+            assert_eq!(completed.provider.is_some(), explicit);
+            assert_eq!(
+                response.snapshot().len(),
+                position + 1,
+                "partial snapshot retains each completed call"
+            );
+            assert!(
+                response.next().now_or_never().is_none(),
+                "no extra provider frames exist"
+            );
+            sender
+                .unbounded_send(Err(CompletionError::ResponseError(
+                    "recoverable probe".into(),
+                )))
+                .expect("send error");
+            assert!(
+                matches!(response.next().now_or_never(), Some(Some(Err(_)))),
+                "error delivery must not wait for EOF"
+            );
+        }
+        sender
+            .unbounded_send(Ok(StreamEvent::Final(mock_final_with_total_tokens(1))))
+            .expect("send final");
+        drop(sender);
+        while let Some(event) = response.next().await {
+            event.expect("remaining event");
+        }
+        let calls: Vec<_> = response
+            .snapshot()
+            .into_iter()
+            .filter_map(|item| match item {
+                AssistantContent::ToolCall(call) => Some(call),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(calls.len(), 2);
+        assert_ne!(calls[0].id, calls[1].id);
+    }
 }

@@ -633,7 +633,10 @@
             },
             {
               "type": "toolcall",
-              "id": "tool-0",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
               "function": {
                 "name": "read_file",
                 "arguments": {}
@@ -643,7 +646,10 @@
             },
             {
               "type": "toolcall",
-              "id": "tool-1",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:1"
+              },
               "function": {
                 "name": "search_file",
                 "arguments": {
@@ -841,7 +847,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "tool-0",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "function": {
                     "name": "read_file",
                     "arguments": {}
@@ -851,7 +860,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "tool-1",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:1"
+                  },
                   "function": {
                     "name": "search_file",
                     "arguments": {
@@ -868,7 +880,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "tool-0",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "name": "read_file",
                   "content": [
                     {
@@ -882,7 +897,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "tool-1",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:1"
+                  },
                   "name": "search_file",
                   "content": [
                     {
@@ -976,7 +994,10 @@
             },
             {
               "type": "toolcall",
-              "id": "tool-0",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
               "function": {
                 "name": "propose_edit",
                 "arguments": {
@@ -1125,7 +1146,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "tool-0",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "function": {
                     "name": "read_file",
                     "arguments": {}
@@ -1135,7 +1159,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "tool-1",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:1"
+                  },
                   "function": {
                     "name": "search_file",
                     "arguments": {
@@ -1152,7 +1179,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "tool-0",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "name": "read_file",
                   "content": [
                     {
@@ -1166,7 +1196,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "tool-1",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:1"
+                  },
                   "name": "search_file",
                   "content": [
                     {
@@ -1194,7 +1227,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "tool-0",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "function": {
                     "name": "propose_edit",
                     "arguments": {
@@ -1211,7 +1247,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "tool-0",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "name": "propose_edit",
                   "content": [
                     {
@@ -1301,7 +1340,10 @@
             },
             {
               "type": "toolcall",
-              "id": "tool-0",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
               "function": {
                 "name": "apply_edit",
                 "arguments": {}
@@ -1453,7 +1495,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "tool-0",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "function": {
                     "name": "read_file",
                     "arguments": {}
@@ -1463,7 +1508,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "tool-1",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:1"
+                  },
                   "function": {
                     "name": "search_file",
                     "arguments": {
@@ -1480,7 +1528,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "tool-0",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "name": "read_file",
                   "content": [
                     {
@@ -1494,7 +1545,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "tool-1",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:1"
+                  },
                   "name": "search_file",
                   "content": [
                     {
@@ -1522,7 +1576,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "tool-0",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "function": {
                     "name": "propose_edit",
                     "arguments": {
@@ -1539,7 +1596,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "tool-0",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "name": "propose_edit",
                   "content": [
                     {
@@ -1563,7 +1623,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "tool-0",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "function": {
                     "name": "apply_edit",
                     "arguments": {}
@@ -1578,7 +1641,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "tool-0",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "name": "apply_edit",
                   "content": [
                     {
@@ -1670,7 +1736,10 @@
             },
             {
               "type": "toolcall",
-              "id": "tool-0",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
               "function": {
                 "name": "validate_file",
                 "arguments": {}
@@ -1815,7 +1884,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "tool-0",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "function": {
                     "name": "read_file",
                     "arguments": {}
@@ -1825,7 +1897,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "tool-1",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:1"
+                  },
                   "function": {
                     "name": "search_file",
                     "arguments": {
@@ -1842,7 +1917,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "tool-0",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "name": "read_file",
                   "content": [
                     {
@@ -1856,7 +1934,10 @@
                 },
                 {
                   "type": "toolresult",
-                  "call": "tool-1",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:1"
+                  },
                   "name": "search_file",
                   "content": [
                     {
@@ -1884,7 +1965,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "tool-0",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "function": {
                     "name": "propose_edit",
                     "arguments": {
@@ -1901,7 +1985,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "tool-0",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "name": "propose_edit",
                   "content": [
                     {
@@ -1925,7 +2012,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "tool-0",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "function": {
                     "name": "apply_edit",
                     "arguments": {}
@@ -1940,7 +2030,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "tool-0",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "name": "apply_edit",
                   "content": [
                     {
@@ -1966,7 +2059,10 @@
                 },
                 {
                   "type": "toolcall",
-                  "id": "tool-0",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "function": {
                     "name": "validate_file",
                     "arguments": {}
@@ -1981,7 +2077,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "tool-0",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "name": "validate_file",
                   "content": [
                     {

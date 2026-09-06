@@ -50,7 +50,7 @@
 //!   installed ([`Recording::install`]), `Dispatch` opens a record as it
 //!   takes an effect and `Collect` closes it as the outcome lands; a
 //!   despawn before that closes it as cancelled. Under the `replay` feature
-//!   a [`Replay`] loads a log's records as effect entities with their
+//!   a `Replay` loads a log's records as effect entities with their
 //!   recorded ids and registers a replayer that answers each by id. An ECS
 //!   recording also keeps consumer delivery batches. Policy-visible replay
 //!   requires these boundaries and, for streams, kept events and error items;

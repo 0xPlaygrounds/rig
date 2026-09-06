@@ -53,8 +53,21 @@ pub(crate) fn create_completion_request(
     }
     let model = req.model.clone().unwrap_or(model);
     let mut input = Vec::new();
-    for message in chat_history {
-        input.extend(Vec::<Message>::try_from(message)?);
+    let tool_ids = crate::providers::internal::tool_call_ids::ToolCallIds::new(&chat_history)
+        .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+    for (position, message) in chat_history.into_iter().enumerate() {
+        let mut items = Vec::<Message>::try_from(message)?;
+        tool_ids
+            .apply(
+                position,
+                items.iter_mut().filter_map(|item| match item {
+                    Message::FunctionCall { call_id, .. }
+                    | Message::FunctionCallOutput { call_id, .. } => Some(call_id),
+                    _ => None,
+                }),
+            )
+            .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+        input.extend(items);
     }
     let input = crate::message::require_non_empty(input, || {
         CompletionError::RequestError(
@@ -361,7 +374,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
 
                             // Provider-issued call id when one exists,
                             // else rig's minted handle — always present.
-                            let call_id = tr.wire_call_id().to_owned();
+                            let call_id = tr.wire_call_id().into_owned();
                             // Tool result becomes FunctionCallOutput
                             let output = tr
                                 .content
@@ -428,7 +441,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
                         AssistantContent::Text(t) => text_parts.push(t.text),
                         AssistantContent::ToolCall(tc) => {
                             flush_assistant_text(&mut items, &mut text_parts);
-                            let call_id = tc.wire_call_id().to_owned();
+                            let call_id = tc.wire_call_id().into_owned();
                             items.push(Message::function_call(
                                 call_id,
                                 tc.function.name,

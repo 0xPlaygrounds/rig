@@ -77,20 +77,53 @@ impl Mailbox {
         }
     }
 
-    pub(super) fn post(&self, registration: Registration) {
+    pub(super) fn register(
+        &self,
+        shared: &Shared,
+        key: HandlerKey,
+        handler: ErasedHandler,
+    ) -> Result<(), ErrorReport> {
+        // User code runs before the mailbox lock. Publishing and posting
+        // must share an order, even when two registrar clones race.
+        let descriptor = handler.descriptor();
         let driver = {
             let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
-            if inner.closed {
-                drop(inner);
-                drop(registration);
-                return;
+            shared.publish_descriptor(key.clone(), descriptor)?;
+            if !inner.closed {
+                inner
+                    .pending
+                    .push_back(Registration::Install { key, handler });
             }
-            inner.pending.push_back(registration);
             inner.driver.take()
+        };
+        // Wakers and unposted handlers may reenter the registrar.
+        if let Some(driver) = driver {
+            driver.wake();
+        }
+        Ok(())
+    }
+
+    pub(super) fn deregister(&self, shared: &Shared, key: &HandlerKey) -> bool {
+        let (removed, driver) = {
+            let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+            let removed = shared.retract_descriptor(key);
+            if !inner.closed {
+                inner
+                    .pending
+                    .push_back(Registration::Remove { key: key.clone() });
+            }
+            (removed, inner.driver.take())
         };
         if let Some(driver) = driver {
             driver.wake();
         }
+        removed
+    }
+
+    /// Direct driver mutations use the same FIFO without replacing its waker.
+    pub(super) fn take_pending(&self) -> VecDeque<Registration> {
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        std::mem::take(&mut inner.pending)
     }
 
     /// Take every posted registration (the driver's side), registering
@@ -176,11 +209,7 @@ impl Registrar {
         key: impl Into<HandlerKey>,
         handler: ErasedHandler,
     ) -> Result<(), ErrorReport> {
-        let key = key.into();
-        self.shared
-            .publish_descriptor(key.clone(), handler.descriptor())?;
-        self.mailbox.post(Registration::Install { key, handler });
-        Ok(())
+        self.mailbox.register(&self.shared, key.into(), handler)
     }
 
     /// [`register`](Self::register), returning a [`Key`] that carries the
@@ -205,9 +234,7 @@ impl Registrar {
     /// later dispatch answers `HandlerUnavailable`; the driver drops the
     /// handler on its next poll. Returns whether a handler was registered.
     pub fn deregister(&self, key: &HandlerKey) -> bool {
-        let removed = self.shared.retract_descriptor(key);
-        self.mailbox.post(Registration::Remove { key: key.clone() });
-        removed
+        self.mailbox.deregister(&self.shared, key)
     }
 
     /// The descriptor of the handler serving `key` — the same snapshot

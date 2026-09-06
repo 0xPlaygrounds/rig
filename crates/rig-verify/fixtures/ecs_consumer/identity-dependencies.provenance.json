@@ -5,14 +5,14 @@
   "cassette_sha256": null,
   "provider_model": null,
   "generation": {
-    "revision": "25e8225be8a7c6b2b8af0e5a4cb0dd9993ffb503",
+    "revision": "6677bcfec51e3dd696a2a8ac88ad5cb0d478f5a8",
     "dirty": true
   },
   "capture": null,
   "artifacts_sha256": {
     "application": "2e37d15011d0a4243212a58c35fcb6cff9e6cead754ba011925998c9321c5ee9",
-    "checkpoints": "7c61e68c1a3fa26b369390dd56d5d031bd976647e4f4bfadf31cf0ffa004204c",
-    "effects": "fbe2e8a4a2ca74d807457cf53d014ada0eee43371d14bdc180e7c99efc329533",
-    "observations": "526c4f8b343df6cc425d2e76b6aaf95f35dd35538c517286fbf5948a5b74348b"
+    "checkpoints": "308f97137abdec1b782215495a2875dd0ac8ff9079fb7acc8de2bb1d28bb203d",
+    "effects": "8001d2ea108d456a1ace5af7d2e8de4721ae1493af299e701d618ff77726b831",
+    "observations": "a413295da5d77d8783981d3c4cb6a20756e2825cb5596ed63bddd664d21cd080"
   }
 }

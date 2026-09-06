@@ -573,14 +573,14 @@ async fn parallel_tool_calls_all_emitted_with_tool_use_terminal() {
     assert!(errors.is_empty());
     assert_eq!(calls.len(), 2, "both parallel tool calls must be emitted");
     let first = calls.first().expect("first call");
-    assert_eq!(first.id, "call_a");
+    assert_eq!(first.id.explicit(), Some("call_a"));
     assert_eq!(first.function.name, "get_weather");
     assert_eq!(
         first.function.arguments,
         serde_json::json!({"location": "Paris"})
     );
     let second = calls.get(1).expect("second call");
-    assert_eq!(second.id, "call_b");
+    assert_eq!(second.id.explicit(), Some("call_b"));
     assert_eq!(second.function.name, "get_time");
     assert_eq!(
         second.function.arguments,
@@ -618,8 +618,14 @@ async fn message_stop_flushes_stragglers_missing_a_block_stop() {
     let (calls, errors) = assembled(items).await;
     assert!(errors.is_empty());
     assert_eq!(calls.len(), 2);
-    assert_eq!(calls.first().expect("first call").id, "call_a");
-    assert_eq!(calls.get(1).expect("second call").id, "call_b");
+    assert_eq!(
+        calls.first().expect("first call").id.explicit(),
+        Some("call_a")
+    );
+    assert_eq!(
+        calls.get(1).expect("second call").id.explicit(),
+        Some("call_b")
+    );
 }
 
 #[tokio::test]
