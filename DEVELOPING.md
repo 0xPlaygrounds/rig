@@ -126,14 +126,16 @@ profile with normal local debuginfo/incremental settings and default features:
 | --- | ---: | ---: | --- |
 | Cold narrow provider type-check | 44.13s | 27.05s | `cargo check --locked -p rig --test anthropic --timings` |
 | Warm no-op check | 0.435s | 0.355s | `cargo check --locked -p rig --test anthropic` |
-| Warm ECS source edit | 0.856s | 0.836s | `cargo check --locked -p rig-ecs --all-features --lib` |
+| Warm ECS implementation edit | 0.933s | 0.950s | `cargo check --locked -p rig-ecs --all-features --lib` |
 | Warm single cassette replay | 1.012s | 0.922s | Command below |
 | Warm fixture-only edit | 0.984s | 0.900s | Same replay command |
-| Warm example source edit | 0.397s | 0.398s | `cargo check --locked -p agent_no_tokio` |
+| Warm example implementation edit | 0.382s | 0.381s | `cargo check --locked -p agent_no_tokio` |
 | Warm Rust documentation edit | 2.279s | 2.217s | `cargo doc --locked -p rig-ecs --all-features --no-deps` |
 
-The baseline is the tree merged as `de065e9be`; its source checkout is
-`45216c03e`. The candidate includes the service-test dependency split. Both
+The baseline is `de065e9be`, the same source tree as `45216c03e`. Body-edit
+and planner measurements use candidate `6aafd32ef`. The cold and other warm
+measurements used the preceding working candidate with the same narrow-provider
+dependency split, before temporary-store and Git-fixture cleanup. Both cold
 measurements used initially empty dedicated target directories, serially, on
 the same machine with the registry already available. This measures compilation,
 not registry downloads, provider latency, or CI cache restoration. It is one
@@ -142,12 +144,34 @@ sample (about 39% lower wall time), not a universal speedup guarantee.
 Warm values are medians of three runs on an Apple M2 Max with 64 GiB RAM,
 nextest 0.9.67. Each checkout started with an empty target directory and ran
 the same configuration warmups before measurement. No measured run reported
-a Cargo lock wait. Source edits added a comment; the documentation edit added
-a crate-doc line; the fixture edit added a harmless response header to the
-consumed cassette. Each edit was restored afterward. The example difference
-is a small regression within normal timing noise; the ECS/docs differences
-do not establish a meaningful speedup. These direct Cargo measurements isolate
+a Cargo lock wait. The ECS implementation edit changed `WorldOutcome::order`
+to a saturating increment; the example changed its frame duration from 16 to
+17 milliseconds. These were compile-only edits, restored byte-for-byte after
+each trial. The documentation edit added a crate-doc line; the fixture edit
+added a harmless response header to the consumed cassette. The ECS result is
+a small regression in this sample; the example/docs differences do not establish
+a meaningful speedup. These direct Cargo measurements isolate
 the dependency boundary and are not timings of the complete planner checks.
+
+The actual planner, using the existing local validation target at `6aafd32ef`,
+took a median **0.274s** for a clean `cargo xtask verify --changed` (three runs).
+The example implementation edit selected formatting, the example test harness,
+and consumer compilation: its first execution took **32.301s**, then three
+identical invocations reused all three checks in a median **1.843s**. The first
+execution included compilation with the existing cache; it is not a comparable
+cold-build sample or evidence that a changed input may reuse stale success.
+The tests separately exercise fixture/configuration/command invalidation.
+
+Local validation passed formatting, source guards, 38 tooling tests and strict
+Clippy, 7,941 default tests (203 skipped), 8,306 all-feature workspace tests
+(213 skipped), core/bus/conformance/derive/macro-hygiene checks, documentation,
+loom, all-target workspace compilation, eight WASM compilation configurations,
+all three executed WASM suites, and both expected native-only diagnostics.
+The final full suite ran in 653.588s with no failures or retries. Dependency-floor
+validation passed with 52 downgrades, 24 already at floor, and 44 floors constrained
+by transitives and checked at the lowest admitted versions. Node was v24.10.0;
+the executed WASM suites used an isolated wasm-bindgen runner 0.2.118 matching
+the lockfile. Required committed-head CI remains a separate PR gate.
 
 The single-test replay command (native default features plus bedrock) was:
 
