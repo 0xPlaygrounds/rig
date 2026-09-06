@@ -396,9 +396,16 @@ async fn concurrent_serving_across_keys_is_the_default() {
     let (free, served) = Echo::new();
     driver.register("blocked", blocked).expect("register");
     driver.register("free", free).expect("register");
+    let mut blocked_pending = dispatcher.dispatch(&HandlerKey::from("blocked"), custom(json!(1)));
+    let mut cx = Context::from_waker(noop_waker_ref());
+    assert!(blocked_pending.poll_unpin(&mut cx).is_pending());
+    assert!(driver.poll_unpin(&mut cx).is_pending());
+    assert_eq!(
+        driver.in_flight(),
+        1,
+        "the gated key must actually be serving"
+    );
     let _task = spawn(driver);
-
-    let blocked_pending = dispatcher.dispatch(&HandlerKey::from("blocked"), custom(json!(1)));
     let free_outcome = within(dispatcher.dispatch(&HandlerKey::from("free"), custom(json!(2))))
         .await
         .expect("free key is served while another is gated");

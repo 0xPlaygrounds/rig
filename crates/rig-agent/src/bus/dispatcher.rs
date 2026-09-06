@@ -221,8 +221,12 @@ impl Shared {
         if self.is_reentrant(&command) {
             return Enqueue::Refused(command);
         }
+        // Registration can invoke an executor callback. Do it before locking;
+        // the subsequent capacity check and sender insertion remain atomic.
+        parked.register(cx.waker());
         let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
         if self.closed.load(Ordering::SeqCst) || self.commands_closed.load(Ordering::SeqCst) {
+            drop(queue);
             drop(command);
             return Enqueue::Closed;
         }
@@ -230,7 +234,6 @@ impl Shared {
             return Enqueue::Cancelled(command);
         }
         if queue.commands.len() >= queue.capacity {
-            parked.register(cx.waker());
             if !queue
                 .senders
                 .iter()
@@ -241,7 +244,9 @@ impl Shared {
             return Enqueue::Parked(command);
         }
         queue.commands.push_back(command);
-        if let Some(driver) = queue.driver.take() {
+        let driver = queue.driver.take();
+        drop(queue);
+        if let Some(driver) = driver {
             driver.wake();
         }
         Enqueue::Sent
@@ -250,18 +255,18 @@ impl Shared {
     /// Take every buffered command (the driver's side), registering `cx` as
     /// the waker to wake on the next enqueue, and release any parked sender.
     pub(super) fn drain(&self, cx: &Context<'_>) -> VecDeque<Box<Command>> {
+        // Raw waker clone/drop callbacks may reenter the dispatcher too.
+        let next_driver = cx.waker().clone();
         let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
         let commands = std::mem::take(&mut queue.commands);
-        match &mut queue.driver {
-            Some(driver) if driver.will_wake(cx.waker()) => {}
-            slot => *slot = Some(cx.waker().clone()),
-        }
+        let previous_driver = queue.driver.replace(next_driver);
         let senders = if commands.is_empty() {
             Vec::new()
         } else {
             std::mem::take(&mut queue.senders)
         };
         drop(queue);
+        drop(previous_driver);
         wake_parked(senders);
         commands
     }
@@ -1343,3 +1348,6 @@ const _: () = {
         "EffectStream budget: 168 bytes (measured 168 natively: one parked-sender slot, one parent)"
     );
 };
+
+#[cfg(all(test, not(rig_loom)))]
+mod tests;
