@@ -14,7 +14,9 @@
 //! buses when the last snapshot referencing it drops (or, failing that, on
 //! the next registry read). A registration that carries its own key (a
 //! replayer's recorded key, a host's own) is served under that key as
-//! given. Execution during a run goes through the bus; the inline
+//! given. Reusing an explicit key replaces its bus binding, even across
+//! tool names; only the latest binding's lease controls its removal.
+//! Execution during a run goes through the bus; the inline
 //! `execute` here serves the standalone use (no agent, no bus).
 
 use std::collections::HashMap;
@@ -101,6 +103,9 @@ struct ToolServerState {
     toolset: ToolSet,
     /// The lease each live registration hands to snapshots.
     leases: HashMap<String, Arc<LeaseToken>>,
+    /// The lease that owns each latest published key. An obsolete name or
+    /// snapshot must not remove a newer binding under the same explicit key.
+    bindings: HashMap<HandlerKey, Weak<LeaseToken>>,
     retired: Vec<RetiredGeneration>,
     managed_generations: HashMap<String, ManagedToolToken>,
     /// The buses this registry publishes onto, by their registrars.
@@ -153,8 +158,16 @@ impl ToolServerState {
         let retired = std::mem::take(&mut self.retired);
         let mut kept = Vec::with_capacity(retired.len());
         for retired in retired {
+            if !self
+                .bindings
+                .get(&retired.key)
+                .is_some_and(|owner| Weak::ptr_eq(owner, &retired.lease))
+            {
+                continue;
+            }
             if retired.lease.strong_count() == 0 {
                 self.unpublish(&retired.key);
+                self.bindings.remove(&retired.key);
             } else {
                 kept.push(retired);
             }
@@ -185,10 +198,15 @@ impl ToolServerState {
         if !same_key {
             self.retire(&name);
         }
+        let lease = self
+            .leases
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(|| self.lease());
+        self.bindings
+            .insert(tool.key().raw().clone(), Arc::downgrade(&lease));
+        self.leases.insert(name.clone(), lease);
         self.publish(&tool);
-        if !same_key {
-            self.leases.insert(name.clone(), self.lease());
-        }
         if always_exposed {
             self.toolset.add_registered(tool);
         } else {
@@ -223,7 +241,15 @@ impl ToolServerState {
     }
 
     fn attach(&mut self, bus: &Registrar) {
-        for (_, tool) in self.toolset.iter() {
+        for (name, tool) in self.toolset.iter() {
+            let owns_binding = self.leases.get(name).is_some_and(|lease| {
+                self.bindings
+                    .get(tool.key().raw())
+                    .is_some_and(|owner| Weak::ptr_eq(owner, &Arc::downgrade(lease)))
+            });
+            if !owns_binding {
+                continue;
+            }
             crate::agent::drive::register_generated(
                 bus.register_erased(tool.key().raw().clone(), tool.handler().clone()),
             );
@@ -364,6 +390,7 @@ impl ToolServer {
                 retrieval_indexes,
                 toolset: ToolSet::default(),
                 leases: HashMap::new(),
+                bindings: HashMap::new(),
                 retired: Vec::new(),
                 managed_generations: HashMap::new(),
                 buses: Vec::new(),

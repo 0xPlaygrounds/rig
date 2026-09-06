@@ -434,7 +434,7 @@ fn a_patch_and_a_resolution_written_before_a_save_are_read_after_the_load() {
     first.world_mut().entity_mut(turn).insert(patch.clone());
     first.world_mut().spawn((
         InvalidCall {
-            id: "c1".to_owned(),
+            id: rig_core::message::ToolCallId::new("c1").unwrap(),
             name: "multiply".to_owned(),
             arguments: serde_json::json!({"x": 2, "y": 3}),
         },
@@ -461,6 +461,69 @@ fn a_patch_and_a_resolution_written_before_a_save_are_read_after_the_load() {
         .expect("the invalid call is the turn's");
     assert_eq!(app.world().get::<RequestPatch>(turn), Some(&patch));
     assert_eq!(app.world().get::<Resolution>(call), Some(&resolution));
+}
+
+#[test]
+fn scene_preserves_invalid_call_identity_namespaces() {
+    use rig_core::message::ToolCallId;
+    let generated = ToolCallId::minted(0);
+    let explicit = ToolCallId::new(generated.wire_hint()).unwrap();
+    let (mut first, _, turn) = open_run();
+    for id in [&generated, &explicit] {
+        first.world_mut().spawn((
+            InvalidCall {
+                id: id.clone(),
+                name: "multiply".into(),
+                arguments: serde_json::json!({"x": 2, "y": 3}),
+            },
+            Resolution::Repair { to: "add".into() },
+            ChildOf(turn),
+        ));
+    }
+    let scene = save_world(first.world_mut()).unwrap();
+    let json = serde_json::to_string(&scene).unwrap();
+    drop(first);
+    let (restored, _, turn, _) = reload(&json);
+    let calls: Vec<_> = restored
+        .world()
+        .get::<Children>(turn)
+        .unwrap()
+        .iter()
+        .filter_map(|child| restored.world().get::<InvalidCall>(child))
+        .collect();
+    assert_eq!(calls.len(), 2);
+    for id in [&generated, &explicit] {
+        let call = calls.iter().find(|call| &call.id == id).unwrap();
+        assert_eq!(call.name, "multiply");
+        assert_eq!(call.arguments, serde_json::json!({"x": 2, "y": 3}));
+    }
+    assert_ne!(calls[0].id, calls[1].id);
+
+    // Scene components are raw JSON: outer decoding succeeds, but loading must
+    // refuse the unsupported identity encoding rather than infer its origin.
+    let mut legacy = scene.clone();
+    let mut changed = 0;
+    for entity in &mut legacy.graph.entities {
+        if let Some(component) = entity.components.get_mut("invalid_call") {
+            component["id"] = serde_json::json!("tool-0");
+            changed += 1;
+        }
+    }
+    assert_eq!(changed, 2);
+    let legacy: rig_ecs::agent::scene::WorldScene =
+        serde_json::from_value(serde_json::to_value(legacy).unwrap()).unwrap();
+    let mut destination = app();
+    register(
+        &mut destination,
+        MODEL,
+        NeverAnswers {
+            label: MODEL.into(),
+        },
+    );
+    let error = load_world(&legacy, destination.world_mut())
+        .expect_err("legacy component identities must fail load");
+    assert!(error.message.contains("invalid_call"), "{error:?}");
+    assert!(error.message.contains("invalid type"), "{error:?}");
 }
 
 #[test]

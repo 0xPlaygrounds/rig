@@ -376,7 +376,7 @@ impl AgentHook for StopThenCount {
 }
 
 #[tokio::test]
-async fn stop_outcome_threads_to_later_hooks_and_surfaces_as_cancelled() {
+async fn stop_outcome_short_circuits_later_hooks_and_surfaces_as_cancelled() {
     let calls = Arc::new(AtomicUsize::new(0));
     let seen_cancelled = Arc::new(AtomicUsize::new(0));
     let mut stack = HookStack::with(StopThenCount {
@@ -408,10 +408,9 @@ async fn stop_outcome_threads_to_later_hooks_and_surfaces_as_cancelled() {
             ..
         })) if message == "terminal"
     ));
-    // A stop is a replacement like any other: the later hook sees it as the
-    // outcome instead of being short-circuited.
-    assert_eq!(calls.load(Ordering::Relaxed), 2);
-    assert_eq!(seen_cancelled.load(Ordering::Relaxed), 1);
+    // Cancellation is terminal; later hooks cannot recover a stopped run.
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    assert_eq!(seen_cancelled.load(Ordering::Relaxed), 0);
 }
 
 // ---- hook stack composition and model-selection routing ----
@@ -759,7 +758,7 @@ fn completion_call_event() -> CompletionCall<'static> {
 fn invalid_tool_call_context() -> InvalidToolCallContext {
     InvalidToolCallContext {
         tool_name: "unknown".into(),
-        tool_call_id: Some("tc1".into()),
+        tool_call_id: rig_core::message::ToolCallId::new("tc1"),
         block_id: Some(BlockId::wire("tc1")),
         args: Some("{}".into()),
         available_tools: vec!["add".into()],
@@ -1420,4 +1419,82 @@ fn a_hook_names_itself_or_is_named_by_its_type() {
     stack.push(Plain);
     stack.push(Threshold(2));
     assert_eq!(stack.names(), ["Plain", "Threshold(2)"]);
+}
+
+struct RetargetToolHook;
+impl AgentHook for RetargetToolHook {
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        let EffectKind::ToolCall { args, .. } = event.kind else {
+            return DispatchAction::Proceed;
+        };
+        DispatchAction::Patch(EffectKind::ToolCall {
+            name: "other-target".into(),
+            args: args.clone(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn nested_tool_target_patch_preserves_last_valid_arguments_and_stops_policy() {
+    let spy = ArgsSpy::default();
+    let mut inner = HookStack::with(RewriteHook(json!({"x": 3})));
+    inner.push(RetargetToolHook);
+    inner.push(spy.clone());
+    let mut middle = HookStack::with(RewriteHook(json!({"x": 2})));
+    middle.push(inner);
+    middle.push(spy.clone());
+    let mut outer = HookStack::with(RewriteHook(json!({"x": 1})));
+    outer.push(middle);
+    outer.push(spy.clone());
+    let context = ctx();
+    let kind = tool_call_kind();
+    let event = dispatch_event(&kind);
+    let action = outer.on_dispatch(&context, event).await;
+    assert!(
+        matches!(action, DispatchAction::Deny(ref report) if report.message.contains("target"))
+    );
+    assert!(spy.0.lock().unwrap().is_empty());
+    let salvaged = context
+        .take_salvaged_patch(event.id)
+        .expect("valid patch retained");
+    match salvaged {
+        EffectKind::ToolCall { name, args } => {
+            assert_eq!(Some(name.as_str()), event.tool_name());
+            assert_eq!(
+                serde_json::from_str::<Value>(&args).unwrap(),
+                json!({"x": 3})
+            );
+        }
+        _ => panic!("tool call retained"),
+    }
+}
+
+struct ChangeToolFamilyHook;
+impl AgentHook for ChangeToolFamilyHook {
+    async fn on_dispatch(&self, _: &HookContext, _: DispatchEvent<'_>) -> DispatchAction {
+        DispatchAction::Patch(EffectKind::Custom {
+            kind: "invalid-tool-replacement".into(),
+            payload: json!({}),
+        })
+    }
+}
+
+#[tokio::test]
+async fn nested_wrong_family_patch_preserves_valid_tool_and_stops_later_hooks() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut inner = HookStack::with(RewriteHook(json!({"x": 3})));
+    inner.push(ChangeToolFamilyHook);
+    inner.push(OnDispatchOnly(calls.clone()));
+    let mut outer = HookStack::with(RewriteHook(json!({"x": 1})));
+    outer.push(inner);
+    outer.push(OnDispatchOnly(calls.clone()));
+    let context = ctx();
+    let kind = tool_call_kind();
+    let event = dispatch_event(&kind);
+    let action = outer.on_dispatch(&context, event).await;
+    assert!(
+        matches!(action, DispatchAction::Deny(ref report) if report.kind == ErrorKind::Internal)
+    );
+    assert_eq!(calls.load(Ordering::Relaxed), 0);
+    assert_eq!(salvaged_args(&context, event.id), Some(json!({"x": 3})));
 }

@@ -958,7 +958,7 @@ async fn response_failed_flushes_delivered_tool_calls_before_the_error() {
     // the terminal error.
     let (tool_call, err) = flushed_tool_call_then_error(&mut stream).await;
     // The correlator drives rig's id; the item id rides on `provider`.
-    assert_eq!(tool_call.id, "call_123");
+    assert_eq!(tool_call.id.explicit(), Some("call_123"));
     let provider = tool_call.provider.as_ref().expect("provider ids are kept");
     assert_eq!(provider.call_id, "call_123");
     assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
@@ -1016,7 +1016,7 @@ async fn transport_error_flushes_delivered_tool_calls_before_the_error() {
     );
 
     let (tool_call, err) = flushed_tool_call_then_error(&mut stream).await;
-    assert_eq!(tool_call.id, "call_123");
+    assert_eq!(tool_call.id.explicit(), Some("call_123"));
     let provider = tool_call.provider.as_ref().expect("provider ids are kept");
     assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
     assert_eq!(

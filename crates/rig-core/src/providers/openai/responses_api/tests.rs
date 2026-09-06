@@ -2777,3 +2777,15 @@ mod raw_capture {
         assert_eq!(normalized.provider_request_id.as_deref(), Some(REQUEST_ID));
     }
 }
+
+/// Synthetic transcript tests required-ID request correlation without a paid call.
+#[test]
+fn full_request_preserves_typed_tool_pairs_across_turns() {
+    use crate::providers::internal::tool_call_ids::tests::{
+        adapter_requests, assert_adapter_pairs,
+    };
+    for request in adapter_requests() {
+        let wire = CompletionRequest::try_from(("test".to_owned(), request.clone())).unwrap();
+        assert_adapter_pairs(serde_json::to_value(wire).unwrap());
+    }
+}

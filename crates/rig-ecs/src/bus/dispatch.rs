@@ -120,17 +120,19 @@ pub fn dispatch(
             continue;
         };
 
-        let id = match reserved {
-            Some(Reserved(id)) => {
-                ids.0 = ids.0.max(id.as_u64() + 1);
-                *id
-            }
-            None => {
-                let id = EffectId::from_raw(ids.0);
-                ids.0 += 1;
-                id
-            }
+        let raw_id = reserved.map_or(ids.0, |Reserved(id)| id.as_u64());
+        let Some(next_id) = raw_id.checked_add(1) else {
+            commands
+                .entity(entity)
+                .insert(EffectOutcome(Err(ErrorReport::new(
+                    ErrorKind::Request,
+                    "effect ID allocator exhausted",
+                ))));
+            progress.mark();
+            continue;
         };
+        ids.0 = ids.0.max(next_id);
+        let id = EffectId::from_raw(raw_id);
         let origin = Origin {
             parent: nearest_issued(entity, &parents, &issued, &issued_now),
             scope: nearest_scope(entity, &parents, &scopes)

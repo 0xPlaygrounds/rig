@@ -123,16 +123,13 @@ impl EffectLogReplayer {
         Self::describing(log, key, first, Records::ById(by_id))
     }
 
-    /// `key`'s records in dispatch order, whatever order the log was
-    /// assembled in: ids are minted at dispatch and strictly increasing.
+    /// `key`'s records in the recorder's observed serve order. An ID may be
+    /// reserved by a dispatch future long before that future is polled.
     fn records_of(log: &EffectLog, key: &HandlerKey) -> Vec<EffectRecord> {
-        let mut records: Vec<EffectRecord> = log
-            .iter()
+        log.iter()
             .filter(|record| &record.key == key)
             .cloned()
-            .collect();
-        records.sort_by_key(|record| record.id);
-        records
+            .collect()
     }
 
     fn describing(

@@ -127,8 +127,9 @@ macro_rules! give {
 /// is refused before graph restoration; generic scenes have no restart cursor.
 ///
 /// Only the library's listed components and components explicitly registered
-/// with [`SceneExtensions`] are captured. Resources, arbitrary entities,
-/// system-local state, tasks and live handles remain the host's responsibility.
+/// with [`SceneExtensions`] are captured. The bus scene preserves its effect-ID
+/// allocator; other resources, arbitrary entities, system-local state, tasks
+/// and live handles remain the host's responsibility.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WorldScene {
     /// The graph.
@@ -278,6 +279,7 @@ pub fn save_world(world: &mut World) -> Result<WorldScene, rig_core::error::Erro
 /// Load `scene` into `world`: the graph first, then the effects, each
 /// effect `ChildOf` the graph entity its `parent_ref` names. Handlers are
 /// the host's to bind first, as for [`RunScene::load`].
+/// Parent ancestry and scene indices are validated before spawning anything.
 /// Registered extensions are validated before spawning and inserted after the
 /// graph and effects have loaded. Install application observers after loading:
 /// insertion observers can otherwise see a partially restored entity. Loading
@@ -288,6 +290,29 @@ pub fn load_world(
     world: &mut World,
 ) -> Result<Loaded, rig_core::error::ErrorReport> {
     scene.effects.validate_resume()?;
+    scene.graph.validate_structure()?;
+    for effect in &scene.effects.effects {
+        if effect
+            .parent_ref
+            .is_some_and(|index| index >= scene.graph.entities.len())
+        {
+            return Err(extension_error(
+                "effect parent refers to a missing graph entity",
+            ));
+        }
+    }
+    for index in scene
+        .slots
+        .iter()
+        .map(|(index, _)| index)
+        .chain(scene.retrievals.iter().map(|(index, _)| index))
+    {
+        if *index >= scene.effects.effects.len() {
+            return Err(extension_error(
+                "effect metadata refers to a missing effect",
+            ));
+        }
+    }
     let registry = world
         .get_resource::<SceneExtensions>()
         .cloned()
@@ -512,10 +537,29 @@ impl RunScene {
         ))
     }
 
+    fn validate_structure(&self) -> Result<(), rig_core::error::ErrorReport> {
+        crate::bus::scene::validate_parent_indices(
+            self.entities.iter().map(|entity| entity.parent),
+        )?;
+        for entity in &self.entities {
+            for (name, target) in &entity.relations {
+                if let Target::Scene { index } = target
+                    && *index >= self.entities.len()
+                {
+                    return Err(extension_error(format!(
+                        "scene relationship {name} refers to missing entity {index}"
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Spawn the graph into `world`. Handlers are the host's to bind first:
     /// a relationship to a handler key nothing is bound to is an error
     /// naming the key. Returns the spawned entities by scene index.
     pub fn load(&self, world: &mut World) -> Result<Vec<Entity>, rig_core::error::ErrorReport> {
+        self.validate_structure()?;
         let mut spawned: Vec<Entity> = Vec::with_capacity(self.entities.len());
         for _ in &self.entities {
             spawned.push(world.spawn_empty().id());

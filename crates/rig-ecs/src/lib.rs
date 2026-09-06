@@ -7,9 +7,10 @@
 //! documents, utterances, runs, turns, as entities and relationships),
 //! [`policy`] (the verbatim strings and the one fold from the graph to the
 //! wire `CompletionRequest`), [`systems`] (one system per named set, in the
-//! bus's schedule) and [`replay`] (the log header from components). Nothing
-//! in this crate awaits, blocks, or holds a future for a host to probe;
-//! nothing is copied from `rig-agent`, and a guard refuses its name.
+//! bus's schedule) and the optional `replay` module (the log header from
+//! components). Nothing in this crate awaits, blocks, or holds a future for
+//! a host to probe; nothing is copied from `rig-agent`, and a guard refuses
+//! its name.
 //!
 //! The request is a graph in the world and a struct on the wire, with
 //! [`policy::fold_request`] as the one function between them. What the
@@ -31,8 +32,8 @@
 //!
 //! [`prelude`] names the sets and the components a user's systems write
 //! and read, and nothing else. Behind features: `reflect` — every
-//! component derives `Reflect`, [`reflect::ReflectPlugin`] registers them,
-//! [`reflect::ReflectedScene`] is the world as reflected data beside the
+//! component derives `Reflect`, `reflect::ReflectPlugin` registers them,
+//! `reflect::ReflectedScene` is the world as reflected data beside the
 //! serde scene.
 //!
 //! The `bus` module is written as if it were already its own crate (every
@@ -50,5 +51,6 @@ pub mod policy;
 pub mod prelude;
 #[cfg(feature = "reflect")]
 pub mod reflect;
+#[cfg(feature = "replay")]
 pub mod replay;
 pub mod systems;

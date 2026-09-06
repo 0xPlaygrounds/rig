@@ -441,3 +441,119 @@ fn decisions_and_verdicts_are_data() {
     let keep = serde_json::to_value(Verdict::Keep).expect("serializes");
     assert_eq!(keep, json!({"verdict": "keep"}));
 }
+
+/// Retargeting must be refused before a nested policy can authorize a different name.
+#[tokio::test]
+async fn tool_target_patch_is_refused_before_inner_policy_in_unary_and_streaming() {
+    use crate::{
+        serve::adapters::ToolFn,
+        tool::{ToolContext, ToolOutput},
+        wasm_compat::WasmBoxedFuture,
+    };
+    for streamed in [false, true] {
+        let served = Arc::new(AtomicUsize::new(0));
+        let counter = served.clone();
+        let tool = ToolFn::new(
+            "original",
+            "bound original",
+            json!({"type":"object"}),
+            move |_context: &mut ToolContext, _args: serde_json::Value| {
+                counter.fetch_add(1, Ordering::SeqCst);
+                Box::pin(async { Ok(ToolOutput::text("executed original")) })
+                    as WasmBoxedFuture<'_, _>
+            },
+        );
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let mut inner = Policy::observing("inner", &seen);
+        inner.before = Box::new(|kind| match kind {
+            EffectKind::ToolCall { name, .. } if name == "allowed" => Decision::Proceed,
+            _ => Decision::Deny(ErrorReport::new(ErrorKind::Denied, "original is forbidden")),
+        });
+        let mut outer = Policy::observing("outer", &seen);
+        outer.before = Box::new(|_| {
+            Decision::Patch(EffectKind::ToolCall {
+                name: "allowed".into(),
+                args: "{}".into(),
+            })
+        });
+        let handler = ErasedHandler::new(tool).layered(inner).layered(outer);
+        let kind = EffectKind::ToolCall {
+            name: "original".into(),
+            args: "{}".into(),
+        };
+        let tap = if streamed {
+            let tap = Arc::new(Tapped::default());
+            let (sender, receiver) = mpsc::channel(8);
+            handler
+                .handle(
+                    kind,
+                    tapped(OutcomeSink::stream(EffectId::from_raw(7), sender), &tap),
+                )
+                .await;
+            let events: Vec<_> = receiver.collect().await;
+            assert!(events.iter().any(Result::is_err));
+            tap
+        } else {
+            let (outcome, tap) = unary(&handler, kind).await;
+            assert!(outcome.is_err());
+            tap
+        };
+        assert_eq!(
+            served.load(Ordering::SeqCst),
+            0,
+            "never execute the original under an authorized replacement name"
+        );
+        assert_eq!(*seen.lock().expect("policy trace"), ["outer.before"]);
+        assert!(tap.patched.lock().expect("patches").is_empty());
+        assert_eq!(tap.discarded.load(Ordering::SeqCst), 1);
+    }
+}
+
+#[tokio::test]
+async fn tool_argument_patches_keep_the_bound_target_and_reach_inner_policy() {
+    use crate::{
+        serve::adapters::ToolFn,
+        tool::{ToolContext, ToolOutput},
+        wasm_compat::WasmBoxedFuture,
+    };
+    let tool = ToolFn::new(
+        "original",
+        "bound original",
+        json!({"type":"object"}),
+        |_context: &mut ToolContext, args: serde_json::Value| {
+            assert_eq!(args, json!({"patched":true}));
+            Box::pin(async { Ok(ToolOutput::text("executed patched arguments")) })
+                as WasmBoxedFuture<'_, _>
+        },
+    );
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let mut inner = Policy::observing("inner", &seen);
+    inner.before = Box::new(|kind| {
+        assert!(
+            matches!(kind, EffectKind::ToolCall { name, args } if name == "original" && args == r#"{"patched":true}"#)
+        );
+        Decision::Proceed
+    });
+    let mut outer = Policy::observing("outer", &seen);
+    outer.before = Box::new(|_| {
+        Decision::Patch(EffectKind::ToolCall {
+            name: "original".into(),
+            args: r#"{"patched":true}"#.into(),
+        })
+    });
+    let handler = ErasedHandler::new(tool).layered(inner).layered(outer);
+    let (outcome, tap) = unary(
+        &handler,
+        EffectKind::ToolCall {
+            name: "original".into(),
+            args: "{}".into(),
+        },
+    )
+    .await;
+    assert!(outcome.is_ok());
+    assert_eq!(
+        *seen.lock().expect("policy trace"),
+        ["outer.before", "inner.before", "inner.after", "outer.after"]
+    );
+    assert_eq!(tap.patched.lock().expect("patches").len(), 1);
+}

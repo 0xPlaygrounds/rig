@@ -185,7 +185,10 @@
           "choice": [
             {
               "type": "toolcall",
-              "id": "tool-0",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
               "function": {
                 "name": "subtract",
                 "arguments": {
@@ -340,7 +343,10 @@
               "content": [
                 {
                   "type": "toolcall",
-                  "id": "tool-0",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "function": {
                     "name": "subtract",
                     "arguments": {
@@ -358,7 +364,10 @@
               "content": [
                 {
                   "type": "toolresult",
-                  "call": "tool-0",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
                   "name": "subtract",
                   "content": [
                     {

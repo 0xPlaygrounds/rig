@@ -332,10 +332,12 @@ pub enum SystemContent {
 impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
     fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
         let mut response = self;
-        let content = std::mem::take(&mut response.content)
+        let mut content = std::mem::take(&mut response.content)
             .into_iter()
             .map(TryInto::try_into)
             .collect::<Result<Vec<_>, _>>()?;
+
+        crate::message::normalize_missing_tool_call_ids(&mut content);
 
         // Anthropic has two ways to end a turn that genuinely carried no
         // content, and an empty list says exactly that:
@@ -1115,7 +1117,7 @@ fn anthropic_content_from_assistant_content(
         message::AssistantContent::ToolCall(tool_call) => Ok(vec![Content::ToolUse {
             // The wire requires a non-empty id: the provider-issued one when it
             // exists, else rig's minted handle.
-            id: tool_call.wire_call_id().to_owned(),
+            id: tool_call.wire_call_id().into_owned(),
             name: tool_call.function.name,
             input: coerce_tool_input(tool_call.function.arguments),
         }]),
@@ -1165,7 +1167,7 @@ impl TryFrom<message::Message> for Message {
                         Ok(Content::from(text))
                     }
                     message::UserContent::ToolResult(tool_result) => Ok(Content::ToolResult {
-                        tool_use_id: tool_result.wire_call_id().to_owned(),
+                        tool_use_id: tool_result.wire_call_id().into_owned(),
                         content: tool_result.content.into_iter().map(|content| match content {
                             message::ToolResultContent::Text(message::Text { text, .. }) => {
                                 Ok(ToolResultContent::Text { text })
@@ -1504,14 +1506,15 @@ impl TryFrom<Message> for message::Message {
                     })
                     .collect::<Result<Vec<_>, _>>()?,
             },
-            Role::Assistant => message::Message::Assistant {
-                id: None,
-                content: message
+            Role::Assistant => {
+                let mut content = message
                     .content
                     .into_iter()
                     .map(std::convert::TryInto::try_into)
-                    .collect::<Result<Vec<_>, _>>()?,
-            },
+                    .collect::<Result<Vec<_>, _>>()?;
+                crate::message::normalize_missing_tool_call_ids(&mut content);
+                message::Message::Assistant { id: None, content }
+            }
             Role::System => {
                 let content =
                     message
@@ -2835,9 +2838,38 @@ impl AnthropicCompletionRequest {
         full_history.extend(chat_history);
 
         let mut messages = full_history
-            .into_iter()
+            .iter()
+            .cloned()
             .map(Message::try_from)
-            .collect::<Result<Vec<Message>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()?;
+        // Server-tool references are preserved opaque content, not local calls.
+        // Reserve their genuine handles so arbitrary local hints cannot alias them.
+        let server_ids = messages
+            .iter()
+            .flat_map(|message| &message.content)
+            .filter_map(|part| match part {
+                Content::ServerToolUse { id, .. } => Some(id.clone()),
+                Content::WebSearchToolResult { tool_use_id, .. }
+                | Content::CodeExecutionToolResult { tool_use_id, .. } => Some(tool_use_id.clone()),
+                _ => None,
+            });
+        let tool_ids = crate::providers::internal::tool_call_ids::ToolCallIds::with_reserved(
+            &full_history,
+            server_ids,
+        )
+        .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+        for (position, message) in messages.iter_mut().enumerate() {
+            tool_ids
+                .apply(
+                    position,
+                    message.content.iter_mut().filter_map(|part| match part {
+                        Content::ToolUse { id, .. } => Some(id),
+                        Content::ToolResult { tool_use_id, .. } => Some(tool_use_id),
+                        _ => None,
+                    }),
+                )
+                .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+        }
 
         let mut additional_params_payload = req
             .additional_params

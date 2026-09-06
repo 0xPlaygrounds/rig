@@ -1,0 +1,12 @@
+fn main() {
+    for length in [0_usize, 1, 3, 9, 17] {
+        let items: Vec<_> = (0..length).map(|index| format!("value-{index}")).collect();
+        for offset in [0, 1, length / 2, length, length + 1, usize::MAX - 1, usize::MAX] {
+            for limit in [0, 1, length / 2, length, length + 1, usize::MAX - 1, usize::MAX] {
+                let actual = page_window::page(&items, offset, limit);
+                let borrowed = actual.is_empty() || items.get(offset).is_some_and(|item| std::ptr::eq(&actual[0], item));
+                println!("length={length} offset={offset} limit={limit} borrowed={borrowed} values={actual:?}");
+            }
+        }
+    }
+}

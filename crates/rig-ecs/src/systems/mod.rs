@@ -437,6 +437,7 @@ pub fn attach_retrieved(
     grants: Query<(&Grant, &Order, Has<Retrievable>)>,
     contexts: Query<(&Context, &Order)>,
     bound: Query<&Bound>,
+    indexes: Query<&Retrieves, (With<Retrieval>, With<Order>)>,
     documents: Query<(Entity, &DocumentId)>,
     mut orders: ResMut<OrderCounter>,
     mut progress: ResMut<Progress>,
@@ -456,9 +457,18 @@ pub fn attach_retrieved(
                     .collect()
             })
             .unwrap_or_default();
-        // Not spawned yet (`assemble`'s first pass is later this tick), or
-        // still out.
-        if effects.is_empty() || effects.iter().any(|(_, outcome)| outcome.is_none()) {
+        // Wait for an available index's effects to be spawned later this
+        // tick. With no available index, still attach the static links here.
+        let available_index = children.get(*agent).is_ok_and(|children| {
+            children.iter().any(|child| {
+                indexes
+                    .get(child)
+                    .is_ok_and(|Retrieves(index)| bound.get(*index).is_ok())
+            })
+        });
+        if (effects.is_empty() && available_index)
+            || effects.iter().any(|(_, outcome)| outcome.is_none())
+        {
             continue;
         }
         let mut retrieved_tools: Vec<String> = Vec::new();
@@ -866,22 +876,30 @@ pub fn assemble(
                     ChildOf(turn),
                 ));
             }
-            if spawned == 0 {
-                // No index is bound: nothing to wait for; the turn folds
-                // with its static links next pass.
-                commands.entity(turn).remove::<Retrieving>();
+            // If every index disappeared since attachment ran, leave the
+            // marker for the next attachment pass to restore static links.
+            if spawned > 0 {
+                progress.mark();
             }
-            progress.mark();
             continue;
         }
 
         // The turn's patch (CONTRACT §9.3), folded in as `prepare_request`
         // folded a completion-call hook's.
-        let tools: Vec<&Bound> = links_in_order(turn, &children, &adverts)
+        let mut tool_links: Vec<_> = children
+            .get(turn)
             .into_iter()
-            .filter_map(|Advert(tool)| bound.get(*tool).ok())
-            .filter(|bound| {
-                match (
+            .flat_map(|children| children.iter())
+            .filter_map(|link| {
+                let (Advert(tool), order) = adverts.get(link).ok()?;
+                Some((*order, link, bound.get(*tool).ok()?))
+            })
+            .collect();
+        tool_links.sort_by_key(|(order, _, _)| *order);
+        let tools: Vec<&Bound> = tool_links
+            .into_iter()
+            .filter_map(|(_, link, bound)| {
+                let allowed = match (
                     patch.and_then(|p| p.active_tools.as_ref()),
                     &bound.descriptor.family,
                 ) {
@@ -893,6 +911,15 @@ pub fn assemble(
                     | (Some(_), FamilyDescriptor::Retrieve { .. })
                     | (Some(_), FamilyDescriptor::Custom { .. })
                     | (None, _) => true,
+                };
+                if allowed {
+                    Some(bound)
+                } else {
+                    // The request and executable grant set must agree. Keep
+                    // that decision on the turn so materialisation, invalid
+                    // call repair and scene continuation see the same surface.
+                    commands.entity(link).despawn();
+                    None
                 }
             })
             .collect();
@@ -1376,6 +1403,23 @@ pub fn materialise(
         let agent = *agent;
         let tool_choice = setting(run, agent, &choices).and_then(|c| c.0.clone());
 
+        // The tools this turn advertised, by name, with their keys.
+        let granted: Vec<(String, rig_core::effect::HandlerKey)> =
+            links_in_order(turn, &children, &adverts)
+                .into_iter()
+                .filter_map(|Advert(tool)| bound.get(*tool).ok())
+                .filter_map(|bound| match &bound.descriptor.family {
+                    FamilyDescriptor::Tool { name, .. } => Some((name.clone(), bound.key.clone())),
+                    FamilyDescriptor::Completion { .. }
+                    | FamilyDescriptor::Embed { .. }
+                    | FamilyDescriptor::Rerank { .. }
+                    | FamilyDescriptor::Memory { .. }
+                    | FamilyDescriptor::Retrieve { .. }
+                    | FamilyDescriptor::Custom { .. } => None,
+                })
+                .collect();
+        let output_tool = minted.0.as_deref();
+
         // Pending invalid calls of this turn: consumed first.
         let pending: Vec<(Entity, InvalidCall, Resolution)> = invalid_calls
             .iter()
@@ -1414,7 +1458,13 @@ pub fn materialise(
                         .find(|(child_of, _, _)| child_of.parent() == turn)
                         .and_then(|(_, _, streamed)| streamed)
                         .map(|streamed| streamed.events.as_slice());
-                    let content = policy::partial_turn_at(&outs.content, events, &call.id);
+                    let allowed_names: Vec<String> = granted
+                        .iter()
+                        .map(|(name, _)| name.clone())
+                        .chain(output_tool.map(str::to_owned))
+                        .collect();
+                    let (content, diagnostic_id) =
+                        policy::partial_turn_at(&outs.content, events, &call.id, &allowed_names);
                     let assistant = MessageParts::Assistant {
                         id: outs.message_id.clone(),
                         content: content.clone(),
@@ -1426,7 +1476,7 @@ pub fn materialise(
                         next_order_in(&mut orders),
                         ChildOf(run),
                     ));
-                    let results = policy::invalid_peer_results(&content, &call.id, &feedback);
+                    let results = policy::invalid_peer_results(&content, &diagnostic_id, &feedback);
                     commands.spawn((
                         Utterance,
                         results.role(),
@@ -1452,7 +1502,7 @@ pub fn materialise(
                             Resolution::Repair { to } => {
                                 for part in &mut content {
                                     if let AssistantContent::ToolCall(tool_call) = part
-                                        && tool_call.id.as_str() == call.id
+                                        && tool_call.id == call.id
                                     {
                                         tool_call.function.name = to.clone();
                                     }
@@ -1461,7 +1511,7 @@ pub fn materialise(
                             Resolution::Ignore => {
                                 content.retain(|part| match part {
                                     AssistantContent::ToolCall(tool_call) => {
-                                        tool_call.id.as_str() != call.id
+                                        tool_call.id != call.id
                                     }
                                     AssistantContent::Text(_)
                                     | AssistantContent::Reasoning(_)
@@ -1533,22 +1583,6 @@ pub fn materialise(
             continue;
         }
 
-        // The tools this turn advertised, by name, with their keys.
-        let granted: Vec<(String, rig_core::effect::HandlerKey)> =
-            links_in_order(turn, &children, &adverts)
-                .into_iter()
-                .filter_map(|Advert(tool)| bound.get(*tool).ok())
-                .filter_map(|bound| match &bound.descriptor.family {
-                    FamilyDescriptor::Tool { name, .. } => Some((name.clone(), bound.key.clone())),
-                    FamilyDescriptor::Completion { .. }
-                    | FamilyDescriptor::Embed { .. }
-                    | FamilyDescriptor::Rerank { .. }
-                    | FamilyDescriptor::Memory { .. }
-                    | FamilyDescriptor::Retrieve { .. }
-                    | FamilyDescriptor::Custom { .. } => None,
-                })
-                .collect();
-        let output_tool = minted.0.as_deref();
         let schema = setting(run, agent, &outputs).and_then(|output| output.schema.clone());
         let limit = setting(run, agent, &max_turns).map_or(1, |limit| limit.0);
 
@@ -1578,7 +1612,7 @@ pub fn materialise(
             for call in invalid {
                 commands.spawn((
                     InvalidCall {
-                        id: call.id.to_string(),
+                        id: call.id.clone(),
                         name: call.function.name.clone(),
                         arguments: call.function.arguments.clone(),
                     },

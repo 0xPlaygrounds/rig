@@ -136,6 +136,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
             }
         }
 
+        rig_core::message::normalize_missing_tool_call_ids(&mut assistant_contents);
         let choice = rig_core::message::require_non_empty_response(assistant_contents)?;
 
         let usage = response

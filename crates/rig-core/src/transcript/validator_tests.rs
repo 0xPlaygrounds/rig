@@ -75,3 +75,48 @@ fn unanswered_and_orphan_results_are_rejected() {
         Err(TranscriptError::UnansweredToolCall { .. })
     ));
 }
+
+/// Equal-looking IDs from separate namespaces answer only their own calls.
+#[test]
+fn typed_identity_transcripts_preserve_namespaces_and_completion_scope() {
+    let generated = ToolCallId::minted(0);
+    let explicit = ToolCallId::new("tool-0").expect("explicit ID");
+    let call_for = |id: ToolCallId| {
+        AssistantContent::ToolCall(ToolCall::new(
+            id,
+            ToolFunction::new("add".into(), serde_json::json!({})),
+        ))
+    };
+    let result_for = |id: ToolCallId| {
+        UserContent::ToolResult(ToolResult {
+            call: id,
+            provider: None,
+            name: "add".into(),
+            content: vec![ToolResultContent::text("3")],
+        })
+    };
+    let history = vec![
+        assistant(vec![
+            call_for(generated.clone()),
+            call_for(explicit.clone()),
+        ]),
+        Message::User {
+            content: vec![result_for(explicit.clone()), result_for(generated.clone())],
+        },
+        assistant(vec![call_for(generated.clone())]),
+        Message::User {
+            content: vec![result_for(generated.clone())],
+        },
+    ];
+    assert_eq!(validate_canonical(&history), Ok(()));
+    let mismatched = vec![
+        assistant(vec![call_for(generated)]),
+        Message::User {
+            content: vec![result_for(explicit)],
+        },
+    ];
+    assert!(matches!(
+        validate_canonical(&mismatched),
+        Err(TranscriptError::OrphanToolResult { .. })
+    ));
+}

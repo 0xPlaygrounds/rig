@@ -512,3 +512,61 @@ fn generate_content_response_round_trips_through_serde_json_value() {
         Some(completion::FinishReason::Stop)
     );
 }
+
+/// Constructed protobuf input pins missing-ID collisions without a gRPC service.
+#[test]
+fn missing_call_ids_remain_distinct_and_do_not_collide_with_explicit_ids() {
+    let wire = proto::GenerateContentResponse {
+        candidates: vec![proto::Candidate {
+            content: Some(proto::Content {
+                parts: (0..3)
+                    .map(|i| proto::Part {
+                        data: Some(proto::part::Data::FunctionCall(proto::FunctionCall {
+                            id: if i == 1 {
+                                "tool-0".into()
+                            } else {
+                                String::new()
+                            },
+                            name: "same".into(),
+                            ..Default::default()
+                        })),
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let first = completion::CompletionResponse::try_from(wire.clone()).unwrap();
+    assert_eq!(
+        first.choice,
+        completion::CompletionResponse::try_from(wire)
+            .unwrap()
+            .choice
+    );
+    let calls: Vec<_> = first
+        .choice
+        .iter()
+        .filter_map(|item| match item {
+            message::AssistantContent::ToolCall(call) => Some(call),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(calls.len(), 3);
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| &call.id)
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        3
+    );
+    assert!(calls.first().unwrap().provider.is_none());
+    assert_eq!(
+        calls.get(1).unwrap().provider.as_ref().unwrap().call_id,
+        "tool-0"
+    );
+    assert!(calls.get(2).unwrap().provider.is_none());
+}

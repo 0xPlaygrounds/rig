@@ -197,7 +197,10 @@ impl PortableDynamicTool {
         self.execute_with(&mut context, arguments).await
     }
 
-    /// Run the tool inline, publishing into `context`.
+    /// Run the tool inline with isolated inbound values. A completed call
+    /// replaces only `context`'s result metadata, including when the tool
+    /// returns an error. Dropping the execution future leaves the caller's
+    /// context unchanged; it does not publish partial mutations.
     pub async fn execute_with(
         &self,
         context: &mut ToolContext,
@@ -211,14 +214,14 @@ impl PortableDynamicTool {
                 args: arguments.to_string(),
             },
             vec![
-                std::sync::Arc::new(std::mem::take(context)),
+                std::sync::Arc::new(context.for_dispatch()),
                 published.clone() as std::sync::Arc<dyn std::any::Any + Send + Sync>,
             ],
         )
         .await;
         match outcome {
             Ok(Outcome::ToolResult { result }) => {
-                *context = published.take().unwrap_or_default();
+                context.accept_dispatch_result(published.take().unwrap_or_default());
                 result.into_result()
             }
             Ok(other) => Err(ToolExecutionError::other(format!(

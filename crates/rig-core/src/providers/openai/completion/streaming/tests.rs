@@ -849,14 +849,14 @@ async fn test_duplicate_index_different_id_tool_calls() {
         "expected 2 separate tool calls, got {collected_tool_calls:?}"
     );
 
-    assert_eq!(collected_tool_calls[0].id, "call_aaa");
+    assert_eq!(collected_tool_calls[0].id.explicit(), Some("call_aaa"));
     assert_eq!(collected_tool_calls[0].function.name, "command");
     assert_eq!(
         collected_tool_calls[0].function.arguments,
         serde_json::json!({"cmd": "ls"})
     );
 
-    assert_eq!(collected_tool_calls[1].id, "call_bbb");
+    assert_eq!(collected_tool_calls[1].id.explicit(), Some("call_bbb"));
     assert_eq!(collected_tool_calls[1].function.name, "git");
     assert_eq!(
         collected_tool_calls[1].function.arguments,
@@ -899,7 +899,7 @@ async fn test_tool_call_id_chunk_without_function_is_preserved() {
         1,
         "expected id-only chunk to be retained for later tool-call deltas"
     );
-    assert_eq!(collected_tool_calls[0].id, "call_abc123");
+    assert_eq!(collected_tool_calls[0].id.explicit(), Some("call_abc123"));
     assert_eq!(collected_tool_calls[0].function.name, "lookup");
     assert_eq!(
         collected_tool_calls[0].function.arguments,

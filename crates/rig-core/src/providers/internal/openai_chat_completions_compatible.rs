@@ -211,11 +211,13 @@ pub(crate) fn normalize_openai_response<C>(
         .filter(|reason| !reason.is_empty())
         .map(map_openai_finish_reason);
 
-    let content = assistant_content(choice).ok_or_else(|| {
+    let mut content = assistant_content(choice).ok_or_else(|| {
         CompletionError::ResponseError(
             "Response did not contain a valid message or tool call".into(),
         )
     })?;
+
+    crate::message::normalize_missing_tool_call_ids(&mut content);
 
     // A turn the provider cut short can legitimately be contentless — a cap
     // spent entirely on reasoning tokens is the common case — and the finish

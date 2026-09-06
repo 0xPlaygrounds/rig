@@ -262,21 +262,13 @@ fn round_trip_diff_recipe_detects_every_dropped_key() {
 }
 
 #[test]
-fn legacy_call_id_key_is_ignored_not_lifted() {
-    // The pre-provider-split lift is deleted: a legacy `call_id` key is
-    // an unknown field, so it deserializes with the key ignored — `id`
-    // is read as rig's handle and `provider` stays absent. Pinned so a
-    // future change (e.g. making the key a hard error) is a decision,
-    // not an accident; the hand-migration recipe lives in MIGRATING.
+fn legacy_call_id_key_cannot_recover_an_untagged_identity() {
     let legacy = serde_json::json!({
         "id": "fc_123",
         "call_id": "call_abc",
         "function": {"name": "add", "arguments": {"x": 1}},
     });
-
-    let call: super::ToolCall = serde_json::from_value(legacy).expect("deserialize");
-    assert_eq!(call.id, "fc_123");
-    assert_eq!(call.provider, None);
+    assert!(serde_json::from_value::<super::ToolCall>(legacy).is_err());
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -325,4 +317,86 @@ fn tool_result_content_decodes_structured_and_legacy_json() {
             "cannot decode image tool-result content as JSON"
         );
     }
+}
+
+/// Generated positions occupy a namespace disjoint from explicit handles.
+#[test]
+fn missing_call_id_normalization_separates_namespaces_and_preserves_metadata() {
+    use super::{AssistantContent, ToolCall, ToolFunction, normalize_missing_tool_call_ids};
+    use serde_json::json;
+    let mut content = vec![
+        AssistantContent::text("not a call position"),
+        AssistantContent::ToolCall(
+            ToolCall::from_wire("", ToolFunction::new("same".into(), json!({"n":1})))
+                .with_signature(Some("signed".into()))
+                .with_additional_params(Some(json!({"opaque":true}))),
+        ),
+        AssistantContent::tool_call("tool-0", "same", json!({"n":2})),
+        AssistantContent::tool_call("tool-1", "same", json!({"n":3})),
+        AssistantContent::tool_call("", "same", json!({"n":4})),
+        AssistantContent::tool_call("tool-0", "same", json!({"n":5})),
+    ];
+    normalize_missing_tool_call_ids(&mut content);
+    let calls: Vec<_> = content
+        .iter()
+        .filter_map(|item| match item {
+            AssistantContent::ToolCall(call) => Some(call),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        calls.iter().map(|call| call.id.clone()).collect::<Vec<_>>(),
+        [
+            super::ToolCallId::minted(0),
+            super::ToolCallId::new("tool-0").expect("explicit"),
+            super::ToolCallId::new("tool-1").expect("explicit"),
+            super::ToolCallId::minted(3),
+            super::ToolCallId::new("tool-0").expect("explicit"),
+        ]
+    );
+    assert!(calls[0].provider.is_none());
+    assert_eq!(calls[0].signature.as_deref(), Some("signed"));
+    assert_eq!(calls[0].additional_params, Some(json!({"opaque":true})));
+    assert_eq!(calls[1].provider.as_ref().unwrap().call_id, "tool-0");
+    let first = content.clone();
+    normalize_missing_tool_call_ids(&mut content);
+    assert_eq!(content, first, "normalization is stable when repeated");
+}
+
+/// Internal identity law: provider text must not impersonate a generated key.
+#[test]
+fn typed_tool_identity_separates_generated_and_explicit_keys() {
+    use super::ToolCallId;
+    let generated = ToolCallId::minted(0);
+    let explicit = ToolCallId::new("tool-0").expect("nonempty explicit ID");
+    assert_ne!(generated, explicit);
+    let keys = std::collections::HashSet::from([generated.clone(), explicit.clone()]);
+    assert_eq!(keys.len(), 2);
+    let generated_json = serde_json::to_value(&generated).expect("serialize generated ID");
+    let explicit_json = serde_json::to_value(&explicit).expect("serialize explicit ID");
+    assert_ne!(generated_json, explicit_json);
+    for id in [generated, explicit] {
+        let json = serde_json::to_string(&id).expect("serialize ID");
+        assert_eq!(
+            serde_json::from_str::<ToolCallId>(&json).expect("decode ID"),
+            id
+        );
+    }
+}
+
+/// Assembly keys with equal display text still name different generated origins.
+#[test]
+fn typed_tool_identity_preserves_the_assembly_key_discriminant() {
+    use super::ToolCallId;
+    use crate::streaming::{BlockId, SyntheticIds};
+    assert_ne!(
+        ToolCallId::from_block(&BlockId::wire("tool-0")),
+        ToolCallId::from_block(&SyntheticIds::tool().mint()),
+    );
+}
+
+/// Legacy untagged IDs cannot tell generated handles from explicit handles.
+#[test]
+fn typed_tool_identity_rejects_legacy_untagged_serialization() {
+    assert!(serde_json::from_str::<super::ToolCallId>(r#""tool-0""#).is_err());
 }

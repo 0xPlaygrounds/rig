@@ -137,6 +137,7 @@ fn a_rebind_before_registration_fails_at_first_dispatch_not_at_bind() {
     let mut app = app();
     // What a scene stored: the descriptor, and one effect, no handler yet.
     let scene = Scene {
+        next_id: None,
         handlers: vec![HandlerDescriptor {
             key: HandlerKey::from("model"),
             family: FamilyDescriptor::Completion {
@@ -204,6 +205,7 @@ fn a_rebind_of_the_wrong_family_panics_at_the_hosts_line() {
         layers: Vec::new(),
     };
     let scene = Scene {
+        next_id: None,
         handlers: vec![stored],
         effects: Vec::new(),
     };

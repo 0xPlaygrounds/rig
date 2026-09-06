@@ -130,7 +130,8 @@ pub struct KeyParts {
     /// The name proper: a model label, a tool name, `memory`, `note`.
     pub label: Arc<str>,
     /// The disambiguating generation (`#2`): the same tool registered
-    /// again under a fresh key.
+    /// again under a fresh key. Only canonical `u64` decimal suffixes are
+    /// generations; leading zeroes and overflow remain literal label text.
     pub generation: Option<u64>,
 }
 
@@ -145,9 +146,14 @@ impl KeyParts {
         };
         let (rest, generation) = match rest.rsplit_once('#') {
             Some((head, digits))
-                if !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) =>
+                if !digits.is_empty()
+                    && (digits.len() == 1 || !digits.starts_with('0'))
+                    && digits.bytes().all(|b| b.is_ascii_digit()) =>
             {
-                (head, digits.parse::<u64>().ok())
+                match digits.parse::<u64>() {
+                    Ok(generation) => (head, Some(generation)),
+                    Err(_) => (rest, None),
+                }
             }
             _ => (rest, None),
         };

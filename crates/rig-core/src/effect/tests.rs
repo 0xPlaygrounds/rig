@@ -101,6 +101,21 @@ fn a_key_is_read_by_its_grammar_and_written_back() {
 }
 
 #[test]
+fn noncanonical_numeric_generations_preserve_the_key() {
+    for suffix in ["00", "01", "0009", "18446744073709551616", "+1", "-1"] {
+        let raw = format!("host/tool:a#{suffix}");
+        let key = HandlerKey::from(raw.as_str());
+        let parts = key.parts();
+        assert_eq!(parts.to_key(), key, "a literal suffix must survive parsing");
+        assert_eq!(parts.generation, None);
+        assert_eq!(parts.label.as_ref(), format!("a#{suffix}"));
+    }
+    let maximum = HandlerKey::from("tool:a#18446744073709551615");
+    assert_eq!(maximum.parts().generation, Some(u64::MAX));
+    assert_eq!(maximum.parts().to_key(), maximum);
+}
+
+#[test]
 fn descriptor_variant_is_the_family() {
     let cases = [
         (

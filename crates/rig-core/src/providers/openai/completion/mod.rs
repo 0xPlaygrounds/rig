@@ -661,11 +661,9 @@ impl TryFrom<message::ToolResult> for Message {
     type Error = message::MessageError;
 
     fn try_from(value: message::ToolResult) -> Result<Self, Self::Error> {
-        // The wire requires a non-empty correlator: the provider-issued
-        // call id when one exists, else rig's minted handle — which is
-        // unique and non-empty by construction, unlike the old empty-
-        // string sentinel.
-        let tool_call_id = value.wire_call_id().to_owned();
+        // Single-item conversion supplies a candidate. The full-request
+        // builder applies occurrence-scoped IDs to both calls and results.
+        let tool_call_id = value.wire_call_id().into_owned();
         let parts = value
             .content
             .into_iter()
@@ -1028,6 +1026,59 @@ impl TryFrom<message::Message> for Vec<Message> {
     }
 }
 
+fn message_with_tool_ids(
+    source: message::Message,
+    position: usize,
+    ids: &crate::providers::internal::tool_call_ids::ToolCallIds,
+) -> Result<Vec<Message>, message::MessageError> {
+    let content_positions: Vec<_> = match &source {
+        message::Message::Assistant { content, .. } => content
+            .iter()
+            .enumerate()
+            .filter_map(|(index, part)| {
+                matches!(part, message::AssistantContent::ToolCall(_)).then_some(index)
+            })
+            .collect(),
+        message::Message::User { content } => content
+            .iter()
+            .enumerate()
+            .filter_map(|(index, part)| {
+                matches!(part, message::UserContent::ToolResult(_)).then_some(index)
+            })
+            .collect(),
+        message::Message::System { .. } => Vec::new(),
+    };
+    let mut converted: Vec<Message> = source.try_into()?;
+    // Conversion can split text into separate messages, but retains every tool
+    // call/result in source order. Assign only wire fields, never core provenance.
+    let slots: Vec<&mut String> = converted
+        .iter_mut()
+        .flat_map(|message| match message {
+            Message::Assistant { tool_calls, .. } => {
+                tool_calls.iter_mut().map(|call| &mut call.id).collect()
+            }
+            Message::ToolResult { tool_call_id, .. } => vec![tool_call_id],
+            _ => Vec::new(),
+        })
+        .collect();
+    if slots.len() != content_positions.len() {
+        return Err(message::MessageError::ConversionError(
+            "tool identity mapping lost a content occurrence during OpenAI conversion".into(),
+        ));
+    }
+    for (slot, content) in slots.into_iter().zip(content_positions) {
+        *slot = ids
+            .get(position, content)
+            .ok_or_else(|| {
+                message::MessageError::ConversionError(
+                    "missing planned OpenAI tool identity".into(),
+                )
+            })?
+            .to_owned();
+    }
+    Ok(converted)
+}
+
 impl From<message::ToolCall> for ToolCall {
     fn from(tool_call: message::ToolCall) -> Self {
         Self {
@@ -1035,7 +1086,7 @@ impl From<message::ToolCall> for ToolCall {
             // the provider-issued call id when one exists (e.g. a
             // Responses-API history replayed via chat completions), else
             // rig's minted handle — never empty.
-            id: tool_call.wire_call_id().to_owned(),
+            id: tool_call.wire_call_id().into_owned(),
             r#type: ToolType::default(),
             function: Function {
                 name: tool_call.function.name,
@@ -1105,6 +1156,7 @@ impl TryFrom<Message> for message::Message {
                         .collect::<Result<Vec<_>, _>>()?,
                 );
 
+                crate::message::normalize_missing_tool_call_ids(&mut assistant_content);
                 message::Message::Assistant {
                     id: None,
                     content: crate::message::require_non_empty(assistant_content, || {
@@ -2135,11 +2187,16 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
         let mut partial_history = Vec::new();
         partial_history.extend(chat_history);
 
+        let tool_ids =
+            crate::providers::internal::tool_call_ids::ToolCallIds::new(&partial_history)
+                .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+
         let mut full_history: Vec<Message> = Vec::new();
         full_history.extend(
             partial_history
                 .into_iter()
-                .map(message::Message::try_into)
+                .enumerate()
+                .map(|(position, message)| message_with_tool_ids(message, position, &tool_ids))
                 .collect::<Result<Vec<Vec<Message>>, _>>()?
                 .into_iter()
                 .flatten(),

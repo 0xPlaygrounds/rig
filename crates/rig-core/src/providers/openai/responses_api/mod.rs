@@ -477,7 +477,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             // Provider-issued call id when one exists, else
                             // rig's minted handle — always present and
                             // non-empty.
-                            let call_id = tool_result.wire_call_id().to_owned();
+                            let call_id = tool_result.wire_call_id().into_owned();
                             let output = responses_tool_result_output(tool_result.content)
                                 .map_err(|error| {
                                     CompletionError::ProviderError(error.to_string())
@@ -593,7 +593,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                     let item_id = provider.item_id.clone().unwrap_or_default();
                                     (provider.call_id, item_id)
                                 }
-                                None => (id.into_string(), String::new()),
+                                None => (id.wire_hint().into_owned(), String::new()),
                             };
                             other_items.push(InputItem {
                                 role: None,
@@ -1341,8 +1341,22 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
         let mut instruction_parts = Vec::new();
         let mut input = {
             let mut full_history: Vec<InputItem> = Vec::new();
-            for history_item in chat_history {
-                full_history.extend(<Vec<InputItem>>::try_from(history_item)?);
+            let tool_ids =
+                crate::providers::internal::tool_call_ids::ToolCallIds::new(&chat_history)
+                    .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+            for (position, history_item) in chat_history.into_iter().enumerate() {
+                let mut items = <Vec<InputItem>>::try_from(history_item)?;
+                tool_ids
+                    .apply(
+                        position,
+                        items.iter_mut().filter_map(|item| match &mut item.input {
+                            InputContent::FunctionCall(call) => Some(&mut call.call_id),
+                            InputContent::FunctionCallOutput(result) => Some(&mut result.call_id),
+                            _ => None,
+                        }),
+                    )
+                    .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+                full_history.extend(items);
             }
             full_history
         };
@@ -2652,7 +2666,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             .output
             .iter()
             .any(|item| matches!(item, Output::Reasoning { .. }));
-        let content = response
+        let mut content = response
             .provider_reasoning
             .as_ref()
             .filter(|reasoning| !has_structured_reasoning && !reasoning.is_empty())
@@ -2665,6 +2679,8 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                 content
             })
             .unwrap_or(output_content);
+
+        crate::message::normalize_missing_tool_call_ids(&mut content);
 
         let finish_reason =
             map_finish_reason(&response.status, response.incomplete_details.as_ref());

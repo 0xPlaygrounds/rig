@@ -475,6 +475,26 @@ impl From<&EmbeddingError> for ErrorReport {
             | ErrorKind::Denied
             | ErrorKind::Other => false,
         };
+        let provider_response = match error {
+            EmbeddingError::ProviderResponse(response) => Some(Box::new(response.clone())),
+            EmbeddingError::HttpError(inner) => inner.non_success_status().map(|status| {
+                Box::new(
+                    crate::provider_response::ProviderResponseError::new(
+                        status,
+                        inner.non_success_body().unwrap_or_default(),
+                    )
+                    .with_headers(
+                        inner
+                            .non_success_headers()
+                            .map(|headers| Box::new(headers.clone())),
+                    ),
+                )
+            }),
+            _ => None,
+        };
+        let request_id = provider_response
+            .as_ref()
+            .and_then(|response| response.provider_request_id.clone());
         ErrorReport {
             kind,
             retryable,
@@ -483,8 +503,8 @@ impl From<&EmbeddingError> for ErrorReport {
             http_status,
             refusal: false,
             source_chain: source_chain(error),
-            request_id: None,
-            provider_response: None,
+            request_id,
+            provider_response,
         }
     }
 }
@@ -531,6 +551,26 @@ impl From<&RerankError> for ErrorReport {
             | ErrorKind::Denied
             | ErrorKind::Other => false,
         };
+        let provider_response = match error {
+            RerankError::ProviderResponse(response) => Some(Box::new(response.clone())),
+            RerankError::HttpError(inner) => inner.non_success_status().map(|status| {
+                Box::new(
+                    crate::provider_response::ProviderResponseError::new(
+                        status,
+                        inner.non_success_body().unwrap_or_default(),
+                    )
+                    .with_headers(
+                        inner
+                            .non_success_headers()
+                            .map(|headers| Box::new(headers.clone())),
+                    ),
+                )
+            }),
+            _ => None,
+        };
+        let request_id = provider_response
+            .as_ref()
+            .and_then(|response| response.provider_request_id.clone());
         ErrorReport {
             kind,
             retryable,
@@ -539,8 +579,8 @@ impl From<&RerankError> for ErrorReport {
             http_status,
             refusal: false,
             source_chain: source_chain(error),
-            request_id: None,
-            provider_response: None,
+            request_id,
+            provider_response,
         }
     }
 }
@@ -555,8 +595,11 @@ impl From<&VectorStoreError> for ErrorReport {
     fn from(error: &VectorStoreError) -> Self {
         let (kind, http_status) = match error {
             VectorStoreError::EmbeddingError(inner) => {
-                let report = ErrorReport::from(inner);
-                (report.kind, report.http_status)
+                return Self {
+                    message: error.to_string(),
+                    source_chain: source_chain(error),
+                    ..Self::from(inner)
+                };
             }
             VectorStoreError::JsonError(_) => (ErrorKind::Json, None),
             VectorStoreError::DatastoreError(_) => (ErrorKind::Provider, None),

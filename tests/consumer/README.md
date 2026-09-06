@@ -6,6 +6,13 @@ it. The executable and `tests/ecs_consumer.rs` instantiate the same ECS systems.
 Provider cases use real completion adapters; synthetic cases use an explicitly
 scripted completion handler. Both use real workspace tools.
 
+The `repository-repair` matrix gives the same consumer a dependency-free Rust
+project with a failing pagination test. The genuine provider reads the contract,
+diagnoses the failure, writes a desired-behavior regression, observes it fail,
+chooses a production repair, requests the host approval decision and validates
+its result. The host does not supply replacement contents to the provider.
+Synthetic cases supply known stimuli for refusal, timeout and replay assertions.
+
 Run commands from the repository root:
 
 ```sh
@@ -27,10 +34,14 @@ The plan lists required fixture paths and applicable producer paths. Executed
 reports include each selected case's status and coverage grouped by every
 registry axis; planning alone never counts as a pass.
 
-The initial registry has 32 cases: six genuine provider lanes (unary and stream
+The original corpus has 32 cases: six genuine provider lanes (unary and stream
 for Anthropic, OpenAI and Gemini) and 26 synthetic policy/fault cases. The six
-new captures used 32 live requests in total. Reuse those cassettes offline for
+original captures used 32 live requests in total. Reuse those cassettes offline for
 subsequent golden derivation; synthetic variants incur no provider calls.
+The repair extension adds ten cases, for 42 total (35 synthetic, seven genuine
+provider lanes) and 217 fixture files. Its accepted Opus 5 capture used nine live
+requests. Earlier repair attempts remain unaccepted or historical local candidates;
+they are not counted as additional accepted provider lanes.
 
 | Matrix | Assertions and reproduction selection |
 | --- | --- |
@@ -41,6 +52,7 @@ subsequent golden derivation; synthetic variants incur no provider calls.
 | Identity | `--matrix identity`: model/capability/policy mismatch, multiple scopes, uncalled grant, missing/conflicting metadata and unexpected dispatch |
 | Persistence | `--matrix persistence`: zero-progress unary/stream restart, unknown extensions and unsafe prefixes; successful cases also compare after-write resume |
 | Lifecycle | `--matrix lifecycle`: removed model, cancellation before serve/background loser, and lost write outcome requiring reconciliation |
+| Repository repair | `--matrix repository-repair`: model-directed unary capture plus nine synthetic cases for approval, denial/cancellation, insufficient repair, stale approval, timeout, streaming groups and lost edit outcome |
 | Custom answers | `--matrix custom_answers`: seven JSON value shapes through typed answers, replay and scene load |
 
 Every `verify` case runs its owning producer, policy replay and each available
@@ -81,9 +93,22 @@ checks, prints semantic JSON differences, then installs the files. A failed
 derivation bundle is not an accepted baseline. These local fixture operations
 do not commit or publish changes.
 
-Each invocation has a shared limit of 32 transport requests, 512 output tokens
-per request, 300 seconds and zero retries. The consumer also has a bounded turn
-count and a 120-second execution guard. The plan names the provider and model
+Each live recording invocation shares a limit of 32 transport requests,
+300 seconds and zero retries. Genuine repair requests explicitly allow 8,192
+output tokens, including provider reasoning tokens; historical greeting and
+synthetic requests keep their 512-token limits. The plan reports each case’s
+cap and the invocation’s maximum before sending traffic. Offline commands give
+each selected case its limits independently, and the report totals all local
+requests. This lets a growing replay matrix run without increasing the live
+allowance. Recording reserves the last ten seconds for finalization; every
+repair subprocess also receives the remaining absolute execution deadline.
+Completed traffic is periodically scrubbed into `provider.partial.yaml` in the
+unaccepted candidate. Empty snapshots are skipped. An execution/finalization
+failure retains available traffic and `capture-failure.json`; it cannot create
+successful capture provenance. In-flight requests or unfinished stream responses
+are not guaranteed to be retained. The consumer also has a bounded turn
+count (8 greeting / 24 repair) and an execution guard (120 seconds for greeting,
+300 seconds for repair, further capped by the recording execution deadline). The plan names the provider and model
 before any request. Capture metadata retains request use, limits, model and
 revision where available; a missing historical capture manifest remains absent.
 Generation manifests retain schema version, source, revision, dirty-worktree
@@ -103,8 +128,11 @@ There are four distinct kinds of evidence:
    set: partial streams, outcomes, the first visible inspection, approval input
    and published write receipts. `application.json` records actual file state,
    write count and the run result. Independent assertions require the approved
-   target contents, validation and exactly one write, or unchanged contents and
-   zero writes when approval is denied or cancelled.
+   target contents, validation and exactly one write for the greeting task, or
+   unchanged contents and zero writes when its approval is denied or cancelled.
+   Repair cases instead check the documented behavior, immutable files, exact
+   approvals and two edits (regression then production). Production denial or
+   cancellation retains only the approved regression edit.
 4. `checkpoints.json` stores a supported library scene plus explicitly declared
    application resources: file image, mutation ledger, approval/proposal state,
    observations and stable logical IDs. Host input is in the case configuration;
@@ -161,13 +189,21 @@ and refuses using that log for policy-visible replay.
 1. Run `plan`, select the relevant matrix and verify it offline. Reports and
    failure bundles are under ignored `.ecs-consumer/`; preserve the failing
    candidate, case configuration and command before changing code.
-   `failure.json` supplies structured reproduction arguments and fixture hashes;
-   runtime failures also preserve the observed trace, effect log and unfinished
-   logical effect IDs. Artifact validation/redaction applies to these reports.
+   `failure.json` supplies effective limits/configuration, structured reproduction
+   arguments, fixture and selected cassette hashes, and `diagnostics` links.
+   Diagnostic paths are relative to the repository root. Runtime failures,
+   cancellation and unwinding retain the observed trace, effect log, pending
+   logical effect IDs and available repair snapshot before world teardown.
+   Unavailable evidence is explicit with a reason. Live failures identify their
+   actual full/partial capture separately from baseline fixtures. Artifact
+   validation/redaction applies to these reports.
 2. Reproduce the smallest selected case. A JSON difference names its pointer
    and artifact; inspect the surrounding effect, observations and checkpoint.
-   Distinguish request mismatch, producer error, application invariant failure,
-   replay divergence and an unavailable fixture.
+   Classify the failure as production defect, consumer/tool defect, scheduling
+   defect, fixture mismatch, intentional contract change, provider behavior,
+   missing environment or unsupported persistence contract. Use request mismatch,
+   producer errors, application invariants and replay divergence as evidence for
+   that classification.
 3. Add a regression asserting the intended contract. Use independent release
    gates for scheduling failures, not sleeps, retries or a weaker overlap check.
 4. Fix the confirmed production or harness defect. Rerun the frozen regression,
@@ -176,6 +212,83 @@ and refuses using that log for policy-visible replay.
 5. For an intentional semantic change, derive a separate candidate, inspect the
    difference, then promote it. Preserve the old failure evidence. Obtain an
    independent review before publishing a PR, with the repository's full PR gate.
+
+Start a focused offline repair-loop baseline with:
+
+```sh
+cargo run -p rig --example ecs-consumer -- plan --matrix repository-repair
+cargo run -p rig --example ecs-consumer -- verify --matrix repository-repair
+```
+
+Copy the `failure_bundle` path from the failed report row. Preserve that directory
+and any selected candidate it references. The following runs the recorded argv
+without shell interpretation and refuses a live-recording reproduction:
+
+```sh
+failure_bundle_path=.ecs-consumer/candidates/REPLACE_WITH_FAILED_CASE/failure.json
+python3 - "$failure_bundle_path" <<'PYCODE'
+import json, os, subprocess, sys
+from pathlib import Path
+failure = json.loads(Path(sys.argv[1]).read_text())
+if failure.get("reproduce_requires_live_authorization"):
+    raise SystemExit("Live reproduction requires separate authorization; inspect retained traffic first")
+argv = failure["reproduce_argv"]
+if argv[:7] != ["cargo", "run", "-p", "rig", "--example", "ecs-consumer", "--"]:
+    raise SystemExit("Unexpected reproduction command")
+if argv[7] not in ("verify", "replay", "resume", "derive"):
+    raise SystemExit("This operation requires deliberate review")
+env = os.environ.copy()
+for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"):
+    env.pop(key, None)
+env["RIG_PROVIDER_TEST_MODE"] = "replay"
+raise SystemExit(subprocess.run(argv, env=env).returncode)
+PYCODE
+```
+
+Inspect linked `semantic_difference`/`resume_difference` JSON for the first
+pointer and linked `runtime` JSON for the boundary, effect log, pending work and
+repair state. A missing source candidate is an unavailable reproduction input,
+not a passing replay; restore the preserved candidate before rerunning.
+
+These frozen regressions check the failure reporting itself using local faults:
+
+```sh
+cargo test -p rig --test ecs_consumer failure_bundle_preserves_effective_config_provider_digest_and_runtime_link
+cargo test -p rig --test ecs_consumer consumer::diagnostics
+cargo test -p rig --test ecs_consumer failed_capture_identity_uses_its_own_partial_traffic
+```
+
+The PR #2464 continuation exercised this loop on a consumer failure-reporting
+bug. At baseline `9df2b0e2b`, the CLI regression above deliberately mismatched a
+local cassette request, then failed because `failure.json` had no effective
+limits (`null` instead of `300`). The correction retained configuration, input
+hashes and runtime links; the same regression passed, followed by the full frozen
+42-case matrix with all 217 fixture hashes unchanged. Separate regressions drop
+an active repair future and inject a schedule panic to check retained state.
+This is the coding agent's harness repair, distinct from the recorded model's
+pagination patch. The completion handoff exports the before/after logs, matrix
+report, hashes and revision record from ignored
+`.ecs-consumer/repair-loop/evidence.json`; no temporary fault or replacement
+golden is promoted. Final review and the committed correction revision are
+recorded in that handoff when the completion gate finishes.
+
+For a concrete matrix-registration example, inspect `repair-stream-groups` in
+`tests/consumer/registry.rs`. It sets a grouped delivery size in the existing
+repository-repair tuple list and runs the shared producer, assertions and resume
+checks. A new case belongs in that registry with a unique ID and an actual fault
+or axis distinction; add its assertion in the owning consumer module before
+producing candidate artifacts. The existing example can be planned and run with:
+
+```sh
+cargo run -p rig --example ecs-consumer -- plan --case repair-stream-groups
+cargo run -p rig --example ecs-consumer -- verify --case repair-stream-groups
+cargo test -p rig --test ecs_consumer consumer_fixtures_match_the_executable_registry_and_producer_hashes
+```
+
+For a newly registered synthetic ID, use `derive --case <new-id>` to create its
+candidate, inspect its differences, and use the documented promotion command
+only after independent semantic review. A missing golden must fail verification;
+do not suppress the census or treat registration alone as coverage.
 
 The consumer exposed a premature missing-effect replay refusal after restoring
 a completed tool batch, and successful unpaced collection after a replay
@@ -191,3 +304,70 @@ assertions and reproduction evidence; a name or a passing plan is not coverage.
 The legacy cross-runtime corpus remains separate equivalence evidence. This
 consumer does not establish arbitrary full-world determinism, automatically
 save application resources, or justify extracting another runtime crate.
+
+## Model-directed Rust repair
+
+The genuine `repair-anthropic-unary` lane selects Claude Opus 5
+(`claude-opus-5`) with its default adaptive thinking enabled. New live repair
+work must use a current capable model such as Opus or GPT Sol; do not downgrade
+to older or mini models to save tokens. The configured OpenAI repair alternative
+is `gpt-5.6-sol`. Verify available API IDs before adding a new capture lane.
+Historical greeting cassettes retain their recorded model identities.
+Capture/provenance manifests and the plan report the selected model. Use stable case IDs from
+`plan --matrix repository-repair`. Only the explicit
+`record` command uses a provider key:
+
+```sh
+cargo run -p rig --example ecs-consumer -- record --case repair-anthropic-unary
+cargo run -p rig --example ecs-consumer -- derive --case repair-anthropic-unary --candidate .ecs-consumer/candidates/REPLACE_WITH_CAPTURE
+cargo run -p rig --example ecs-consumer -- verify --case repair-anthropic-unary --candidate .ecs-consumer/candidates/REPLACE_WITH_DERIVATION
+cargo run -p rig --example ecs-consumer -- resume --case repair-anthropic-unary --candidate .ecs-consumer/candidates/REPLACE_WITH_DERIVATION --cut after-write
+```
+
+Review the actual diagnosis, both patch diffs, compiler/test evidence, host
+approval observations and candidate JSON differences before using `promote`.
+A failed or partial genuine repair capture is evidence for debugging; it cannot
+be promoted as a successful live capture. Do not repeat paid calls until a
+specific failure has been diagnosed and any confirmed harness defect has a
+failing regression and a verified fix.
+
+The project copied from `tests/fixtures/repository_repair` deliberately stays
+broken in the repository. Only `tests/regression.rs` and `src/lib.rs` are writable
+in each disposable project; existing tests, manifest, lockfile and README are
+immutable. Tool schemas expose those paths and named validation phases. A
+proposal first runs bounded rustfmt on scratch text, then returns the formatted
+exact diff and operation identity. The original request, formatter argv/status/output
+and whether formatting changed bytes are recorded. Formatting never changes the
+project or runs after approval; Collect checks this evidence against the issued
+proposal and returned bytes. Calling `repo_apply_patch`
+asks the separate host policy for its declared decision before applying it.
+Changing contents or the source digest invalidates the approval. The bounded
+workflow accepts one regression edit and one production edit per run.
+
+Initial and regression validation require executed behavioral failures against
+the unchanged production image. Compile errors, ignored/empty/passing tests,
+timeouts and truncated output cannot establish the regression. Final validation
+requires all original and added tests, formatting, and a host-owned contract
+oracle linked to the same compiled library. The oracle checks 245 boundary rows
+and borrowing against independent expectations. It is finite behavior evidence;
+source review must still reject hardcoded answers or harness-dependent code.
+The final model message cannot override the tool results.
+
+Repair validation uses macOS `sandbox-exec` or Linux `bwrap`, cleared environment,
+read-only project/artifacts and separate writable scratch. It runs Cargo offline
+and locked with immutable dependency-free metadata and no build scripts. Linux
+requires working unprivileged user namespaces and bubblewrap; namespace failure
+is an error. Commands have bounded wall time, CPU, output, descriptors and
+individual file size. Linux also applies a virtual memory bound; no hard macOS
+memory or aggregate disk quota is claimed. This boundary supports the small
+fixture, not arbitrary hostile repositories.
+
+Validation results become policy state at Collect. A model that batches an edit
+and its validation gets a recoverable instruction to validate on the following
+turn, after observing the edit receipt. Replay validates the issued operation
+and typed publication before projecting a write into a new owned workspace;
+it restores recorded process results without running compilers or tests.
+The `after-write` repair cut is after the completed production edit and before
+final validation. It carries the full project image, exact approvals, reports
+and mutation ledger. Fresh-world continuation preserves that completed edit;
+a missing saved outcome requires reconciliation, never a duplicate write.

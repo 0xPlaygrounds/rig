@@ -343,7 +343,11 @@ pub fn tool_failure(outcome: &Result<Outcome, ErrorReport>) -> Option<Failure> {
 /// The user utterance a retried or skipped turn answers with (CONTRACT
 /// §8.2): `text` as the tool result of the call `id`, the invalid-peer
 /// notice for every other call of `content`, in call order.
-pub fn invalid_peer_results(content: &[AssistantContent], id: &str, text: &str) -> MessageParts {
+pub fn invalid_peer_results(
+    content: &[AssistantContent],
+    id: &ToolCallId,
+    text: &str,
+) -> MessageParts {
     let parts = content
         .iter()
         .filter_map(|part| match part {
@@ -351,7 +355,7 @@ pub fn invalid_peer_results(content: &[AssistantContent], id: &str, text: &str) 
                 call.id.clone(),
                 call.provider.clone(),
                 call.function.name.clone(),
-                if call.id.as_str() == id {
+                if &call.id == id {
                     text.to_owned()
                 } else {
                     text::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_owned()
@@ -366,75 +370,104 @@ pub fn invalid_peer_results(content: &[AssistantContent], id: &str, text: &str) 
 }
 
 /// The turn as it stood when an invalid call surfaced mid-stream (CONTRACT
-/// §8.2, the delta wire): a streamed turn whose invalid call is retried or
-/// skipped is abandoned at that call — history keeps the parts before it
-/// and the call as it stood: a call built from deltas has no provider id
-/// yet and its arguments only when they streamed before its name (`events`
-/// says which: the call's block's first delta); a call whose block was
-/// delivered whole, or a unary turn, is kept whole.
+/// §8.2). Only a rejecting name delta creates an early diagnostic with an
+/// assembly identity and the arguments buffered before that name. A rejection
+/// at the completed block, or a unary turn, retains the completed call.
+/// Returns the retained call's ID so retry/skip feedback answers that identity.
 pub fn partial_turn_at(
     content: &[AssistantContent],
     events: Option<&[rig_core::streaming::StreamEvent]>,
-    invalid_id: &str,
-) -> Vec<AssistantContent> {
-    use rig_core::streaming::{BlockKind, Delta, StreamEvent};
-    let Some(events) = events else {
-        return content.to_vec();
+    invalid_id: &ToolCallId,
+    allowed_names: &[String],
+) -> (Vec<AssistantContent>, ToolCallId) {
+    use rig_core::{
+        message::{ToolCall, ToolFunction},
+        streaming::{BlockId, BlockKind, Delta, StreamEvent},
     };
-    // The tool-call blocks in the order they started, each with whether its
-    // first delta was the name.
-    let mut blocks: Vec<(rig_core::streaming::BlockId, Option<bool>)> = Vec::new();
+    let Some(events) = events else {
+        return (content.to_vec(), invalid_id.clone());
+    };
+    struct Block {
+        id: BlockId,
+        arguments: String,
+        name_validated: bool,
+        diagnostic: Option<ToolCall>,
+        completed_id: Option<ToolCallId>,
+    }
+    let mut blocks: Vec<Block> = Vec::new();
     for event in events {
         match event {
             StreamEvent::BlockStart {
                 id,
                 kind: BlockKind::ToolCall,
-            } => blocks.push((id.clone(), None)),
+            } => blocks.push(Block {
+                id: id.clone(),
+                arguments: String::new(),
+                name_validated: false,
+                diagnostic: None,
+                completed_id: None,
+            }),
             StreamEvent::BlockDelta { id, delta } => {
-                if let Some((_, first)) = blocks.iter_mut().find(|(block, _)| block == id)
-                    && first.is_none()
-                {
-                    *first = Some(match delta {
-                        Delta::ToolName { .. } => true,
-                        Delta::ToolArguments { .. }
-                        | Delta::Text { .. }
-                        | Delta::TextMeta { .. }
-                        | Delta::Reasoning { .. } => false,
-                    });
+                let Some(block) = blocks.iter_mut().rev().find(|block| &block.id == id) else {
+                    continue;
+                };
+                if block.diagnostic.is_some() {
+                    continue;
+                }
+                match delta {
+                    Delta::ToolName { name } if !allowed_names.contains(name) => {
+                        block.diagnostic = Some(ToolCall::new(
+                            ToolCallId::from_block(&block.id),
+                            ToolFunction::new(
+                                name.clone(),
+                                serde_json::from_str(&block.arguments)
+                                    .unwrap_or(serde_json::Value::Null),
+                            ),
+                        ));
+                    }
+                    Delta::ToolName { .. } => {
+                        block.name_validated = true;
+                        block.arguments.clear();
+                    }
+                    Delta::ToolArguments { arguments } if !block.name_validated => {
+                        block.arguments.push_str(arguments)
+                    }
+                    _ => {}
                 }
             }
-            StreamEvent::BlockStart { .. }
-            | StreamEvent::BlockEnd { .. }
-            | StreamEvent::Final(_)
-            | StreamEvent::Unknown(_) => {}
+            StreamEvent::BlockEnd {
+                id,
+                block: Some(AssistantContent::ToolCall(call)),
+                ..
+            } => {
+                if let Some(block) = blocks.iter_mut().rev().find(|block| &block.id == id) {
+                    block.completed_id = Some(call.id.clone());
+                }
+            }
+            _ => {}
         }
     }
     if blocks.is_empty() {
-        return content.to_vec();
+        return (content.to_vec(), invalid_id.clone());
     }
     let mut kept = Vec::new();
     let mut call_index = 0;
     for part in content {
         match part {
             AssistantContent::ToolCall(call) => {
-                let name_first = blocks.get(call_index).and_then(|(_, first)| *first);
+                let block = blocks
+                    .iter()
+                    .find(|block| block.completed_id.as_ref() == Some(&call.id))
+                    .or_else(|| blocks.get(call_index));
                 call_index += 1;
-                if call.id.as_str() == invalid_id {
-                    // A call built from deltas surfaced before its block
-                    // ended: no provider id yet, and no arguments unless
-                    // they streamed before the name. A block delivered
-                    // whole is kept whole.
-                    let mut partial = call.clone();
-                    match name_first {
-                        Some(true) => {
-                            partial.provider = None;
-                            partial.function.arguments = serde_json::Value::Null;
-                        }
-                        Some(false) => partial.provider = None,
-                        None => {}
-                    }
+                if &call.id == invalid_id {
+                    let partial = block
+                        .and_then(|block| block.diagnostic.as_ref())
+                        .unwrap_or(call)
+                        .clone();
+                    let diagnostic_id = partial.id.clone();
                     kept.push(AssistantContent::ToolCall(partial));
-                    return kept;
+                    return (kept, diagnostic_id);
                 }
                 kept.push(part.clone());
             }
@@ -443,7 +476,7 @@ pub fn partial_turn_at(
             | AssistantContent::Image(_) => kept.push(part.clone()),
         }
     }
-    kept
+    (kept, invalid_id.clone())
 }
 
 /// The query a retrieval asks with (CONTRACT §12): the last utterance with

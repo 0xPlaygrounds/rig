@@ -726,7 +726,7 @@ fn fragments_assemble_into_a_completed_tool_call() {
     let tool_call = tool_end(&mut accumulator, "call_1", end(UnparseableToolInput::Drop))
         .expect("no error")
         .expect("call must finalize");
-    assert_eq!(tool_call.id, "call_1");
+    assert_eq!(tool_call.id.explicit(), Some("call_1"));
     assert_eq!(tool_call.function.name, "get_weather");
     assert!(accumulator.saw_tool_call());
 }
@@ -819,7 +819,7 @@ fn authoritative_end_fields_supersede_assembly() {
         .expect("authoritative payload finalizes");
     // The authoritative correlator drives rig's id; the wire-derived
     // assembly key rides along as the provider item id.
-    assert_eq!(tool_call.id, "call_abc");
+    assert_eq!(tool_call.id.explicit(), Some("call_abc"));
     let provider = tool_call.provider.as_ref().expect("provider ids are kept");
     assert_eq!(provider.call_id, "call_abc");
     assert_eq!(provider.item_id.as_deref(), Some("fc_1"));
@@ -1005,8 +1005,8 @@ fn minted_keys_keep_id_less_parallel_calls_distinct() {
         .expect("finalizes");
     // Id-less calls mint distinct correlation handles and record that
     // the provider issued nothing — never a shared empty sentinel.
-    assert!(!first.id.as_str().is_empty());
-    assert!(!second.id.as_str().is_empty());
+    assert!(first.id.is_generated());
+    assert!(second.id.is_generated());
     assert_ne!(first.id, second.id);
     assert!(first.provider.is_none());
     assert!(second.provider.is_none());
@@ -1041,7 +1041,7 @@ fn the_tool_id_override_supersedes_the_assembly_key() {
     let tool_call = tool_end(&mut accumulator, "tool-0", done)
         .expect("no error")
         .expect("finalizes");
-    assert_eq!(tool_call.id, "call_late");
+    assert_eq!(tool_call.id.explicit(), Some("call_late"));
 }
 
 #[test]
@@ -1470,7 +1470,7 @@ fn an_id_less_tool_call_is_named_by_its_block_deterministically() {
             other => panic!("expected a tool call, got {other:?}"),
         }
     }
-    assert_eq!(finalize(), "tool-3");
+    assert_eq!(finalize(), "generated:minted:tool:3");
     assert_eq!(
         finalize(),
         finalize(),

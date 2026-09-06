@@ -106,7 +106,7 @@ fn populated() -> bevy_app::App {
         },
         Reprompt(Message::user("again")),
         InvalidCall {
-            id: "i".to_owned(),
+            id: ToolCallId::new("i").unwrap(),
             name: "nope".to_owned(),
             arguments: serde_json::json!({"z": true}),
         },

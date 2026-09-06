@@ -408,7 +408,7 @@ async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
     );
     assert_eq!(normalized_call.function.arguments, recorded_arguments);
     assert_matches_recorded_token(
-        Some(normalized_call.id.as_str()),
+        normalized_call.id.explicit(),
         recorded_call["id"].as_str(),
         "normalized tool call id",
     );

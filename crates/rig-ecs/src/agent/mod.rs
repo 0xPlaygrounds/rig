@@ -778,8 +778,9 @@ pub struct Reprompt(
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct InvalidCall {
-    /// The call's id.
-    pub id: String,
+    /// The completion-local correlation identity of the rejected call.
+    #[cfg_attr(feature = "reflect", reflect(remote = crate::agent::reflect::ToolCallIdReflect))]
+    pub id: ToolCallId,
     /// The tool's name.
     pub name: String,
     /// The arguments, verbatim.

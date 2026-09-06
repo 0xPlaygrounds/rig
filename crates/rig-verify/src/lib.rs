@@ -1,7 +1,7 @@
 //! The effect bus's behavioural verification suite.
 //!
 //! Empty on purpose: every test is an integration test under `tests/`,
-//! written against the public API of `rig_core` and `rig_agent` only. This
+//! written against the public APIs of `rig_core`, `rig_agent` and `rig_ecs`. This
 //! crate exists so those suites have a home that builds in seconds (the root
 //! `rig` package pulls every provider and the cassette machinery), their own
 //! dev-dependencies, and one place a reviewer looks for "what does the bus
@@ -27,7 +27,7 @@
 //! same program produces the same log twice.
 //!
 //! The corpus is a set of matrices, each a module under `tests/` with its
-//! dimension table, its cells and what it found, over the two interpreters
+//! dimension table, its cells and what it found, over the three interpreters
 //! and the program table in `tests/corpus/mod.rs` (which also holds the
 //! dimension table of an effect trace as a whole):
 //!
@@ -50,8 +50,8 @@
 //! | N, provider breadth | `corpus_breadth.rs` | 12 goldens, gemini and openai |
 //! | O, the oracle and the header | `corpus_oracle.rs` | 4 goldens and the corpus-wide assertions |
 //!
-//! Every golden is replayed by both interpreters (a cancelled stream by
-//! both too: the replayer answers the record as the cancel it was, after
+//! Every golden is replayed by the classic runner, direct AgentRun driver and
+//! ECS world interpreter (including cancelled streams: the replayer answers the record as the cancel it was, after
 //! the events it kept). The
 //! producers are the `golden_fixture` tests of the root suite
 //! (`tests/providers/*/cassette/corpus_*.rs`, `tests/core/golden_*.rs`),
@@ -59,7 +59,7 @@
 //!
 //! What lives where:
 //! - here: behaviour of the bus and the agent over it (record and replay,
-//!   durable execution, the two interpreters agreeing);
+//!   durable execution, the three interpreters agreeing);
 //! - the root package's `tests/core`: guards that scan the source tree and
 //!   the fixture runners (they need the repository root);
 //! - the root package's `tests/providers`: cassette-backed provider suites;

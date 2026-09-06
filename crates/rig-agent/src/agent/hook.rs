@@ -411,8 +411,10 @@ impl HookContext {
     /// Bind a typed view to a key that carries its family (what the agent
     /// and its registries mint), on the run's bus. The view is scoped to
     /// this context by its lifetime: it routes through the run's driver and
-    /// cannot outlive the run — storing it in a field or moving it into a
-    /// spawned task does not compile. A dispatch a hook makes this way is
+    /// cannot outlive its borrow of the context — storing it in a `'static`
+    /// field or moving it into a spawned task does not compile. Request
+    /// futures returned by the view are owned; see [`RunHandle`] for their
+    /// driving and cancellation responsibilities. A dispatch a hook makes this way is
     /// served and recorded but does not re-enter the hook stack. Fails when
     /// the context was built outside a run.
     #[track_caller]
@@ -930,13 +932,42 @@ pub enum DispatchAction {
     /// Dispatch as is.
     Proceed,
     /// Dispatch this effect instead. A patch must keep the family; the
-    /// engine rejects a family change as an internal error.
+    /// stack rejects a family change as an internal error before later hooks
+    /// observe it. Tool calls must also retain their target name; only their
+    /// arguments may be patched.
     Patch(EffectKind),
     /// Do not dispatch: the effect resolves failed with this report and
     /// never reaches a handler. For a tool call a report of kind
     /// `Cancelled` cancels the run; any other kind becomes the skipped
     /// result the model sees. For a completion any report fails the turn.
     Deny(ErrorReport),
+}
+
+/// Validate before a patch becomes visible to policy or execution.
+pub(crate) fn validate_dispatch_patch(
+    current: &EffectKind,
+    next: &EffectKind,
+) -> Result<(), ErrorReport> {
+    if current.family() != next.family() {
+        return Err(ErrorReport::new(
+            ErrorKind::Internal,
+            format!(
+                "a hook patched a {} dispatch into a `{}` effect",
+                current.name(),
+                next.name()
+            ),
+        ));
+    }
+    if let (EffectKind::ToolCall { name: current, .. }, EffectKind::ToolCall { name: next, .. }) =
+        (current, next)
+        && current != next
+    {
+        return Err(ErrorReport::new(
+            ErrorKind::Other,
+            "a dispatch patch cannot change the tool target",
+        ));
+    }
+    Ok(())
 }
 
 impl DispatchAction {
@@ -1062,6 +1093,8 @@ impl OutcomeAction {
     /// Stop the run with `reason`: a replacement whose error is `Cancelled`
     /// terminates the run instead of being delivered. This is how a hook
     /// that observed an answer (a completion, a tool result) ends the run.
+    /// The cancellation short-circuits nested hook stacks; later hooks cannot
+    /// replace it with a successful answer.
     pub fn stop(reason: impl Into<String>) -> Self {
         Self::Replace(Err(ErrorReport::new(ErrorKind::Cancelled, reason)))
     }
@@ -1778,7 +1811,15 @@ impl AgentHook for HookStack {
             };
             match hook.dispatch(ctx, current).await {
                 DispatchAction::Proceed => {}
-                DispatchAction::Patch(next) => patched = Some(next),
+                DispatchAction::Patch(next) => {
+                    if let Err(report) = validate_dispatch_patch(current.kind, &next) {
+                        if let Some(kind) = patched {
+                            ctx.salvage_patch(event.id, kind);
+                        }
+                        return DispatchAction::Deny(report);
+                    }
+                    patched = Some(next);
+                }
                 deny @ DispatchAction::Deny(_) => {
                     // The denial wins, but an earlier hook's patch is what
                     // the skipped result must report: keep it for the engine.
@@ -1805,7 +1846,12 @@ impl AgentHook for HookStack {
             };
             match hook.outcome(ctx, current).await {
                 OutcomeAction::Proceed => {}
-                OutcomeAction::Replace(next) => replaced = Some(next),
+                OutcomeAction::Replace(next) => {
+                    if matches!(&next, Err(report) if report.kind == ErrorKind::Cancelled) {
+                        return OutcomeAction::Replace(next);
+                    }
+                    replaced = Some(next);
+                }
             }
         }
         replaced.map_or(OutcomeAction::Proceed, OutcomeAction::Replace)
@@ -1816,15 +1862,25 @@ impl AgentHook for HookStack {
     }
 }
 
-/// A typed view a hook bound through its [`HookContext`], scoped to the
-/// run by its lifetime: it is `!'static`, so a hook cannot store it in a
-/// field or move it into a spawned task — the compiler refuses. It offers
+/// A typed view a hook bound through its [`HookContext`], borrowing that
+/// context: a hook cannot store it in a `'static` field or move it into a
+/// task requiring `'static` — the compiler refuses. It offers
 /// the family-generic API of [`Handle`](crate::bus::Handle) by
 /// delegation rather than `Deref` (a `Deref` to the `Clone` handle would
 /// hand back an owned `'static` view through `.clone()`, which is the one
 /// thing this type exists to prevent). A host that wants an owned handle
 /// takes it from a [`Dispatcher`](crate::bus::Dispatcher) it holds
 /// itself.
+///
+/// The lifetime constrains the view, not the request futures returned by
+/// [`dispatch`](Self::dispatch), [`complete`](Self::complete), or
+/// [`top_n`](Self::top_n). Those futures own a single dispatch and can outlive
+/// the view. They do not retain permission to create further dispatches and
+/// do not drive the bus themselves. Await them within the hook while the run's
+/// driver is serving, or arrange continued serving through a host-owned driver.
+/// Dropping an unfinished request future cancels that dispatch; dropping this
+/// view alone does not. A future retained beyond the run is not a promise that
+/// the run's driver will continue serving it.
 ///
 /// ```compile_fail
 /// use rig_agent::agent::{HookContext, RunHandle};

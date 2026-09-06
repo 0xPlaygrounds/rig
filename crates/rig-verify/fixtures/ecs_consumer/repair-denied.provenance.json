@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "source": "synthetic",
+  "case": "repair-denied",
+  "cassette_sha256": null,
+  "provider_model": null,
+  "generation": {
+    "revision": "6677bcfec51e3dd696a2a8ac88ad5cb0d478f5a8",
+    "dirty": true
+  },
+  "capture": null,
+  "artifacts_sha256": {
+    "application": "eee1d1b66fa008154553ad4256e9ef98cdb298999ecba1488922b1888d9a9046",
+    "checkpoints": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "effects": "446ef46f52bd4f1e0fb97584f56eb1f05c4379459cbc07d9a35c5e86a7829ada",
+    "observations": "395a702de710eeb333b6eb3f58957ad1be6dc5b7dba20103882f808e355604f3"
+  }
+}

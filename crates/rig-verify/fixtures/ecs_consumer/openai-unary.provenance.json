@@ -8,7 +8,7 @@
     "model": "gpt-4.1-mini"
   },
   "generation": {
-    "revision": "25e8225be8a7c6b2b8af0e5a4cb0dd9993ffb503",
+    "revision": "6677bcfec51e3dd696a2a8ac88ad5cb0d478f5a8",
     "dirty": true
   },
   "capture": {
@@ -28,8 +28,8 @@
   },
   "artifacts_sha256": {
     "application": "c7f2be9f921d3f42bd028d3a2f054188cb742426094a862a30a099867b0f444b",
-    "checkpoints": "ea4cce444992f9b442b7e464484b0a7ebb5c318cbfddbc407966e88102a9acab",
-    "effects": "6c787955683695c462bdeefe97c44e062cacaa30e6efdf34a7422327cd56ac7d",
-    "observations": "9bd3252cef155831c1ae5888946f06485182d2e1a0f9e42762e4a13f052bda1d"
+    "checkpoints": "6feccb77a66cc9a52732b7ac22bc3e7c266ea9cb4601ca207af51708612ecc29",
+    "effects": "26f37796745893b194ef7bfb730ffd6ad825461deaf0fa94b9ddd1be4f2c3372",
+    "observations": "2999416201c101f010707c5e2ff81edd54f9df8f964b4f36121ef91336cc382e"
   }
 }

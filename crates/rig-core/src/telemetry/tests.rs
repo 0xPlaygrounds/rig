@@ -35,7 +35,7 @@ fn content_attributes_follow_gen_ai_semantic_convention_json_shapes() {
                 "role": "user",
                 "parts": [{
                     "type": "tool_call_response",
-                    "id": "call_1",
+                    "id": "explicit:call_1",
                     "response": "sunny"
                 }]
             }
@@ -54,7 +54,7 @@ fn content_attributes_follow_gen_ai_semantic_convention_json_shapes() {
             "role": "assistant",
             "parts": [{
                 "type": "tool_call",
-                "id": "call_1",
+                "id": "explicit:call_1",
                 "name": "weather",
                 "arguments": {"city": "Paris"}
             }],

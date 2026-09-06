@@ -9,12 +9,37 @@
 use super::*;
 
 #[tokio::test]
+async fn offline_case_budgets_do_not_exhaust_the_shared_live_allowance() -> Result<(), Error> {
+    let invocation = parse(["verify".into()])?;
+    let case = cases()
+        .into_iter()
+        .find(|case| case.id == "openai-unary")
+        .unwrap();
+    let shared = Budget::new(Limits::default());
+    for _ in 0..9 {
+        one(&case, &invocation, &case_budget("verify", &case, &shared)).await?;
+    }
+    assert_eq!(
+        shared.used(),
+        0,
+        "offline cases must not consume the shared live budget"
+    );
+    // Exercise live budget selection over local replay, without a paid call.
+    one(&case, &invocation, &case_budget("record", &case, &shared)).await?;
+    assert!(
+        shared.used() > 0,
+        "record selections must share the invocation allowance"
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn every_registered_case_verifies_its_committed_producer_and_json_replay() -> Result<(), Error>
 {
     let invocation = parse(["verify".into()])?;
     // Each case has its own bounded offline request budget, as in focused CLI runs.
     for case in select(&invocation)? {
-        one(&case, &invocation, &Budget::new(Limits::default()))
+        one(&case, &invocation, &Budget::new(Limits::for_case(&case)))
             .await
             .map_err(|error| Error::Invariant(format!("case {}: {error}", case.id)))?;
     }
@@ -119,7 +144,7 @@ async fn candidate_replay_checks_observations_and_resume_checks_the_supplied_cut
         candidate.path().display().to_string(),
     ])?;
     assert!(
-        one(&case, &invocation, &Budget::new(Limits::default()))
+        one(&case, &invocation, &Budget::new(Limits::for_case(&case)))
             .await
             .is_err(),
         "verify must check candidate sidecars"
@@ -253,10 +278,94 @@ async fn collapsed_batches_changed_descriptors_and_lost_stream_state_are_rejecte
         candidate.path().display().to_string(),
     ])?;
     assert!(
-        one(&case, &invocation, &Budget::new(Limits::default()))
+        one(&case, &invocation, &Budget::new(Limits::for_case(&case)))
             .await
             .is_err(),
         "supplied checkpoint with missing completed stream state must not pass"
+    );
+    Ok(())
+}
+
+/// A real CLI failure must identify its exact input and link retained runtime state.
+#[tokio::test]
+async fn failure_bundle_preserves_effective_config_provider_digest_and_runtime_link()
+-> Result<(), Error> {
+    let case = cases()
+        .into_iter()
+        .find(|case| case.id == "anthropic-unary")
+        .unwrap();
+    let candidate = assert_fs::TempDir::new().unwrap();
+    let wire = artifacts::safe_cassette(&artifacts::cassette(&case)?)?;
+    let changed = wire.replacen("Fix the greeting typo", "A different required request", 1);
+    assert_ne!(changed, wire);
+    let cassette = candidate.path().join("provider.yaml");
+    std::fs::write(&cassette, changed)?;
+    let source = candidate.path().display().to_string();
+    let error = run([
+        "verify".into(),
+        "--case".into(),
+        case.id.into(),
+        "--candidate".into(),
+        source.clone(),
+    ])
+    .await
+    .unwrap_err();
+    assert!(error.to_string().contains("failed"), "{error}");
+    let mut manifest = None;
+    for entry in std::fs::read_dir(artifacts::root().join(".ecs-consumer/candidates"))? {
+        let path = entry?.path().join("failure.json");
+        if !path.is_file() {
+            continue;
+        }
+        let value: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
+        if value["reproduce_argv"]
+            .as_array()
+            .is_some_and(|args| args.contains(&json!(source)))
+        {
+            manifest = Some(value);
+            break;
+        }
+    }
+    let manifest = manifest.expect("CLI preserved this invocation's failure bundle");
+    assert_eq!(manifest["configuration"]["limits"]["seconds"], 300);
+    assert_eq!(
+        manifest["fixtures"]["provider"]["sha256"],
+        artifacts::digest(&cassette)?
+    );
+    let runtime = manifest["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["kind"] == "runtime")
+        .expect("linked runtime evidence");
+    let path = runtime["path"].as_str().unwrap();
+    let evidence: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(artifacts::root().join(path))?)?;
+    assert!(evidence["observations"].is_array());
+    assert!(evidence["pending"].is_array());
+    assert!(evidence["effects"].is_object());
+    Ok(())
+}
+
+/// Failed live captures must never be labeled with the committed cassette hash.
+#[test]
+fn failed_capture_identity_uses_its_own_partial_traffic() -> Result<(), Error> {
+    let case = cases()
+        .into_iter()
+        .find(|case| case.id == "anthropic-unary")
+        .unwrap();
+    let candidate = assert_fs::TempDir::new().unwrap();
+    let partial = candidate.path().join("provider.partial.yaml");
+    std::fs::write(&partial, "controlled local partial traffic")?;
+    let invocation = parse(["record".into(), "--case".into(), case.id.into()])?;
+    let diagnostics = vec![json!({"kind":"capture","path":candidate.path()})];
+    let identity = provider_failure_input(&case, &invocation, &diagnostics)?;
+    assert_eq!(identity["completed"]["missing"], true);
+    assert_eq!(identity["partial"]["sha256"], artifacts::digest(&partial)?);
+    assert!(identity.get("sha256").is_none());
+    assert_eq!(
+        provider_failure_input(&case, &invocation, &[])?["status"],
+        "unavailable"
     );
     Ok(())
 }

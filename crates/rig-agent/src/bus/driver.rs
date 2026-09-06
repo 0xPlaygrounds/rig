@@ -180,10 +180,8 @@ impl BusDriver {
         key: impl Into<HandlerKey>,
         handler: ErasedHandler,
     ) -> Result<(), ErrorReport> {
-        let key = key.into();
-        self.shared
-            .publish_descriptor(key.clone(), handler.descriptor())?;
-        self.install(key, handler);
+        self.registrar().register_erased(key, handler)?;
+        self.apply(self.mailbox.take_pending());
         Ok(())
     }
 
@@ -210,8 +208,9 @@ impl BusDriver {
 
     /// Remove the handler serving `key`. Returns whether one was registered.
     pub fn deregister(&mut self, key: &HandlerKey) -> bool {
-        let published = self.shared.retract_descriptor(key);
-        self.handlers.remove(key).is_some() || published
+        let removed = self.registrar().deregister(key);
+        self.apply(self.mailbox.take_pending());
+        removed
     }
 
     /// A handle for registering on this bus once the driver is out of hand
@@ -240,7 +239,11 @@ impl BusDriver {
 
     /// Apply what the registrars posted since the last poll.
     fn apply_registrations(&mut self, cx: &Context<'_>) {
-        for registration in self.mailbox.drain(cx) {
+        self.apply(self.mailbox.drain(cx));
+    }
+
+    fn apply(&mut self, registrations: VecDeque<Registration>) {
+        for registration in registrations {
             match registration {
                 Registration::Install { key, handler } => self.install(key, handler),
                 Registration::Remove { key } => {
@@ -293,6 +296,7 @@ impl BusDriver {
     /// is dropped unserved — no handler poll, no record.
     fn serve(&mut self, command: Command) -> bool {
         let Command {
+            lineage,
             id,
             key,
             kind,
@@ -314,7 +318,7 @@ impl BusDriver {
         };
         // A dispatch whose ancestor was cancelled while it was queued is
         // dropped unserved: no handler poll, no record.
-        let Ok(flag) = self.shared.begin_in_flight(id, key.clone(), parent) else {
+        let Ok(flag) = self.shared.begin_lineage(lineage.clone(), key.clone()) else {
             reply.fail(rig_core::serve::cancelled());
             return false;
         };
@@ -327,7 +331,7 @@ impl BusDriver {
         let scoped = Dispatcher::parented(
             Arc::clone(&self.shared),
             self.config.stream_capacity,
-            id,
+            lineage,
             scope.clone(),
         );
         let mut sink = reply
@@ -378,8 +382,8 @@ impl BusDriver {
                         }
                     },
                     Either::Right((Either::Left(_), serving)) => {
-                        drop(serving);
                         shared.cancel_descendants(id);
+                        drop(serving);
                         let _ = sink_done.await;
                     }
                     Either::Right((Either::Right(_), serving)) => {
@@ -396,6 +400,10 @@ impl BusDriver {
     }
 
     fn accept(&mut self, command: Command) {
+        if command.lineage.is_cancelled() {
+            command.reply.fail(rig_core::serve::cancelled());
+            return;
+        }
         if self.config.serial_per_handler && self.busy.contains(&command.key) {
             self.queued
                 .entry(command.key.clone())
@@ -417,13 +425,13 @@ impl BusDriver {
             for queue in self.queued.values_mut() {
                 let (orphans, kept): (Vec<_>, Vec<_>) = std::mem::take(queue)
                     .into_iter()
-                    .partition(|command| command.parent == Some(id));
+                    .partition(|command| command.lineage.is_cancelled());
                 *queue = kept.into();
                 for orphan in orphans {
                     orphan.reply.fail(rig_core::serve::cancelled());
                 }
             }
-            self.shared.fail_buffered_children(id);
+            self.shared.fail_cancelled_buffered();
         }
         if !self.config.serial_per_handler {
             return;
@@ -437,6 +445,18 @@ impl BusDriver {
             };
             if self.serve(command) {
                 return;
+            }
+        }
+    }
+
+    fn drain_cancelled_queues(&mut self) {
+        for queue in self.queued.values_mut() {
+            let (cancelled, kept): (Vec<_>, Vec<_>) = std::mem::take(queue)
+                .into_iter()
+                .partition(|command| command.lineage.is_cancelled());
+            *queue = kept.into();
+            for command in cancelled {
+                command.reply.fail(rig_core::serve::cancelled());
             }
         }
     }
@@ -502,6 +522,7 @@ impl Future for BusDriver {
                 for command in commands {
                     this.accept(*command);
                 }
+                this.drain_cancelled_queues();
                 this.drain_orphaned_queues();
                 // The bus is closed for commands once every dispatcher has
                 // dropped and nothing it enqueued remains — decided under
@@ -528,6 +549,9 @@ impl Future for BusDriver {
                     Poll::Ready(None) | Poll::Pending => break,
                 }
             }
+            // Cancellation can leave a detached sink in flight; queued descendants
+            // must still be refused on this pass even without a completed task.
+            this.drain_cancelled_queues();
             if progressed {
                 continue;
             }
