@@ -15,6 +15,15 @@ fn independent_downstream_graph_excludes_smithy_and_agent_runtimes() {
     fs::write(scratch.path().join("Cargo.toml"), format!(
         "[package]\nname = \"cassette-downstream-probe\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[workspace]\n[dependencies]\nrig-cassette = {{ path = {path}, default-features = false }}\n"
     )).expect("write downstream manifest");
+    // Reuse the repository's resolved versions, including any subsequently
+    // yanked release already locked by the build. The separate manifest still
+    // computes its own no-default-feature graph; it must not resolve a new
+    // dependency universe from whichever sparse-index entries CI has cached.
+    fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.lock"),
+        scratch.path().join("Cargo.lock"),
+    )
+    .expect("seed downstream dependency versions");
     let output =
         std::process::Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
             .current_dir(scratch.path())
