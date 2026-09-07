@@ -29,6 +29,7 @@ OAuth cache; no capture possible; stays `supplemental_live`. The cassette-backed
 The non-interactive OAuth cell must keep its client construction (temp token
 dir seeded from the cassette key, `allow_device_flow(false)`, `authorize()`
 before the run); the codex routing cell must go through the Responses route.
+
 ## Fixture kind
 
 Cassette cells are **hosted GitHub Copilot recordings** replayed through

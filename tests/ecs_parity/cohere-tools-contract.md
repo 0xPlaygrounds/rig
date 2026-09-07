@@ -28,6 +28,7 @@ integer-typed `IntegerAdder` / `IntegerSubtract` copies from
 
 Exact tool-call sequence and result count from the native observation; the
 cache cell's prefix-stability post-closure assertions kept verbatim.
+
 ## Fixture kind
 
 Cassette cells are **hosted Cohere recordings** (`command-a-03-2025`, and

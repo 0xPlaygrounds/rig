@@ -25,7 +25,7 @@ tool round trips. Native counterparts belong in
 
 ## Exceptions
 
-The three `streaming_tools::raw_*` cells and nine `tool_matrix` cells call
+The three `streaming_tools::raw_*` cells and ten `tool_matrix` cells call
 `model.stream` / `model.completion` directly and are provider-only
 (`llamacpp-provider-contract.md`); `tool_matrix::the_smoke_tier_round_trip_is_covered_elsewhere`
 is a fixture guard. `tool_matrix` agent cells and no other cell here run on the
@@ -41,6 +41,7 @@ history obligations map to actual ordered run-child utterances; per-run
 `with_llamacpp_cassette_result` bodies keep their `ensure!` obligations. The
 answer-text assertions stay exactly the shared helpers with their accepted
 spellings.
+
 ## Fixture kind
 
 Every fixture in this family is a **local-model recording**: it was recorded

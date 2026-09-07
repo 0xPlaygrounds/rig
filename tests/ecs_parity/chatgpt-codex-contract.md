@@ -41,6 +41,7 @@ aggregated usage across turns, reasoning block presence and the default
 instructions / preamble merge are level-1/2 obligations on actual run-child
 utterances and effect outcomes; the OAuth client construction is configuration
 to preserve.
+
 ## Fixture kind
 
 Cassette cells are **hosted ChatGPT Codex backend recordings**

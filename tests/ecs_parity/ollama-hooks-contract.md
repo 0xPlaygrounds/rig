@@ -21,6 +21,7 @@ Raw responses per attempt are a fidelity requirement; the native observation
 must expose each successful completion outcome's raw payload in turn order and
 distinguish blocking from streamed delivery. The multi-turn cells require two
 attempts with distinct payloads and the tool turn first.
+
 ## Fixture kind
 
 Cassette cells are **local-model recordings**: recorded against a local Ollama

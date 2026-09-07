@@ -64,7 +64,7 @@
           "symbol": "huggingface::image_generation::image_generation_smoke"
         }
       ],
-      "baseline_ignored": false,
+      "baseline_ignored": true,
       "classification": "shared_provider",
       "classification_reason": "Rule live-model in huggingface-live-contract.md: client.image_generation_model(..).image_generation_request().prompt(IMAGE_PROMPT).width(1024).height(1024).send().await.expect; no agent; live, credential-gated, behind cfg(feature = \"image\") and outside the root-bedrock compiled listing.",
       "configuration": "root-bedrock",
@@ -77,6 +77,7 @@
         "provider"
       ],
       "family_contract": "tests/ecs_parity/huggingface-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires HUGGINGFACE_API_KEY, not configured in this environment; no fixture on disk; stays supplemental_live, not counted as ported.",
       "fixtures": [],
       "id": "rig::huggingface::huggingface::image_generation::image_generation_smoke",
       "source": "tests/providers/huggingface/image_generation.rs"

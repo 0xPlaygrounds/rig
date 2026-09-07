@@ -27,6 +27,7 @@ until then it stays `supplemental_live` and is not counted as ported.
 The cassette streaming smoke's exact usage assertion is a level-1 obligation on
 the provider final (`tokens`, not `billed_units`) and must be observed from the
 native stream terminal, not synthesized.
+
 ## Fixture kind
 
 Cassette cells are **hosted Cohere recordings** (`command-a-03-2025`, and

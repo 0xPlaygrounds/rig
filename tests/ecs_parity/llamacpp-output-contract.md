@@ -25,6 +25,7 @@ Reserved output-tool naming, `retries(2)` and the unordered cassette matching
 must be preserved; the batch cell's exhaustion means every recorded
 interaction is consumed by some extraction. Typed deserialization happens on
 the actual run result; `usage` comes from the run's Usage component.
+
 ## Fixture kind
 
 Every fixture in this family is a **local-model recording**: it was recorded

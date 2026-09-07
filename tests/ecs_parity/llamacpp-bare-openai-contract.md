@@ -28,6 +28,7 @@ The agent cells port with the openai `CompletionAdapter` pointed at the
 cassette base URL with the caller-supplied `/v1`, the placeholder bearer key,
 and the same fixtures; the fragmentation and path premises stay post-closure
 assertions. The two provider-only cells stay shared-provider.
+
 ## Fixture kind
 
 Every fixture in this family is a **local-model recording**: it was recorded

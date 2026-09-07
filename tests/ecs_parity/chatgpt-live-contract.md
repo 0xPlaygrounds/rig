@@ -27,6 +27,7 @@ trees.
 `completion::system_messages_are_lifted_into_instructions` and
 `reasoning_roundtrip::streaming` are live but provider-only
 (`chatgpt-provider-contract.md`).
+
 ## Fixture kind
 
 Cassette cells are **hosted ChatGPT Codex backend recordings**

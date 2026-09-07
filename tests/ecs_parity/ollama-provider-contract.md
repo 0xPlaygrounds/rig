@@ -20,6 +20,7 @@ Cells that call a provider capability directly and never construct an agent.
 ## Phase 2
 
 Not ported; these rows remain shared-provider evidence.
+
 ## Fixture kind
 
 Cassette cells are **local-model recordings**: recorded against a local Ollama

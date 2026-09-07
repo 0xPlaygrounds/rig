@@ -35,6 +35,7 @@ from `rig_agent::test_utils` (as `gemini-tools-contract.md` did), never the
 runner. Reasoning preservation in history is a level-1/2 obligation on the
 actual run-child utterances; tool counts come from the real `WeatherTool`
 counter through native `ToolAdapter`s.
+
 ## Fixture kind
 
 Cassette cells are **local-model recordings**: recorded against a local Ollama

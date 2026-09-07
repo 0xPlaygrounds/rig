@@ -24,6 +24,7 @@ capture is possible, the row stays `supplemental_live`.
 The streaming smoke ports like the other `streaming_smoke` cells (drain to EOF,
 final response required, nonempty answer) with `think: false` kept in
 `additional_params` so the recorded request body matches.
+
 ## Fixture kind
 
 Cassette cells are **local-model recordings**: recorded against a local Ollama

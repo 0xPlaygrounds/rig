@@ -26,6 +26,7 @@ specific_add_raw_streaming_allows_only_add}` call the model directly
 `ToolChoice::None` is a negative guarantee: no tool call may be scheduled or
 recorded in the run's utterances; the streaming twin asserts the same on the
 observed stream. Tool advertisement must still reach the request.
+
 ## Fixture kind
 
 Cassette cells are **hosted AWS Bedrock recordings** (`AMAZON_NOVA_LITE`, and

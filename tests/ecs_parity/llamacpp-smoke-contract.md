@@ -31,6 +31,7 @@ preamble / context order / model / temperature / max_tokens configuration, the
 post-closure fixture re-read, and strict matching plus exhaustion through the
 unchanged wrapper. `loaders_smoke` folds `FileLoader::with_glob(LOADERS_GLOB)`
 contexts in read order; the native port must build the same context list.
+
 ## Fixture kind
 
 Every fixture in this family is a **local-model recording**: it was recorded

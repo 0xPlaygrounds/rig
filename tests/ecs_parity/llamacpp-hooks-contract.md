@@ -35,6 +35,7 @@ model, and one observation per completion call. `EscalateCapOnTruncation`'s
 request caps (`24` then `512`) are the wire evidence. Scratch files are
 per-cell temp paths (the tool descriptions still say `test.txt`), which the
 port keeps so recorded bodies match.
+
 ## Fixture kind
 
 Every fixture in this family is a **local-model recording**: it was recorded

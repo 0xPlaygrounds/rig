@@ -880,7 +880,7 @@
       ],
       "baseline_ignored": true,
       "classification": "agent",
-      "classification_reason": "Rule live-agent in copilot-hooks-contract.md: live_client().agent(LIVE_LIGHT_MODEL).tool(ReadFileHead).tool(ReadFileTail).build().stream_prompt(..).max_turns(5).add_hook(PermissionHook).stream() drained by stream_to_stdout; ensures the final response mentions the file content and call_count >= 2; live, credential-gated.",
+      "classification_reason": "Rule agent-dispatch-hook in copilot-hooks-contract.md: live_client().agent(LIVE_LIGHT_MODEL).tool(ReadFileHead).tool(ReadFileTail).build().stream_prompt(..).max_turns(5).add_hook(PermissionHook).stream() drained by stream_to_stdout; ensures the final response mentions the file content and call_count >= 2; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires Copilot credentials or existing OAuth cache\"]"

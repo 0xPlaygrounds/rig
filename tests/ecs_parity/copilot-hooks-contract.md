@@ -6,7 +6,10 @@
   .tool(ReadFileTail).build().prompt(..).max_turns(5).add_hook(PermissionHook)`;
   `on_dispatch` skips the first tool call with a substituted message,
   `on_outcome` captures the tool result; `ensure!(last == "hello world")` and
-  `call_count >= 2`. The streaming twin is live-only.
+  `call_count >= 2`. The streaming twin (`permission_control_streaming_example`)
+  drives the same hook through `live_client()...stream_prompt(..).max_turns(5)
+  .add_hook(PermissionHook).stream()` via `stream_to_stdout` and is live-only
+  (`#[ignore]`, `supplemental_live`).
 - **agent-completion-hook** — `client.agent(LIVE_MODEL).build().prompt(..)
   .add_hook(SessionIdHook)`; `ensure!` on one prompt call, one response call and
   the captured prompt/response.
@@ -18,6 +21,7 @@ policy-visible; one completion-call observation and one outcome observation.
 The permission cell writes `test.txt` in the working directory (unlike the
 llama.cpp copy); the native port keeps the tool descriptions so recorded bodies
 match.
+
 ## Fixture kind
 
 Cassette cells are **hosted GitHub Copilot recordings** replayed through
@@ -51,5 +55,5 @@ contract is a parity or superset verdict.
 | Cell | Class | Rule | Fixture(s) | Ignored |
 | --- | --- | --- | --- | --- |
 | `permission_control::permission_control_prompt_example` | agent (hooks) | agent-dispatch-hook | `copilot/permission_control/permission_control_prompt_example.yaml` | no |
-| `permission_control::permission_control_streaming_example` | agent (hooks) | live-agent | none | yes |
+| `permission_control::permission_control_streaming_example` | agent (hooks) | agent-dispatch-hook | none | yes |
 | `request_hook::request_hook_records_prompt_and_response` | agent (hooks) | agent-completion-hook | `copilot/request_hook/request_hook_records_prompt_and_response.yaml` | no |

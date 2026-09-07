@@ -31,6 +31,7 @@ shared-provider at the base and keep their reason.
 
 Not ported; shared-provider evidence only. The unrecorded cells are not
 recaptured.
+
 ## Fixture kind
 
 Cassette cells are **hosted AWS Bedrock recordings** (`AMAZON_NOVA_LITE`, and

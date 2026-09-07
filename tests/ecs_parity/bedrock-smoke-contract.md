@@ -20,6 +20,7 @@ cells.
 Same shape as the other `streaming_smoke` ports (drain to EOF, final response
 required) through the unchanged Bedrock wrapper; the Claude profile cell ports
 like `completion_smoke` with the profile model id.
+
 ## Fixture kind
 
 Cassette cells are **hosted AWS Bedrock recordings** (`AMAZON_NOVA_LITE`, and

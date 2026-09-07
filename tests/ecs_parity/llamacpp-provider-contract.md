@@ -55,6 +55,7 @@ that say so); api-key 8089; Llama/Mistral/Gemma family 8090-8092; large vision
 
 Nothing in this file is ported. The rows are the provider request/response
 evidence the agent families rely on and remain shared-provider.
+
 ## Fixture kind
 
 Every fixture in this family is a **local-model recording**: it was recorded
@@ -190,7 +191,7 @@ contract is a parity or superset verdict.
 | `cassette::tool_matrix::two_independent_calls_arrive_in_one_turn` | shared_provider (provider) | model-completion | `llamacpp/tool_matrix/parallel_calls.yaml` | no |
 | `cassette::truncation_matrix::a_complete_call_under_the_same_cap_survives` | shared_provider (provider) | model-completion | `llamacpp/truncation_matrix/complete_call_control.yaml` | no |
 | `cassette::truncation_matrix::a_tool_call_cut_mid_arguments_does_not_destroy_the_turn` | shared_provider (provider) | model-completion | `llamacpp/truncation_matrix/tool_call_cut_mid_arguments.yaml` | no |
-| `cassette::truncation_matrix::the_streaming_path_drops_the_same_cut_call` | shared_provider (provider) | model-completion | `llamacpp/truncation_matrix/streaming_tool_call_cut_mid_arguments.yaml` | no |
+| `cassette::truncation_matrix::the_streaming_path_drops_the_same_cut_call` | shared_provider (provider) | model-stream | `llamacpp/truncation_matrix/streaming_tool_call_cut_mid_arguments.yaml` | no |
 | `cassette::unmapped_surface::props_states_which_model_and_modalities_produced_this_corpus` | shared_provider (provider) | verify | `llamacpp/unmapped_surface/props.yaml` | no |
 | `cassette::unmapped_surface::the_model_listing_reads_the_openai_half_of_a_hybrid_body` | shared_provider (provider) | listing | `llamacpp/unmapped_surface/models_envelope.yaml` | no |
 | `cassette::unmapped_surface::the_responses_api_is_reachable_but_rig_does_not_route_to_it` | shared_provider (provider) | model-completion | `llamacpp/unmapped_surface/responses_api.yaml` | no |

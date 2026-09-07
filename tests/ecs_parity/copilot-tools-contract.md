@@ -26,6 +26,7 @@ latter use the shared driver that builds requests by hand.
 
 Real `WeatherTool` counters through native `ToolAdapter`s; reasoning effort in
 `additional_params` preserved; Responses-route adapters for codex models.
+
 ## Fixture kind
 
 Cassette cells are **hosted GitHub Copilot recordings** replayed through

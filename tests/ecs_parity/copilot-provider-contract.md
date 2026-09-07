@@ -21,6 +21,7 @@
 
 Not ported; the unrecorded cells cannot be recorded without Copilot
 credentials and are not recaptured by this lane.
+
 ## Fixture kind
 
 Cassette cells are **hosted GitHub Copilot recordings** replayed through

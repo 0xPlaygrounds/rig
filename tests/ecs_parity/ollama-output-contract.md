@@ -23,6 +23,7 @@ Output mode selection (Tool default, Native, Prompted) is configuration to
 preserve exactly; the synthetic output tool's arguments becoming the final
 response string on the streaming path is an original obligation, not a
 normalization.
+
 ## Fixture kind
 
 Cassette cells are **local-model recordings**: recorded against a local Ollama

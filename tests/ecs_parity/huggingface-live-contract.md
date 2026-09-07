@@ -44,7 +44,7 @@ contract is a parity or superset verdict.
 | --- | --- | --- | --- | --- |
 | `agent::completion_smoke` | agent (smoke) | live-agent | none | yes |
 | `context::context_smoke` | agent (smoke) | live-agent | none | yes |
-| `image_generation::image_generation_smoke` | shared_provider (provider) | live-model | none | no |
+| `image_generation::image_generation_smoke` | shared_provider (provider) | live-model | none | yes |
 | `loaders::loaders_smoke` | agent (smoke) | live-agent | none | yes |
 | `streaming::streaming_smoke` | agent (smoke) | live-agent | none | yes |
 | `streaming::together_subprovider_streaming` | agent (smoke) | live-agent | none | yes |

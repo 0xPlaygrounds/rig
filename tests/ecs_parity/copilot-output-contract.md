@@ -19,6 +19,7 @@ The extractor smoke and usage cells are already mapped under the runtime-owned
 Same as `llamacpp-output-contract.md`: reserved output tool, `retries(2)`,
 unordered matching with full exhaustion, typed deserialization on the actual
 run result.
+
 ## Fixture kind
 
 Cassette cells are **hosted GitHub Copilot recordings** replayed through
