@@ -50,7 +50,7 @@ const ADD: &str = "t/tool:add#0";
 /// plus one entity carrying the components that run did not produce.
 fn populated() -> bevy_app::App {
     let mut app = app();
-    rig_ecs::reflect::register(&mut app);
+    rig_ecs::reflect::install_reflect(app.world_mut());
     app.world_mut().resource_mut::<IdCounter>().0 = 1;
     let (model, _) = Scripted::new(
         MODEL,

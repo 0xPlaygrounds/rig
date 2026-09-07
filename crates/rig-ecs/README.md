@@ -6,7 +6,7 @@ see the [ECS consumer harness](../../tests/consumer/README.md). Its owning
 producer runs through this runtime; the existing cross-runtime corpus remains
 separate evidence with its own applicability limits.
 
-rig inside a Bevy `World`. Two layers: `rig_ecs::bus`, the effect bus as a plugin in the native shape — effects are entities, handlers are entities, the driver is a system, an outcome is a component, causality is `ChildOf`, a scene is a checkpoint — and the agent runtime over it (`agent`, `policy`, `systems`, `replay`): the run as a graph, the request as its fold. Nothing awaits, nothing blocks, nothing is probed; rig-agent is not in the graph; nothing is copied from rig-agent.
+rig inside a Bevy `World`. Two layers: `rig_ecs::bus`, the effect bus in the native shape — effects are entities, handlers are entities, the driver is a system, an outcome is a component, causality is `ChildOf`, a scene is a checkpoint — and the agent runtime over it (`agent`, `policy`, `systems`, `replay`): the run as a graph, the request as its fold. Nothing awaits, nothing blocks, nothing is probed; rig-agent is not in the graph; nothing is copied from rig-agent.
 
 ## The run as a graph
 
@@ -145,7 +145,7 @@ Every hook cell of the corpus is written against the public sets and components 
 
 ## The schedule
 
-`BusPlugin` adds `RigSchedule` with four sets in order and runs it to quiescence from one exclusive system in `Update` (`run_to_quiescence`: while a plugin system marks `Progress`, at most `QUIESCENCE_CAP` passes). Users add their systems to `RigSchedule`, ordered against the sets, never to `Update`.
+`Bus::install` (or `install_bus`) adds `RigSchedule` with four sets in order to a `World`; the host runs it to quiescence by calling `run_to_quiescence` once per tick from the schedule or loop it owns (while a bus system marks `Progress`, at most `QUIESCENCE_CAP` passes). The crate depends on `bevy_ecs` and `bevy_tasks` only: no `App`, no `bevy_app`. Users add their systems to `RigSchedule`, ordered against the sets, never beside the runner.
 
 | set | true before | written during |
 |---|---|---|
@@ -296,9 +296,9 @@ them during restoration.
 
 `rig_ecs::prelude` names what a user's systems need and nothing else: the sets (`RigSet`, `BusSet`), the components a user writes (`Cancelled`, `RequestPatch`, `Retry`, `Resolution`, `Held`, `UsesModel`, `Grant`, `Context`, `Remembers`, `Retrieves`) and the components a user reads (`Streamed`, `Outputs`, `EffectOutcome`, `RunResult`, `Settled`, `Failed`, `Usage`).
 
-`reflect` (off by default): every component of the bus and the graph derives `Reflect`, the rig-core values they hold reflect through opaque remote wrappers (`bus::reflect`, `agent::reflect` — serialized as their wire form, so an inspector shows an effect entity's payload as the log would), `reflect::ReflectPlugin` registers them all, and `reflect::ReflectedScene` is the world as reflected data beside the serde scene: canonical (entities ordered by content, an `Entity` in a component as its index in the scene, a relationship target's indexes sorted), so a world and the world its `WorldScene` loads into export the same JSON (`tests/reflect_scene.rs`); every component round-trips through `ReflectSerializer` / `ReflectDeserializer` / `FromReflect` by value (`tests/reflect_roundtrip.rs`). The runtime-only components (`Serving`, `Streaming`, `Publishing`, `Observed`, `Asked`, `Answer`, `Typed`, and the asset handles) reflect nothing. rig-core takes no Bevy dependency.
+`reflect` (off by default): every component of the bus and the graph derives `Reflect`, the rig-core values they hold reflect through opaque remote wrappers (`bus::reflect`, `agent::reflect` — serialized as their wire form, so an inspector shows an effect entity's payload as the log would), `reflect::install_reflect` registers them all, and `reflect::ReflectedScene` is the world as reflected data beside the serde scene: canonical (entities ordered by content, an `Entity` in a component as its index in the scene, a relationship target's indexes sorted), so a world and the world its `WorldScene` loads into export the same JSON (`tests/reflect_scene.rs`); every component round-trips through `ReflectSerializer` / `ReflectDeserializer` / `FromReflect` by value (`tests/reflect_roundtrip.rs`). The runtime-only components (`Serving`, `Streaming`, `Publishing`, `Observed`, `Asked`, `Answer`, `Typed`, and the asset handles) reflect nothing. rig-core takes no Bevy dependency.
 
-`assets` (off by default, implies `reflect`): `assets::Prompt` (a `.md` / `.txt` file) and `assets::ToolDefinitions` (a `.json` array of `{ name, description, parameters }`) are `bevy_asset` assets with loaders; `PromptHandle` / `ToolsHandle` on an agent become its `Preamble` and its `Grant`s — one per definition, in file order, to the bound handler whose descriptor is the tool of that name; a definition nothing serves is not granted — the tick the asset loads, once (`Applied<A>`). `assets::AssetsPlugin` after `bevy_asset::AssetPlugin`. `tests/assets_prompt.rs`, `examples/prompt_from_assets.rs` (an in-memory source; a directory with the default one).
+`assets` (off by default; the one feature that takes `bevy_app`, because `bevy_asset` is built on it): `assets::Prompt` (a `.md` / `.txt` file) and `assets::ToolDefinitions` (a `.json` array of `{ name, description, parameters }`) are `bevy_asset` assets with loaders; `PromptHandle` / `ToolsHandle` on an agent become its `Preamble` and its `Grant`s — one per definition, in file order, to the bound handler whose descriptor is the tool of that name; a definition nothing serves is not granted — the tick the asset loads, once (`Applied<A>`). `assets::AssetsPlugin` after `bevy_asset::AssetPlugin`, and the host orders `run_to_quiescence` after `assets::AssetsSet`. `tests/assets_prompt.rs`, `examples/prompt_from_assets.rs` (an in-memory source; a directory with the default one).
 
 ## The examples, side by side
 

@@ -8,13 +8,13 @@ mod tests;
 
 use std::{sync::Arc, time::Duration};
 
-use bevy_app::App;
+use bevy_app::{App, Update};
 use bevy_ecs::prelude::*;
 use rig_core::{
     completion::CompletionModel,
     effect::{EffectKind, HandlerDescriptor},
     serve::{
-        OutcomeSink, Serve,
+        OutcomeSink, Serve, ServingPolicy,
         adapters::{CompletionAdapter, ToolAdapter},
     },
     tool::Tool,
@@ -24,8 +24,8 @@ use rig_ecs::{
         DefaultMaxTurns, Failed, Failure, Grant, MaxTurns, Order, Owner, Preamble, RunResult,
         Settled, UsesModel,
     },
-    bus::{BusPlugin, Handlers, Recording},
-    systems::{AgentPlugin, spawn_run},
+    bus::{Handlers, Recording, install_bus, run_to_quiescence},
+    systems::{install_agent, spawn_run},
 };
 use rig_effect_log::EffectLogRecorder;
 
@@ -100,7 +100,9 @@ impl EcsAgent {
         setup: impl FnOnce(&mut World),
     ) -> Self {
         let mut app = App::new();
-        app.add_plugins((BusPlugin::default(), AgentPlugin::default()));
+        install_bus(app.world_mut(), ServingPolicy::default());
+        install_agent(app.world_mut());
+        app.add_systems(Update, run_to_quiescence);
         app.finish();
         app.cleanup();
         let recorder = if keep_events {

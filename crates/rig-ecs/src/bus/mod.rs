@@ -64,15 +64,16 @@
 //!
 //! # The schedule
 //!
-//! [`BusPlugin`] adds a [`RigSchedule`] with four sets in order —
+//! [`Bus::install`] adds a [`RigSchedule`] with four sets in order —
 //! [`BusSet::Gate`], [`BusSet::Dispatch`], [`BusSet::Collect`],
-//! [`BusSet::Judge`] — and runs it **to quiescence** from one exclusive
-//! system in `Update`: as long as a plugin system reports [`Progress`], the
-//! schedule runs again (capped at [`QUIESCENCE_CAP`] passes, a `warn!`
-//! when reached). Users add their systems to `RigSchedule`, ordered
-//! against the sets, never to `Update`: a system in `Update` sees one pass,
-//! a system in `RigSchedule` sees every pass. Intake bounds can defer a
-//! dispatch to the next Update; async readiness can require later updates.
+//! [`BusSet::Judge`]. The host runs it **to quiescence** by calling
+//! [`run_to_quiescence`] once per tick from the schedule or loop it owns:
+//! as long as a bus system reports [`Progress`], the schedule runs again
+//! (capped at [`QUIESCENCE_CAP`] passes, a `warn!` when reached). Users add
+//! their systems to `RigSchedule`, ordered against the sets, never beside
+//! the runner: a system beside the runner sees one pass, a system in
+//! `RigSchedule` sees every pass. Intake bounds can defer a dispatch to the
+//! next tick; async readiness can require later ticks.
 //!
 //! # What it deliberately does not have
 //!
@@ -110,7 +111,8 @@ pub use handlers::{
     Bound, HandlerTable, Handlers, Served, WorldHandler, WorldServe, answered, unbound,
 };
 pub use plugin::{
-    BusPlugin, BusSet, Intake, Policy, Progress, QUIESCENCE_CAP, RigSchedule, run_to_quiescence,
+    Bus, BusSet, Intake, Policy, Progress, QUIESCENCE_CAP, RigSchedule, install_bus,
+    run_to_quiescence,
 };
 pub use record::{
     Observed, ObservedState, Recording, WorldObserver, record_bound, record_cancelled,

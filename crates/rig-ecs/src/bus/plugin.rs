@@ -1,6 +1,6 @@
-//! The plugin, the schedule and its sets, and the run to quiescence.
+//! The bus's installation into a world, the schedule and its sets, and the
+//! run to quiescence.
 
-use bevy_app::{App, Plugin, Update};
 use bevy_ecs::{
     prelude::*,
     schedule::{LogLevel, ScheduleBuildSettings, ScheduleLabel},
@@ -16,7 +16,7 @@ use super::{
     record::{DeliveryBatch, begin_delivery_pass, record_bound, record_cancelled, record_outcome},
 };
 
-/// The schedule the bus runs in, to quiescence, once per `Update`. Users add
+/// The schedule the bus runs in, to quiescence, once per host tick. Users add
 /// their systems here, ordered against [`BusSet`]s.
 #[derive(ScheduleLabel, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RigSchedule;
@@ -67,16 +67,17 @@ pub struct Intake(pub usize);
 /// warns: a diagnostic, never a hang.
 pub const QUIESCENCE_CAP: usize = 64;
 
-/// The bus in a world. Adds [`RigSchedule`] with its sets and systems, the
-/// counters, the handler table and the cancel observer, and the exclusive
-/// runner in `Update`.
+/// The bus's configuration: [`install`](Self::install) adds [`RigSchedule`]
+/// with its sets and systems, the counters, the handler table and the
+/// observers to a world. It does not schedule the runner: the host calls
+/// [`run_to_quiescence`] once per tick from the schedule or loop it owns.
 ///
-/// The task pool: `build` calls `IoTaskPool::get_or_init`, so the plugin
-/// works with or without `bevy_app`'s `TaskPoolPlugin` (when that plugin
-/// is added first its pool wins; when this one is first, a default pool
-/// is made and `TaskPoolPlugin` finds it initialised).
+/// The task pool: `install` calls `IoTaskPool::get_or_init`, so the bus
+/// works with or without a host that initialises the pools itself (a pool
+/// initialised first wins; otherwise a default pool is made and a later
+/// initialiser finds it in place).
 #[derive(Debug, Clone)]
-pub struct BusPlugin {
+pub struct Bus {
     /// The serving policy: intake per tick, stream buffer, serial keys.
     pub policy: ServingPolicy,
     /// Ambiguity detection on the schedule: `Warn` by default; the crate's
@@ -84,7 +85,7 @@ pub struct BusPlugin {
     pub ambiguity: LogLevel,
 }
 
-impl Default for BusPlugin {
+impl Default for Bus {
     fn default() -> Self {
         Self {
             policy: ServingPolicy::default(),
@@ -93,8 +94,8 @@ impl Default for BusPlugin {
     }
 }
 
-impl BusPlugin {
-    /// The plugin under `policy`.
+impl Bus {
+    /// The bus under `policy`.
     pub fn with_policy(policy: ServingPolicy) -> Self {
         Self {
             policy,
@@ -107,23 +108,27 @@ impl BusPlugin {
         self.ambiguity = level;
         self
     }
-}
 
-impl Plugin for BusPlugin {
-    fn build(&self, app: &mut App) {
+    /// Install the bus into `world`. Installing twice panics: the schedule
+    /// and its resources exist once per world.
+    pub fn install(&self, world: &mut World) {
+        assert!(
+            !world.contains_resource::<Policy>(),
+            "the bus is already installed in this world"
+        );
         IoTaskPool::get_or_init(TaskPool::default);
-        app.insert_resource(Policy(self.policy))
-            .init_resource::<SeqCounter>()
-            .init_resource::<IdCounter>()
-            .init_resource::<Progress>()
-            .init_resource::<Intake>()
-            .init_resource::<DeliveryBatch>()
-            .init_resource::<WorldOutcomeCounter>()
-            .init_non_send::<HandlerTable>();
-        app.add_observer(unbound)
-            .add_observer(record_outcome)
-            .add_observer(record_cancelled)
-            .add_observer(record_bound);
+        world.insert_resource(Policy(self.policy));
+        world.init_resource::<SeqCounter>();
+        world.init_resource::<IdCounter>();
+        world.init_resource::<Progress>();
+        world.init_resource::<Intake>();
+        world.init_resource::<DeliveryBatch>();
+        world.init_resource::<WorldOutcomeCounter>();
+        world.init_non_send::<HandlerTable>();
+        world.add_observer(unbound);
+        world.add_observer(record_outcome);
+        world.add_observer(record_cancelled);
+        world.add_observer(record_bound);
         let mut schedule = Schedule::new(RigSchedule);
         schedule.set_build_settings(ScheduleBuildSettings {
             ambiguity_detection: self.ambiguity,
@@ -156,9 +161,15 @@ impl Plugin for BusPlugin {
                 .chain()
                 .in_set(BusSet::Collect),
         );
-        app.add_schedule(schedule);
-        app.add_systems(Update, run_to_quiescence);
+        world.init_resource::<Schedules>();
+        world.resource_mut::<Schedules>().insert(schedule);
     }
+}
+
+/// Install the bus under `policy` with default ambiguity detection: the
+/// one-call form of [`Bus::install`].
+pub fn install_bus(world: &mut World, policy: ServingPolicy) {
+    Bus::with_policy(policy).install(world);
 }
 
 /// The runner: reset the tick's intake, then run [`RigSchedule`] while a
@@ -174,10 +185,9 @@ pub fn run_to_quiescence(world: &mut World) {
             return;
         }
         if pass + 1 == QUIESCENCE_CAP {
-            tracing::warn!(
+            log::warn!(
                 target: "rig_ecs::bus",
-                cap = QUIESCENCE_CAP,
-                "RigSchedule reached the quiescence cap in one tick; the rest waits for the next"
+                "RigSchedule reached the quiescence cap ({QUIESCENCE_CAP}) in one tick; the rest waits for the next"
             );
         }
     }

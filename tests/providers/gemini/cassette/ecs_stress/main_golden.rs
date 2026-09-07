@@ -1,10 +1,13 @@
 //! Exact named producer setup for the Gemini effect golden; real provider IO.
 use crate::ecs_agent::RuntimeHandler;
-use bevy_app::App;
+use bevy_app::{App, Update};
 use bevy_ecs::prelude::*;
 use rig::{
     completion::CompletionModel,
-    serve::adapters::{CompletionAdapter, ToolAdapter},
+    serve::{
+        ServingPolicy,
+        adapters::{CompletionAdapter, ToolAdapter},
+    },
     tool::Tool,
 };
 use rig_ecs::{
@@ -12,8 +15,8 @@ use rig_ecs::{
         DefaultMaxTurns, Failed, Grant, MaxTurns, Order, Owner, Preamble, RunResult, Settled,
         Temperature, UsesModel,
     },
-    bus::{BusPlugin, Handlers, Recording},
-    systems::{AgentPlugin, spawn_run},
+    bus::{Handlers, Recording, install_bus, run_to_quiescence},
+    systems::{install_agent, spawn_run},
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder};
 use std::{sync::Arc, time::Duration};
@@ -41,7 +44,9 @@ pub(super) async fn run(
     subtract: impl Tool + 'static,
 ) -> (bool, EffectLog) {
     let mut app = App::new();
-    app.add_plugins((BusPlugin::default(), AgentPlugin::default()));
+    install_bus(app.world_mut(), ServingPolicy::default());
+    install_agent(app.world_mut());
+    app.add_systems(Update, run_to_quiescence);
     app.finish();
     app.cleanup();
     // Original record_effects() does not retain stream events.

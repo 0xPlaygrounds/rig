@@ -15,7 +15,7 @@ unset. The memory case uses a fresh InMemoryConversationMemory and the original
 `golden-conversation` key. Its memory handler is registered before the model,
 matching the original recorder header's handler order.
 
-Native EcsAgent installs Recording and drives ordinary BusPlugin/AgentPlugin
+Native EcsAgent installs Recording and drives ordinary `install_bus`/`install_agent`
 systems. RuntimeHandler keeps provider and memory futures within native effect
 ownership. Memory is attached with Remembers and Conversation. No legacy agent
 runner, policy, builder, or recorded answer drives execution. Success requires

@@ -15,7 +15,7 @@
 
 mod run_support;
 
-use bevy_app::App;
+use bevy_app::{App, Update};
 use bevy_asset::{
     AssetApp, AssetPlugin, AssetServer,
     io::{
@@ -27,9 +27,11 @@ use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::serve::ServingPolicy;
 use rig_ecs::{
     agent::{Grant, Grants, Order, Preamble, Settled},
-    assets::{Applied, AssetsPlugin, Prompt, PromptHandle, ToolDefinitions, ToolsHandle},
-    bus::BusPlugin,
-    systems::{AgentPlugin, spawn_run},
+    assets::{
+        Applied, AssetsPlugin, AssetsSet, Prompt, PromptHandle, ToolDefinitions, ToolsHandle,
+    },
+    bus::{Bus, run_to_quiescence},
+    systems::{install_agent, spawn_run},
 };
 use run_support::*;
 
@@ -45,13 +47,16 @@ fn a_prompt_and_tool_definitions_become_the_preamble_and_the_grants() {
         ]"#,
     );
     let mut app = App::new();
+    Bus::with_policy(ServingPolicy::default())
+        .ambiguity_detection(LogLevel::Error)
+        .install(app.world_mut());
+    install_agent(app.world_mut());
+    app.add_systems(Update, run_to_quiescence.after(AssetsSet));
     app.register_asset_source(
         AssetSourceId::Default,
         AssetSourceBuilder::new(move || Box::new(MemoryAssetReader { root: dir.clone() })),
     )
     .add_plugins((
-        BusPlugin::with_policy(ServingPolicy::default()).ambiguity_detection(LogLevel::Error),
-        AgentPlugin::default(),
         AssetPlugin {
             watch_for_changes_override: Some(false),
             use_asset_processor_override: Some(false),

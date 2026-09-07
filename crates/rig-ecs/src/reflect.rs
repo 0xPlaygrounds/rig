@@ -1,7 +1,7 @@
 //! The inspector's view (the `reflect` feature): every component of the
 //! graph and the bus derives `Reflect`, the rig-core values they hold
 //! reflect through opaque remote wrappers ([`crate::bus::reflect`],
-//! [`crate::agent::reflect`]), [`ReflectPlugin`] registers them all, and
+//! [`crate::agent::reflect`]), [`install_reflect`] registers them all, and
 //! [`ReflectedScene`] is the world as reflected data — what an inspector
 //! walks, and a second export beside the serde scene
 //! ([`crate::agent::scene::WorldScene`], which stays the format).
@@ -15,7 +15,6 @@
 
 use std::{any::TypeId, collections::HashMap};
 
-use bevy_app::{App, Plugin};
 use bevy_ecs::{
     prelude::*,
     reflect::{AppTypeRegistry, ReflectComponent},
@@ -27,28 +26,21 @@ use bevy_reflect::{
 
 pub use crate::{agent::reflect::*, bus::reflect::*};
 
-/// Registers every component of the bus and the graph, and every remote
-/// wrapper, with the app's type registry.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ReflectPlugin;
-
-impl Plugin for ReflectPlugin {
-    fn build(&self, app: &mut App) {
-        register(app);
-    }
-}
-
 macro_rules! register_all {
-    ($app:expr, [$($ty:ty),* $(,)?]) => {
-        $( $app.register_type::<$ty>(); )*
+    ($registry:expr, [$($ty:ty),* $(,)?]) => {
+        $( $registry.register::<$ty>(); )*
     };
 }
 
-/// Register every reflected type of this crate with `app`.
-pub fn register(app: &mut App) {
+/// Register every component of the bus and the graph, and every remote
+/// wrapper, with the world's [`AppTypeRegistry`] (created if absent).
+pub fn install_reflect(world: &mut World) {
     use crate::{agent, bus, systems};
+    world.init_resource::<AppTypeRegistry>();
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let mut registry = registry.write();
     register_all!(
-        app,
+        registry,
         [
             bevy_ecs::hierarchy::ChildOf,
             bevy_ecs::hierarchy::Children,

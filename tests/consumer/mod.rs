@@ -24,7 +24,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bevy_app::App;
+use bevy_app::{App, Update};
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{
     completion::{CompletionResponse, ModelRef, ProviderCapabilities, Usage},
@@ -37,10 +37,10 @@ use rig_core::{
 use rig_ecs::{
     agent::*,
     bus::{
-        self, Bound, BusPlugin, BusSet, EffectLogResource, EffectOutcome, Handlers, InFlight,
-        Issued, PendingEffect, Replay, RigSchedule, WorldOutcome,
+        self, Bound, Bus, BusSet, EffectLogResource, EffectOutcome, Handlers, InFlight, Issued,
+        PendingEffect, Replay, RigSchedule, WorldOutcome,
     },
-    systems::{AgentPlugin, spawn_run},
+    systems::{install_agent, spawn_run},
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder};
 use serde::{Deserialize, Serialize};
@@ -252,10 +252,11 @@ fn build_with_replay(case: &Case, replay: Option<&EffectLog>, mode: Replay) -> R
         serial_per_handler: case.serial_keys,
         stream_capacity: 4096,
     };
-    app.add_plugins((
-        BusPlugin::with_policy(serving).ambiguity_detection(LogLevel::Error),
-        AgentPlugin::default(),
-    ));
+    Bus::with_policy(serving)
+        .ambiguity_detection(LogLevel::Error)
+        .install(app.world_mut());
+    install_agent(app.world_mut());
+    app.add_systems(Update, bus::run_to_quiescence);
     app.finish();
     app.cleanup();
     app.init_resource::<scheduled::DeliveryControl>();

@@ -17,8 +17,7 @@
 //! The first steering slot is any system before `Assemble`: it edits the
 //! graph (utterances, documents, grants, settings).
 
-use bevy_app::{App, Plugin};
-use bevy_ecs::{prelude::*, schedule::LogLevel};
+use bevy_ecs::prelude::*;
 use rig_core::{
     completion::message::{AssistantContent, ToolChoice, ToolResultContent, UserContent},
     effect::{EffectKind, FamilyDescriptor, Outcome},
@@ -38,8 +37,8 @@ use crate::{
         ToolContextSpec, ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
     },
     bus::{
-        Bound, BusPlugin, BusSet, EffectOutcome, Held, Issued, PendingEffect, Progress,
-        RigSchedule, Scope, Streamed as BusStreamed, ToolInputs,
+        Bound, BusSet, EffectOutcome, Held, Issued, PendingEffect, Progress, RigSchedule, Scope,
+        Streamed as BusStreamed, ToolInputs,
     },
     policy::{self, RequestGraph},
 };
@@ -161,71 +160,64 @@ pub struct Folded(pub OutputKind);
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Materialised;
 
-/// The agent runtime: [`BusPlugin`] must be added first (it owns the
-/// schedule); this adds the sets, the counters and the systems.
-#[derive(Debug, Clone, Default)]
-pub struct AgentPlugin {
-    /// Ambiguity detection for the agent's systems' ordering.
-    pub ambiguity: Option<LogLevel>,
-}
-
-impl Plugin for AgentPlugin {
-    fn build(&self, app: &mut App) {
-        assert!(
-            app.is_plugin_added::<BusPlugin>(),
-            "AgentPlugin needs BusPlugin added first: it runs in the bus's RigSchedule"
-        );
-        app.init_resource::<OrderCounter>()
-            .init_resource::<RunCounter>();
-        app.add_observer(effect_cancelled);
-        app.add_observer(run_cancelled);
-        let mut schedules = app.world_mut().resource_mut::<Schedules>();
-        let Some(schedule) = schedules.get_mut(RigSchedule) else {
-            return;
-        };
-        schedule.configure_sets(
-            (
-                RigSet::Advance,
-                RigSet::Select,
-                RigSet::Assemble,
-                RigSet::Patch,
-                RigSet::Release,
-            )
-                .chain()
-                .before(BusSet::Gate),
-        );
-        schedule.configure_sets(
-            (
-                RigSet::Fold,
-                RigSet::Judge,
-                RigSet::Materialise,
-                RigSet::Settle,
-            )
-                .chain()
-                .after(BusSet::Judge),
-        );
-        schedule.add_systems((
-            advance.in_set(RigSet::Advance),
-            attach_retrieved
-                .after(RigSet::Advance)
-                .before(RigSet::Select),
-            select.in_set(RigSet::Select),
-            assemble.in_set(RigSet::Assemble),
-            release_batch.in_set(RigSet::Release),
-            (fold, discover_streamed_invalid_calls)
-                .chain()
-                .in_set(RigSet::Fold),
-            (
-                land_memory,
-                resolve_invalid_defaults,
-                land_batch,
-                materialise,
-            )
-                .chain()
-                .in_set(RigSet::Materialise),
-            append_memory.in_set(RigSet::Settle),
-        ));
-    }
+/// Install the agent runtime into `world`: the bus must be installed first
+/// (it owns the schedule); this adds the sets, the counters, the observers
+/// and the systems.
+pub fn install_agent(world: &mut World) {
+    assert!(
+        world.contains_resource::<crate::bus::Policy>(),
+        "install_agent needs the bus installed first: it runs in the bus's RigSchedule"
+    );
+    world.init_resource::<OrderCounter>();
+    world.init_resource::<RunCounter>();
+    world.add_observer(effect_cancelled);
+    world.add_observer(run_cancelled);
+    let mut schedules = world.resource_mut::<Schedules>();
+    let Some(schedule) = schedules.get_mut(RigSchedule) else {
+        return;
+    };
+    schedule.configure_sets(
+        (
+            RigSet::Advance,
+            RigSet::Select,
+            RigSet::Assemble,
+            RigSet::Patch,
+            RigSet::Release,
+        )
+            .chain()
+            .before(BusSet::Gate),
+    );
+    schedule.configure_sets(
+        (
+            RigSet::Fold,
+            RigSet::Judge,
+            RigSet::Materialise,
+            RigSet::Settle,
+        )
+            .chain()
+            .after(BusSet::Judge),
+    );
+    schedule.add_systems((
+        advance.in_set(RigSet::Advance),
+        attach_retrieved
+            .after(RigSet::Advance)
+            .before(RigSet::Select),
+        select.in_set(RigSet::Select),
+        assemble.in_set(RigSet::Assemble),
+        release_batch.in_set(RigSet::Release),
+        (fold, discover_streamed_invalid_calls)
+            .chain()
+            .in_set(RigSet::Fold),
+        (
+            land_memory,
+            resolve_invalid_defaults,
+            land_batch,
+            materialise,
+        )
+            .chain()
+            .in_set(RigSet::Materialise),
+        append_memory.in_set(RigSet::Settle),
+    ));
 }
 
 /// Spawn a run of `agent` with `prompt` as its first utterance, after
