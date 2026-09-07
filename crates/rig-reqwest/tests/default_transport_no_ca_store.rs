@@ -10,9 +10,13 @@
 //! The store is emptied through the `SSL_CERT_FILE` / `SSL_CERT_DIR`
 //! overrides rustls-native-certs honours, which is why this test is its own
 //! binary (the variables are process-wide) and Linux-only (the macOS and
-//! Windows verifiers read their keychains instead).
+//! Windows verifiers read their keychains instead). It also needs the
+//! rustls backend to be the one reqwest builds with: with `native-tls`
+//! enabled as well (CI's `--all-features`), reqwest defaults to OpenSSL,
+//! which does not read the store at build time, so there is no failure to
+//! observe and the test compiles to nothing.
 
-#![cfg(target_os = "linux")]
+#![cfg(all(target_os = "linux", feature = "rustls", not(feature = "native-tls")))]
 
 use rig_core::client::ProviderClientError;
 use rig_core::providers::openai;
@@ -41,16 +45,14 @@ fn every_default_transport_constructor_reports_a_missing_ca_store() {
         ("new", new.map(drop)),
         ("build", built.map(drop)),
     ] {
-        match result {
-            Err(ProviderClientError::Http(error)) => {
-                let text = error.to_string();
-                assert!(
-                    text.contains("CA certificates"),
-                    "{name}: expected the CA-store failure, got {text}"
-                );
-            }
-            Err(other) => panic!("{name}: expected ProviderClientError::Http, got {other}"),
-            Ok(()) => panic!("{name}: built a client with no CA store"),
-        }
+        let outcome = match result {
+            Err(ProviderClientError::Http(error)) => error.to_string(),
+            Err(other) => format!("wrong variant: {other}"),
+            Ok(()) => "built a client with no CA store".to_owned(),
+        };
+        assert!(
+            outcome.contains("CA certificates"),
+            "{name}: expected the Http error naming the CA store, got: {outcome}"
+        );
     }
 }
