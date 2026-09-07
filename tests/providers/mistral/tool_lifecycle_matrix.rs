@@ -48,54 +48,55 @@ use serde_json::{Value, json};
 
 use super::support::with_mistral_tool_lifecycle_cassette_result;
 
-const PREAMBLE: &str = "Follow the user's tool-call instruction exactly. Do not answer in prose.";
+pub(super) const PREAMBLE: &str =
+    "Follow the user's tool-call instruction exactly. Do not answer in prose.";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Transport {
+pub(super) enum Transport {
     Blocking,
     Streaming,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Model {
+pub(super) enum Model {
     MistralSmall,
     Ministral3b,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Shape {
+pub(super) enum Shape {
     Zero,
     Nested,
     Parallel,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Surface {
+pub(super) enum Surface {
     Model,
     Agent,
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Cell {
-    transport: Transport,
-    model: Model,
-    shape: Shape,
-    surface: Surface,
+pub(super) struct Cell {
+    pub(super) transport: Transport,
+    pub(super) model: Model,
+    pub(super) shape: Shape,
+    pub(super) surface: Surface,
 }
 
 #[derive(Debug, Default)]
-struct Observation {
-    finish_reason: Option<FinishReason>,
-    names: Vec<String>,
-    ids: Vec<String>,
-    arguments: Vec<Value>,
-    errors: Vec<String>,
-    invocations: Vec<String>,
+pub(super) struct Observation {
+    pub(super) finish_reason: Option<FinishReason>,
+    pub(super) names: Vec<String>,
+    pub(super) ids: Vec<String>,
+    pub(super) arguments: Vec<Value>,
+    pub(super) errors: Vec<String>,
+    pub(super) invocations: Vec<String>,
 }
 
-type SharedObservation = Arc<Mutex<Option<Observation>>>;
+pub(super) type SharedObservation = Arc<Mutex<Option<Observation>>>;
 
-fn cell(transport: Transport, model: Model, shape: Shape, surface: Surface) -> Cell {
+pub(super) fn cell(transport: Transport, model: Model, shape: Shape, surface: Surface) -> Cell {
     Cell {
         transport,
         model,
@@ -104,14 +105,14 @@ fn cell(transport: Transport, model: Model, shape: Shape, surface: Surface) -> C
     }
 }
 
-fn model_name(model: Model) -> &'static str {
+pub(super) fn model_name(model: Model) -> &'static str {
     match model {
         Model::MistralSmall => "mistral-small-latest",
         Model::Ministral3b => "ministral-3b-latest",
     }
 }
 
-fn prompt(shape: Shape) -> &'static str {
+pub(super) fn prompt(shape: Shape) -> &'static str {
     match shape {
         Shape::Zero => "Call ping exactly once with no arguments.",
         Shape::Nested => {
@@ -123,7 +124,7 @@ fn prompt(shape: Shape) -> &'static str {
     }
 }
 
-fn expected_names(shape: Shape) -> &'static [&'static str] {
+pub(super) fn expected_names(shape: Shape) -> &'static [&'static str] {
     match shape {
         Shape::Zero => &["ping"],
         Shape::Nested => &["record_payload"],
@@ -190,29 +191,29 @@ fn normalized_calls(choice: &[AssistantContent]) -> (Vec<String>, Vec<String>, V
     )
 }
 
-type InvocationLog = Arc<Mutex<Vec<String>>>;
+pub(super) type InvocationLog = Arc<Mutex<Vec<String>>>;
 
 #[derive(Debug, thiserror::Error)]
 #[error("matrix tool failed")]
-struct MatrixToolError;
+pub(super) struct MatrixToolError;
 
 #[derive(Debug, Deserialize, Serialize)]
-struct EmptyArgs {}
+pub(super) struct EmptyArgs {}
 
 #[derive(Debug, Deserialize, Serialize)]
-struct PayloadArgs {
+pub(super) struct PayloadArgs {
     label: String,
     values: Vec<i64>,
     meta: PayloadMeta,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct PayloadMeta {
+pub(super) struct PayloadMeta {
     active: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct ValueArgs {
+pub(super) struct ValueArgs {
     value: String,
 }
 
@@ -225,8 +226,8 @@ fn note(log: &InvocationLog, name: &str) {
 macro_rules! impl_matrix_tool {
     ($ty:ident, $name:literal, $args:ty) => {
         #[derive(Clone)]
-        struct $ty {
-            log: InvocationLog,
+        pub(super) struct $ty {
+            pub(super) log: InvocationLog,
         }
 
         impl Tool for $ty {
@@ -498,7 +499,7 @@ fn assert_nonempty_distinct_ids(scenario: &str, ids: &[String]) {
     );
 }
 
-fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
+pub(super) fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
     let request = recorded_request(scenario);
     assert_eq!(
         request["model"],

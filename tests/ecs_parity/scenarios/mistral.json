@@ -2703,15 +2703,112 @@
       "source": "tests/providers/mistral/terminal_metadata_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport, parallel flag) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_nested_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and wire call names/ids/arguments.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_nested_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original exact-once invocation order from the shared InvocationLog after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_nested_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Ok or Failed(MaxTurns{limit:1}) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_nested_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_nested_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::blocking_ministral_3b_nested_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_nested_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::blocking_ministral_3b_nested_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Ok or Failed(MaxTurns{limit:1})",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": null,
+        "settings": "ministral-3b-latest; PREAMBLE; max_tokens 128; additional_params tool_choice any, parallel_tool_calls false",
+        "streamed": false
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_lifecycle_matrix.rs",
+        "test": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_nested_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_lifecycle_matrix/blocking_ministral_3b_nested_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_nested_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_lifecycle_matrix::assert_cell",
+        "mistral::tool_lifecycle_matrix::recorded_finish_and_calls",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
@@ -2726,15 +2823,112 @@
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport, parallel flag) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and wire call names/ids/arguments.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original exact-once invocation order from the shared InvocationLog after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Ok or Failed(MaxTurns{limit:1}) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Ok or Failed(MaxTurns{limit:1})",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": null,
+        "settings": "ministral-3b-latest; PREAMBLE; max_tokens 128; additional_params tool_choice any, parallel_tool_calls true",
+        "streamed": false
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_lifecycle_matrix.rs",
+        "test": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_lifecycle_matrix/blocking_ministral_3b_parallel_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_lifecycle_matrix::assert_cell",
+        "mistral::tool_lifecycle_matrix::recorded_finish_and_calls",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
@@ -2749,15 +2943,112 @@
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport, parallel flag) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_zero_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and wire call names/ids/arguments.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_zero_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original exact-once invocation order from the shared InvocationLog after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_zero_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Ok or Failed(MaxTurns{limit:1}) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_zero_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_zero_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::blocking_ministral_3b_zero_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_zero_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::blocking_ministral_3b_zero_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Ok or Failed(MaxTurns{limit:1})",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": null,
+        "settings": "ministral-3b-latest; PREAMBLE; max_tokens 128; additional_params tool_choice any, parallel_tool_calls false",
+        "streamed": false
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_lifecycle_matrix.rs",
+        "test": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_zero_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_lifecycle_matrix/blocking_ministral_3b_zero_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_zero_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_lifecycle_matrix::assert_cell",
+        "mistral::tool_lifecycle_matrix::recorded_finish_and_calls",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
@@ -2772,15 +3063,112 @@
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport, parallel flag) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_nested_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and wire call names/ids/arguments.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_nested_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original exact-once invocation order from the shared InvocationLog after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_nested_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Ok or Failed(MaxTurns{limit:1}) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_nested_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_nested_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::blocking_mistral_small_nested_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_nested_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::blocking_mistral_small_nested_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Ok or Failed(MaxTurns{limit:1})",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": null,
+        "settings": "mistral-small-latest; PREAMBLE; max_tokens 128; additional_params tool_choice any, parallel_tool_calls false",
+        "streamed": false
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_lifecycle_matrix.rs",
+        "test": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_nested_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_lifecycle_matrix/blocking_mistral_small_nested_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_nested_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_lifecycle_matrix::assert_cell",
+        "mistral::tool_lifecycle_matrix::recorded_finish_and_calls",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
@@ -2795,15 +3183,112 @@
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport, parallel flag) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_parallel_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and wire call names/ids/arguments.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_parallel_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original exact-once invocation order from the shared InvocationLog after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_parallel_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Ok or Failed(MaxTurns{limit:1}) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_parallel_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_parallel_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::blocking_mistral_small_parallel_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_parallel_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::blocking_mistral_small_parallel_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Ok or Failed(MaxTurns{limit:1})",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": null,
+        "settings": "mistral-small-latest; PREAMBLE; max_tokens 128; additional_params tool_choice any, parallel_tool_calls true",
+        "streamed": false
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_lifecycle_matrix.rs",
+        "test": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_parallel_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_lifecycle_matrix/blocking_mistral_small_parallel_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_parallel_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_lifecycle_matrix::assert_cell",
+        "mistral::tool_lifecycle_matrix::recorded_finish_and_calls",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
@@ -2818,15 +3303,112 @@
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport, parallel flag) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_zero_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and wire call names/ids/arguments.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_zero_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original exact-once invocation order from the shared InvocationLog after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_zero_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Ok or Failed(MaxTurns{limit:1}) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_zero_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_zero_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::blocking_mistral_small_zero_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_zero_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::blocking_mistral_small_zero_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Ok or Failed(MaxTurns{limit:1})",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": null,
+        "settings": "mistral-small-latest; PREAMBLE; max_tokens 128; additional_params tool_choice any, parallel_tool_calls false",
+        "streamed": false
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_lifecycle_matrix.rs",
+        "test": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_zero_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_lifecycle_matrix/blocking_mistral_small_zero_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_zero_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_lifecycle_matrix::assert_cell",
+        "mistral::tool_lifecycle_matrix::recorded_finish_and_calls",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
@@ -2841,15 +3423,112 @@
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport, parallel flag) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_nested_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and wire call names/ids/arguments.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_nested_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original exact-once invocation order from the shared InvocationLog after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_nested_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Ok or Failed(MaxTurns{limit:1}) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_nested_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_nested_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::streaming_ministral_3b_nested_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_nested_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::streaming_ministral_3b_nested_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Ok or Failed(MaxTurns{limit:1})",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": 1,
+        "settings": "ministral-3b-latest; PREAMBLE; max_tokens 128; additional_params tool_choice any, parallel_tool_calls false",
+        "streamed": true
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_lifecycle_matrix.rs",
+        "test": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_nested_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_lifecycle_matrix/streaming_ministral_3b_nested_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_nested_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_lifecycle_matrix::assert_cell",
+        "mistral::tool_lifecycle_matrix::recorded_finish_and_calls",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
@@ -2864,15 +3543,112 @@
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport, parallel flag) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and wire call names/ids/arguments.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original exact-once invocation order from the shared InvocationLog after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Ok or Failed(MaxTurns{limit:1}) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Ok or Failed(MaxTurns{limit:1})",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": 1,
+        "settings": "ministral-3b-latest; PREAMBLE; max_tokens 128; additional_params tool_choice any, parallel_tool_calls true",
+        "streamed": true
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_lifecycle_matrix.rs",
+        "test": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_lifecycle_matrix/streaming_ministral_3b_parallel_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_lifecycle_matrix::assert_cell",
+        "mistral::tool_lifecycle_matrix::recorded_finish_and_calls",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
@@ -2887,15 +3663,112 @@
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport, parallel flag) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_zero_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and wire call names/ids/arguments.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_zero_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original exact-once invocation order from the shared InvocationLog after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_zero_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Ok or Failed(MaxTurns{limit:1}) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_zero_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_zero_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::streaming_ministral_3b_zero_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_zero_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::streaming_ministral_3b_zero_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Ok or Failed(MaxTurns{limit:1})",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": 1,
+        "settings": "ministral-3b-latest; PREAMBLE; max_tokens 128; additional_params tool_choice any, parallel_tool_calls false",
+        "streamed": true
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_lifecycle_matrix.rs",
+        "test": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_zero_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_lifecycle_matrix/streaming_ministral_3b_zero_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_zero_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_lifecycle_matrix::assert_cell",
+        "mistral::tool_lifecycle_matrix::recorded_finish_and_calls",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
@@ -2910,15 +3783,112 @@
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport, parallel flag) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_nested_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and wire call names/ids/arguments.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_nested_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original exact-once invocation order from the shared InvocationLog after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_nested_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Ok or Failed(MaxTurns{limit:1}) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_nested_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_nested_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::streaming_mistral_small_nested_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_nested_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_nested_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::streaming_mistral_small_nested_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Ok or Failed(MaxTurns{limit:1})",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": 1,
+        "settings": "mistral-small-latest; PREAMBLE; max_tokens 128; additional_params tool_choice any, parallel_tool_calls false",
+        "streamed": true
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_lifecycle_matrix.rs",
+        "test": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_nested_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_lifecycle_matrix/streaming_mistral_small_nested_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_nested_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_lifecycle_matrix::assert_cell",
+        "mistral::tool_lifecycle_matrix::recorded_finish_and_calls",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
@@ -2933,15 +3903,112 @@
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport, parallel flag) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_parallel_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and wire call names/ids/arguments.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_parallel_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original exact-once invocation order from the shared InvocationLog after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_parallel_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Ok or Failed(MaxTurns{limit:1}) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_parallel_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_parallel_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::streaming_mistral_small_parallel_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_parallel_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_parallel_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::streaming_mistral_small_parallel_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Ok or Failed(MaxTurns{limit:1})",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": 1,
+        "settings": "mistral-small-latest; PREAMBLE; max_tokens 128; additional_params tool_choice any, parallel_tool_calls true",
+        "streamed": true
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_lifecycle_matrix.rs",
+        "test": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_parallel_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_lifecycle_matrix/streaming_mistral_small_parallel_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_parallel_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_lifecycle_matrix::assert_cell",
+        "mistral::tool_lifecycle_matrix::recorded_finish_and_calls",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
@@ -2956,15 +4023,112 @@
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport, parallel flag) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_zero_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and wire call names/ids/arguments.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_zero_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original exact-once invocation order from the shared InvocationLog after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_zero_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Ok or Failed(MaxTurns{limit:1}) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_zero_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_zero_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_lifecycle_matrix::streaming_mistral_small_zero_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_zero_agent",
+          "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_zero_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::streaming_mistral_small_zero_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_lifecycle_matrix.rs",
+          "symbol": "mistral::tool_lifecycle_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_lifecycle_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute real tools with invocation logs via prompt/stream_chat;12Surface::Model execute raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Ok or Failed(MaxTurns{limit:1})",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": 1,
+        "settings": "mistral-small-latest; PREAMBLE; max_tokens 128; additional_params tool_choice any, parallel_tool_calls false",
+        "streamed": true
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_lifecycle_matrix.rs",
+        "test": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_zero_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_lifecycle_matrix/streaming_mistral_small_zero_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_zero_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_lifecycle_matrix::assert_cell",
+        "mistral::tool_lifecycle_matrix::recorded_finish_and_calls",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
@@ -2979,15 +4143,112 @@
       "source": "tests/providers/mistral/tool_lifecycle_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_complete_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and one wire call with the complete or truncated argument premise.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_complete_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original invocations == 1 after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_complete_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Ok or Failed(MaxTurns{limit:1}) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_complete_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_truncation_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_complete_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::blocking_ministral_3b_complete_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_complete_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::blocking_ministral_3b_complete_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_truncation_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Ok or Failed(MaxTurns{limit:1})",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": null,
+        "settings": "ministral-3b-latest; PREAMBLE; max_tokens 48; additional_params tool_choice any",
+        "streamed": false
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_truncation_matrix.rs",
+        "test": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_complete_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_truncation_matrix/blocking_ministral_3b_complete_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_complete_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_truncation_matrix::assert_cell",
+        "mistral::tool_truncation_matrix::recorded_finish_and_arguments",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
@@ -3002,15 +4263,112 @@
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_low_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and one wire call with the complete or truncated argument premise.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_low_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original invocations == 0 after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names are absent.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_low_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Settled (success required) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_low_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_truncation_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_low_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::blocking_ministral_3b_low_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_low_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::blocking_ministral_3b_low_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_truncation_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Settled (success required)",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": null,
+        "settings": "ministral-3b-latest; PREAMBLE; max_tokens 4; additional_params tool_choice any",
+        "streamed": false
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_truncation_matrix.rs",
+        "test": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_low_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_truncation_matrix/blocking_ministral_3b_low_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_low_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_truncation_matrix::assert_cell",
+        "mistral::tool_truncation_matrix::recorded_finish_and_arguments",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
@@ -3025,15 +4383,112 @@
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_mid_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and one wire call with the complete or truncated argument premise.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_mid_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original invocations == 0 after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names are absent.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_mid_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Settled (success required) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_mid_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_truncation_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_mid_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::blocking_ministral_3b_mid_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_mid_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::blocking_ministral_3b_mid_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_truncation_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Settled (success required)",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": null,
+        "settings": "ministral-3b-latest; PREAMBLE; max_tokens 16; additional_params tool_choice any",
+        "streamed": false
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_truncation_matrix.rs",
+        "test": "mistral::ecs_tool_truncation_matrix::blocking_ministral_3b_mid_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_truncation_matrix/blocking_ministral_3b_mid_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_ministral_3b_mid_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_truncation_matrix::assert_cell",
+        "mistral::tool_truncation_matrix::recorded_finish_and_arguments",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
@@ -3048,15 +4503,112 @@
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_complete_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and one wire call with the complete or truncated argument premise.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_complete_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original invocations == 1 after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_complete_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Ok or Failed(MaxTurns{limit:1}) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_complete_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_truncation_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_complete_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::blocking_mistral_small_complete_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_complete_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::blocking_mistral_small_complete_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_truncation_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Ok or Failed(MaxTurns{limit:1})",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": null,
+        "settings": "mistral-small-latest; PREAMBLE; max_tokens 48; additional_params tool_choice any",
+        "streamed": false
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_truncation_matrix.rs",
+        "test": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_complete_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_truncation_matrix/blocking_mistral_small_complete_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_complete_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_truncation_matrix::assert_cell",
+        "mistral::tool_truncation_matrix::recorded_finish_and_arguments",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
@@ -3071,15 +4623,112 @@
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_low_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and one wire call with the complete or truncated argument premise.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_low_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original invocations == 0 after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names are absent.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_low_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Settled (success required) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_low_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_truncation_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_low_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::blocking_mistral_small_low_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_low_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::blocking_mistral_small_low_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_truncation_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Settled (success required)",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": null,
+        "settings": "mistral-small-latest; PREAMBLE; max_tokens 4; additional_params tool_choice any",
+        "streamed": false
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_truncation_matrix.rs",
+        "test": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_low_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_truncation_matrix/blocking_mistral_small_low_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_low_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_truncation_matrix::assert_cell",
+        "mistral::tool_truncation_matrix::recorded_finish_and_arguments",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
@@ -3094,15 +4743,112 @@
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_mid_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and one wire call with the complete or truncated argument premise.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_mid_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original invocations == 0 after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names are absent.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_mid_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Settled (success required) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_mid_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_truncation_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_mid_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::blocking_mistral_small_mid_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_mid_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::blocking_mistral_small_mid_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_truncation_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Settled (success required)",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": null,
+        "settings": "mistral-small-latest; PREAMBLE; max_tokens 16; additional_params tool_choice any",
+        "streamed": false
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_truncation_matrix.rs",
+        "test": "mistral::ecs_tool_truncation_matrix::blocking_mistral_small_mid_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_truncation_matrix/blocking_mistral_small_mid_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_truncation_matrix::blocking_mistral_small_mid_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_truncation_matrix::assert_cell",
+        "mistral::tool_truncation_matrix::recorded_finish_and_arguments",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
@@ -3117,15 +4863,112 @@
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_complete_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and one wire call with the complete or truncated argument premise.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_complete_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original invocations == 1 after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_complete_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Ok or Failed(MaxTurns{limit:1}) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_complete_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_truncation_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_complete_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::streaming_ministral_3b_complete_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_complete_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::streaming_ministral_3b_complete_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_truncation_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Ok or Failed(MaxTurns{limit:1})",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": 1,
+        "settings": "ministral-3b-latest; PREAMBLE; max_tokens 48; additional_params tool_choice any",
+        "streamed": true
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_truncation_matrix.rs",
+        "test": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_complete_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_truncation_matrix/streaming_ministral_3b_complete_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_complete_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_truncation_matrix::assert_cell",
+        "mistral::tool_truncation_matrix::recorded_finish_and_arguments",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
@@ -3140,15 +4983,112 @@
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_low_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and one wire call with the complete or truncated argument premise.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_low_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original invocations == 0 after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names are absent.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_low_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Settled (success required) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_low_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_truncation_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_low_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::streaming_ministral_3b_low_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_low_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::streaming_ministral_3b_low_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_truncation_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Settled (success required)",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": 1,
+        "settings": "ministral-3b-latest; PREAMBLE; max_tokens 4; additional_params tool_choice any",
+        "streamed": true
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_truncation_matrix.rs",
+        "test": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_low_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_truncation_matrix/streaming_ministral_3b_low_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_low_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_truncation_matrix::assert_cell",
+        "mistral::tool_truncation_matrix::recorded_finish_and_arguments",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
@@ -3163,15 +5103,112 @@
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_mid_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and one wire call with the complete or truncated argument premise.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_mid_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original invocations == 0 after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names are absent.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_mid_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Settled (success required) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_mid_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_truncation_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_mid_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::streaming_ministral_3b_mid_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_mid_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::streaming_ministral_3b_mid_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_truncation_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Settled (success required)",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": 1,
+        "settings": "ministral-3b-latest; PREAMBLE; max_tokens 16; additional_params tool_choice any",
+        "streamed": true
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_truncation_matrix.rs",
+        "test": "mistral::ecs_tool_truncation_matrix::streaming_ministral_3b_mid_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_truncation_matrix/streaming_ministral_3b_mid_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_ministral_3b_mid_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_truncation_matrix::assert_cell",
+        "mistral::tool_truncation_matrix::recorded_finish_and_arguments",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
@@ -3186,15 +5223,112 @@
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_complete_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and one wire call with the complete or truncated argument premise.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_complete_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original invocations == 1 after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_complete_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Ok or Failed(MaxTurns{limit:1}) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_complete_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_truncation_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_complete_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::streaming_mistral_small_complete_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_complete_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_complete_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::streaming_mistral_small_complete_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_truncation_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Ok or Failed(MaxTurns{limit:1})",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": 1,
+        "settings": "mistral-small-latest; PREAMBLE; max_tokens 48; additional_params tool_choice any",
+        "streamed": true
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_truncation_matrix.rs",
+        "test": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_complete_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_truncation_matrix/streaming_mistral_small_complete_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_complete_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_truncation_matrix::assert_cell",
+        "mistral::tool_truncation_matrix::recorded_finish_and_arguments",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
@@ -3209,15 +5343,112 @@
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_low_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and one wire call with the complete or truncated argument premise.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_low_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original invocations == 0 after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names are absent.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_low_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Settled (success required) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_low_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_truncation_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_low_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::streaming_mistral_small_low_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_low_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_low_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::streaming_mistral_small_low_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_truncation_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Settled (success required)",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": 1,
+        "settings": "mistral-small-latest; PREAMBLE; max_tokens 4; additional_params tool_choice any",
+        "streamed": true
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_truncation_matrix.rs",
+        "test": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_low_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_truncation_matrix/streaming_mistral_small_low_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_low_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_truncation_matrix::assert_cell",
+        "mistral::tool_truncation_matrix::recorded_finish_and_arguments",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
@@ -3232,15 +5463,112 @@
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {
-      "assertion_mappings": [],
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell reads the recorded request (model, cap, tool_choice any, tool count, transport) after the wrapper; identical in both runtimes.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_mid_agent::request-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Unchanged original assert_cell checks the recorded finish reason and one wire call with the complete or truncated argument premise.",
+          "ecs_observation": "cassette bytes",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_mid_agent::response-premise"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original invocations == 0 after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names are absent.",
+          "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_mid_agent::invocations"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::assert_cell",
+          "comparison": "Original filter (no ProviderResponseError) runs on the rendered native ending plus every Streamed.errors item; native accepts only Settled (success required) and panics on any other Failure variant.",
+          "ecs_observation": "wait_for_outcome result; Streamed.errors",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_mid_agent::errors"
+        },
+        {
+          "baseline_symbol": "mistral::support::with_mistral_tool_truncation_cassette_result -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal wrapper and fixture; strict ordered matching and full consumption; native also asserts exactly one completion effect in the world.",
+          "ecs_observation": "wrapper result; PendingEffect count",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_mid_agent::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "mistral::tool_truncation_matrix::streaming_mistral_small_mid_agent",
+          "comparison": "Exact model, preamble, max_tokens, additional params, tool order and one-turn budget preserved by native components; see configuration_mapping.",
+          "ecs_observation": "agent components",
+          "ecs_symbol": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_mid_agent",
+          "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_mid_agent::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::streaming_mistral_small_mid_agent"
+        },
+        {
+          "path": "tests/providers/mistral/tool_truncation_matrix.rs",
+          "symbol": "mistral::tool_truncation_matrix::assert_cell"
+        },
+        {
+          "path": "tests/providers/mistral/support.rs",
+          "symbol": "mistral::support::with_mistral_tool_truncation_cassette_result"
+        },
+        {
+          "path": "tests/common/ecs_observation.rs",
+          "symbol": "ecs_observation::observation"
+        }
+      ],
       "classification": "agent",
-      "classification_reason": "All24 explicit run_cell enum arguments reviewed:12Surface::Agent execute actual counting tools via prompt/stream_chat;12Surface::Model use raw_completion.normalize/model.stream.",
+      "classification_reason": "Surface::Agent cell: client.agent(..) with default_max_turns(1) and real tools driven by prompt or stream_chat(..).max_turns(1); native counterpart in tests/ecs_parity/mistral-agent-matrices-contract.md.",
       "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "expected_ending": "Settled (success required)",
+        "history": [],
+        "native_DefaultMaxTurns": 1,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": true,
+        "run_max_turns_override": 1,
+        "settings": "mistral-small-latest; PREAMBLE; max_tokens 16; additional_params tool_choice any",
+        "streamed": true
+      },
       "declared_gates": [],
-      "ecs": null,
+      "ecs": {
+        "binary": "mistral",
+        "execution_path": "Native BusPlugin/AgentPlugin App; real Mistral CompletionAdapter and ToolAdapters over the original tool types through the per-poll Tokio bridge; spawn_run + wait_for_outcome; no legacy runner, policy or effect replayer.",
+        "source": "tests/providers/mistral/ecs_tool_truncation_matrix.rs",
+        "test": "mistral::ecs_tool_truncation_matrix::streaming_mistral_small_mid_agent"
+      },
       "evidence_scope": "cassette_agent",
-      "fixtures": [],
+      "families": [
+        "mistral-agent-matrices"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-agent-matrices-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/mistral/tool_truncation_matrix/streaming_mistral_small_mid_agent.yaml"
+        }
+      ],
       "id": "rig::mistral::mistral::tool_truncation_matrix::streaming_mistral_small_mid_agent",
+      "mapping_limits": [
+        "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+      ],
+      "resolved_helper_chain": [
+        "mistral::tool_truncation_matrix::assert_cell",
+        "mistral::tool_truncation_matrix::recorded_finish_and_arguments",
+        "cassettes::recorded_json_request",
+        "cassettes::assert_replay_finished",
+        "ecs_agent::EcsAgent::wait_for_outcome",
+        "ecs_observation::observation"
+      ],
       "source": "tests/providers/mistral/tool_truncation_matrix.rs"
     },
     {

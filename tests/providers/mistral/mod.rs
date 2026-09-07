@@ -1,6 +1,8 @@
 mod agent;
 mod agent_tool_sessions;
 mod capability_edges;
+mod ecs_tool_lifecycle_matrix;
+mod ecs_tool_truncation_matrix;
 mod embedding_matrix;
 #[cfg(feature = "derive")]
 mod embeddings;
