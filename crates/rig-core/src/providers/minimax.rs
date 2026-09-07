@@ -26,6 +26,10 @@ use crate::providers::internal::anthropic_compatible::{
     AnthropicBaseUrl, impl_dual_dialect_provider,
 };
 
+#[cfg(feature = "audio")]
+#[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
+pub mod voice_clone;
+
 /// Global OpenAI-compatible base URL.
 pub const GLOBAL_API_BASE_URL: &str = "https://api.minimax.io/v1";
 /// China OpenAI-compatible base URL.
