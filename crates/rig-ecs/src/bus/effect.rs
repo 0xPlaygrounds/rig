@@ -4,11 +4,10 @@ use std::sync::Arc;
 
 use bevy_ecs::{lifecycle::HookContext, prelude::*, world::DeferredWorld};
 use bevy_tasks::Task;
-use futures::channel::mpsc;
 use rig_core::{
     effect::{CustomEffect, EffectId, EffectKind, Family, HandlerKey, Key, Outcome},
     error::ErrorReport,
-    streaming::StreamEvent,
+    streaming::{StreamEvent, StreamEvents},
     tool::{PublishedContext, ToolContext},
 };
 use serde::{Deserialize, Serialize};
@@ -176,8 +175,8 @@ pub struct Issued(
 pub struct Held;
 
 /// The effect was taken: a handler is serving it. Present from `Dispatch`
-/// until `settle` closes the record — for a stream, until the handler's
-/// channel closes. Carries the key it occupies so serial serving is a
+/// until `settle` closes the record — for a stream, until the returned
+/// stream reaches EOF. Carries the key it occupies so serial serving is a
 /// query over this component. Never serialized: a scene stores intent.
 #[derive(Component, Debug, Clone)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
@@ -187,32 +186,44 @@ pub struct InFlight {
     pub key: HandlerKey,
 }
 
-/// The handler's future, running on the task pool, held in the effect
-/// entity. Its output is the outcome the handler resolved. Dropping it —
-/// a despawn — cancels the handler and its sink.
+/// An initial handler task owned by the world's non-send execution table.
+/// Removing `InFlight` or despawning the effect drops that task.
 #[derive(Component)]
-pub struct Serving(pub Task<Result<Outcome, ErrorReport>>);
+pub struct Serving;
 
-/// A streaming handler's future and the channel it sends on, held in the
-/// effect entity; `Collect` drains the channel into [`Streamed`] each pass
-/// without blocking. Dropping it cancels the handler.
-#[derive(Component)]
+/// Fold state for a stream owned by the world's execution table.
+/// Collect polls that stream once per invocation, including on browser wasm.
+#[derive(Component, Default)]
 pub struct Streaming {
-    /// The handler's future.
-    pub task: Task<()>,
-    /// What the handler has sent and `Collect` has not yet taken.
-    pub events: mpsc::Receiver<Result<StreamEvent, ErrorReport>>,
-    /// The fold of the events into the outcome (rig-core's one fold).
+    /// The shared core fold of delivered events.
     pub fold: rig_core::serve::StreamTap,
+}
+
+/// Effect-owned execution on native and browser wasm. Keeping both here
+/// avoids requiring an owned stream or initial task output to be `Sync`.
+#[derive(Default)]
+pub struct Executions {
+    /// Initial tasks, indexed by their in-flight effect entity.
+    pub tasks: std::collections::HashMap<Entity, Task<rig_core::serve::Reply>>,
+    /// Returned streams, removed when the effect leaves flight.
+    pub streams: std::collections::HashMap<Entity, StreamEvents>,
+}
+
+/// Remove owned execution immediately when an effect leaves flight.
+pub fn drop_execution(removed: On<Remove, InFlight>, mut executions: NonSendMut<Executions>) {
+    let entity = removed.event().entity;
+    executions.tasks.remove(&entity);
+    executions.streams.remove(&entity);
 }
 
 /// The per-tick fold of a stream: every event so far (`Changed<Streamed>`
 /// is the delta signal), the text so far, and the folded outcome once the
 /// terminal record — or an error — arrived. The [`EffectOutcome`] lands
-/// when the handler's channel closes, so a serial key stays busy until the
+/// when the stream reaches EOF, so a serial key stays busy until the
 /// handler is done, as it does on rig-agent's bus.
 ///
-/// A collection pass can deliver several events. With the `replay` feature,
+/// Live collection delivers at most one item per effect per invocation. With
+/// the `replay` feature,
 /// `Replay::policy_visible()` preserves recorded delivery batches when the
 /// recorder kept event bytes. Keeping bytes alone in a driver without batch
 /// tracking promises event order only; folded recordings supply a final
@@ -239,7 +250,7 @@ pub struct Streamed {
     pub outcome: Option<Result<Outcome, ErrorReport>>,
 }
 
-/// The answer. Inserted by `Collect` when a handler's task or channel
+/// The answer. Inserted by `Collect` when a handler's task or stream
 /// finished, by a `Gate` system that denies, or by a `Judge` system that
 /// replaces. Serde, so a scene keeps answered effects answered.
 #[derive(Component, Debug, Clone, Serialize, Deserialize)]
@@ -320,7 +331,7 @@ impl EffectOutcome {
 
 /// The context a tool call runs with: the inbound values the driver hands
 /// the tool beside the effect (format 5: never in it), as data on the
-/// effect entity. `Dispatch` attaches it to the handler's sink; absent,
+/// effect entity. `Dispatch` attaches it to the handler's dispatch context; absent,
 /// the tool runs under an empty context. A scene saves it.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
@@ -329,7 +340,7 @@ pub struct ToolInputs(
     pub ToolContext,
 );
 
-/// What the tool published into its context: read off the sink's
+/// What the tool published into its context: read off the dispatch's
 /// [`PublishedContext`] when the outcome lands (`Collect`), or inserted by
 /// the system that answers an open tool key. Data, beside the outcome.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -339,7 +350,7 @@ pub struct ToolOutputs(
     pub ToolContext,
 );
 
-/// The slot a task-served tool call publishes into, shared with its sink
+/// The slot a task-served tool call publishes into, shared with its dispatch context
 /// for the length of the call; `Collect` reads it into [`ToolOutputs`].
 /// Never serialized: in-flight state.
 #[derive(Component, Clone)]
@@ -399,7 +410,7 @@ impl<F: Family> Typed<F> {
 }
 
 // Every component a system holds is `Send + Sync` on every target: the
-// task, the channel, the erased handler live elsewhere.
+// tasks, owned streams, and erased handlers live elsewhere.
 const _: () = {
     const fn assert_send_sync<T: Send + Sync + 'static>() {}
     assert_send_sync::<PendingEffect>();

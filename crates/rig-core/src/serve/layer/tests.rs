@@ -3,14 +3,14 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use futures::{StreamExt, channel::mpsc, channel::oneshot};
+use futures::StreamExt;
 use serde_json::json;
 
 use super::*;
 use crate::{
     completion::Usage,
     effect::{FamilyDescriptor, HandlerKey},
-    streaming::StreamFinal,
+    streaming::{StreamEvent, StreamFinal},
 };
 
 fn custom(payload: serde_json::Value) -> EffectKind {
@@ -38,7 +38,7 @@ impl Serve for Echo {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         self.served.fetch_add(1, Ordering::SeqCst);
         let outcome = match kind {
             EffectKind::Custom { payload, .. } => Ok(Outcome::Custom { payload }),
@@ -47,7 +47,7 @@ impl Serve for Echo {
                 format!("echo received {}", other.name()),
             )),
         };
-        sink.resolve(outcome).await;
+        Reply::Outcome(outcome)
     }
 }
 
@@ -67,14 +67,15 @@ impl Serve for Streamer {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-        let mut writer = sink.writer();
-        writer.text("hel").await.expect("open");
-        writer.text("lo").await.expect("open");
-        writer
-            .finish(StreamFinal::new("test", Usage::default()))
-            .await
-            .expect("open");
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        Reply::written(|mut writer| async move {
+            writer.text("hel").await.expect("open");
+            writer.text("lo").await.expect("open");
+            writer
+                .finish(StreamFinal::new("test", Usage::default()))
+                .await
+                .expect("open");
+        })
     }
 }
 
@@ -162,8 +163,8 @@ impl super::super::Observe for Arc<Tapped> {
     }
 }
 
-fn tapped(sink: OutcomeSink, tapped: &Arc<Tapped>) -> OutcomeSink {
-    sink.with_observer(Box::new(Arc::clone(tapped)))
+fn tapped(dispatch: Dispatch, tapped: &Arc<Tapped>) -> Dispatch {
+    dispatch.with_observer(Box::new(Arc::clone(tapped)))
 }
 
 fn echo() -> (ErasedHandler, Arc<AtomicUsize>) {
@@ -183,10 +184,8 @@ async fn unary(
     kind: EffectKind,
 ) -> (Result<Outcome, ErrorReport>, Arc<Tapped>) {
     let tap = Arc::new(Tapped::default());
-    let (reply, receiver) = oneshot::channel();
-    let sink = tapped(OutcomeSink::unary(EffectId::from_raw(7), reply), &tap);
-    handler.handle(kind, sink).await;
-    let outcome = receiver.await.expect("answered");
+    let dispatch = tapped(Dispatch::new(EffectId::from_raw(7), false), &tap);
+    let outcome = handler.handle(kind, dispatch).await.into_outcome().await;
     (outcome, tap)
 }
 
@@ -341,10 +340,13 @@ async fn a_layer_over_a_streaming_handler_sees_the_folded_outcome_in_after() {
     });
     let layered = ErasedHandler::new(Streamer).layered(policy);
     let tap = Arc::new(Tapped::default());
-    let (events, receiver) = mpsc::channel(8);
-    let sink = tapped(OutcomeSink::stream(EffectId::from_raw(9), events), &tap);
-    layered.handle(custom(json!(1)), sink).await;
-    let items: Vec<_> = receiver.collect().await;
+    let dispatch = tapped(Dispatch::new(EffectId::from_raw(9), true), &tap);
+    let items: Vec<_> = layered
+        .handle(custom(json!(1)), dispatch)
+        .await
+        .into_stream()
+        .collect()
+        .await;
     assert_eq!(
         items.len(),
         5,
@@ -376,10 +378,13 @@ async fn an_error_replacing_a_streamed_answer_follows_its_events() {
     });
     let layered = ErasedHandler::new(Streamer).layered(policy);
     let tap = Arc::new(Tapped::default());
-    let (events, receiver) = mpsc::channel(8);
-    let sink = tapped(OutcomeSink::stream(EffectId::from_raw(9), events), &tap);
-    layered.handle(custom(json!(1)), sink).await;
-    let items: Vec<_> = receiver.collect().await;
+    let dispatch = tapped(Dispatch::new(EffectId::from_raw(9), true), &tap);
+    let items: Vec<_> = layered
+        .handle(custom(json!(1)), dispatch)
+        .await
+        .into_stream()
+        .collect()
+        .await;
     let last = items.last().expect("an ending");
     assert!(
         matches!(last, Err(report) if report.kind == ErrorKind::Cancelled),
@@ -402,14 +407,12 @@ async fn an_error_replacing_a_streamed_answer_follows_its_events() {
         }))
     });
     let layered = ErasedHandler::new(Streamer).layered(policy);
-    let (events, receiver) = mpsc::channel(8);
-    layered
-        .handle(
-            custom(json!(1)),
-            OutcomeSink::stream(EffectId::from_raw(9), events),
-        )
+    let items: Vec<_> = layered
+        .handle(custom(json!(1)), Dispatch::new(EffectId::from_raw(9), true))
+        .await
+        .into_stream()
+        .collect()
         .await;
-    let items: Vec<_> = receiver.collect().await;
     let last = items.last().expect("an ending");
     assert!(
         matches!(last, Err(report) if report.kind == ErrorKind::Internal && report.message.contains("layer `swap`")),
@@ -483,14 +486,15 @@ async fn tool_target_patch_is_refused_before_inner_policy_in_unary_and_streaming
         };
         let tap = if streamed {
             let tap = Arc::new(Tapped::default());
-            let (sender, receiver) = mpsc::channel(8);
-            handler
+            let events: Vec<_> = handler
                 .handle(
                     kind,
-                    tapped(OutcomeSink::stream(EffectId::from_raw(7), sender), &tap),
+                    tapped(Dispatch::new(EffectId::from_raw(7), true), &tap),
                 )
+                .await
+                .into_stream()
+                .collect()
                 .await;
-            let events: Vec<_> = receiver.collect().await;
             assert!(events.iter().any(Result::is_err));
             tap
         } else {

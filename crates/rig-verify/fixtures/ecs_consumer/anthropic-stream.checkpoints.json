@@ -2470,6 +2470,126 @@
           "boundary": "collect.stream",
           "effect": 0,
           "data": {
+            "events": 1,
+            "text": ""
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 0,
+          "data": {
+            "events": 2,
+            "text": "I'll help you"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 0,
+          "data": {
+            "events": 3,
+            "text": "I'll help you fix the greeting typo. Let me start by reading the file and searching for the typo."
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 0,
+          "data": {
+            "events": 4,
+            "text": "I'll help you fix the greeting typo. Let me start by reading the file and searching for the typo."
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 0,
+          "data": {
+            "events": 5,
+            "text": "I'll help you fix the greeting typo. Let me start by reading the file and searching for the typo."
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 0,
+          "data": {
+            "events": 6,
+            "text": "I'll help you fix the greeting typo. Let me start by reading the file and searching for the typo."
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 0,
+          "data": {
+            "events": 7,
+            "text": "I'll help you fix the greeting typo. Let me start by reading the file and searching for the typo."
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 0,
+          "data": {
+            "events": 8,
+            "text": "I'll help you fix the greeting typo. Let me start by reading the file and searching for the typo."
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 0,
+          "data": {
+            "events": 9,
+            "text": "I'll help you fix the greeting typo. Let me start by reading the file and searching for the typo."
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 0,
+          "data": {
+            "events": 10,
+            "text": "I'll help you fix the greeting typo. Let me start by reading the file and searching for the typo."
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 0,
+          "data": {
+            "events": 11,
+            "text": "I'll help you fix the greeting typo. Let me start by reading the file and searching for the typo."
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 0,
+          "data": {
+            "events": 12,
+            "text": "I'll help you fix the greeting typo. Let me start by reading the file and searching for the typo."
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 0,
+          "data": {
+            "events": 13,
+            "text": "I'll help you fix the greeting typo. Let me start by reading the file and searching for the typo."
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 0,
+          "data": {
+            "events": 14,
+            "text": "I'll help you fix the greeting typo. Let me start by reading the file and searching for the typo."
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 0,
+          "data": {
+            "events": 15,
+            "text": "I'll help you fix the greeting typo. Let me start by reading the file and searching for the typo."
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 0,
+          "data": {
             "events": 16,
             "text": "I'll help you fix the greeting typo. Let me start by reading the file and searching for the typo."
           }
@@ -2623,6 +2743,110 @@
           "boundary": "collect.stream",
           "effect": 3,
           "data": {
+            "events": 1,
+            "text": ""
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 3,
+          "data": {
+            "events": 2,
+            "text": "Good"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 3,
+          "data": {
+            "events": 3,
+            "text": "Good! I found the"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 3,
+          "data": {
+            "events": 4,
+            "text": "Good! I found the typo \"Helo\" on line 1. Now I'll propose the correction to change \"Helo\" to \"Hello\":"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 3,
+          "data": {
+            "events": 5,
+            "text": "Good! I found the typo \"Helo\" on line 1. Now I'll propose the correction to change \"Helo\" to \"Hello\":"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 3,
+          "data": {
+            "events": 6,
+            "text": "Good! I found the typo \"Helo\" on line 1. Now I'll propose the correction to change \"Helo\" to \"Hello\":"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 3,
+          "data": {
+            "events": 7,
+            "text": "Good! I found the typo \"Helo\" on line 1. Now I'll propose the correction to change \"Helo\" to \"Hello\":"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 3,
+          "data": {
+            "events": 8,
+            "text": "Good! I found the typo \"Helo\" on line 1. Now I'll propose the correction to change \"Helo\" to \"Hello\":"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 3,
+          "data": {
+            "events": 9,
+            "text": "Good! I found the typo \"Helo\" on line 1. Now I'll propose the correction to change \"Helo\" to \"Hello\":"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 3,
+          "data": {
+            "events": 10,
+            "text": "Good! I found the typo \"Helo\" on line 1. Now I'll propose the correction to change \"Helo\" to \"Hello\":"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 3,
+          "data": {
+            "events": 11,
+            "text": "Good! I found the typo \"Helo\" on line 1. Now I'll propose the correction to change \"Helo\" to \"Hello\":"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 3,
+          "data": {
+            "events": 12,
+            "text": "Good! I found the typo \"Helo\" on line 1. Now I'll propose the correction to change \"Helo\" to \"Hello\":"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 3,
+          "data": {
+            "events": 13,
+            "text": "Good! I found the typo \"Helo\" on line 1. Now I'll propose the correction to change \"Helo\" to \"Hello\":"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 3,
+          "data": {
             "events": 14,
             "text": "Good! I found the typo \"Helo\" on line 1. Now I'll propose the correction to change \"Helo\" to \"Hello\":"
           }
@@ -2715,6 +2939,62 @@
                 }
               }
             }
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 5,
+          "data": {
+            "events": 1,
+            "text": ""
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 5,
+          "data": {
+            "events": 2,
+            "text": "The"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 5,
+          "data": {
+            "events": 3,
+            "text": "The edit has been proposed. Now I'll apply it:"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 5,
+          "data": {
+            "events": 4,
+            "text": "The edit has been proposed. Now I'll apply it:"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 5,
+          "data": {
+            "events": 5,
+            "text": "The edit has been proposed. Now I'll apply it:"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 5,
+          "data": {
+            "events": 6,
+            "text": "The edit has been proposed. Now I'll apply it:"
+          }
+        },
+        {
+          "boundary": "collect.stream",
+          "effect": 5,
+          "data": {
+            "events": 7,
+            "text": "The edit has been proposed. Now I'll apply it:"
           }
         },
         {

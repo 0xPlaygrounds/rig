@@ -383,7 +383,7 @@ impl<F: Family> Served for F {
 /// A tool call as a typed request: the name and the raw JSON arguments.
 /// The context the tool runs with is not part of the request: it travels
 /// beside the dispatch, attached by the driver to the handler's sink
-/// (`OutcomeSink::scope::<ToolContext>()`), and what the tool publishes
+/// (`Dispatch::scope::<ToolContext>()`), and what the tool publishes
 /// comes back the same way ([`crate::tool::PublishedContext`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolCallRequest {
@@ -970,6 +970,9 @@ pub struct Delivery {
 pub enum DeliveryKind {
     /// The effect's outcome became visible.
     Outcome,
+    /// The effect was cancelled after its original handler answer was recorded,
+    /// without delivering an outcome. Kept events may include undelivered items.
+    Cancelled,
     /// A batch of stream items became visible together. Includes error items;
     /// successful event bytes remain in the effect record's event sequence.
     Stream {

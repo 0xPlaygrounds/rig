@@ -277,7 +277,11 @@ impl rig_core::serve::Serve for GatedAdder {
         rig_core::serve::Serve::descriptor(&*self.adder)
     }
 
-    async fn serve(&self, kind: EffectKind, sink: rig_core::serve::OutcomeSink) {
+    async fn serve(
+        &self,
+        kind: EffectKind,
+        dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
         let EffectKind::ToolCall { args, .. } = &kind else {
             panic!("the gated adder accepts tool calls");
         };
@@ -293,8 +297,9 @@ impl rig_core::serve::Serve for GatedAdder {
         self.entered.fetch_add(1, Ordering::SeqCst);
         gate.await
             .expect("the host releases each call independently");
-        rig_core::serve::Serve::serve(&*self.adder, kind, sink).await;
+        let reply = rig_core::serve::Serve::serve(&*self.adder, kind, dispatch).await;
         self.outstanding.fetch_sub(1, Ordering::SeqCst);
+        reply
     }
 }
 
@@ -542,8 +547,12 @@ impl rig_core::serve::Serve for PeerAdder {
         descriptor
     }
 
-    async fn serve(&self, kind: EffectKind, sink: rig_core::serve::OutcomeSink) {
-        rig_core::serve::Serve::serve(&self.0, kind, sink).await;
+    async fn serve(
+        &self,
+        kind: EffectKind,
+        dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
+        rig_core::serve::Serve::serve(&self.0, kind, dispatch).await
     }
 }
 

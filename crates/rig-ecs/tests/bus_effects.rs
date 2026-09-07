@@ -538,8 +538,12 @@ impl rig_core::serve::Serve for Echo {
         }
     }
 
-    async fn serve(&self, _kind: rig_core::effect::EffectKind, sink: rig_core::serve::OutcomeSink) {
-        let inbound = sink
+    async fn serve(
+        &self,
+        _kind: rig_core::effect::EffectKind,
+        dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
+        let inbound = dispatch
             .scope::<rig_core::tool::ToolContext>()
             .expect("the driver attached the context");
         let session = inbound
@@ -551,13 +555,12 @@ impl rig_core::serve::Serve for Echo {
         context
             .insert_result(Audit(format!("saw {session}")))
             .expect("encodes");
-        if let Some(published) = sink.scope::<rig_core::tool::PublishedContext>() {
+        if let Some(published) = dispatch.scope::<rig_core::tool::PublishedContext>() {
             published.publish(context);
         }
-        sink.resolve(Ok(rig_core::effect::Outcome::ToolResult {
+        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::ToolResult {
             result: rig_core::tool::ToolResult::success(rig_core::tool::ToolOutput::text(session)),
         }))
-        .await;
     }
 }
 

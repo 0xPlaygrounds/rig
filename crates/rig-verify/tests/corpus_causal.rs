@@ -63,7 +63,7 @@
 //!   on without holding a dispatcher of its own — and a dispatch made
 //!   through such a dispatcher under serial serving queued behind the very
 //!   call that waited on it whenever it came from another thread. The
-//!   scope on the sink (`SinkDispatch::dispatcher`) and on the tool's
+//!   scope on the sink (`DispatchScope::dispatcher`) and on the tool's
 //!   context (`ToolContext::scope`) is the way back; the chain is the rule.
 //! - A host-bus golden does not name the host's policy, and the serial
 //!   cells' refusal depends on it: `Program::host_serial` tells the replay

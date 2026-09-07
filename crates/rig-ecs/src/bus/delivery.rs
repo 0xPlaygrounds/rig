@@ -4,18 +4,18 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use bevy_ecs::prelude::*;
 use bevy_tasks::futures::check_ready;
-use futures::channel::mpsc::TryRecvError;
 use rig_core::{
     effect::{Delivery, DeliveryKind, EffectId, Outcome},
     error::{ErrorKind, ErrorReport},
     streaming::{Delta, StreamEvent},
 };
 use rig_effect_log::EffectLog;
+use std::task::{Context, Poll, Waker};
 
 use super::{
     effect::{
-        EffectOutcome, IdCounter, InFlight, Issued, PendingEffect, Publishing, Reserved, Serving,
-        Streamed, Streaming, ToolOutputs,
+        EffectOutcome, Executions, IdCounter, InFlight, Issued, PendingEffect, Publishing,
+        Reserved, Serving, Streamed, Streaming, ToolOutputs,
     },
     plugin::Progress,
     record::{DeliveryBatch, Observed, Recording},
@@ -35,6 +35,7 @@ pub struct ReplayDelivery {
     keys: BTreeMap<EffectId, rig_core::effect::HandlerKey>,
     folded: BTreeSet<EffectId>,
     cancelled: BTreeSet<EffectId>,
+    cancelled_items: BTreeMap<EffectId, usize>,
     policy_visible: bool,
     waiting_for: Option<(EffectId, u64)>,
     refusals: rig_effect_log::ReplayRefusals,
@@ -75,6 +76,7 @@ impl ReplayDelivery {
         }
         let mut last_batch = 0;
         let mut terminal = BTreeSet::new();
+        let mut explicit_cancelled = BTreeSet::new();
         let mut items = BTreeMap::<EffectId, usize>::new();
         let mut folded = BTreeSet::new();
         for delivery in deliveries {
@@ -89,6 +91,10 @@ impl ReplayDelivery {
             }
             last_batch = delivery.batch;
             match delivery.kind {
+                DeliveryKind::Cancelled => {
+                    terminal.insert(delivery.id);
+                    explicit_cancelled.insert(delivery.id);
+                }
                 DeliveryKind::Outcome => {
                     terminal.insert(delivery.id);
                 }
@@ -116,10 +122,11 @@ impl ReplayDelivery {
             }
         }
         for record in &log.records {
-            let cancelled = record
-                .outcome
-                .as_ref()
-                .is_err_and(|error| error.kind == ErrorKind::Cancelled);
+            let cancelled = explicit_cancelled.contains(&record.id)
+                || record
+                    .outcome
+                    .as_ref()
+                    .is_err_and(|error| error.kind == ErrorKind::Cancelled);
             if !terminal.contains(&record.id) && !cancelled {
                 return Err(invalid(format!(
                     "missing outcome delivery for {}",
@@ -136,7 +143,11 @@ impl ReplayDelivery {
                 );
                 let minimum =
                     events.len() + log.header.stream_errors.get(&record.id).map_or(0, Vec::len);
-                if count > maximum || (terminal.contains(&record.id) && count < minimum) {
+                if count > maximum
+                    || (terminal.contains(&record.id)
+                        && !explicit_cancelled.contains(&record.id)
+                        && count < minimum)
+                {
                     return Err(invalid(format!(
                         "stream delivery counts disagree with events for {}",
                         record.id
@@ -200,8 +211,34 @@ impl ReplayDelivery {
             folded,
             cancelled: records
                 .keys()
-                .filter(|id| !terminal.contains(id) && (required || items.contains_key(id)))
+                .filter(|id| {
+                    explicit_cancelled.contains(id)
+                        || (!terminal.contains(id) && (required || items.contains_key(id)))
+                })
                 .copied()
+                .collect(),
+            // A cancelled prefix has no original terminal error item. Do not
+            // poll the replayer's synthesized cancellation into the observer.
+            cancelled_items: log
+                .records
+                .iter()
+                .filter(|record| {
+                    required
+                        && !terminal.contains(&record.id)
+                        && record
+                            .outcome
+                            .as_ref()
+                            .is_err_and(|error| error.kind == ErrorKind::Cancelled)
+                })
+                .filter_map(|record| {
+                    record.events.as_ref().map(|events| {
+                        (
+                            record.id,
+                            events.len()
+                                + log.header.stream_errors.get(&record.id).map_or(0, Vec::len),
+                        )
+                    })
+                })
                 .collect(),
             policy_visible: required,
             waiting_for: None,
@@ -214,37 +251,90 @@ impl ReplayDelivery {
 /// component prevents the unpaced collector from exposing replay data early.
 #[derive(Component)]
 enum Buffered {
+    Waiting {
+        streamed: bool,
+    },
     Unary {
-        task: Serving,
         answer: Option<Result<Outcome, ErrorReport>>,
     },
     Stream {
         streaming: Streaming,
         items: VecDeque<Result<StreamEvent, ErrorReport>>,
         closed: bool,
+        unary: bool,
     },
 }
 
 impl Buffered {
-    fn poll(&mut self) {
-        match self {
-            Self::Unary { task, answer } => {
-                if answer.is_none() {
-                    *answer = check_ready(&mut task.0);
+    fn poll(&mut self, entity: Entity, executions: &mut Executions, remaining: Option<&mut usize>) {
+        if let Self::Waiting { streamed } = self {
+            let Some(task) = executions.tasks.get_mut(&entity) else {
+                return;
+            };
+            let Some(reply) = check_ready(task) else {
+                return;
+            };
+            executions.tasks.remove(&entity);
+            match reply {
+                rig_core::serve::Reply::Outcome(answer) => {
+                    *self = Self::Unary {
+                        answer: Some(answer),
+                    };
+                    return;
+                }
+                rig_core::serve::Reply::Stream(stream) => {
+                    executions.streams.insert(entity, stream);
+                    *self = Self::Stream {
+                        streaming: Streaming::default(),
+                        items: VecDeque::new(),
+                        closed: false,
+                        unary: !*streamed,
+                    };
                 }
             }
-            Self::Stream {
-                streaming,
-                items,
-                closed,
-            } => {
-                while !*closed {
-                    match streaming.events.try_recv() {
-                        Ok(item) => items.push_back(item),
-                        Err(TryRecvError::Empty) => break,
-                        Err(TryRecvError::Closed) => *closed = true,
+        }
+        if let Self::Stream {
+            streaming,
+            items,
+            closed,
+            unary,
+        } = self
+        {
+            if *closed || remaining.as_deref() == Some(&0) {
+                return;
+            }
+            let Some(stream) = executions.streams.get_mut(&entity) else {
+                return;
+            };
+            let polled = stream
+                .as_mut()
+                .poll_next(&mut Context::from_waker(Waker::noop()));
+            if matches!(polled, Poll::Ready(Some(_)))
+                && let Some(remaining) = remaining
+            {
+                *remaining -= 1;
+            }
+            match polled {
+                Poll::Ready(Some(item)) if *unary => {
+                    if let Some(answer) = streaming.fold.observe(&item) {
+                        executions.streams.remove(&entity);
+                        *self = Self::Unary {
+                            answer: Some(answer),
+                        };
                     }
                 }
+                Poll::Ready(Some(item)) => items.push_back(item),
+                Poll::Ready(None) => {
+                    executions.streams.remove(&entity);
+                    if *unary {
+                        *self = Self::Unary {
+                            answer: Some(Err(rig_core::serve::stream_truncated())),
+                        };
+                    } else {
+                        *closed = true;
+                    }
+                }
+                Poll::Pending => {}
             }
         }
     }
@@ -265,19 +355,22 @@ pub fn collect_replayed(world: &mut World) {
             .filter(|(_, issued)| replay.ids.contains(&issued.0))
             .map(|(entity, issued)| (issued.0, entity))
             .collect();
-        for (_, entity) in &entities {
-            let mut entity = world.entity_mut(*entity);
-            if let Some(task) = entity.take::<Serving>() {
-                entity.insert(Buffered::Unary { task, answer: None });
-            } else if let Some(streaming) = entity.take::<Streaming>() {
-                entity.insert(Buffered::Stream {
+        for (id, entity) in &entities {
+            let mut effect = world.entity_mut(*entity);
+            let streamed = effect.contains::<Streamed>();
+            if effect.take::<Serving>().is_some() {
+                effect.insert(Buffered::Waiting { streamed });
+            } else if let Some(streaming) = effect.take::<Streaming>() {
+                effect.insert(Buffered::Stream {
                     streaming,
                     items: VecDeque::new(),
                     closed: false,
+                    unary: !streamed,
                 });
             }
-            if let Some(mut buffered) = entity.get_mut::<Buffered>() {
-                buffered.poll();
+            if let Some(mut buffered) = world.entity_mut(*entity).take::<Buffered>() {
+                buffered.poll(*entity, &mut world.non_send_mut::<Executions>(), replay.cancelled_items.get_mut(id));
+                world.entity_mut(*entity).insert(buffered);
             }
         }
         // A refusal remains terminal for replay effects created by later
@@ -379,6 +472,7 @@ pub fn collect_replayed(world: &mut World) {
                 return;
             };
             match (&step.kind, buffered) {
+                (DeliveryKind::Cancelled, _) if world.get::<Observed>(entity).is_some_and(|observed| observed.0.has_outcome()) => {}
                 (DeliveryKind::Outcome, Buffered::Unary { answer, .. }) if answer.is_some() => {}
                 (DeliveryKind::Outcome, Buffered::Stream { closed: true, .. }) => {}
                 (DeliveryKind::Stream { items: count }, Buffered::Stream { items, closed, .. }) => {
@@ -408,6 +502,13 @@ pub fn collect_replayed(world: &mut World) {
                 continue;
             }
             match step.kind {
+                DeliveryKind::Cancelled => {
+                    if !replay.policy_visible {
+                        world.entity_mut(entity).remove::<Buffered>()
+                            .insert(super::collect::CollectedOutcome)
+                            .insert(EffectOutcome(Err(rig_core::serve::cancelled())));
+                    }
+                }
                 DeliveryKind::Stream { items } => deliver_stream(world, entity, step.id, items),
                 DeliveryKind::Outcome => {
                     if replay.folded.contains(&step.id) {
@@ -569,7 +670,9 @@ fn deliver_outcome(world: &mut World, entity: Entity) {
             .get::<Streamed>(entity)
             .and_then(|streamed| streamed.outcome.clone())
             .unwrap_or_else(|| Err(rig_core::serve::stream_truncated())),
-        Buffered::Unary { answer: None, .. } => Err(invalid("replay outcome was not ready")),
+        Buffered::Unary { answer: None, .. } | Buffered::Waiting { .. } => {
+            Err(invalid("replay outcome was not ready"))
+        }
     };
     if let Some(Publishing(published)) = world.entity_mut(entity).take::<Publishing>()
         && let Some(context) = published.take()

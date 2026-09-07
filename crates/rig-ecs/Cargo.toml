@@ -40,14 +40,13 @@ bevy_tasks = { workspace = true }
 bevy_reflect = { workspace = true, optional = true }
 bevy_asset = { workspace = true, optional = true }
 bevy_app = { workspace = true, optional = true }
-# The channel types rig-core's `OutcomeSink` names; rig-core already
-# depends on the crate.
-futures = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+# Controlled test gates; the library has no direct futures dependency.
+futures = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.42.0", features = ["test-utils"] }
 # Tests and examples drive the bus from an `App`'s `Update`; the library
 # does not.

@@ -7,25 +7,18 @@
 //! no record and a replacement leaves the handler's real answer in it — a
 //! replay re-makes the decision.
 
-use std::{
-    pin::Pin,
-    task::{Context, Poll},
-};
+use std::sync::{Arc, Mutex};
 
-use futures::{
-    StreamExt,
-    channel::{mpsc, oneshot},
-};
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     effect::{EffectId, EffectKind, HandlerDescriptor, Outcome, family},
     error::{ErrorKind, ErrorReport},
-    streaming::StreamEvent,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
-use super::{ErasedHandler, HandlerFuture, OutcomeSink, Serve, StreamTap, stream_truncated};
+use super::{Dispatch, ErasedHandler, Reply, Serve, stream_truncated};
 
 /// What a layer decides about a dispatch before the handler sees it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,7 +49,7 @@ impl Decision {
 #[serde(tag = "verdict", rename_all = "snake_case")]
 #[allow(
     clippy::large_enum_variant,
-    reason = "a verdict is made once per dispatch and moved once into the sink; boxing the replacement would cost every layer author an allocation for nothing"
+    reason = "a verdict is made once per dispatch and returned once; boxing the replacement would cost every layer author an allocation for nothing"
 )]
 pub enum Verdict {
     /// The consumer receives what the handler answered.
@@ -69,23 +62,10 @@ pub enum Verdict {
     Replace(Result<Outcome, ErrorReport>),
 }
 
-/// The policy a [`Layer`] runs: both methods take `&self`, both are
-/// `async`, and a layer that suspends inside `before` (an approval gate
-/// answered by a system next tick) keeps the dispatch in flight and its
-/// serial slot busy until it decides — like a detached sink. Its await
-/// returns on cancellation because the future is dropped when the
-/// consumer goes; the *world side* holding the answer channel sees
-/// `is_canceled()` on its sender and must not panic on a closed one. The
-/// name is the layer's identity in a log's handler table and hook list:
-/// a program recorded under one layer stack refuses a replay under
-/// another, so a layer is host policy and must say what it is.
-///
-/// Beneath a layer the handler answers into a sink of the layer's own,
-/// so `OutcomeSink::is_closed` reads the layer, not the consumer: a
-/// consumer's cancel reaches the handler when the driver drops the
-/// layer's future — which drops the handler's — and the record says
-/// `Cancelled`; a handler that polls `is_closed` to stop early sees it
-/// then, not the instant the consumer left.
+/// Host policy before a handler and after its first answer. A suspended
+/// verdict keeps execution in flight; driver cancellation drops its future.
+/// Streamed verdict futures are polled on the stream consumer's thread.
+/// The layer name identifies policy when recording and validating replay.
 pub trait Intercept: WasmCompatSend + WasmCompatSync + 'static {
     /// The layer's name, as the log records it.
     fn name(&self) -> String;
@@ -113,13 +93,16 @@ pub trait Intercept: WasmCompatSend + WasmCompatSync + 'static {
 /// outermost first). Built with [`ErasedHandler::layered`].
 pub struct Layer<I: Intercept> {
     inner: ErasedHandler,
-    intercept: I,
+    intercept: Arc<I>,
 }
 
 impl<I: Intercept> Layer<I> {
     /// `intercept` around `inner`.
     pub(crate) fn new(inner: ErasedHandler, intercept: I) -> Self {
-        Self { inner, intercept }
+        Self {
+            inner,
+            intercept: Arc::new(intercept),
+        }
     }
 
     fn internal(&self, message: String) -> ErrorReport {
@@ -128,127 +111,6 @@ impl<I: Intercept> Layer<I> {
             format!("layer `{}`: {message}", self.intercept.name()),
         )
         .with_retryable(false)
-    }
-
-    /// Serve a unary dispatch beneath: the inner handler answers into a
-    /// sink of its own, which carries the driver's observer, so the record
-    /// is its answer; the fold comes back here for the verdict.
-    async fn serve_unary(
-        &self,
-        kind: &EffectKind,
-        outer: &mut OutcomeSink,
-    ) -> Result<Outcome, ErrorReport> {
-        let (reply, receiver) = oneshot::channel();
-        let inner = OutcomeSink::unary(outer.id(), reply)
-            .with_observer_slot(outer.take_observer())
-            .inheriting(outer);
-        let mut serving = Serving {
-            answer: receiver,
-            handler: self.inner.handle(kind.clone(), inner),
-            handler_done: false,
-        };
-        let answer = std::future::poll_fn(|cx| serving.poll_answer(cx)).await;
-        match answer {
-            Ok(outcome) => outcome,
-            Err(oneshot::Canceled) => Err(ErrorReport::new(
-                ErrorKind::Internal,
-                "the handler dropped its outcome sink without answering",
-            )),
-        }
-    }
-
-    /// Serve a streaming dispatch beneath: every event is forwarded to the
-    /// consumer as it comes (the inner sink's observer records it); the
-    /// terminal is folded for the verdict, which decides what ends the
-    /// consumer's stream.
-    async fn serve_stream(&self, kind: &EffectKind, outer: &mut OutcomeSink) {
-        let (events, receiver) = mpsc::channel(0);
-        let inner = OutcomeSink::stream(outer.id(), events)
-            .with_observer_slot(outer.take_observer())
-            .inheriting(outer);
-        let mut serving = Serving {
-            answer: receiver,
-            handler: self.inner.handle(kind.clone(), inner),
-            handler_done: false,
-        };
-        let mut fold = StreamTap::new();
-        let mut decided = false;
-        while let Some(item) = std::future::poll_fn(|cx| serving.poll_item(cx)).await {
-            if decided {
-                // A wire may deliver frames after its terminal record; they
-                // pass through as they are.
-                let _ = outer.send(item).await;
-                continue;
-            }
-            let Some(outcome) = fold.observe(&item) else {
-                let _ = outer.send(item).await;
-                continue;
-            };
-            decided = true;
-            let ending = match self.intercept.after(outer.id(), kind, &outcome).await {
-                Verdict::Keep => item,
-                Verdict::Replace(Err(report)) => Err(report),
-                Verdict::Replace(Ok(_)) => Err(self.internal(
-                    "cannot replace a streamed answer already delivered; replace with an error, or decide before"
-                        .to_owned(),
-                )),
-            };
-            let _ = outer.send(ending).await;
-        }
-        if !decided {
-            // The handler dropped its sink before the terminal: the record
-            // says so (the inner sink's observer); the consumer hears it through
-            // the verdict.
-            let outcome: Result<Outcome, ErrorReport> = Err(stream_truncated());
-            let report = match self.intercept.after(outer.id(), kind, &outcome).await {
-                Verdict::Keep => stream_truncated(),
-                Verdict::Replace(Err(report)) => report,
-                Verdict::Replace(Ok(_)) => self.internal(
-                    "cannot replace a streamed answer already delivered; replace with an error, or decide before"
-                        .to_owned(),
-                ),
-            };
-            let _ = outer.send(Err(report)).await;
-        }
-    }
-}
-
-/// The inner handler's future and the channel its sink answers on, polled
-/// together. The channel comes first so that, when the layer's future is
-/// dropped (the consumer cancelled), the receiver goes before the handler:
-/// the inner sink then sees its consumer gone and records the cancel, as
-/// a bare handler's would.
-struct Serving<'a, R> {
-    answer: R,
-    handler: HandlerFuture<'a>,
-    handler_done: bool,
-}
-
-impl<R> Serving<'_, R> {
-    fn poll_handler(&mut self, cx: &mut Context<'_>) {
-        if !self.handler_done && self.handler.as_mut().poll(cx).is_ready() {
-            self.handler_done = true;
-        }
-    }
-}
-
-impl Serving<'_, oneshot::Receiver<Result<Outcome, ErrorReport>>> {
-    fn poll_answer(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Result<Outcome, ErrorReport>, oneshot::Canceled>> {
-        self.poll_handler(cx);
-        Pin::new(&mut self.answer).poll(cx)
-    }
-}
-
-impl Serving<'_, mpsc::Receiver<Result<StreamEvent, ErrorReport>>> {
-    fn poll_item(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Result<StreamEvent, ErrorReport>>> {
-        self.poll_handler(cx);
-        self.answer.poll_next_unpin(cx)
     }
 }
 
@@ -261,20 +123,18 @@ impl<I: Intercept> Serve for Layer<I> {
         descriptor
     }
 
-    async fn serve(&self, kind: EffectKind, mut sink: OutcomeSink) {
-        let id = sink.id();
+    async fn serve(&self, kind: EffectKind, mut dispatch: Dispatch) -> Reply {
+        let id = dispatch.id();
         let kind = match self.intercept.before(id, &kind).await {
             Decision::Proceed => kind,
             Decision::Patch(patched) => {
                 if patched.family() != kind.family() {
-                    sink.discard();
-                    sink.resolve(Err(self.internal(format!(
+                    dispatch.discard();
+                    return Reply::Outcome(Err(self.internal(format!(
                         "patched a {} effect into a {} effect; a layer never changes the family",
                         kind.family(),
                         patched.family()
-                    ))))
-                    .await;
-                    return;
+                    ))));
                 }
                 if let (
                     EffectKind::ToolCall { name: original, .. },
@@ -284,34 +144,73 @@ impl<I: Intercept> Serve for Layer<I> {
                 ) = (&kind, &patched)
                     && original != replacement
                 {
-                    // The bound adapter still executes the original tool. Do not
-                    // let inner policy authorize a different name for that work.
-                    sink.discard();
-                    sink.resolve(Err(self.internal(format!(
+                    dispatch.discard();
+                    return Reply::Outcome(Err(self.internal(format!(
                         "patched tool target `{original}` into `{replacement}`; a layer never changes the bound tool"
-                    ))))
-                    .await;
-                    return;
+                    ))));
                 }
-                sink.patched(&patched);
+                dispatch.patched(&patched);
                 patched
             }
             Decision::Deny(report) => {
-                sink.discard();
-                sink.resolve(Err(report)).await;
-                return;
+                dispatch.discard();
+                return Reply::Outcome(Err(report));
             }
         };
-        if sink.is_stream() {
-            self.serve_stream(&kind, &mut sink).await;
-            return;
+        if !dispatch.is_stream() {
+            let folded = Arc::new(Mutex::new(None));
+            let inner = dispatch.inner(Some(folded.clone()));
+            let outcome = self
+                .inner
+                .handle(kind.clone(), inner)
+                .await
+                .folded_outcome(Some(folded))
+                .await;
+            return Reply::Outcome(match self.intercept.after(id, &kind, &outcome).await {
+                Verdict::Keep => outcome,
+                Verdict::Replace(replacement) => replacement,
+            });
         }
-        let outcome = self.serve_unary(&kind, &mut sink).await;
-        let delivered = match self.intercept.after(id, &kind, &outcome).await {
-            Verdict::Keep => outcome,
-            Verdict::Replace(replacement) => replacement,
-        };
-        sink.resolve(delivered).await;
+        let folded = Arc::new(Mutex::new(None));
+        let inner = dispatch.inner(Some(folded.clone()));
+        let stream = self
+            .inner
+            .handle(kind.clone(), inner)
+            .await
+            .into_stream()
+            .fuse();
+        let intercept = self.intercept.clone();
+        Reply::Stream(Box::pin(futures::stream::unfold(
+            (stream, intercept, kind, folded, false),
+            move |(mut stream, intercept, kind, folded, mut decided)| async move {
+                let item = stream.next().await;
+                if decided && item.is_none() {
+                    return None;
+                }
+                let outcome = if decided {
+                    None
+                } else {
+                    folded
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .take()
+                };
+                let item = if let Some(outcome) = outcome {
+                    decided = true;
+                    match intercept.after(id, &kind, &outcome).await {
+                        Verdict::Keep => item.unwrap_or_else(|| Err(stream_truncated())),
+                        Verdict::Replace(Err(report)) => Err(report),
+                        Verdict::Replace(Ok(_)) => Err(ErrorReport::new(
+                            ErrorKind::Internal,
+                            format!("layer `{}`: cannot replace a streamed answer already delivered; replace with an error, or decide before", intercept.name()),
+                        ).with_retryable(false)),
+                    }
+                } else {
+                    item?
+                };
+                Some((item, (stream, intercept, kind, folded, decided)))
+            },
+        )))
     }
 }
 

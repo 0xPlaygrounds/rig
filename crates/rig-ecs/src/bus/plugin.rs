@@ -78,7 +78,8 @@ pub const QUIESCENCE_CAP: usize = 64;
 /// initialiser finds it in place).
 #[derive(Debug, Clone)]
 pub struct Bus {
-    /// The serving policy: intake per tick, stream buffer, serial keys.
+    /// The serving policy: intake per tick and serial keys.
+    /// `stream_capacity` applies only to rig-agent consumer queues.
     pub policy: ServingPolicy,
     /// Ambiguity detection on the schedule: `Warn` by default; the crate's
     /// tests build with `Error`.
@@ -125,6 +126,8 @@ impl Bus {
         world.init_resource::<DeliveryBatch>();
         world.init_resource::<WorldOutcomeCounter>();
         world.init_non_send::<HandlerTable>();
+        world.init_non_send::<super::effect::Executions>();
+        world.add_observer(super::effect::drop_execution);
         world.add_observer(unbound);
         world.add_observer(record_outcome);
         world.add_observer(record_cancelled);

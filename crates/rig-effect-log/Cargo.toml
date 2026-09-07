@@ -14,11 +14,11 @@ rustdoc-args = ["--cfg", "docsrs"]
 workspace = true
 
 [dependencies]
+futures = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-futures = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.42.0", features = ["test-utils"] }
 tokio = { workspace = true, features = ["full"] }

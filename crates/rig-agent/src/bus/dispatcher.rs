@@ -28,8 +28,6 @@ use rig_core::{
     tool::{PublishedContext, ToolContext},
 };
 
-use rig_core::serve::OutcomeSink;
-
 /// State shared between every `Dispatcher` clone, every `Registrar` and the
 /// driver. Holds only `Send + Sync` data — serde descriptors, the command
 /// queue, atomics — which is what makes `Dispatcher: Send + Sync` on every
@@ -596,25 +594,17 @@ struct InFlightEntry {
     lineage: Arc<Lineage>,
 }
 
-/// Set when an ancestor of the dispatch is cancelled; the serving future
-/// polls it and drops the handler when it is, and the sink shares the
-/// marker so the handler sees a closed sink and the record a cancellation.
-/// (`std` atomics on purpose: the marker crosses into rig-core's sink, and
-/// under loom the flag is data, not a protocol under test.)
+/// An ancestor's cancellation wakes the serving future, which drops the
+/// owned handler task or stream before notifying its consumer.
 #[derive(Default)]
 pub(super) struct CancelFlag {
-    set: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    set: std::sync::atomic::AtomicBool,
     waker: AtomicWaker,
 }
 
 impl CancelFlag {
     pub(super) fn is_set(&self) -> bool {
         self.set.load(std::sync::atomic::Ordering::SeqCst)
-    }
-
-    /// The marker the sink shares.
-    pub(super) fn marker(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
-        std::sync::Arc::clone(&self.set)
     }
 
     /// Resolves when the flag is set.
@@ -648,15 +638,15 @@ pub(super) struct Command {
     pub(super) key: HandlerKey,
     pub(super) kind: EffectKind,
     /// The dispatch this one was made from: a handler dispatching through
-    /// its sink's dispatcher, or `None` for a consumer's own dispatch.
+    /// its dispatch context, or `None` for a consumer's own dispatch.
     pub(super) parent: Option<EffectId>,
     /// The scope of the program that made the dispatch, if its dispatcher
     /// was scoped ([`Dispatcher::scoped`]).
     pub(super) scope: Option<Arc<str>>,
     /// The context a tool call runs with, carried beside the effect (never
-    /// in it) to the handler's sink ([`Dispatcher::dispatch_tool_with_id`]).
+    /// in it) to the handler's dispatch context ([`Dispatcher::dispatch_tool_with_id`]).
     pub(super) context: Option<ToolContext>,
-    /// Where the tool's published values come back, beside the sink.
+    /// Where the tool's published values come back, in dispatch context.
     pub(super) published: Option<Arc<PublishedContext>>,
     pub(super) reply: Reply,
     /// The tracing span current at dispatch: the handler runs inside it,
@@ -676,21 +666,16 @@ pub(super) enum Reply {
 }
 
 impl Reply {
-    pub(super) fn into_sink(self, id: EffectId) -> OutcomeSink {
-        match self {
-            Self::Unary(sender) => OutcomeSink::unary(id, sender),
-            Self::Stream(sender) => OutcomeSink::stream(id, sender),
-        }
-    }
-
     /// Answer without a handler (unknown key, closed bus).
     pub(super) fn fail(self, report: ErrorReport) {
         match self {
             Self::Unary(sender) => {
                 let _ = sender.send(Err(report));
             }
-            Self::Stream(mut sender) => {
-                let _ = sender.try_send(Err(report));
+            Self::Stream(sender) => {
+                // A cancellation terminal needs a reserved slot even when
+                // ordinary delivery filled the original sender's slot.
+                let _ = sender.clone().try_send(Err(report));
             }
         }
     }
@@ -715,7 +700,7 @@ pub struct Dispatcher {
     pub(super) stream_capacity: usize,
     /// The dispatch every dispatch made through this value descends from:
     /// `None` for a consumer's dispatcher, the served dispatch's id for the
-    /// one a handler reads off its sink ([`crate::SinkDispatch`]).
+    /// one a handler reads from its dispatch context ([`crate::DispatchScope`]).
     pub(super) parent: Option<EffectId>,
     /// The scope every dispatch made through this value carries: a stable
     /// serde id of the run or agent dispatching (never a runtime handle),
@@ -845,7 +830,7 @@ impl Dispatcher {
     }
 
     /// A tool call under `context`: the context travels beside the effect
-    /// to the handler's sink (never on the wire), and what the tool
+    /// to the handler's dispatch context (never on the wire), and what the tool
     /// publishes comes back through [`Pending::published_context`] once
     /// the dispatch resolved.
     pub fn dispatch_tool_with_id(
@@ -1031,7 +1016,7 @@ fn reentrant(key: &HandlerKey) -> ErrorReport {
     .with_retryable(false)
 }
 
-/// A stream that ended before its `Final`: the handler dropped its sink
+/// A stream that ended before its `Final`: the returned stream ended
 /// mid-stream (the provider stream ended early, or the handler failed
 /// without reporting).
 pub(super) fn stream_truncated() -> ErrorReport {
@@ -1071,7 +1056,7 @@ enum PendingState {
 
 /// A unary dispatch in flight: a plain `Unpin` future with no executor
 /// affinity, resolving to the outcome or a report. Dropping it cancels the
-/// dispatch (the handler's sink reports closed). A host that ticks rather
+/// dispatch (the owned reply is dropped). A host that ticks rather
 /// than awaits does not hold one: it holds effects as entities
 /// (`rig_ecs::bus`).
 pub struct Pending {
@@ -1100,7 +1085,7 @@ impl Pending {
     }
 
     /// The dispatch this one was made from: `Some` when a handler dispatched
-    /// it through its sink's dispatcher, `None` for a consumer's own.
+    /// it through its dispatch context, `None` for a consumer's own.
     pub const fn parent(&self) -> Option<EffectId> {
         self.parent
     }
@@ -1296,7 +1281,7 @@ impl Stream for EffectStream {
                             Poll::Ready(Some(item))
                         }
                         Poll::Ready(None) => {
-                            // The handler dropped the sink. After the terminal
+                            // The returned stream ended. After the terminal
                             // that is the normal end; before it, the stream
                             // was cut short — by the bus closing, or by a
                             // handler that ended without its `Final` — and

@@ -74,32 +74,24 @@
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 10,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 9,
+        "batch": 10,
         "id": 2,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 10,
-        "id": 3,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -151,33 +143,25 @@
         }
       },
       {
-        "batch": 16,
+        "batch": 17,
+        "id": 3,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 18,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 17,
+        "batch": 19,
         "id": 4,
         "kind": {
           "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 18,
-        "id": 5,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 19,
-        "id": 5,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
         }
       },
       {
@@ -221,22 +205,16 @@
         }
       },
       {
-        "batch": 24,
+        "batch": 25,
         "id": 5,
         "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 25,
-        "id": 6,
-        "kind": {
-          "delivery": "outcome"
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
         "batch": 26,
-        "id": 7,
+        "id": 5,
         "kind": {
           "delivery": "stream",
           "items": 1
@@ -244,18 +222,16 @@
       },
       {
         "batch": 27,
-        "id": 7,
+        "id": 5,
         "kind": {
-          "delivery": "stream",
-          "items": 1
+          "delivery": "outcome"
         }
       },
       {
         "batch": 28,
-        "id": 7,
+        "id": 6,
         "kind": {
-          "delivery": "stream",
-          "items": 1
+          "delivery": "outcome"
         }
       },
       {
@@ -291,22 +267,16 @@
         }
       },
       {
-        "batch": 32,
+        "batch": 33,
         "id": 7,
         "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 33,
-        "id": 8,
-        "kind": {
-          "delivery": "outcome"
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
         "batch": 34,
-        "id": 9,
+        "id": 7,
         "kind": {
           "delivery": "stream",
           "items": 1
@@ -314,7 +284,7 @@
       },
       {
         "batch": 35,
-        "id": 9,
+        "id": 7,
         "kind": {
           "delivery": "stream",
           "items": 1
@@ -322,18 +292,16 @@
       },
       {
         "batch": 36,
-        "id": 9,
+        "id": 7,
         "kind": {
-          "delivery": "stream",
-          "items": 1
+          "delivery": "outcome"
         }
       },
       {
         "batch": 37,
-        "id": 9,
+        "id": 8,
         "kind": {
-          "delivery": "stream",
-          "items": 1
+          "delivery": "outcome"
         }
       },
       {
@@ -345,7 +313,39 @@
         }
       },
       {
-        "batch": 38,
+        "batch": 39,
+        "id": 9,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 40,
+        "id": 9,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 41,
+        "id": 9,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 42,
+        "id": 9,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 43,
         "id": 9,
         "kind": {
           "delivery": "outcome"

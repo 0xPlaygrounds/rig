@@ -244,7 +244,7 @@ impl<F: Family, T> Future for Typed<F, T> {
 pub type Completion = Typed<family::Completion>;
 
 /// A tool call's answer: the result, and the context the tool published
-/// — handed back beside the sink, never on the wire.
+/// — handed back in dispatch context, never on the wire.
 #[derive(Debug, Clone)]
 pub struct ToolAnswer {
     /// The result.
@@ -680,23 +680,17 @@ const _: () = {
 mod tests;
 
 /// A handler's way back onto the bus that is serving it: the dispatcher the
-/// driver attached to the sink, whose every dispatch — and every
+/// driver attached to the dispatch, whose every dispatch — and every
 /// [`Handle`] bound from it — carries the served dispatch's id as its
 /// parent. Causality as data: the record names the chain, a host parents
 /// the effect's entity at dispatch, and a nested dispatch that would wait
 /// on its own serial key is refused rather than hung.
-pub trait SinkDispatch {
-    /// The scoped dispatcher, or `None` for a sink no bus driver served.
+pub trait DispatchScope {
+    /// The scoped dispatcher, or `None` for an inline dispatch.
     fn dispatcher(&self) -> Option<Dispatcher>;
 }
 
-impl SinkDispatch for rig_core::serve::OutcomeSink {
-    fn dispatcher(&self) -> Option<Dispatcher> {
-        self.scope::<Dispatcher>().map(|scoped| (*scoped).clone())
-    }
-}
-
-impl SinkDispatch for rig_core::serve::DetachedSink {
+impl DispatchScope for rig_core::serve::Dispatch {
     fn dispatcher(&self) -> Option<Dispatcher> {
         self.scope::<Dispatcher>().map(|scoped| (*scoped).clone())
     }

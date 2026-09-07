@@ -1591,13 +1591,13 @@ fn an_ignored_name_delta_swallows_the_rest_of_its_block() {
 #[tokio::test]
 async fn ignored_name_keeps_the_late_durable_id_out_of_the_final_snapshot() {
     use futures::StreamExt;
-    use rig_core::{effect::EffectId, serve::OutcomeSink};
-    let (events, mut receiver) = futures::channel::mpsc::channel(8);
-    let mut writer = OutcomeSink::stream(EffectId::from_raw(1), events).writer();
-    writer
-        .tool_call("multiply", json!({}))
-        .await
-        .expect("generated tool call");
+    let mut receiver = rig_core::serve::Reply::written(|mut writer| async move {
+        writer
+            .tool_call("multiply", json!({}))
+            .await
+            .expect("generated tool call");
+    })
+    .into_stream();
     let generated = loop {
         match receiver
             .next()

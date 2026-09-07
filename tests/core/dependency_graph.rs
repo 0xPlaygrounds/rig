@@ -102,21 +102,50 @@ fn rig_ecs_is_rig_core_and_bevy_only() {
     let forbidden = ["rig-agent", "rig-rmcp", "rmcp", "bevy", "tokio", "reqwest"];
     assert_absent("rig-ecs", &[], &forbidden);
     assert_absent("rig-ecs", &[], &["bevy_app", "bevy_reflect", "bevy_asset"]);
-    // `tracing` and `schemars` reach the crate through rig-core; the manifest
-    // names neither, reaching `schemars` through rig-core's re-export.
-    let manifest = std::fs::read_to_string(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/crates/rig-ecs/Cargo.toml"
-    ))
-    .expect("the rig-ecs manifest");
-    for direct in ["tracing", "schemars", "async-channel"] {
+    // Metadata includes optional and target-specific declarations, and names
+    // the package even when a dependency has been renamed in the manifest.
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let output = Command::new(cargo)
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .args(["metadata", "--locked", "--no-deps", "--format-version", "1"])
+        .output()
+        .expect("cargo metadata runs");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("metadata JSON");
+    let package = metadata["packages"]
+        .as_array()
+        .expect("packages")
+        .iter()
+        .find(|package| package["name"] == "rig-ecs")
+        .expect("rig-ecs package");
+    let direct: Vec<_> = package["dependencies"]
+        .as_array()
+        .expect("dependencies")
+        .iter()
+        .filter(|dependency| dependency["kind"].is_null())
+        .map(|dependency| dependency["name"].as_str().expect("dependency name"))
+        .collect();
+    for forbidden in [
+        "tracing",
+        "schemars",
+        "futures",
+        "futures-channel",
+        "async-channel",
+    ] {
         assert!(
-            !manifest
-                .lines()
-                .any(|line| line.starts_with(&format!("{direct} "))),
-            "`rig-ecs` must not name `{direct}` directly"
+            !direct.contains(&forbidden),
+            "rig-ecs must not depend directly on {forbidden}"
         );
     }
+    assert!(
+        direct.contains(&"bevy_tasks"),
+        "rig-ecs directly owns handler tasks"
+    );
     assert_absent("rig-ecs", &["--all-features"], &forbidden);
     assert_absent("rig-ecs", &["--features", "reflect"], &["bevy_app"]);
     assert_absent("rig-ecs", &["--no-default-features"], &["rig-effect-log"]);

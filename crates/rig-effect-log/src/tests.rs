@@ -539,14 +539,14 @@ async fn hash_mode_refuses_by_the_hash_pair_and_payload_mode_by_the_pointer() {
         *payload = serde_json::json!({"changed": true});
     }
     let answer = |replayer: super::EffectLogReplayer, kind: EffectKind| async move {
-        let (reply, receiver) = futures::channel::oneshot::channel();
         replayer
             .serve(
                 kind,
-                rig_core::serve::OutcomeSink::unary(EffectId::from_raw(9), reply),
+                rig_core::serve::Dispatch::new(EffectId::from_raw(9), false),
             )
-            .await;
-        receiver.await.expect("answered")
+            .await
+            .into_outcome()
+            .await
     };
     // Both modes accept the recorded request.
     for check in [super::RequestCheck::Payload, super::RequestCheck::Hash] {
@@ -616,7 +616,7 @@ fn program_identity_is_per_scope_and_absent_by_default() {
 
 #[tokio::test]
 async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earlier() {
-    use rig_core::serve::{Origin, OutcomeSink, Recorder, Serve};
+    use rig_core::serve::{Dispatch, Origin, Recorder, Serve};
     let recorder = EffectLogRecorder::new();
     let key = HandlerKey::from("ordered");
     let kind = |label: &str| EffectKind::Custom {
@@ -644,22 +644,24 @@ async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earli
     );
     let positional = EffectLogReplayer::for_key(&log, &key).unwrap();
     for (id, label) in [(10, "B"), (11, "A")] {
-        let (tx, rx) = futures::channel::oneshot::channel();
-        positional
-            .serve(kind(label), OutcomeSink::unary(EffectId::from_raw(id), tx))
+        let answer = positional
+            .serve(kind(label), Dispatch::new(EffectId::from_raw(id), false))
+            .await
+            .into_outcome()
             .await;
         assert!(
-            matches!(rx.await.unwrap().unwrap(), Outcome::Custom { payload } if payload == serde_json::json!(label))
+            matches!(answer.unwrap(), Outcome::Custom { payload } if payload == serde_json::json!(label))
         );
     }
     let by_id = EffectLogReplayer::for_key_by_id(&log, &key).unwrap();
     for (id, label) in [(1, "A"), (2, "B")] {
-        let (tx, rx) = futures::channel::oneshot::channel();
-        by_id
-            .serve(kind(label), OutcomeSink::unary(EffectId::from_raw(id), tx))
+        let answer = by_id
+            .serve(kind(label), Dispatch::new(EffectId::from_raw(id), false))
+            .await
+            .into_outcome()
             .await;
         assert!(
-            matches!(rx.await.unwrap().unwrap(), Outcome::Custom { payload } if payload == serde_json::json!(label))
+            matches!(answer.unwrap(), Outcome::Custom { payload } if payload == serde_json::json!(label))
         );
     }
 }
@@ -670,7 +672,7 @@ async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earli
 async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     use rig_core::{
         message::{ToolCall, ToolCallId, ToolFunction, ToolResultContent, UserContent},
-        serve::{OutcomeSink, Serve},
+        serve::{Dispatch, Serve},
         streaming::{BlockClose, StreamEvent, SyntheticIds, ToolCallEnd},
     };
     let generated = ToolCall::new(
@@ -755,12 +757,13 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
             .unwrap()
             .checking(check);
         for record in &log.records {
-            let (tx, rx) = futures::channel::oneshot::channel();
-            replay
-                .serve(record.kind.clone(), OutcomeSink::unary(record.id, tx))
+            let answer = replay
+                .serve(record.kind.clone(), Dispatch::new(record.id, false))
+                .await
+                .into_outcome()
                 .await;
             assert_eq!(
-                serde_json::to_value(rx.await.unwrap()).unwrap(),
+                serde_json::to_value(answer).unwrap(),
                 serde_json::to_value(&record.outcome).unwrap()
             );
         }
@@ -783,13 +786,11 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         };
         assert!(result.call.is_generated());
         result.call = calls[1].id.clone();
-        let (tx, rx) = futures::channel::oneshot::channel();
-        replay
-            .serve(changed, OutcomeSink::unary(log.records[1].id, tx))
-            .await;
-        let error = rx
+        let error = replay
+            .serve(changed, Dispatch::new(log.records[1].id, false))
             .await
-            .unwrap()
+            .into_outcome()
+            .await
             .expect_err("collapsed namespace must diverge");
         assert!(error.message.contains("diverg"), "{error:?}");
     }

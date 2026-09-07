@@ -3,6 +3,22 @@
     "boundary": "collect.stream",
     "effect": 0,
     "data": {
+      "events": 1,
+      "text": ""
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 0,
+    "data": {
+      "events": 2,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 0,
+    "data": {
       "events": 3,
       "text": "Inspecting the project. "
     }
@@ -11,7 +27,31 @@
     "boundary": "collect.stream",
     "effect": 0,
     "data": {
+      "events": 4,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 0,
+    "data": {
+      "events": 5,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 0,
+    "data": {
       "events": 6,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 0,
+    "data": {
+      "events": 7,
       "text": "Inspecting the project. "
     }
   },
@@ -150,7 +190,39 @@
     "boundary": "collect.stream",
     "effect": 3,
     "data": {
+      "events": 1,
+      "text": ""
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 3,
+    "data": {
+      "events": 2,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 3,
+    "data": {
       "events": 3,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 3,
+    "data": {
+      "events": 4,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 3,
+    "data": {
+      "events": 5,
       "text": "Inspecting the project. "
     }
   },
@@ -237,7 +309,39 @@
     "boundary": "collect.stream",
     "effect": 5,
     "data": {
+      "events": 1,
+      "text": ""
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 5,
+    "data": {
+      "events": 2,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 5,
+    "data": {
       "events": 3,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 5,
+    "data": {
+      "events": 4,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 5,
+    "data": {
+      "events": 5,
       "text": "Inspecting the project. "
     }
   },
@@ -339,7 +443,39 @@
     "boundary": "collect.stream",
     "effect": 7,
     "data": {
+      "events": 1,
+      "text": ""
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 7,
+    "data": {
+      "events": 2,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 7,
+    "data": {
       "events": 3,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 7,
+    "data": {
+      "events": 4,
+      "text": "Inspecting the project. "
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 7,
+    "data": {
+      "events": 5,
       "text": "Inspecting the project. "
     }
   },
@@ -418,6 +554,22 @@
           }
         }
       }
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 9,
+    "data": {
+      "events": 1,
+      "text": ""
+    }
+  },
+  {
+    "boundary": "collect.stream",
+    "effect": 9,
+    "data": {
+      "events": 2,
+      "text": "Maintenance finished; inspect the tool results."
     }
   },
   {

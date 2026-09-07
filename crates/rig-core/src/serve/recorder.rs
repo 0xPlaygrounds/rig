@@ -1,5 +1,5 @@
 //! What a driver tells about the dispatches it serves: the seam a log
-//! recorder implements. Beside the sink's observer because it is the same kind
+//! recorder implements. Beside the dispatch observer because it is the same kind
 //! of thing — the handler side's view of a dispatch's life — and so that a
 //! recorder needs no runtime crate: `rig-effect-log` implements it over
 //! rig-core alone, and any driver (the bus's, an ECS schedule's) feeds one.
@@ -30,8 +30,7 @@ pub struct Origin {
 /// [`keep_events`](Self::keep_events) says so, and
 /// [`resolve`](Self::resolve) when the outcome is known. A recorder is
 /// shared between the driver and its owner, so every method takes `&self`;
-/// it rides in the sink's observer, which is `Send + Sync` on every target, so
-/// a recorder is too.
+/// it rides in the dispatch observer and uses the platform compatibility bounds.
 pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     /// Declare that this runtime records consumer-visible delivery boundaries.
     /// Handler-only recorders may ignore this optional scheduling metadata.

@@ -11,41 +11,51 @@ impl Serve for ErrorAndName {
     fn descriptor(&self) -> HandlerDescriptor {
         NameThenGate(Arc::default()).descriptor()
     }
-    async fn serve(&self, _: EffectKind, mut sink: OutcomeSink) {
-        let id = BlockId::Wire("failed-stream".into());
-        let error = Err(ErrorReport::new(
-            ErrorKind::Provider,
-            "first provider failure",
-        ));
-        let name = Ok(StreamEvent::BlockDelta {
-            id: id.clone(),
-            delta: Delta::ToolName {
-                name: "wrong".into(),
-            },
-        });
-        sink.send(Ok(StreamEvent::BlockStart {
-            id: id.clone(),
-            kind: BlockKind::ToolCall,
-        }))
-        .await
-        .expect("open stream");
-        let items = if self.error_first {
-            [error, name]
-        } else {
-            [name, error]
-        };
-        for item in items {
-            sink.send(item).await.expect("open stream");
-        }
-        // A later event must neither create a second decision nor keep an
-        // earlier repair waiting forever for events that cannot be validated.
-        sink.send(Ok(StreamEvent::BlockEnd {
-            id,
-            end: BlockClose::ToolCall(ToolCallEnd::whole("wrong", serde_json::json!({}))),
-            block: None,
-        }))
-        .await
-        .expect("open stream");
+    async fn serve(&self, _: EffectKind, _dispatch: Dispatch) -> Reply {
+        let error_first = self.error_first;
+
+        Reply::written(move |mut writer| async move {
+            let id = BlockId::Wire("failed-stream".into());
+            let error = Err(ErrorReport::new(
+                ErrorKind::Provider,
+                "first provider failure",
+            ));
+            let name = Ok(StreamEvent::BlockDelta {
+                id: id.clone(),
+                delta: Delta::ToolName {
+                    name: "wrong".into(),
+                },
+            });
+            writer
+                .event(StreamEvent::BlockStart {
+                    id: id.clone(),
+                    kind: BlockKind::ToolCall,
+                })
+                .await
+                .expect("open stream");
+            let items = if error_first {
+                [error, name]
+            } else {
+                [name, error]
+            };
+            for item in items {
+                (match item {
+                    Ok(event) => writer.event(event).await,
+                    Err(error) => writer.error(error).await,
+                })
+                .expect("open stream");
+            }
+            // A later event must neither create a second decision nor keep an
+            // earlier repair waiting forever for events that cannot be validated.
+            writer
+                .event(StreamEvent::BlockEnd {
+                    id,
+                    end: BlockClose::ToolCall(ToolCallEnd::whole("wrong", serde_json::json!({}))),
+                    block: None,
+                })
+                .await
+                .expect("open stream");
+        })
     }
 }
 

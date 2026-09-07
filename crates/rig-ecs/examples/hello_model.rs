@@ -15,13 +15,14 @@
 
 use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Startup, Update};
 use bevy_ecs::prelude::*;
+use rig_core::serve::Dispatch;
 use rig_core::{
     completion::{
         CompletionRequest, CompletionResponse, Message, ModelRef, ProviderCapabilities, Usage,
     },
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     message::AssistantContent,
-    serve::{OutcomeSink, Serve, ServingPolicy},
+    serve::{Serve, ServingPolicy},
 };
 use rig_ecs::bus::{EffectOutcome, Handlers, PendingEffect, install_bus, run_to_quiescence};
 
@@ -94,13 +95,13 @@ impl Serve for Mock {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let response = CompletionResponse::new(
             vec![AssistantContent::text("hello from the world")],
             Usage::new(),
             "mock",
         );
-        sink.resolve(Ok(Outcome::Completion(response))).await;
+        rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
     }
 }
 

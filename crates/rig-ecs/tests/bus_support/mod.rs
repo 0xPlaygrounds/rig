@@ -20,7 +20,7 @@ use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
-    serve::{OutcomeSink, Serve, ServingPolicy},
+    serve::{Dispatch, Reply, Serve, ServingPolicy},
     streaming::StreamFinal,
 };
 use rig_ecs::bus::{Bus, Handlers, run_to_quiescence};
@@ -137,43 +137,60 @@ impl Serve for MockModel {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Completion { stream: false, .. } => {
                 self.counters.unary_started.fetch_add(1, Ordering::SeqCst);
                 self.counters.hold.wait().await;
                 self.counters.unary_served.fetch_add(1, Ordering::SeqCst);
-                let response = CompletionResponse::new(
+                Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
                     vec![AssistantContent::text(&self.text)],
                     Usage::new(),
                     "mock",
-                );
-                sink.resolve(Ok(Outcome::Completion(response))).await;
+                ))))
             }
             EffectKind::Completion { stream: true, .. } => {
-                let mut out = sink.writer();
-                loop {
-                    self.counters.hold.wait().await;
-                    if out.text("tick ").await.is_err() {
-                        self.counters
-                            .stream_cancelled
-                            .fetch_add(1, Ordering::SeqCst);
-                        return;
+                let counters = self.counters.clone();
+                let cap = self.cap;
+                Reply::written(move |mut out| async move {
+                    let mut guard = StreamGuard {
+                        counters: counters.clone(),
+                        finished: false,
+                    };
+                    loop {
+                        counters.hold.wait().await;
+                        if out.text("tick ").await.is_err() {
+                            return;
+                        }
+                        let sent = counters.stream_sends.fetch_add(1, Ordering::SeqCst) + 1;
+                        if sent >= cap {
+                            guard.finished = out
+                                .finish(StreamFinal::new("mock", Usage::new()))
+                                .await
+                                .is_ok();
+                            return;
+                        }
                     }
-                    let sent = self.counters.stream_sends.fetch_add(1, Ordering::SeqCst) + 1;
-                    if sent >= self.cap {
-                        let _ = out.finish(StreamFinal::new("mock", Usage::new())).await;
-                        return;
-                    }
-                }
+                })
             }
-            other => {
-                sink.resolve(Err(ErrorReport::new(
-                    ErrorKind::HandlerUnavailable,
-                    format!("mock model cannot serve {}", other.name()),
-                )))
-                .await;
-            }
+            other => Reply::Outcome(Err(ErrorReport::new(
+                ErrorKind::HandlerUnavailable,
+                format!("mock model cannot serve {}", other.name()),
+            ))),
+        }
+    }
+}
+
+struct StreamGuard {
+    counters: Arc<Counters>,
+    finished: bool,
+}
+impl Drop for StreamGuard {
+    fn drop(&mut self) {
+        if !self.finished {
+            self.counters
+                .stream_cancelled
+                .fetch_add(1, Ordering::SeqCst);
         }
     }
 }

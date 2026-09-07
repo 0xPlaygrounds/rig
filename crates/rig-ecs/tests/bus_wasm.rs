@@ -38,7 +38,7 @@ use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
-    serve::{OutcomeSink, Serve, ServingPolicy},
+    serve::{Dispatch, Reply, Serve, ServingPolicy},
     streaming::StreamFinal,
 };
 use rig_ecs::bus::{
@@ -70,7 +70,7 @@ impl Serve for BrowserModel {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Completion { stream: false, .. } => {
                 self.served.set(self.served.get() + 1);
@@ -79,27 +79,29 @@ impl Serve for BrowserModel {
                     Usage::new(),
                     "browser",
                 );
-                sink.resolve(Ok(Outcome::Completion(response))).await;
+                Reply::Outcome(Ok(Outcome::Completion(response)))
             }
             EffectKind::Completion { stream: true, .. } => {
-                let mut out = sink.writer();
-                loop {
-                    if out.text("tick ").await.is_err() {
-                        return;
+                let sends = self.sends.clone();
+                let cap = self.cap;
+                let local = Rc::clone(&self.served);
+                Reply::written(move |mut out| async move {
+                    let _local = local; // The returned stream itself is !Send.
+                    loop {
+                        if out.text("tick ").await.is_err() {
+                            return;
+                        }
+                        if sends.fetch_add(1, Ordering::SeqCst) + 1 >= cap {
+                            break;
+                        }
                     }
-                    if self.sends.fetch_add(1, Ordering::SeqCst) + 1 >= self.cap {
-                        break;
-                    }
-                }
-                let _ = out.finish(StreamFinal::new("browser", Usage::new())).await;
+                    let _ = out.finish(StreamFinal::new("browser", Usage::new())).await;
+                })
             }
-            other => {
-                sink.resolve(Err(ErrorReport::new(
-                    ErrorKind::HandlerUnavailable,
-                    format!("cannot serve {}", other.name()),
-                )))
-                .await;
-            }
+            other => Reply::Outcome(Err(ErrorReport::new(
+                ErrorKind::HandlerUnavailable,
+                format!("cannot serve {}", other.name()),
+            ))),
         }
     }
 }
@@ -282,4 +284,106 @@ fn the_components_are_send_sync_on_wasm_too() {
     assert_send_sync::<EffectOutcome>();
     assert_send_sync::<Streamed>();
     assert_send_sync::<InFlight>();
+}
+
+#[wasm_bindgen_test]
+fn local_streams_drop_on_marker_removal_scheduled_despawn_replacement_and_shutdown() {
+    use rig_ecs::bus::effect::{Executions, Streaming};
+    struct Local(Rc<Cell<usize>>);
+    impl Drop for Local {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+    let drops = Rc::new(Cell::new(0));
+    let stream = || {
+        let local = Local(drops.clone());
+        Box::pin(futures::stream::poll_fn(move |_| {
+            let _local = &local;
+            std::task::Poll::Pending
+        })) as rig_core::streaming::StreamEvents
+    };
+    let mut world = World::new();
+    Bus::default().install(&mut world);
+    let entity = world
+        .spawn((
+            InFlight {
+                key: "local".into(),
+            },
+            Streaming::default(),
+        ))
+        .id();
+    world
+        .non_send_mut::<Executions>()
+        .streams
+        .insert(entity, stream());
+    world
+        .non_send_mut::<Executions>()
+        .streams
+        .insert(entity, stream());
+    assert_eq!(drops.get(), 1);
+    world.entity_mut(entity).remove::<InFlight>();
+    assert_eq!(drops.get(), 2);
+    world.entity_mut(entity).insert(InFlight {
+        key: "local".into(),
+    });
+    world
+        .non_send_mut::<Executions>()
+        .streams
+        .insert(entity, stream());
+    let mut schedule = Schedule::default();
+    schedule.add_systems(move |mut commands: Commands| {
+        commands.entity(entity).despawn();
+    });
+    schedule.run(&mut world);
+    assert_eq!(drops.get(), 3);
+    assert!(world.non_send::<Executions>().streams.is_empty());
+    let entity = world
+        .spawn(InFlight {
+            key: "local".into(),
+        })
+        .id();
+    world
+        .non_send_mut::<Executions>()
+        .streams
+        .insert(entity, stream());
+    drop(world);
+    assert_eq!(drops.get(), 4);
+}
+
+#[wasm_bindgen_test]
+fn a_local_writer_keeps_post_final_work_alive_until_resume_or_cancellation() {
+    for resume in [false, true] {
+        let local = Rc::new(Cell::new(false));
+        let finished = local.clone();
+        let (release, wait) = futures::channel::oneshot::channel::<()>();
+        let mut stream = Reply::written(move |writer| async move {
+            writer
+                .finish(StreamFinal::new("local", Usage::new()))
+                .await
+                .unwrap();
+            wait.await.unwrap();
+            finished.set(true);
+        })
+        .into_stream();
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        assert!(matches!(
+            stream.as_mut().poll_next(&mut cx),
+            std::task::Poll::Ready(Some(Ok(rig_core::streaming::StreamEvent::Final(_))))
+        ));
+        assert!(stream.as_mut().poll_next(&mut cx).is_pending());
+        if resume {
+            release.send(()).unwrap();
+            assert!(matches!(
+                stream.as_mut().poll_next(&mut cx),
+                std::task::Poll::Ready(None)
+            ));
+            assert!(local.get());
+        } else {
+            drop(stream);
+            assert!(release.send(()).is_err());
+            assert!(!local.get());
+            assert_eq!(Rc::strong_count(&local), 1);
+        }
+    }
 }

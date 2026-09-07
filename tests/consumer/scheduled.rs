@@ -1,19 +1,16 @@
 //! Controlled adapter delivery for canonical runs. Provider HTTP chunks are
 //! drained independently; a host release gates complete groups of StreamEvents
-//! into the bus inbox before the next Update. Empty scheduling passes are not
+//! for direct collection, one item per Collect. Empty scheduling passes are not
 //! observable inputs. The consumer still makes every decision after Collect.
 
 use bevy_ecs::prelude::*;
-use futures::{
-    StreamExt,
-    channel::{mpsc, oneshot},
-};
+use futures::{StreamExt, channel::oneshot};
 use rig_core::{
     effect::{EffectKind, HandlerDescriptor},
     error::{ErrorKind, ErrorReport},
-    serve::{OutcomeSink, Serve},
+    serve::{Dispatch, Reply, Serve},
 };
-use rig_ecs::bus::{Issued, Serving, Streaming};
+use rig_ecs::bus::{Issued, Serving};
 use std::{
     collections::BTreeMap,
     sync::{
@@ -29,7 +26,6 @@ struct Slot {
     release: Option<oneshot::Sender<()>>,
     consumed: Option<oneshot::Sender<()>>,
     queued: Arc<AtomicBool>,
-    terminal: bool,
 }
 
 pub(super) struct Scheduled<S> {
@@ -37,14 +33,12 @@ pub(super) struct Scheduled<S> {
     pub control: DeliveryControl,
     pub batch_size: usize,
     pub fault: super::Fault,
-    pub failures: super::ExecutionFailures,
 }
 
 impl DeliveryControl {
     fn insert(
         &self,
         id: u64,
-        terminal: bool,
     ) -> Option<(
         oneshot::Receiver<()>,
         oneshot::Receiver<()>,
@@ -59,7 +53,6 @@ impl DeliveryControl {
                 release: Some(release),
                 consumed: Some(consumed),
                 queued: queued.clone(),
-                terminal,
             },
         );
         Some((go, ack, queued))
@@ -78,17 +71,18 @@ impl DeliveryControl {
     }
 
     pub fn ready(&self, world: &mut World) -> bool {
-        let states: BTreeMap<_, _> = world
-            .query::<(&Issued, Option<&Serving>, Option<&Streaming>)>()
+        let mut query = world.query::<(Entity, &Issued, Option<&Serving>)>();
+        let executions = world.non_send::<rig_ecs::bus::effect::Executions>();
+        let states: BTreeMap<_, _> = query
             .iter(world)
-            .map(|(id, unary, stream)| {
+            .map(|(entity, issued, serving)| {
                 (
-                    id.0.as_u64(),
-                    (
-                        unary.is_some() || stream.is_some(),
-                        unary.is_none_or(|task| task.0.is_finished())
-                            && stream.is_none_or(|task| task.task.is_finished()),
-                    ),
+                    issued.0.as_u64(),
+                    serving.is_none()
+                        || executions
+                            .tasks
+                            .get(&entity)
+                            .is_none_or(|task| task.is_finished()),
                 )
             })
             .collect();
@@ -97,24 +91,9 @@ impl DeliveryControl {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         slots.retain(|id, _| states.contains_key(id));
-        // A faster adapter must not determine whether another active stream
-        // participates in this Collect batch. Wait for all active producers.
-        if !slots.is_empty()
-            && states
-                .iter()
-                .any(|(id, (active, _))| *active && !slots.contains_key(id))
-        {
-            return false;
-        }
-        slots.iter().all(|(id, slot)| {
-            if slot.release.is_some() || !slot.queued.load(Ordering::SeqCst) {
-                return false;
-            }
-            if !slot.terminal {
-                return true;
-            }
-            states.get(id).is_some_and(|(_, finished)| *finished)
-        })
+        // Initial IO can finish between host passes. Returned stream work
+        // must be driven by those passes, including while awaiting a gate.
+        states.values().all(|ready| *ready)
     }
 
     pub fn collected(&self) {
@@ -141,95 +120,82 @@ impl<S: Serve + 'static> Serve for Scheduled<S> {
         self.handler.descriptor()
     }
 
-    async fn serve(&self, kind: EffectKind, mut sink: OutcomeSink) {
-        let id = sink.id();
-        if matches!(kind, EffectKind::Completion { stream: true, .. }) {
-            let (sender, mut receiver) = mpsc::channel(32);
-            let handler = self.handler.clone();
-            let task = tokio::spawn(async move {
-                handler.serve(kind, OutcomeSink::stream(id, sender)).await;
-            });
-            let _abort = super::AbortOnDrop(task.abort_handle());
-            let mut items = Vec::new();
-            while let Some(item) = receiver.next().await {
-                items.push(item);
-                if items.len() > 4096 {
-                    sink.resolve(Err(ErrorReport::new(
-                        ErrorKind::Request,
-                        "consumer stream exceeds 4096-item capture bound",
-                    )))
-                    .await;
-                    return;
-                }
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
+        let id = dispatch.id().as_u64();
+        let streaming = dispatch.is_stream();
+        let reply = self.handler.serve(kind, dispatch).await;
+        if !streaming {
+            let outcome = reply.into_outcome().await;
+            let Some((go, _, queued)) = self.control.insert(id) else {
+                return Reply::Outcome(Err(rig_core::serve::cancelled()));
+            };
+            if go.await.is_err() {
+                return Reply::Outcome(Err(rig_core::serve::cancelled()));
             }
-            if task.await.is_err() {
-                self.failures.record(id.as_u64());
-                return;
+            queued.store(true, Ordering::SeqCst);
+            return Reply::Outcome(outcome);
+        }
+        // This fixture captures bounded provider output to inject faults and
+        // control release groups; production drivers never prefetch a group.
+        let mut stream = reply.into_stream();
+        let mut items = Vec::new();
+        while let Some(item) = stream.next().await {
+            items.push(item);
+            if items.len() > 4096 {
+                return Reply::Outcome(Err(ErrorReport::new(
+                    ErrorKind::Request,
+                    "consumer stream exceeds 4096-item capture bound",
+                )));
             }
-            if matches!(
-                self.fault,
-                super::Fault::StreamErrorBeforeFinal | super::Fault::StreamErrorAfterFinal
-            ) {
-                let error = Err(ErrorReport::new(
-                    ErrorKind::Provider,
-                    "controlled stream error",
-                ));
-                if self.fault == super::Fault::StreamErrorBeforeFinal {
-                    let position = items
-                        .iter()
-                        .position(|item| {
-                            matches!(item, Ok(rig_core::streaming::StreamEvent::Final(_)))
-                        })
-                        .unwrap_or(items.len());
-                    items.insert(position, error);
-                } else {
-                    items.push(error);
-                }
+        }
+        if matches!(
+            self.fault,
+            super::Fault::StreamErrorBeforeFinal | super::Fault::StreamErrorAfterFinal
+        ) {
+            let error = Err(ErrorReport::new(
+                ErrorKind::Provider,
+                "controlled stream error",
+            ));
+            if self.fault == super::Fault::StreamErrorBeforeFinal {
+                let position = items
+                    .iter()
+                    .position(|item| matches!(item, Ok(rig_core::streaming::StreamEvent::Final(_))))
+                    .unwrap_or(items.len());
+                items.insert(position, error);
+            } else {
+                items.push(error);
             }
-            let groups: Vec<_> = items.chunks(self.batch_size.max(1)).collect();
+        }
+        let control = self.control.clone();
+        let group_size = self.batch_size.max(1);
+        Reply::written(move |mut writer| async move {
+            let groups: Vec<_> = items.chunks(group_size).collect();
             let count = groups.len();
             for (index, group) in groups.into_iter().enumerate() {
                 let terminal = index + 1 == count;
-                let Some((go, ack, queued)) = self.control.insert(id.as_u64(), terminal) else {
+                let Some((go, ack, queued)) = control.insert(id) else {
                     return;
                 };
                 if go.await.is_err() {
                     return;
                 }
                 for item in group {
-                    if sink.send(item.clone()).await.is_err() {
+                    let sent = match item {
+                        Ok(event) => writer.event(event.clone()).await,
+                        Err(error) => writer.error(error.clone()).await,
+                    };
+                    if sent.is_err() {
                         return;
                     }
                 }
+                queued.store(true, Ordering::SeqCst);
                 if terminal {
-                    drop(sink);
-                    queued.store(true, Ordering::SeqCst);
                     return;
                 }
-                queued.store(true, Ordering::SeqCst);
                 if ack.await.is_err() {
                     return;
                 }
             }
-        } else {
-            let (sender, receiver) = oneshot::channel();
-            self.handler
-                .serve(kind, OutcomeSink::unary(id, sender))
-                .await;
-            let outcome = receiver.await.unwrap_or_else(|_| {
-                Err(ErrorReport::new(
-                    ErrorKind::HandlerUnavailable,
-                    "consumer model dropped its answer",
-                ))
-            });
-            let Some((go, _, queued)) = self.control.insert(id.as_u64(), true) else {
-                return;
-            };
-            if go.await.is_err() {
-                return;
-            }
-            sink.resolve(outcome).await;
-            queued.store(true, Ordering::SeqCst);
-        }
+        })
     }
 }

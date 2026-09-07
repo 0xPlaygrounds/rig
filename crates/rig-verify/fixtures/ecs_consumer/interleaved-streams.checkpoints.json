@@ -2230,6 +2230,14 @@
           }
         },
         {
+          "boundary": "collect.stream",
+          "effect": 1,
+          "data": {
+            "events": 5,
+            "text": "Inspecting the project. "
+          }
+        },
+        {
           "boundary": "collect.outcome",
           "effect": 0,
           "data": {
@@ -2259,14 +2267,6 @@
                 "model": null
               }
             }
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 1,
-          "data": {
-            "events": 5,
-            "text": "Inspecting the project. "
           }
         },
         {

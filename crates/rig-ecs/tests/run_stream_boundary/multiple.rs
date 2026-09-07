@@ -10,18 +10,21 @@ impl Serve for Stages {
     fn descriptor(&self) -> HandlerDescriptor {
         NameThenGate(Arc::default()).descriptor()
     }
-    async fn serve(&self, _: EffectKind, mut sink: OutcomeSink) {
+    async fn serve(&self, _: EffectKind, _dispatch: Dispatch) -> Reply {
         let stages = std::mem::take(&mut *self.0.lock().expect("stages"));
-        for (events, gate) in stages {
-            for event in events {
-                if sink.send(Ok(event)).await.is_err() {
+
+        Reply::written(move |mut writer| async move {
+            for (events, gate) in stages {
+                for event in events {
+                    if writer.event(event).await.is_err() {
+                        return;
+                    }
+                }
+                if gate.await.is_err() {
                     return;
                 }
             }
-            if gate.await.is_err() {
-                return;
-            }
-        }
+        })
     }
 }
 

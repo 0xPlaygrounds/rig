@@ -1,8 +1,6 @@
-//! A stream writer over an [`OutcomeSink`]: a handler says what it means —
-//! text, reasoning, a tool call, the terminal record — and never names a
-//! [`BlockId`](crate::streaming::BlockId). Block identity is minted per
-//! stream by the same rules the provider adapters use (`AdapterOutput`), so
-//! a bus handler's stream is well formed by construction.
+//! A co-polled stream writer with block identity and self-closing output.
+
+use futures::{SinkExt, StreamExt, channel::mpsc};
 
 use crate::{
     error::ErrorReport,
@@ -10,35 +8,46 @@ use crate::{
     streaming::{StreamEvent, StreamFinal, SyntheticIds, ToolCallEnd},
 };
 
-use super::{OutcomeSink, SinkClosed};
+use super::{Reply, SinkClosed};
+use crate::wasm_compat::WasmCompatSend;
 
-/// A streaming answer under construction: what a handler writes into its
-/// [`OutcomeSink`] for a streaming dispatch. Obtained with
-/// [`OutcomeSink::writer`]; ended with [`finish`](Self::finish).
-///
-/// ```ignore
-/// async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-///     let mut out = sink.writer();
-///     let _ = out.text("tick ").await;
-///     let _ = out.finish(StreamFinal::new("mock", Usage::new())).await;
-/// }
-/// ```
+/// A streaming answer under construction. Obtained by [`Reply::written`];
+/// [`finish`](Self::finish) emits the terminal, while ordinary drop without
+/// a terminal leaves a truncated stream.
 pub struct StreamWriter {
-    sink: OutcomeSink,
+    events: mpsc::Sender<Result<StreamEvent, ErrorReport>>,
     output: AdapterOutput,
     tool_ids: SyntheticIds,
 }
 
-impl OutcomeSink {
-    /// Answer this dispatch as a stream through a writer that mints block
-    /// ids itself. Consumes the sink: a stream is answered through the
-    /// writer or not at all.
-    pub fn writer(self) -> StreamWriter {
-        StreamWriter {
-            sink: self,
+impl Reply {
+    /// Return a stream that owns and polls the writing future alongside its
+    /// private receiver. No task is spawned. The bridge has zero shared
+    /// capacity and one sender-reserved slot; it is not a rendezvous channel.
+    /// Dropping the returned stream drops the writing future and receiver.
+    pub fn written<F, Fut>(write: F) -> Self
+    where
+        F: FnOnce(StreamWriter) -> Fut,
+        Fut: Future<Output = ()> + WasmCompatSend + 'static,
+    {
+        let (events, mut receiver) = mpsc::channel(0);
+        let writer = StreamWriter {
+            events,
             output: AdapterOutput::self_closing(),
             tool_ids: SyntheticIds::tool(),
-        }
+        };
+        let mut writing = Some(Box::pin(write(writer)));
+        Self::Stream(Box::pin(futures::stream::poll_fn(move |cx| {
+            if let Some(future) = &mut writing
+                && future.as_mut().poll(cx).is_ready()
+            {
+                writing = None;
+            }
+            match receiver.poll_next_unpin(cx) {
+                std::task::Poll::Ready(None) if writing.is_some() => std::task::Poll::Pending,
+                next => next,
+            }
+        })))
     }
 }
 
@@ -79,12 +88,12 @@ impl StreamWriter {
 
     /// An in-band error: the consumer's next item.
     pub async fn error(&mut self, report: ErrorReport) -> Result<(), SinkClosed> {
-        self.flush().await?;
-        self.sink.send(Err(report)).await
+        self.flush().await.map_err(|_| SinkClosed)?;
+        self.events.send(Err(report)).await.map_err(|_| SinkClosed)
     }
 
     /// The terminal record: closes the blocks bare fragments opened, sends
-    /// `record`, and ends the stream.
+    /// `record`. The returned stream ends when the writing future also finishes.
     pub async fn finish(mut self, record: StreamFinal) -> Result<(), SinkClosed> {
         self.output.close_active_blocks();
         self.output.final_record(record);
@@ -93,15 +102,16 @@ impl StreamWriter {
 
     /// Whether the consumer is still listening.
     pub fn is_closed(&self) -> bool {
-        self.sink.is_closed()
+        self.events.is_closed()
     }
 
     async fn flush(&mut self) -> Result<(), SinkClosed> {
         let items: Vec<_> = self.output.drain().collect();
         for item in items {
-            self.sink
+            self.events
                 .send(item.map_err(|error| ErrorReport::from(&error)))
-                .await?;
+                .await
+                .map_err(|_| SinkClosed)?;
         }
         Ok(())
     }

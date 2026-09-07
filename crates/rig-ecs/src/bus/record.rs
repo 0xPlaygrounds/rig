@@ -129,7 +129,7 @@ pub fn record_outcome(
     }
 }
 
-/// What a layered handler's sink observer saw of one dispatch, shared
+/// What the handler's recording observer saw of one dispatch, shared
 /// with the effect entity: the outcome the innermost handler answered —
 /// what the record holds, whatever verdict a layer's `after` gave the
 /// world — and whether a layer discarded the dispatch before any handler
@@ -153,17 +153,25 @@ impl ObservedState {
             .take()
     }
 
+    /// Whether the original handler answer has been observed.
+    pub fn has_outcome(&self) -> bool {
+        self.outcome
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_some()
+    }
+
     /// Whether a layer discarded the dispatch.
     pub fn is_discarded(&self) -> bool {
         self.discarded.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 
-/// The sink observer `Dispatch` installs for a handler whose descriptor
-/// names layers: a layer's decisions reach the record only through it
+/// The observer installed on task-served dispatches: layer decisions and
+/// original answers reach the record through it
 /// (`Observe::discard`, `Observe::patch`), and the events and the outcome
 /// it is told are the innermost handler's — what the record holds,
-/// whatever verdict the outer channel carries to the world.
+/// whatever verdict the outer reply carries to the world.
 pub struct WorldObserver {
     /// Tool output shared with the caller, read without consuming it.
     pub published: Option<Arc<rig_core::tool::PublishedContext>>,
@@ -193,7 +201,7 @@ impl rig_core::serve::Observe for WorldObserver {
     }
 
     // A stream's events are recorded from the innermost hop, as its
-    // outcome is: a layer's verdict may replace what the outer channel
+    // outcome is: a layer's verdict may replace what the outer reply
     // carries after them (its terminal record among it).
     fn keep_events(&self) -> bool {
         self.recording.as_ref().is_some_and(Recording::keep_events)
@@ -233,6 +241,7 @@ pub type CancellationView = (
     Option<&'static EffectOutcome>,
     Option<&'static super::effect::Publishing>,
     Option<&'static super::effect::ToolOutputs>,
+    Option<&'static Observed>,
 );
 
 /// An in-flight effect losing `InFlight` without an outcome — a despawn,
@@ -242,18 +251,32 @@ pub fn record_cancelled(
     removed: On<Remove, InFlight>,
     effects: Query<CancellationView>,
     recording: Option<Res<Recording>>,
+    batch: Res<DeliveryBatch>,
 ) {
     let Some(recording) = recording else {
         return;
     };
-    if let Ok((Issued(id), None, publishing, outputs)) = effects.get(removed.event().entity) {
+    if let Ok((Issued(id), None, publishing, outputs, observed)) =
+        effects.get(removed.event().entity)
+    {
+        if observed.is_some_and(|observed| observed.0.is_discarded()) {
+            return;
+        }
+        let original = observed.and_then(|observed| observed.0.take_outcome());
         let output = publishing
             .and_then(|published| published.0.result_context())
             .or_else(|| outputs.map(|outputs| outputs.0.result_context()));
         if let Some(output) = output {
             recording.tool_output(*id, output);
         }
-        recording.resolve(*id, Err(cancelled()));
+        if original.as_ref().is_some_and(|answer| {
+            !answer
+                .as_ref()
+                .is_err_and(|error| error.kind == rig_core::error::ErrorKind::Cancelled)
+        }) {
+            recording.delivery(batch.0, *id, rig_core::effect::DeliveryKind::Cancelled);
+        }
+        recording.resolve(*id, original.unwrap_or_else(|| Err(cancelled())));
     }
 }
 

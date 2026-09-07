@@ -14,7 +14,7 @@ use futures::channel::oneshot;
 use rig_core::{
     completion::{ModelRef, ProviderCapabilities, Usage},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
-    serve::{OutcomeSink, Serve},
+    serve::{Dispatch, Reply, Serve},
     streaming::StreamFinal,
 };
 use rig_ecs::bus::{
@@ -570,32 +570,36 @@ impl Serve for BatchedStream {
             layers: vec![],
         }
     }
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-        let mut writer = sink.writer();
-        loop {
-            let gate = self.gates.lock().unwrap().pop_front();
-            let Some(gate) = gate else {
-                break;
-            };
-            let pieces = gate.await.unwrap();
-            for piece in pieces {
-                writer.text(piece).await.unwrap();
-            }
-            if self.gates.lock().unwrap().is_empty() {
-                if let Some(error) = &self.error {
-                    writer.error(error.clone()).await.unwrap();
-                    drop(writer);
-                } else {
-                    writer
-                        .finish(StreamFinal::new("batched", Usage::new()))
-                        .await
-                        .unwrap();
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        let mut gates = std::mem::take(&mut *self.gates.lock().unwrap());
+        let error = self.error.clone();
+        let produced = self.produced.clone();
+        Reply::written(move |mut writer| async move {
+            loop {
+                let gate = gates.pop_front();
+                let Some(gate) = gate else {
+                    break;
+                };
+                let pieces = gate.await.unwrap();
+                for piece in pieces {
+                    writer.text(piece).await.unwrap();
                 }
-                self.produced.fetch_add(1, Ordering::SeqCst);
-                return;
+                if gates.is_empty() {
+                    if let Some(error) = &error {
+                        writer.error(error.clone()).await.unwrap();
+                        drop(writer);
+                    } else {
+                        writer
+                            .finish(StreamFinal::new("batched", Usage::new()))
+                            .await
+                            .unwrap();
+                    }
+                    produced.fetch_add(1, Ordering::SeqCst);
+                    return;
+                }
+                produced.fetch_add(1, Ordering::SeqCst);
             }
-            self.produced.fetch_add(1, Ordering::SeqCst);
-        }
+        })
     }
 }
 
@@ -646,14 +650,15 @@ fn live_stream(groups: Vec<Vec<&'static str>>, keep: bool) -> (EffectLog, Vec<St
     app.update();
     for (index, (sender, group)) in senders.into_iter().zip(groups).enumerate() {
         sender.send(group).unwrap();
-        // The handler acknowledges the entire batch before collection. No
-        // sleeps or races decide whether two deltas belong to the same pass.
+        // Writer work advances only when the host polls its returned stream.
+        // Each released group can now span several Collect invocations.
         let start = Instant::now();
         while produced.load(Ordering::SeqCst) <= index {
             assert!(
                 start.elapsed() < bus_support::GUARD,
                 "producer did not acknowledge batch"
             );
+            app.update();
             std::thread::yield_now();
         }
         app.update();
@@ -673,14 +678,25 @@ fn kept_streams_replay_single_and_multi_event_policy_batches() {
         vec![vec!["a"], vec!["b"], vec!["c"]],
         vec![vec!["a", "b"], vec!["c"]],
     ] {
-        let expected: Vec<_> = groups
+        let legacy_expected: Vec<_> = groups
             .iter()
             .scan(String::new(), |text, group| {
                 text.push_str(&group.concat());
                 Some(text.clone())
             })
             .collect();
-        let (log, live) = live_stream(groups, true);
+        let mut expected: Vec<_> = groups
+            .iter()
+            .flatten()
+            .scan(String::new(), |text, piece| {
+                text.push_str(piece);
+                Some(text.clone())
+            })
+            .collect();
+        // BlockEnd and Final now each have their own policy-visible pass.
+        let final_text = expected.last().unwrap().clone();
+        expected.extend([final_text.clone(), final_text]);
+        let (log, live) = live_stream(groups.clone(), true);
         assert_eq!(live, expected);
         let mut app = observing_app();
         Handlers::with(app.world_mut(), |handlers| {
@@ -697,13 +713,45 @@ fn kept_streams_replay_single_and_multi_event_policy_batches() {
             serde_json::to_value(&app.world().get::<Streamed>(effect).unwrap().events).unwrap(),
             serde_json::to_value(log.records[0].events.as_ref().unwrap()).unwrap()
         );
+        // Historical recordings can place several items in one Collect batch.
+        // Rebuild that supported trace explicitly from the same event bytes.
+        let mut legacy = log.clone();
+        let id = legacy.records[0].id;
+        let mut deliveries = Vec::new();
+        for (index, group) in groups.iter().enumerate() {
+            let items = group.len()
+                + usize::from(index == 0)
+                + if index + 1 == groups.len() { 2 } else { 0 };
+            deliveries.push(rig_core::effect::Delivery {
+                batch: index as u64 + 1,
+                id,
+                kind: rig_core::effect::DeliveryKind::Stream { items },
+            });
+        }
+        deliveries.push(rig_core::effect::Delivery {
+            batch: groups.len() as u64,
+            id,
+            kind: rig_core::effect::DeliveryKind::Outcome,
+        });
+        legacy.header.deliveries = Some(deliveries);
+        let mut replay = observing_app();
+        Handlers::with(replay.world_mut(), |handlers| {
+            Replay::policy_visible().register(handlers, &legacy)
+        })
+        .unwrap()
+        .unwrap();
+        let effect = Replay::load(replay.world_mut(), &legacy)[0];
+        bus_support::tick_until(&mut replay, "historical batches", |world| {
+            world.get::<EffectOutcome>(effect).is_some()
+        });
+        assert_eq!(replay.world().resource::<Snapshots>().0, legacy_expected);
     }
 }
 
 #[test]
 fn folded_stream_refuses_policy_mode_but_replays_a_final_answer() {
     let (log, live) = live_stream(vec![vec!["a"], vec!["b"], vec!["c"]], false);
-    assert_eq!(live, ["a", "ab", "abc"]);
+    assert_eq!(live, ["a", "ab", "abc", "abc", "abc"]);
     let mut app = observing_app();
     let error = Handlers::with(app.world_mut(), |handlers| {
         Replay::policy_visible().register(handlers, &log)
@@ -1082,13 +1130,14 @@ fn policy_cancels_at_the_same_partial_stream_state() {
     live.update();
     send.send(vec!["a", "b"]).unwrap();
     let start = Instant::now();
-    while produced.load(Ordering::SeqCst) == 0 {
+    while live.world().get_entity(effect).is_ok() {
         assert!(start.elapsed() < bus_support::GUARD);
+        live.update();
         std::thread::yield_now();
     }
     live.update();
     assert!(live.world().get_entity(effect).is_err());
-    assert_eq!(live.world().resource::<Snapshots>().0, ["ab"]);
+    assert_eq!(live.world().resource::<Snapshots>().0, ["a", "ab"]);
     let log: EffectLog =
         serde_json::from_str(&serde_json::to_string(&recorder.log()).unwrap()).unwrap();
     let mut replay = observing_app();
@@ -1105,7 +1154,7 @@ fn policy_cancels_at_the_same_partial_stream_state() {
     bus_support::tick_until(&mut replay, "same partial cancel", |world| {
         world.get_entity(effect).is_err()
     });
-    assert_eq!(replay.world().resource::<Snapshots>().0, ["ab"]);
+    assert_eq!(replay.world().resource::<Snapshots>().0, ["a", "ab"]);
     assert!(
         !replay
             .world()
@@ -1193,6 +1242,7 @@ fn interleaved_streams_preserve_partial_states_and_provider_errors() {
             let start = Instant::now();
             while produced.load(Ordering::SeqCst) < batch {
                 assert!(start.elapsed() < bus_support::GUARD);
+                live.update();
                 std::thread::yield_now();
             }
             live.update();
@@ -1251,7 +1301,7 @@ impl Serve for TerminalErrors {
             layers: vec![],
         }
     }
-    async fn serve(&self, _kind: EffectKind, mut sink: OutcomeSink) {
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
         let error = rig_core::error::ErrorReport::new(self.error_kind, "original error");
         let terminal =
             rig_core::streaming::StreamEvent::Final(StreamFinal::new("test", Usage::new()));
@@ -1260,17 +1310,20 @@ impl Serve for TerminalErrors {
         } else {
             vec![Ok(terminal), Err(error)]
         };
-        for item in first
+        let mut items = first
             .into_iter()
             .chain([Err(rig_core::error::ErrorReport::new(
                 rig_core::error::ErrorKind::Provider,
                 "late error",
-            ))])
-        {
-            sink.send(item).await.unwrap();
-        }
-        drop(sink);
-        self.produced.store(1, Ordering::SeqCst);
+            ))]);
+        let produced = self.produced.clone();
+        Reply::Stream(Box::pin(futures::stream::poll_fn(move |_| {
+            let item = items.next();
+            if item.is_none() {
+                produced.store(1, Ordering::SeqCst);
+            }
+            std::task::Poll::Ready(item)
+        })))
     }
 }
 
@@ -1304,6 +1357,7 @@ fn errors_before_and_after_final_keep_their_positions_and_first_outcome() {
         let start = Instant::now();
         while produced.load(Ordering::SeqCst) == 0 {
             assert!(start.elapsed() < bus_support::GUARD);
+            live.update();
             std::thread::yield_now();
         }
         bus_support::tick_until(&mut live, "terminal sequence collected", |world| {
@@ -1324,17 +1378,16 @@ fn errors_before_and_after_final_keep_their_positions_and_first_outcome() {
         assert_eq!(errors.len(), 2);
         assert_eq!(errors[0].item, usize::from(!error_first));
         assert_eq!(errors[1].item, 2);
-        // A valid three-item batch cannot omit either error from its count.
+        // A delivery trace cannot omit either error from its item count.
         let mut short = log.clone();
-        let first_batch = short
-            .header
-            .deliveries
-            .as_mut()
-            .unwrap()
-            .iter_mut()
-            .find(|delivery| matches!(delivery.kind, rig_core::effect::DeliveryKind::Stream { .. }))
+        let deliveries = short.header.deliveries.as_mut().unwrap();
+        let position = deliveries
+            .iter()
+            .position(|delivery| {
+                matches!(delivery.kind, rig_core::effect::DeliveryKind::Stream { .. })
+            })
             .unwrap();
-        first_batch.kind = rig_core::effect::DeliveryKind::Stream { items: 2 };
+        deliveries.remove(position);
         let error = rig_ecs::bus::delivery::ReplayDelivery::new(&short, true)
             .err()
             .expect("all error items must be represented");
@@ -1344,17 +1397,14 @@ fn errors_before_and_after_final_keep_their_positions_and_first_outcome() {
             // identify whether that error preceded Final. Refuse policy replay.
             let mut missing = log.clone();
             missing.header.stream_errors.clear();
-            missing
-                .header
-                .deliveries
-                .as_mut()
-                .unwrap()
-                .iter_mut()
-                .find(|delivery| {
+            let deliveries = missing.header.deliveries.as_mut().unwrap();
+            let position = deliveries
+                .iter()
+                .position(|delivery| {
                     matches!(delivery.kind, rig_core::effect::DeliveryKind::Stream { .. })
                 })
-                .unwrap()
-                .kind = rig_core::effect::DeliveryKind::Stream { items: 2 };
+                .unwrap();
+            deliveries.remove(position);
             let error = rig_ecs::bus::delivery::ReplayDelivery::new(&missing, true)
                 .err()
                 .expect("first outcome is not reconstructible");
@@ -1438,4 +1488,289 @@ fn stream_error_observation_does_not_depend_on_recording() {
             }
         }
     }
+}
+
+struct AwaitVerdict(Arc<std::sync::atomic::AtomicBool>);
+impl rig_core::serve::Intercept for AwaitVerdict {
+    fn name(&self) -> String {
+        "await-verdict".into()
+    }
+    async fn before(
+        &self,
+        _: rig_core::effect::EffectId,
+        _: &EffectKind,
+    ) -> rig_core::serve::Decision {
+        rig_core::serve::Decision::Proceed
+    }
+    async fn after(
+        &self,
+        _: rig_core::effect::EffectId,
+        _: &EffectKind,
+        _: &Result<Outcome, rig_core::error::ErrorReport>,
+    ) -> rig_core::serve::Verdict {
+        self.0.store(true, Ordering::SeqCst);
+        std::future::pending().await
+    }
+}
+
+#[test]
+fn cancellation_after_an_original_answer_has_a_replayable_visibility_trace() {
+    struct Truncated;
+    impl Serve for Truncated {
+        type Family = rig_core::effect::family::Completion;
+        fn descriptor(&self) -> HandlerDescriptor {
+            HandlerDescriptor {
+                key: "model".into(),
+                family: FamilyDescriptor::Completion {
+                    model: "truncated".into(),
+                    capabilities: Default::default(),
+                },
+                layers: vec![],
+            }
+        }
+        async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+            Reply::Stream(Box::pin(futures::stream::empty()))
+        }
+    }
+    for (streaming, truncated) in [(false, false), (true, false), (true, true)] {
+        let mut app = bus_support::app();
+        let recorder = EffectLogRecorder::keeping_stream_events();
+        EffectLogResource::install(app.world_mut(), recorder.clone());
+        let entered = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let counters = Arc::new(bus_support::Counters::default());
+        let handler = if truncated {
+            rig_core::serve::ErasedHandler::new(Truncated)
+        } else {
+            rig_core::serve::ErasedHandler::new(bus_support::MockModel {
+                cap: 1,
+                ..bus_support::MockModel::new(&counters)
+            })
+        }
+        .layered(AwaitVerdict(entered.clone()));
+        bus_support::register(&mut app, "model", handler);
+        let effect = app
+            .world_mut()
+            .spawn(PendingEffect::new(
+                "model",
+                EffectKind::Completion {
+                    request: bus_support::request(),
+                    stream: streaming,
+                },
+            ))
+            .id();
+        bus_support::tick_until(&mut app, "verdict suspended", |_| {
+            entered.load(Ordering::SeqCst)
+        });
+        assert!(app.world().get::<EffectOutcome>(effect).is_none());
+        app.world_mut().despawn(effect);
+        let log = recorder.log();
+        assert!(
+            if truncated {
+                log.records[0]
+                    .outcome
+                    .as_ref()
+                    .is_err_and(|error| error == &rig_core::serve::stream_truncated())
+            } else {
+                log.records[0].outcome.is_ok()
+            },
+            "cancellation must preserve the observed inner answer"
+        );
+        assert!(
+            !log.header
+                .deliveries
+                .as_ref()
+                .unwrap()
+                .iter()
+                .any(|delivery| matches!(delivery.kind, rig_core::effect::DeliveryKind::Outcome)),
+            "no outcome reached the consumer"
+        );
+        rig_ecs::bus::delivery::ReplayDelivery::new(&log, true)
+            .expect("a library-generated cancellation trace must remain replayable");
+        assert!(matches!(
+            log.header.deliveries.as_ref().unwrap().last().unwrap().kind,
+            rig_core::effect::DeliveryKind::Cancelled
+        ));
+        for policy in [false, true] {
+            let mut replay = bus_support::app();
+            Handlers::with(replay.world_mut(), |handlers| {
+                let mode = if policy {
+                    Replay::policy_visible()
+                } else {
+                    Replay::default()
+                };
+                mode.register(handlers, &log)
+            })
+            .unwrap()
+            .unwrap();
+            let loaded = Replay::load(replay.world_mut(), &log)[0];
+            bus_support::tick_until(
+                &mut replay,
+                "cancelled replay settled or refused",
+                |world| world.get::<EffectOutcome>(loaded).is_some(),
+            );
+            let error = replay
+                .world()
+                .get::<EffectOutcome>(loaded)
+                .unwrap()
+                .0
+                .as_ref()
+                .unwrap_err();
+            assert_eq!(
+                error.kind,
+                if policy {
+                    rig_core::error::ErrorKind::Divergence
+                } else {
+                    rig_core::error::ErrorKind::Cancelled
+                }
+            );
+            if policy {
+                assert!(error.message.contains("did not reproduce cancellation"));
+            }
+            let delivered = replay.world().get::<Streamed>(loaded);
+            assert!(
+                delivered.is_none_or(|stream| stream.outcome.is_none()),
+                "the original terminal was never delivered"
+            );
+        }
+        let mut reproduced = bus_support::app();
+        let rerecorder = EffectLogRecorder::keeping_stream_events();
+        EffectLogResource::install(reproduced.world_mut(), rerecorder.clone());
+        Handlers::with(reproduced.world_mut(), |handlers| {
+            Replay::policy_visible().register(handlers, &log)
+        })
+        .unwrap()
+        .unwrap();
+        reproduced.world_mut().resource_mut::<Schedules>().add_systems(RigSchedule,
+            (|mut commands: Commands, effects: Query<(Entity, &rig_ecs::bus::record::Observed), With<InFlight>>| {
+                for (entity, observed) in &effects {
+                    if observed.0.has_outcome() { commands.entity(entity).despawn(); }
+                }
+            }).in_set(BusSet::Judge));
+        let loaded = Replay::load(reproduced.world_mut(), &log)[0];
+        bus_support::tick_until(&mut reproduced, "policy reproduced cancellation", |world| {
+            world.get_entity(loaded).is_err()
+        });
+        assert!(
+            !reproduced
+                .world()
+                .contains_resource::<rig_ecs::bus::ReplayFailure>()
+        );
+        let rerecorded = rerecorder.log();
+        assert_eq!(
+            serde_json::to_value(&rerecorded.records[0].outcome).unwrap(),
+            serde_json::to_value(&log.records[0].outcome).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&rerecorded.records[0].events).unwrap(),
+            serde_json::to_value(&log.records[0].events).unwrap()
+        );
+        assert_eq!(rerecorded.header.stream_errors, log.header.stream_errors);
+        assert!(matches!(
+            rerecorded
+                .header
+                .deliveries
+                .as_ref()
+                .unwrap()
+                .last()
+                .unwrap()
+                .kind,
+            rig_core::effect::DeliveryKind::Cancelled
+        ));
+        rig_ecs::bus::delivery::ReplayDelivery::new(&rerecorded, true)
+            .expect("reproduced cancellation remains replayable");
+
+        let mut invalid = log.clone();
+        invalid
+            .header
+            .deliveries
+            .as_mut()
+            .unwrap()
+            .push(rig_core::effect::Delivery {
+                batch: log
+                    .header
+                    .deliveries
+                    .as_ref()
+                    .unwrap()
+                    .last()
+                    .unwrap()
+                    .batch,
+                id: log.records[0].id,
+                kind: rig_core::effect::DeliveryKind::Outcome,
+            });
+        assert!(
+            rig_ecs::bus::delivery::ReplayDelivery::new(&invalid, true).is_err(),
+            "cancellation closes the delivery trace"
+        );
+    }
+}
+
+#[test]
+fn a_streamed_verdict_resumes_only_when_the_host_collects_again() {
+    struct Gated {
+        entered: Arc<std::sync::atomic::AtomicBool>,
+        release: Mutex<Option<oneshot::Receiver<()>>>,
+    }
+    impl rig_core::serve::Intercept for Gated {
+        fn name(&self) -> String {
+            "gated".into()
+        }
+        async fn before(
+            &self,
+            _: rig_core::effect::EffectId,
+            _: &EffectKind,
+        ) -> rig_core::serve::Decision {
+            rig_core::serve::Decision::Proceed
+        }
+        async fn after(
+            &self,
+            _: rig_core::effect::EffectId,
+            _: &EffectKind,
+            _: &Result<Outcome, rig_core::error::ErrorReport>,
+        ) -> rig_core::serve::Verdict {
+            self.entered.store(true, Ordering::SeqCst);
+            let release = self.release.lock().unwrap().take().unwrap();
+            release.await.unwrap();
+            rig_core::serve::Verdict::Keep
+        }
+    }
+    let mut app = bus_support::app();
+    let counters = Arc::new(bus_support::Counters::default());
+    let (release, wait) = oneshot::channel();
+    let entered = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let handler = rig_core::serve::ErasedHandler::new(bus_support::MockModel {
+        cap: 1,
+        ..bus_support::MockModel::new(&counters)
+    })
+    .layered(Gated {
+        entered: entered.clone(),
+        release: Mutex::new(Some(wait)),
+    });
+    bus_support::register(&mut app, "model", handler);
+    let effect = app
+        .world_mut()
+        .spawn(PendingEffect::new("model", bus_support::streaming()))
+        .id();
+    bus_support::tick_until(&mut app, "verdict awaiting external release", |_| {
+        entered.load(Ordering::SeqCst)
+    });
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(app.world().get::<EffectOutcome>(effect).is_none());
+    assert!(
+        app.world()
+            .get::<Streamed>(effect)
+            .unwrap()
+            .outcome
+            .is_none()
+    );
+    release.send(()).unwrap();
+    assert!(
+        app.world().get::<EffectOutcome>(effect).is_none(),
+        "a wake does not schedule the world"
+    );
+    bus_support::tick_until(&mut app, "host collected the resumed verdict", |world| {
+        world.get::<EffectOutcome>(effect).is_some()
+    });
+    assert!(app.world().get::<EffectOutcome>(effect).unwrap().0.is_ok());
 }

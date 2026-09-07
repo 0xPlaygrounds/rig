@@ -109,7 +109,11 @@ impl rig_core::serve::Serve for GatedMemory {
             layers: vec![],
         }
     }
-    async fn serve(&self, kind: rig_core::effect::EffectKind, sink: rig_core::serve::OutcomeSink) {
+    async fn serve(
+        &self,
+        kind: rig_core::effect::EffectKind,
+        _dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
         use rig_core::effect::{EffectKind, MemoryOp, MemoryOutcome, Outcome};
         let outcome = match kind {
             EffectKind::Memory {
@@ -124,7 +128,7 @@ impl rig_core::serve::Serve for GatedMemory {
             }
             other => panic!("unexpected memory request {other:?}"),
         };
-        sink.resolve(Ok(Outcome::Memory(outcome))).await;
+        rig_core::serve::Reply::Outcome(Ok(Outcome::Memory(outcome)))
     }
 }
 

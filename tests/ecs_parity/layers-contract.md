@@ -41,3 +41,5 @@ The history observer is scoped to this single-turn cassette, not a general
 multi-turn on_run_start API. This family does not establish arbitrary concurrent
 host scheduling, WASM execution, full feature/inventory coverage, network isolation,
 performance, or the whole functional-superset programme. Those remain separate work.
+
+The returned-reply observer retains original answers while layers change delivery. Inner recording and the immediate layer share a fold; divergent outer views fold separately. Streamed after futures run before forwarding the first terminal or error and advance on host ticks. Cancellation during a suspended verdict preserves an already-observed inner answer.

@@ -1,17 +1,17 @@
 //! The impl side of the bus: what a handler is and how it answers.
 
 use std::{
-    sync::Arc,
-    task::{Context, Poll},
+    sync::{Arc, Mutex},
+    task::Poll,
 };
 
-use futures::{SinkExt, channel::mpsc, channel::oneshot};
+use futures::{StreamExt, channel::oneshot};
 
 use crate::{
     completion::CompletionResponse,
     effect::{EffectId, EffectKind, HandlerDescriptor, Outcome},
     error::{ErrorKind, ErrorReport},
-    streaming::{BlockAccumulator, StreamEvent, StreamFinal},
+    streaming::{BlockAccumulator, StreamEvent, StreamEvents, StreamFinal},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
@@ -25,7 +25,7 @@ mod tests;
 /// what makes `BusDriver: Send`. Authors never see it: they implement
 /// [`Serve`] with an `async fn`, and the one `Box::pin` is in the blanket
 /// impl below.
-pub type HandlerFuture<'a> = WasmBoxedFuture<'a, ()>;
+pub type HandlerFuture<'a> = WasmBoxedFuture<'a, Reply>;
 
 /// Something registered on the bus that serves effects — the trait
 /// handler authors implement, with an `async fn`.
@@ -36,24 +36,9 @@ pub type HandlerFuture<'a> = WasmBoxedFuture<'a, ()>;
 /// host implements it for out-of-tree kinds ([`EffectKind::Custom`], typed
 /// through [`crate::effect::CustomEffect`]) or for a replayer.
 ///
-/// A handler answers through the [`OutcomeSink`] it is given: a unary effect
-/// resolves it once, a streaming effect feeds it [`StreamEvent`]s ending in
-/// [`StreamEvent::Final`]. There is one sink type so a handler body cannot
-/// answer on the wrong channel — the sink adapts the shape it receives to
-/// the shape the dispatch asked for.
-///
-/// ```ignore
-/// impl Serve for AskUser {
-///     type Family = family::Custom<AskUserEffect>;
-///     fn descriptor(&self) -> HandlerDescriptor {
-///         self.descriptor.clone()
-///     }
-///     async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
-///         let answer = self.ask(kind).await;
-///         sink.resolve(Ok(Outcome::Custom { payload: answer })).await;
-///     }
-/// }
-/// ```
+/// A handler returns an outcome or an owned stream. The driver adapts that
+/// reply to the requested delivery mode. Stream execution continues after
+/// this method returns; dropping the reply cancels that work.
 ///
 /// The returned future must be `Send` natively (it runs inside the driver's
 /// task; the bound is the crate's `WasmCompatSend` marker, a no-op on
@@ -68,13 +53,12 @@ pub trait Serve: WasmCompatSend + WasmCompatSync {
     /// checks at bind time and a scene serializes.
     fn descriptor(&self) -> HandlerDescriptor;
 
-    /// Serve one effect. The future completes when the answer has been
-    /// delivered (or the consumer went away — see [`OutcomeSink::send`]).
+    /// Prepare an outcome or an owned stream for the driver to consume.
     fn serve(
         &self,
         kind: EffectKind,
-        sink: OutcomeSink,
-    ) -> impl Future<Output = ()> + WasmCompatSend + use<'_, Self>;
+        dispatch: Dispatch,
+    ) -> impl Future<Output = Reply> + WasmCompatSend + use<'_, Self>;
 }
 
 /// The dyn-compatible form the bus stores: the one erasure. Every [`Serve`]
@@ -82,7 +66,7 @@ pub trait Serve: WasmCompatSend + WasmCompatSync {
 /// happens — once, here.
 pub(crate) trait Handler: WasmCompatSend + WasmCompatSync {
     fn descriptor(&self) -> HandlerDescriptor;
-    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_>;
+    fn handle(&self, kind: EffectKind, dispatch: Dispatch) -> HandlerFuture<'_>;
 }
 
 // A type that is not a `Serve` should be told to implement `Serve`, never
@@ -93,8 +77,15 @@ impl<T: Serve> Handler for T {
         Serve::descriptor(self)
     }
 
-    fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
-        Box::pin(self.serve(kind, sink))
+    fn handle(&self, kind: EffectKind, dispatch: Dispatch) -> HandlerFuture<'_> {
+        let observer = dispatch.observer.clone();
+        let folded = dispatch.folded.clone();
+        let streaming = dispatch.is_stream();
+        Box::pin(async move {
+            let reply = self.serve(kind, dispatch).await;
+            let seen = observer.and_then(|slot| lock(&slot).take());
+            reply.observed(streaming, seen, folded)
+        })
     }
 }
 
@@ -107,8 +98,8 @@ impl<H: Serve + ?Sized> Serve for Arc<H> {
         (**self).descriptor()
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
-        (**self).serve(kind, sink).await;
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
+        (**self).serve(kind, dispatch).await
     }
 }
 
@@ -150,8 +141,8 @@ impl ErasedHandler {
     }
 
     /// Serve one effect: the driver's call, straight to the boxed handler.
-    pub fn handle(&self, kind: EffectKind, sink: OutcomeSink) -> HandlerFuture<'_> {
-        self.0.handle(kind, sink)
+    pub fn handle(&self, kind: EffectKind, dispatch: Dispatch) -> HandlerFuture<'_> {
+        self.0.handle(kind, dispatch)
     }
 
     /// Whether two erased handlers are the same allocation.
@@ -177,186 +168,11 @@ impl Serve for ErasedHandler {
         self.0.descriptor()
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
-        self.0.handle(kind, sink).await;
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
+        self.handle(kind, dispatch).await
     }
 }
 
-/// Serve one effect on `handler` right here, without a bus: the inline
-/// path a standalone tool set or catalog uses. The bus is still the only
-/// erasure — this is a direct call on the erased handler.
-pub async fn serve_inline(
-    handler: &ErasedHandler,
-    kind: EffectKind,
-) -> Result<Outcome, ErrorReport> {
-    serve_inline_with(handler, kind, Vec::new()).await
-}
-
-/// [`serve_inline`] with `scopes` attached to the sink: the way an inline
-/// tool call hands the tool its [`ToolContext`](crate::tool::ToolContext)
-/// and the [`PublishedContext`](crate::tool::PublishedContext) it
-/// publishes into, exactly as a driver would.
-pub async fn serve_inline_with(
-    handler: &ErasedHandler,
-    kind: EffectKind,
-    scopes: Vec<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
-) -> Result<Outcome, ErrorReport> {
-    let id = EffectId::from_raw(0);
-    let (reply, receiver) = oneshot::channel();
-    let mut sink = OutcomeSink::unary(id, reply);
-    for scope in scopes {
-        sink = sink.with_scope(scope);
-    }
-    handler.handle(kind, sink).await;
-    match receiver.await {
-        Ok(outcome) => outcome,
-        Err(oneshot::Canceled) => Err(ErrorReport::new(
-            ErrorKind::Internal,
-            "the handler dropped its outcome sink without answering",
-        )),
-    }
-}
-
-/// The consumer dropped its pending dispatch or effect stream, or an
-/// ancestor was cancelled. A streaming handler stops on it — that is how
-/// cancellation reaches a provider stream.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SinkClosed;
-
-impl std::fmt::Display for SinkClosed {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("the dispatch's consumer is gone")
-    }
-}
-
-impl std::error::Error for SinkClosed {}
-
-/// The reply half of one dispatch, handed to the handler by the driver.
-///
-/// `Send + Sync + 'static` on every target (asserted below): it holds the
-/// reply channel, the fold state and the driver's observer, never the
-/// handler.
-/// A handler may therefore hand it out of its own future — see
-/// [`OutcomeSink::detach`] — and answer from somewhere else: a Bevy system
-/// with `World` access, a human at a console, a queue.
-pub struct OutcomeSink {
-    id: EffectId,
-    inner: SinkInner,
-    observer: Option<Observed>,
-    /// Held until the sink answers or is dropped, whichever first; the
-    /// driver's receiver resolves then. This is what keeps a detached
-    /// sink's dispatch in flight — its serial slot, its `in_flight` count
-    /// — after the handler future that detached it has returned.
-    done: Option<oneshot::Sender<()>>,
-    /// The driver's scopes for this dispatch: opaque values the driver
-    /// attaches ([`with_scope`]) and a runtime crate or an adapter reads
-    /// back by type — rig-agent's bus hands a `Dispatcher` whose dispatches carry
-    /// this dispatch's id as their parent; a tool call's driver hands the
-    /// `ToolContext` the tool runs with and the [`PublishedContext`] it
-    /// publishes into. rig-core names no runtime, so the slots are `Any`;
-    /// a handler served inline or by a driver that attached none has none.
-    ///
-    /// [`with_scope`]: OutcomeSink::with_scope
-    /// [`PublishedContext`]: crate::tool::PublishedContext
-    scopes: Vec<std::sync::Arc<dyn std::any::Any + Send + Sync>>,
-    /// Set by the driver when the dispatch is cancelled from above — its
-    /// parent's consumer went away — so the sink is closed to the handler
-    /// (`is_closed`) and a drop reports a cancellation, exactly as when the
-    /// dispatch's own consumer left. Attached with [`with_cancel`].
-    ///
-    /// [`with_cancel`]: OutcomeSink::with_cancel
-    cancelled: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
-}
-
-/// An [`OutcomeSink`] that has left its handler: the external-resolver seam.
-///
-/// A [`Serve`] impl that cannot answer inside its own future — the answer
-/// needs `&mut World`, a person, another schedule — calls
-/// [`OutcomeSink::detach`], hands the result to whoever will answer, and
-/// returns. The driver keeps the dispatch in flight (serial slot, in-flight
-/// count, recorder slot) until the detached sink answers or is dropped, so
-/// a serial key is not served twice concurrently and the log's order is
-/// the serve order. Cancellation reaches the resolver through
-/// [`DetachedSink::is_closed`]: the consumer dropped its `Pending`, or an
-/// ancestor was cancelled. A late answer is discarded; a child consumer
-/// still listening receives cancellation.
-///
-/// ```ignore
-/// impl Serve for WorldTool {
-///     type Family = family::Tool;
-///     fn descriptor(&self) -> HandlerDescriptor { self.descriptor.clone() }
-///     async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
-///         // Not answered here: a system with `Query` access answers next tick.
-///         self.mailbox.lock().push((kind, sink.detach()));
-///     }
-/// }
-/// ```
-pub struct DetachedSink(OutcomeSink);
-
-impl std::fmt::Debug for DetachedSink {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DetachedSink")
-            .field("id", &self.0.id)
-            .field("stream", &self.0.is_stream())
-            .field("closed", &self.0.is_closed())
-            .finish()
-    }
-}
-
-impl DetachedSink {
-    /// The driver's scope of type `T`; see [`OutcomeSink::scope`].
-    pub fn scope<T: std::any::Any + Send + Sync>(&self) -> Option<std::sync::Arc<T>> {
-        self.0.scope::<T>()
-    }
-
-    /// Every scope the driver attached; see [`OutcomeSink::scopes`].
-    pub fn scopes(&self) -> Vec<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-        self.0.scopes()
-    }
-
-    /// The dispatch this sink answers.
-    pub const fn id(&self) -> EffectId {
-        self.0.id()
-    }
-
-    /// Whether the dispatch asked for a stream.
-    pub const fn is_stream(&self) -> bool {
-        self.0.is_stream()
-    }
-
-    /// Whether the consumer is gone or an ancestor was cancelled: a late
-    /// answer is discarded, and an unanswered dispatch records cancellation.
-    pub fn is_closed(&self) -> bool {
-        self.0.is_closed()
-    }
-
-    /// Answer the dispatch: [`OutcomeSink::resolve`].
-    pub fn resolve(self, outcome: Result<Outcome, ErrorReport>) -> HandlerFuture<'static> {
-        self.0.resolve(outcome)
-    }
-
-    /// Feed one stream item: [`OutcomeSink::send`].
-    pub async fn send(&mut self, item: Result<StreamEvent, ErrorReport>) -> Result<(), SinkClosed> {
-        self.0.send(item).await
-    }
-
-    /// Stream through a writer: [`OutcomeSink::writer`].
-    pub fn writer(self) -> super::StreamWriter {
-        self.0.writer()
-    }
-
-    /// The sink back, for a resolver that has the handler-side API in hand.
-    pub fn into_sink(self) -> OutcomeSink {
-        self.0
-    }
-}
-
-/// What a driver sees of one dispatch through the sink it handed out: the
-/// record's view. A driver that is on the reply path itself (an ECS
-/// schedule reading an outcome component) installs none; a driver that is
-/// not (rig-agent's bus, whose consumer holds the reply channel) installs one per
-/// dispatch with [`OutcomeSink::with_observer`], and it is told the
-/// outcome exactly once — at the terminal for a streaming dispatch.
 pub trait Observe: Send + Sync {
     /// The completed handler response, or the fold of a streaming handler's
     /// events. A resolved response retains content that has no stream block,
@@ -364,7 +180,8 @@ pub trait Observe: Send + Sync {
     fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>);
     /// Whether streamed events are wanted verbatim ([`Self::event`]).
     fn keep_events(&self) -> bool;
-    /// One streamed event, as it is sent.
+    /// One event pulled from the original handler stream. This is recording
+    /// evidence, not acknowledgement that a consumer received the item.
     fn event(&mut self, event: &StreamEvent);
     /// An error item in a kept stream, including errors after `Final`.
     fn stream_error(&mut self, _error: &ErrorReport) {}
@@ -374,425 +191,6 @@ pub trait Observe: Send + Sync {
     /// A layer serves `kind` in place of the effect that began (same
     /// family): the record's request is what the innermost handler served.
     fn patch(&mut self, kind: &EffectKind);
-}
-
-/// The driver's observer with the fold a streaming dispatch needs to tell
-/// it the outcome once.
-pub(crate) struct Observed {
-    observer: Box<dyn Observe>,
-    /// The fold of a streaming dispatch's events into the outcome the
-    /// observer is told. A unary dispatch folds in its own arm and tells
-    /// the observer what it resolved, so this stays empty there.
-    stream: StreamTap,
-    told: bool,
-}
-
-impl Observed {
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
-        if !self.told {
-            self.told = true;
-            self.observer.outcome(outcome);
-        }
-    }
-}
-
-/// A streaming dispatch answered with a non-completion outcome: what the
-/// consumer receives, and what the observer records.
-fn wrong_stream_answer(other: &Outcome) -> ErrorReport {
-    ErrorReport::new(
-        ErrorKind::Internal,
-        format!(
-            "a streaming dispatch was answered with a {} outcome",
-            other.family()
-        ),
-    )
-}
-
-impl Drop for OutcomeSink {
-    fn drop(&mut self) {
-        // Answered or not, the dispatch is over for the driver: dropping
-        // the sender resolves the driver's receiver.
-        self.done = None;
-        // A sink dropped before it answered is a dispatch the consumer sees
-        // fail — a stream cut short before its `Final`, a unary handler
-        // that never resolved — and the log records the same failure the
-        // consumer receives rather than losing the dispatch. One case is
-        // not a failure of the handler: the consumer dropped its `Pending`
-        // or `EffectStream`, the driver dropped the handler future, and the
-        // sink went with it. That is a cancellation, and the record says so
-        // — a replay of the log must not answer it as a provider failure.
-        let unanswered = match &self.inner {
-            SinkInner::Unary { reply, .. } => reply.is_some(),
-            SinkInner::Stream { finished, .. } => !*finished,
-        };
-        if unanswered && self.observer.as_ref().is_some_and(|seen| !seen.told) {
-            let report = if self.is_closed() {
-                cancelled()
-            } else {
-                match &self.inner {
-                    SinkInner::Unary { .. } => ErrorReport::new(
-                        ErrorKind::Internal,
-                        "the handler dropped its outcome sink without answering",
-                    ),
-                    SinkInner::Stream { .. } => stream_truncated(),
-                }
-            };
-            self.tell_outcome(&Err(report));
-        }
-        // Cancelled from above with a consumer still listening (a child whose
-        // `Pending` outlived its parent's handler): that consumer is told the
-        // dispatch was cancelled, not that a handler misbehaved.
-        let cancelled_from_above = self
-            .cancelled
-            .as_ref()
-            .is_some_and(|cancelled| cancelled.load(std::sync::atomic::Ordering::SeqCst));
-        if unanswered && cancelled_from_above {
-            match &mut self.inner {
-                SinkInner::Unary { reply, .. } => {
-                    if let Some(reply) = reply.take() {
-                        let _ = reply.send(Err(cancelled()));
-                    }
-                }
-                SinkInner::Stream { events, .. } => {
-                    // Each mpsc sender has one reserved slot. The producer
-                    // may have filled its slot before being cancelled; a
-                    // fresh sender reserves one terminal slot so cancellation
-                    // cannot turn into an apparently truncated stream.
-                    let _ = events.clone().try_send(Err(cancelled()));
-                }
-            }
-        }
-    }
-}
-
-/// The report a dispatch resolves to in the record when its consumer went
-/// away before the handler answered.
-pub fn cancelled() -> ErrorReport {
-    ErrorReport::new(
-        ErrorKind::Cancelled,
-        "the consumer cancelled the dispatch before it was answered",
-    )
-    .with_retryable(false)
-}
-
-#[allow(
-    clippy::large_enum_variant,
-    reason = "one sink per dispatch, moved into the handler once; the unary arm carries the fold state"
-)]
-enum SinkInner {
-    /// A unary dispatch. A streaming handler answering here is folded —
-    /// the one fold, [`StreamTap`] — and resolved at `Final`.
-    Unary {
-        reply: Option<oneshot::Sender<Result<Outcome, ErrorReport>>>,
-        fold: StreamTap,
-    },
-    /// A streaming dispatch. A unary handler answering here has its
-    /// completion re-emitted as events. `finished` is set once a unary
-    /// answer was re-emitted, so a later `send` is refused.
-    Stream {
-        events: mpsc::Sender<Result<StreamEvent, ErrorReport>>,
-        finished: bool,
-    },
-}
-
-impl OutcomeSink {
-    pub fn unary(id: EffectId, reply: oneshot::Sender<Result<Outcome, ErrorReport>>) -> Self {
-        Self {
-            id,
-            inner: SinkInner::Unary {
-                reply: Some(reply),
-                fold: StreamTap::new(),
-            },
-            observer: None,
-            done: None,
-            scopes: Vec::new(),
-            cancelled: None,
-        }
-    }
-
-    pub fn stream(id: EffectId, events: mpsc::Sender<Result<StreamEvent, ErrorReport>>) -> Self {
-        Self {
-            id,
-            inner: SinkInner::Stream {
-                events,
-                finished: false,
-            },
-            observer: None,
-            done: None,
-            scopes: Vec::new(),
-            cancelled: None,
-        }
-    }
-
-    /// Part of the driver seam: `done`'s receiver resolves when this sink
-    /// has answered or been dropped — after the handler future that held
-    /// it, if the sink was [detached](Self::detach). A driver keys the
-    /// dispatch's lifetime on it, not on the handler future.
-    pub fn with_done(mut self, done: oneshot::Sender<()>) -> Self {
-        self.done = Some(done);
-        self
-    }
-
-    /// Attach the driver's cancel marker (see the field): once set, the
-    /// sink is closed. Cancellation reserves one additional terminal slot
-    /// when dropping a full stream, so buffered output cannot hide it.
-    pub fn with_cancel(mut self, cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Self {
-        self.cancelled = Some(cancelled);
-        self
-    }
-
-    /// Attach one of the driver's scopes (see the field).
-    pub fn with_scope(mut self, scope: std::sync::Arc<dyn std::any::Any + Send + Sync>) -> Self {
-        self.scopes.push(scope);
-        self
-    }
-
-    /// The driver's scope of type `T`, read back as the type the driver
-    /// attached; `None` when no driver attached one or it is another
-    /// runtime's.
-    pub fn scope<T: std::any::Any + Send + Sync>(&self) -> Option<std::sync::Arc<T>> {
-        self.scopes
-            .iter()
-            .find_map(|scope| std::sync::Arc::downcast::<T>(scope.clone()).ok())
-    }
-
-    /// Every scope the driver attached, untyped, for an adapter that passes
-    /// them on (to a tool's [`ToolContext`](crate::tool::ToolContext)).
-    pub fn scopes(&self) -> Vec<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-        self.scopes.clone()
-    }
-
-    /// Leave the handler: the dispatch stays in flight until the returned
-    /// sink answers or is dropped. See [`DetachedSink`].
-    pub fn detach(self) -> DetachedSink {
-        DetachedSink(self)
-    }
-
-    /// The driver seam: install the driver's [`Observe`]r — the record's
-    /// view of this dispatch, for a driver that is not itself on the reply
-    /// path.
-    pub fn with_observer(mut self, observer: Box<dyn Observe>) -> Self {
-        self.observer = Some(Observed {
-            observer,
-            stream: StreamTap::new(),
-            told: false,
-        });
-        self
-    }
-
-    /// The layer seam: a layer serves `kind` in place of what began, so the
-    /// record's request is what the handler beneath will see.
-    pub(crate) fn patched(&mut self, kind: &EffectKind) {
-        if let Some(seen) = &mut self.observer {
-            seen.observer.patch(kind);
-        }
-    }
-
-    /// The layer seam: the observer moves to the innermost hop, so the
-    /// record holds what the handler answered, never a layer's verdict.
-    pub(crate) fn take_observer(&mut self) -> Option<Observed> {
-        self.observer.take()
-    }
-
-    pub(crate) fn with_observer_slot(mut self, observer: Option<Observed>) -> Self {
-        self.observer = observer;
-        self
-    }
-
-    /// The layer seam: an inner sink carries the outer's scope and cancel
-    /// marker, so a nested dispatch from the inner handler descends from the
-    /// same dispatch and a cancel from above reaches it.
-    pub(crate) fn inheriting(mut self, outer: &Self) -> Self {
-        self.scopes = outer.scopes.clone();
-        self.cancelled = outer.cancelled.clone();
-        self
-    }
-
-    /// The layer seam: the dispatch was decided before any handler served
-    /// it, so it is no record — the observer is told and dropped; what the
-    /// sink then resolves reaches the consumer only.
-    pub(crate) fn discard(&mut self) {
-        if let Some(mut seen) = self.observer.take() {
-            seen.observer.discard();
-        }
-    }
-
-    fn tell_outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
-        if let Some(seen) = &mut self.observer {
-            seen.outcome(outcome);
-        }
-    }
-
-    /// A streaming dispatch's item, seen by the observer: the event
-    /// verbatim when it keeps them, and the fold's outcome at the terminal.
-    fn tell_item(
-        &mut self,
-        item: &Result<StreamEvent, ErrorReport>,
-        resolved: Option<&Result<Outcome, ErrorReport>>,
-    ) {
-        let Some(seen) = &mut self.observer else {
-            return;
-        };
-        if let Ok(event) = item
-            && seen.observer.keep_events()
-        {
-            seen.observer.event(event);
-        }
-        if let Err(error) = item
-            && seen.observer.keep_events()
-        {
-            seen.observer.stream_error(error);
-        }
-        if let Ok(StreamEvent::Final(_)) = item
-            && let Some(outcome) = resolved
-        {
-            // Re-emission is not a lossless fold (images become Unknown).
-            // Keep the original answer, but only after accepting its Final.
-            seen.outcome(outcome);
-        } else if let Some(outcome) = seen.stream.observe(item) {
-            seen.outcome(&outcome);
-        }
-    }
-
-    /// The dispatch this sink answers.
-    pub const fn id(&self) -> EffectId {
-        self.id
-    }
-
-    /// Whether the dispatch asked for a stream (`dispatch_stream`).
-    pub const fn is_stream(&self) -> bool {
-        matches!(self.inner, SinkInner::Stream { .. })
-    }
-
-    /// Whether the consumer has stopped listening or the driver cancelled
-    /// the dispatch through an ancestor.
-    pub fn is_closed(&self) -> bool {
-        let cancelled_from_above = self
-            .cancelled
-            .as_ref()
-            .is_some_and(|cancelled| cancelled.load(std::sync::atomic::Ordering::SeqCst));
-        cancelled_from_above
-            || match &self.inner {
-                SinkInner::Unary { reply, .. } => reply.as_ref().is_none_or(|r| r.is_canceled()),
-                SinkInner::Stream { events, finished } => *finished || events.is_closed(),
-            }
-    }
-
-    /// Resolve a unary dispatch. On a streaming dispatch a completion is
-    /// re-emitted as its events followed by `Final`; an error is delivered
-    /// as one stream item. A non-completion outcome becomes an error.
-    pub fn resolve(mut self, outcome: Result<Outcome, ErrorReport>) -> HandlerFuture<'static> {
-        Box::pin(async move {
-            if self.is_closed() {
-                // Drop reports cancellation to the observer and any child
-                // consumer still listening. A detached resolver cannot
-                // overwrite a cancellation already published by the driver.
-                return;
-            }
-            if self.is_stream() {
-                let items = match &outcome {
-                    Ok(Outcome::Completion(response)) => events_from_response(response),
-                    Ok(other) => vec![Err(wrong_stream_answer(other))],
-                    Err(report) => vec![Err(report.clone())],
-                };
-                for item in items {
-                    // Use the same readiness/cancellation and observation
-                    // boundary as an actual streaming handler. In particular,
-                    // no successful response is recorded before it is sent.
-                    if self.send_item(item, Some(&outcome)).await.is_err() {
-                        return;
-                    }
-                }
-                if let SinkInner::Stream { finished, .. } = &mut self.inner {
-                    *finished = true;
-                }
-            } else {
-                self.tell_outcome(&outcome);
-                if let SinkInner::Unary { reply, .. } = &mut self.inner
-                    && let Some(reply) = reply.take()
-                {
-                    let _ = reply.send(outcome);
-                }
-            }
-        })
-    }
-
-    /// Feed one stream item. On a unary dispatch the item is folded into the
-    /// accumulator and `Final` resolves the dispatch with the aggregated
-    /// [`CompletionResponse`]; an error resolves it with the report.
-    ///
-    /// `Err(SinkClosed)` means the consumer is gone or the dispatch was
-    /// cancelled through an ancestor: stop producing.
-    pub async fn send(&mut self, item: Result<StreamEvent, ErrorReport>) -> Result<(), SinkClosed> {
-        self.send_item(item, None).await
-    }
-
-    async fn send_item(
-        &mut self,
-        item: Result<StreamEvent, ErrorReport>,
-        resolved: Option<&Result<Outcome, ErrorReport>>,
-    ) -> Result<(), SinkClosed> {
-        // Recheck cancellation on every readiness poll: a detached sender
-        // can be cancelled while it is waiting for buffer space.
-        futures::future::poll_fn(|cx| self.poll_ready(cx)).await?;
-        let observed = match &mut self.inner {
-            SinkInner::Stream { events, .. } => {
-                // `Final` is not the end of the channel: a wire may still
-                // deliver frames after its terminal record (a late message
-                // id, a provider error), and the consumer's post-final rules
-                // are its own. The stream ends when the handler drops the
-                // sink.
-                let observed = self.observer.as_ref().map(|_| item.clone());
-                events.start_send(item).map_err(|_| SinkClosed)?;
-                observed
-            }
-            SinkInner::Unary { reply, fold } => {
-                let Some(sender) = reply.as_ref() else {
-                    return Err(SinkClosed);
-                };
-                if sender.is_canceled() {
-                    *reply = None;
-                    return Err(SinkClosed);
-                }
-                // The one fold: the terminal, or an error, or a fold failure
-                // resolves the dispatch; anything else is folded and taken.
-                let Some(outcome) = fold.observe(&item) else {
-                    return Ok(());
-                };
-                if let Some(seen) = &mut self.observer {
-                    seen.outcome(&outcome);
-                }
-                if let SinkInner::Unary { reply, .. } = &mut self.inner
-                    && let Some(reply) = reply.take()
-                {
-                    let _ = reply.send(outcome);
-                }
-                return Ok(());
-            }
-        };
-        // The channel accepted the item. A blocked or rejected Final must
-        // never become a successful outcome in the observer's log.
-        if let Some(item) = observed {
-            self.tell_item(&item, resolved);
-        }
-        if let SinkInner::Stream { events, .. } = &mut self.inner {
-            events.flush().await.map_err(|_| SinkClosed)?;
-        }
-        Ok(())
-    }
-
-    /// Wait until the consumer can take another item without the driver
-    /// stalling — the back-pressure point a streaming handler may poll
-    /// explicitly. A live unary dispatch is immediately ready.
-    pub fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), SinkClosed>> {
-        if self.is_closed() {
-            return Poll::Ready(Err(SinkClosed));
-        }
-        match &mut self.inner {
-            SinkInner::Stream { events, .. } => events.poll_ready(cx).map_err(|_| SinkClosed),
-            SinkInner::Unary { .. } => Poll::Ready(Ok(())),
-        }
-    }
 }
 
 fn finish_unary(
@@ -890,7 +288,7 @@ pub(crate) fn events_from_response(
 }
 
 /// The one fold of a stream into the completion a unary consumer, or the
-/// record, holds: what a unary sink runs over a streaming handler's
+/// record, holds: what a unary consumer runs over a streaming handler's
 /// events, what the driver's observer runs over a streaming dispatch, what
 /// a layer runs for its verdict.
 #[derive(Default)]
@@ -943,11 +341,320 @@ pub fn stream_truncated() -> ErrorReport {
     )
 }
 
-// The sink crosses out of its handler (`detach`) and into whatever answers
-// it — a Bevy system on another thread, natively — so it is `Send + Sync`
-// on every target: reply channel, fold state and observer, never a handler.
-const _: () = {
-    const fn assert_send_sync<T: Send + Sync + 'static>() {}
-    assert_send_sync::<OutcomeSink>();
-    assert_send_sync::<DetachedSink>();
-};
+/// An answer, or an owned stream whose execution belongs to the driver.
+#[allow(
+    clippy::large_enum_variant,
+    reason = "a unary reply is returned once without another allocation"
+)]
+pub enum Reply {
+    /// The completed unary answer or a setup error.
+    Outcome(Result<Outcome, ErrorReport>),
+    /// Events, including any frames after the first terminal record.
+    Stream(StreamEvents),
+}
+
+impl Reply {
+    /// Fold a stream to its first outcome, or return the unary answer.
+    pub async fn into_outcome(self) -> Result<Outcome, ErrorReport> {
+        self.folded_outcome(None).await
+    }
+
+    pub(crate) async fn folded_outcome(
+        self,
+        folded: Option<Folded>,
+    ) -> Result<Outcome, ErrorReport> {
+        match self {
+            Self::Outcome(outcome) => outcome,
+            Self::Stream(mut stream) => {
+                let mut fold = StreamTap::new();
+                while let Some(item) = stream.next().await {
+                    let outcome = match &folded {
+                        Some(folded) => lock(folded).take(),
+                        None => fold.observe(&item),
+                    };
+                    if let Some(outcome) = outcome {
+                        return outcome;
+                    }
+                }
+                Err(stream_truncated())
+            }
+        }
+    }
+
+    /// Convert a completion into events; incompatible outcomes become errors.
+    pub fn into_stream(self) -> StreamEvents {
+        match self {
+            Self::Stream(stream) => stream,
+            Self::Outcome(outcome) => Box::pin(futures::stream::iter(match outcome {
+                Ok(Outcome::Completion(response)) => events_from_response(&response),
+                Ok(other) => vec![Err(wrong_stream_answer(&other))],
+                Err(report) => vec![Err(report)],
+            })),
+        }
+    }
+
+    fn observed(self, streaming: bool, mut seen: Option<Observed>, folded: Option<Folded>) -> Self {
+        if !streaming && let Self::Outcome(outcome) = self {
+            if let Some(seen) = &mut seen {
+                seen.outcome(&outcome);
+            }
+            return Self::Outcome(outcome);
+        }
+        if seen.is_none() && folded.is_none() {
+            return if streaming {
+                Self::Stream(self.into_stream())
+            } else {
+                self
+            };
+        }
+        let original = match &self {
+            Self::Outcome(Ok(Outcome::Completion(response))) => {
+                Some(Ok(Outcome::Completion(response.clone())))
+            }
+            _ => None,
+        };
+        let mut stream = self.into_stream();
+        let mut fold = StreamTap::new();
+        let mut finished = false;
+        Self::Stream(Box::pin(futures::stream::poll_fn(move |cx| {
+            let item = match stream.as_mut().poll_next(cx) {
+                Poll::Pending => return Poll::Pending,
+                Poll::Ready(item) => item,
+            };
+            if let Some(item) = &item {
+                if streaming && let Some(seen) = &mut seen {
+                    seen.item(item);
+                }
+                if !finished && let Some(outcome) = fold.observe(item) {
+                    finished = true;
+                    if let Some(seen) = &mut seen {
+                        let recorded = if matches!(item, Ok(StreamEvent::Final(_))) {
+                            original.as_ref().unwrap_or(&outcome)
+                        } else {
+                            &outcome
+                        };
+                        seen.outcome(recorded);
+                    }
+                    if let Some(folded) = &folded {
+                        *lock(folded) = Some(outcome);
+                    }
+                }
+            } else if !finished {
+                finished = true;
+                let outcome = Err(stream_truncated());
+                if let Some(seen) = &mut seen {
+                    seen.outcome(&outcome);
+                }
+                if let Some(folded) = &folded {
+                    *lock(folded) = Some(outcome);
+                }
+            }
+            Poll::Ready(item)
+        })))
+    }
+}
+
+// A layer and the recorder at its immediate inner boundary use the same fold.
+// Each outer boundary gets its own slot: a verdict can change that view.
+pub(crate) type Folded = Arc<Mutex<Option<Result<Outcome, ErrorReport>>>>;
+
+fn lock<T>(value: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    value
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// An effect's identity, requested delivery mode, and driver-provided scopes.
+/// Reply transport and cancellation remain owned by the driver.
+pub struct Dispatch {
+    id: EffectId,
+    streaming: bool,
+    scopes: Vec<Arc<dyn std::any::Any + Send + Sync>>,
+    observer: Option<Arc<Mutex<Option<Observed>>>>,
+    folded: Option<Folded>,
+}
+
+impl Dispatch {
+    /// Construct the context for one effect.
+    pub fn new(id: EffectId, streaming: bool) -> Self {
+        Self {
+            id,
+            streaming,
+            scopes: Vec::new(),
+            observer: None,
+            folded: None,
+        }
+    }
+
+    /// The effect being served.
+    pub const fn id(&self) -> EffectId {
+        self.id
+    }
+
+    /// Whether the consumer requested streaming delivery.
+    pub const fn is_stream(&self) -> bool {
+        self.streaming
+    }
+
+    /// Attach a driver scope.
+    pub fn with_scope(mut self, scope: Arc<dyn std::any::Any + Send + Sync>) -> Self {
+        self.scopes.push(scope);
+        self
+    }
+
+    /// Find a scope by its concrete type.
+    pub fn scope<T: std::any::Any + Send + Sync>(&self) -> Option<Arc<T>> {
+        self.scopes
+            .iter()
+            .find_map(|scope| Arc::downcast::<T>(scope.clone()).ok())
+    }
+
+    /// Copy the scope handles for an inline or tool dispatch.
+    pub fn scopes(&self) -> Vec<Arc<dyn std::any::Any + Send + Sync>> {
+        self.scopes.clone()
+    }
+
+    /// Observe the original handler answer independently of layer verdicts.
+    pub fn with_observer(mut self, observer: Box<dyn Observe>) -> Self {
+        self.observer = Some(Arc::new(Mutex::new(Some(Observed {
+            observer,
+            told: false,
+        }))));
+        self
+    }
+
+    pub(crate) fn patched(&mut self, kind: &EffectKind) {
+        if let Some(slot) = &self.observer
+            && let Some(seen) = lock(slot).as_mut()
+        {
+            seen.observer.patch(kind);
+        }
+    }
+
+    pub(crate) fn discard(&mut self) {
+        if let Some(slot) = &self.observer
+            && let Some(mut seen) = lock(slot).take()
+        {
+            seen.told = true;
+            seen.observer.discard();
+        }
+    }
+
+    pub(crate) fn inner(&mut self, folded: Option<Folded>) -> Self {
+        let observer = self.observer.as_ref().and_then(|slot| lock(slot).take());
+        Self {
+            id: self.id,
+            streaming: self.streaming,
+            scopes: self.scopes.clone(),
+            observer: observer.map(|seen| Arc::new(Mutex::new(Some(seen)))),
+            folded,
+        }
+    }
+}
+
+struct Observed {
+    observer: Box<dyn Observe>,
+    told: bool,
+}
+
+impl Observed {
+    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+        if !self.told {
+            self.told = true;
+            self.observer.outcome(outcome);
+        }
+    }
+
+    fn item(&mut self, item: &Result<StreamEvent, ErrorReport>) {
+        if self.observer.keep_events() {
+            match item {
+                Ok(event) => self.observer.event(event),
+                Err(report) => self.observer.stream_error(report),
+            }
+        }
+    }
+}
+
+impl Drop for Observed {
+    fn drop(&mut self) {
+        self.outcome(&Err(cancelled()));
+    }
+}
+
+fn wrong_stream_answer(other: &Outcome) -> ErrorReport {
+    ErrorReport::new(
+        ErrorKind::Internal,
+        format!(
+            "a streaming dispatch was answered with a {} outcome",
+            other.family()
+        ),
+    )
+}
+
+/// The consumer stopped listening before an answer was observed.
+pub fn cancelled() -> ErrorReport {
+    ErrorReport::new(
+        ErrorKind::Cancelled,
+        "the consumer cancelled the dispatch before it was answered",
+    )
+    .with_retryable(false)
+}
+
+/// The receiver of an external answer or writer has been dropped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("the dispatch's consumer is gone")]
+pub struct SinkClosed;
+
+/// A single-use answer owned by an external responder.
+pub struct Resolver(oneshot::Sender<Result<Outcome, ErrorReport>>);
+
+/// Return a resolver and the answer future a handler must await.
+/// Dropping the resolver without answering reports the established
+/// unanswered-handler error; dropping the future closes the resolver.
+pub fn deferred() -> (
+    Resolver,
+    impl Future<Output = Result<Outcome, ErrorReport>> + Send + 'static,
+) {
+    let (sender, receiver) = oneshot::channel();
+    (Resolver(sender), async move {
+        receiver.await.unwrap_or_else(|_| {
+            Err(ErrorReport::new(
+                ErrorKind::Internal,
+                "the handler dropped its outcome sink without answering",
+            ))
+        })
+    })
+}
+
+impl Resolver {
+    /// Answer once. A late answer is discarded and reports closure.
+    pub fn resolve(self, outcome: Result<Outcome, ErrorReport>) -> Result<(), SinkClosed> {
+        self.0.send(outcome).map_err(|_| SinkClosed)
+    }
+
+    /// Whether the handler stopped waiting for this answer.
+    pub fn is_closed(&self) -> bool {
+        self.0.is_canceled()
+    }
+}
+
+/// Serve an effect inline, using the same reply conversions as a driver.
+pub async fn serve_inline(
+    handler: &ErasedHandler,
+    kind: EffectKind,
+) -> Result<Outcome, ErrorReport> {
+    serve_inline_with(handler, kind, Vec::new()).await
+}
+
+/// Serve inline with driver scopes, including tool context and publication.
+pub async fn serve_inline_with(
+    handler: &ErasedHandler,
+    kind: EffectKind,
+    scopes: Vec<Arc<dyn std::any::Any + Send + Sync>>,
+) -> Result<Outcome, ErrorReport> {
+    let mut dispatch = Dispatch::new(EffectId::from_raw(0), false);
+    for scope in scopes {
+        dispatch = dispatch.with_scope(scope);
+    }
+    handler.handle(kind, dispatch).await.into_outcome().await
+}

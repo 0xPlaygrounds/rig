@@ -290,13 +290,12 @@ const _: fn(&Registrar) = |registrar| {
         async fn serve(
             &self,
             _kind: rig_core::effect::EffectKind,
-            sink: rig_core::serve::OutcomeSink,
-        ) {
+            _dispatch: rig_core::serve::Dispatch,
+        ) -> rig_core::serve::Reply {
             self.0.set(self.0.get() + 1);
-            sink.resolve(Ok(rig_core::effect::Outcome::Custom {
+            return rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Custom {
                 payload: serde_json::Value::Null,
-            }))
-            .await;
+            }));
         }
     }
 

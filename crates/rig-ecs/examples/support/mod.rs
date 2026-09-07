@@ -10,6 +10,7 @@
     reason = "each example uses the part of the support it needs"
 )]
 
+use rig_core::serve::Dispatch;
 use std::sync::Mutex;
 
 use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Update};
@@ -19,7 +20,7 @@ use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
-    serve::{OutcomeSink, Serve, ServingPolicy},
+    serve::{Reply, Serve, ServingPolicy},
     streaming::StreamFinal,
     tool::{ToolOutput, ToolResult},
 };
@@ -62,56 +63,55 @@ impl Serve for Scripted {
         model_descriptor()
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Completion { stream: false, .. } => {
                 let response = CompletionResponse::new(self.next(), Usage::new(), "scripted");
-                sink.resolve(Ok(Outcome::Completion(response))).await;
+                Reply::Outcome(Ok(Outcome::Completion(response)))
             }
             EffectKind::Completion { stream: true, .. } => {
                 // The next answer, streamed a word at a time.
-                let mut writer = sink.writer();
-                for part in self.next() {
-                    match part {
-                        AssistantContent::Text(text) => {
-                            for word in text.text.split_inclusive(' ') {
-                                if writer.text(word).await.is_err() {
+                let parts = self.next();
+                Reply::written(move |mut writer| async move {
+                    for part in parts {
+                        match part {
+                            AssistantContent::Text(text) => {
+                                for word in text.text.split_inclusive(' ') {
+                                    if writer.text(word).await.is_err() {
+                                        return;
+                                    }
+                                }
+                            }
+                            AssistantContent::ToolCall(call) => {
+                                if writer
+                                    .tool_call(call.function.name, call.function.arguments)
+                                    .await
+                                    .is_err()
+                                {
                                     return;
                                 }
                             }
+                            AssistantContent::Reasoning(_) | AssistantContent::Image(_) => {}
                         }
-                        AssistantContent::ToolCall(call) => {
-                            if writer
-                                .tool_call(call.function.name, call.function.arguments)
-                                .await
-                                .is_err()
-                            {
-                                return;
-                            }
-                        }
-                        AssistantContent::Reasoning(_) | AssistantContent::Image(_) => {}
                     }
-                }
-                let _ = writer
-                    .finish(StreamFinal {
-                        usage: Usage::new(),
-                        finish_reason: None,
-                        message_id: None,
-                        response_id: None,
-                        provider_request_id: None,
-                        provider: "scripted".to_owned(),
-                        model: None,
-                        raw: serde_json::Value::Null,
-                    })
-                    .await;
+                    let _ = writer
+                        .finish(StreamFinal {
+                            usage: Usage::new(),
+                            finish_reason: None,
+                            message_id: None,
+                            response_id: None,
+                            provider_request_id: None,
+                            provider: "scripted".to_owned(),
+                            model: None,
+                            raw: serde_json::Value::Null,
+                        })
+                        .await;
+                })
             }
-            other => {
-                sink.resolve(Err(ErrorReport::new(
-                    ErrorKind::HandlerUnavailable,
-                    format!("a model cannot serve {}", other.name()),
-                )))
-                .await;
-            }
+            other => Reply::Outcome(Err(ErrorReport::new(
+                ErrorKind::HandlerUnavailable,
+                format!("a model cannot serve {}", other.name()),
+            ))),
         }
     }
 }
@@ -164,18 +164,18 @@ impl Serve for Tool {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let EffectKind::ToolCall { args, .. } = kind else {
-            sink.resolve(Err(ErrorReport::new(ErrorKind::Internal, "not a call")))
-                .await;
-            return;
+            return rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+                ErrorKind::Internal,
+                "not a call",
+            )));
         };
         let args: serde_json::Value = serde_json::from_str(&args).unwrap_or_default();
         let value = (self.run)(args);
-        sink.resolve(Ok(Outcome::ToolResult {
+        rig_core::serve::Reply::Outcome(Ok(Outcome::ToolResult {
             result: ToolResult::success(ToolOutput::json(value)),
         }))
-        .await;
     }
 }
 

@@ -2,16 +2,16 @@
 
 use bevy_ecs::prelude::*;
 use bevy_tasks::futures::check_ready;
-use futures::channel::mpsc::TryRecvError;
 use rig_core::{
-    serve::stream_truncated,
+    serve::{Reply, stream_truncated},
     streaming::{Delta, StreamEvent},
 };
+use std::task::{Context, Poll, Waker};
 
 use super::{
     effect::{
-        EffectOutcome, InFlight, Issued, Publishing, Serving, Streamed, Streaming, ToolOutputs,
-        WorldOutcome,
+        EffectOutcome, Executions, InFlight, Issued, Publishing, Serving, Streamed, Streaming,
+        ToolOutputs, WorldOutcome,
     },
     plugin::Progress,
     record::{DeliveryBatch, Observed, Recording},
@@ -50,67 +50,72 @@ pub fn collect_world(
 /// (`check_ready`), no waker kept, nothing awaited.
 pub fn collect_tasks(
     mut commands: Commands,
-    mut serving: Query<(Entity, &mut Serving, Option<&Publishing>), With<InFlight>>,
+    serving: Query<(Entity, &Serving, Option<&Publishing>), With<InFlight>>,
+    mut executions: NonSendMut<Executions>,
     mut progress: ResMut<Progress>,
 ) {
-    for (entity, mut serving, publishing) in &mut serving {
-        if let Some(outcome) = check_ready(&mut serving.0) {
-            let mut entity_commands = commands.entity(entity);
-            entity_commands.remove::<Serving>();
-            if let Some(Publishing(published)) = publishing {
-                entity_commands.remove::<Publishing>();
-                if let Some(context) = published.take() {
-                    entity_commands.insert(ToolOutputs(context));
+    for (entity, _, publishing) in &serving {
+        let Some(task) = executions.tasks.get_mut(&entity) else {
+            continue;
+        };
+        let Some(reply) = check_ready(task) else {
+            continue;
+        };
+        executions.tasks.remove(&entity);
+        let mut entity_commands = commands.entity(entity);
+        entity_commands.remove::<Serving>();
+        match reply {
+            Reply::Outcome(outcome) => {
+                if let Some(Publishing(published)) = publishing {
+                    entity_commands.remove::<Publishing>();
+                    if let Some(context) = published.take() {
+                        entity_commands.insert(ToolOutputs(context));
+                    }
                 }
+                entity_commands
+                    .insert(CollectedOutcome)
+                    .insert(EffectOutcome(outcome));
+                progress.mark();
             }
-            // Outcome observers must see durable publication in both live
-            // collection and replay, including error outcomes.
-            entity_commands
-                .insert(CollectedOutcome)
-                .insert(EffectOutcome(outcome));
-            progress.mark();
+            Reply::Stream(stream) => {
+                executions.streams.insert(entity, stream);
+                entity_commands.insert(Streaming::default());
+            }
         }
     }
 }
 
-/// A streaming handler sent: every item it has sent since the last pass is
-/// folded into [`Streamed`] (the record keeps the events when it keeps
-/// events; the fold yields the outcome at the terminal or at an error);
-/// when the handler's channel closes the fold's outcome — or a truncation
-/// report when no terminal came — lands as [`EffectOutcome`].
+/// Poll each owned stream once and fold the returned item. The first folded
+/// outcome is retained; streaming effects settle at EOF, including post-final
+/// metadata and errors. Pending waits for the host's next Collect invocation.
 pub fn collect_streams(
     mut commands: Commands,
     mut streaming: Query<StreamingView, With<InFlight>>,
+    mut executions: NonSendMut<Executions>,
     recording: Option<Res<Recording>>,
     batch: Res<DeliveryBatch>,
     mut progress: ResMut<Progress>,
 ) {
-    for (entity, Issued(id), mut streaming, mut streamed, observed) in &mut streaming {
-        let mut items = 0;
-        loop {
-            match streaming.events.try_recv() {
-                Ok(item) => {
-                    items += 1;
+    let mut cx = Context::from_waker(Waker::noop());
+    for (entity, Issued(id), mut streaming, mut streamed, publishing) in &mut streaming {
+        let Some(stream) = executions.streams.get_mut(&entity) else {
+            continue;
+        };
+        // One call to the outer stream per Collect invocation. Pending relies
+        // on the host's next pass; this waker does not schedule the world.
+        let polled = stream.as_mut().poll_next(&mut cx);
+        let outcome = match polled {
+            Poll::Pending => continue,
+            Poll::Ready(Some(item)) => {
+                if let Some(streamed) = &mut streamed {
                     if let Err(error) = &item {
                         let position = streamed.events.len() + streamed.errors.len();
                         streamed.errors.push((position, error.clone()));
-                    }
-                    // A layered handler's events are the observer's to
-                    // record, from the innermost hop.
-                    if let (Some(recording), false) = (&recording, observed)
-                        && recording.keep_events()
-                    {
-                        match &item {
-                            Ok(event) => recording.event(*id, event),
-                            Err(error) => recording.stream_error(*id, error),
-                        }
                     }
                     if streamed.outcome.is_none()
                         && let Some(outcome) = streaming.fold.observe(&item)
                     {
                         streamed.outcome = Some(outcome);
-                        // The fold's outcome is a transition; a delta is not —
-                        // a fast handler must not spin the quiescence loop.
                         progress.mark();
                     }
                     if let Ok(event) = item {
@@ -123,43 +128,49 @@ pub fn collect_streams(
                         }
                         streamed.events.push(event);
                     }
+                    if let Some(recording) = &recording {
+                        recording.delivery(
+                            batch.0,
+                            *id,
+                            rig_core::effect::DeliveryKind::Stream { items: 1 },
+                        );
+                    }
+                    continue;
                 }
-                Err(TryRecvError::Closed) => {
-                    let outcome = streamed
-                        .outcome
-                        .clone()
-                        .unwrap_or_else(|| Err(stream_truncated()));
-                    commands
-                        .entity(entity)
-                        .remove::<Streaming>()
-                        .insert(CollectedOutcome)
-                        .insert(EffectOutcome(outcome));
-                    progress.mark();
-                    break;
-                }
-                Err(TryRecvError::Empty) => break,
+                // A unary request answered by a stream ends at the first fold.
+                let Some(outcome) = streaming.fold.observe(&item) else {
+                    continue;
+                };
+                outcome
+            }
+            Poll::Ready(None) => streamed
+                .as_ref()
+                .and_then(|streamed| streamed.outcome.clone())
+                .unwrap_or_else(|| Err(stream_truncated())),
+        };
+        executions.streams.remove(&entity);
+        let mut entity_commands = commands.entity(entity);
+        if let Some(Publishing(published)) = publishing {
+            entity_commands.remove::<Publishing>();
+            if let Some(context) = published.take() {
+                entity_commands.insert(ToolOutputs(context));
             }
         }
-        if items != 0
-            && let Some(recording) = &recording
-        {
-            recording.delivery(
-                batch.0,
-                *id,
-                rig_core::effect::DeliveryKind::Stream { items },
-            );
-        }
+        entity_commands
+            .remove::<Streaming>()
+            .insert(CollectedOutcome)
+            .insert(EffectOutcome(outcome));
+        progress.mark();
     }
 }
 
-/// What `collect_streams` reads of a streaming effect: its id, the task
-/// and channel, the fold so far, and whether a layer's observer records.
+/// The effect's delivery fold and optional streamed consumer state.
 pub type StreamingView = (
     Entity,
     &'static Issued,
     &'static mut Streaming,
-    &'static mut Streamed,
-    Has<Observed>,
+    Option<&'static mut Streamed>,
+    Option<&'static Publishing>,
 );
 
 /// An outcome that landed on an effect still in flight.
@@ -208,3 +219,6 @@ pub fn settle(
         progress.mark();
     }
 }
+
+#[cfg(test)]
+mod tests;

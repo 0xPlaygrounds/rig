@@ -46,3 +46,5 @@ provider Final. Only middleware_streaming requires usage>0; the entry-log case
 requires Final existence. WireProbe's named test asserts final phase counts; it
 does not itself timestamp response-vs-consumption, so no extra timing guarantee
 is claimed from that test name.
+
+Initial handler tasks return owned replies. The native host polls returned streams once per Collect invocation; provider parsing and layer work run on that thread. Dropping an effect removes its stream, while serial accounting remains through EOF during normal streaming completion.

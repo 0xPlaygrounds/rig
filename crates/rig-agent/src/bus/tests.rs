@@ -1,3 +1,4 @@
+use rig_core::serve::Dispatch;
 use std::{
     sync::{
         Arc, Mutex,
@@ -15,7 +16,7 @@ use super::{
 };
 use rig_core::effect::{CustomEffect, Key};
 use rig_core::serve::{
-    OutcomeSink, Serve,
+    Reply as CoreReply, Serve,
     adapters::{CompletionAdapter, MemoryAdapter, RerankAdapter, ToolAdapter, ToolFn},
 };
 use rig_core::{
@@ -110,7 +111,7 @@ impl Serve for Echo {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let gate = self.gate.lock().expect("gate lock").take();
         {
             if let Some(gate) = gate {
@@ -124,7 +125,7 @@ impl Serve for Echo {
                     format!("echo received {}", other.name()),
                 )),
             };
-            sink.resolve(outcome).await;
+            rig_core::serve::Reply::Outcome(outcome)
         }
     }
 }
@@ -148,7 +149,7 @@ impl Serve for Ordered {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let (index, delay) = match &kind {
             EffectKind::Custom { payload, .. } => (
                 payload["index"].as_u64().unwrap_or(0),
@@ -158,10 +159,9 @@ impl Serve for Ordered {
         };
         tokio::time::sleep(Duration::from_millis(delay)).await;
         self.served.lock().expect("order lock").push(index);
-        sink.resolve(Ok(Outcome::Custom {
+        rig_core::serve::Reply::Outcome(Ok(Outcome::Custom {
             payload: json!(index),
         }))
-        .await;
     }
 }
 
@@ -613,25 +613,23 @@ impl Serve for SelfCaller {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, _kind: EffectKind, dispatch: Dispatch) -> rig_core::serve::Reply {
         if self.nested.swap(true, Ordering::SeqCst) {
-            sink.resolve(Ok(Outcome::Custom {
+            return rig_core::serve::Reply::Outcome(Ok(Outcome::Custom {
                 payload: json!("plain"),
-            }))
-            .await;
-            return;
+            }));
         }
-        // The way back onto the bus is the sink's dispatcher: its dispatches
+        // The way back onto the bus is the dispatch's dispatcher: its dispatches
         // carry this dispatch as their parent, which is what the serial
         // re-entrancy rule reads. The captured consumer dispatcher is kept
         // only to show a handler needs no dispatcher of its own.
         let dispatcher =
-            super::SinkDispatch::dispatcher(&sink).unwrap_or_else(|| self.dispatcher.clone());
+            super::DispatchScope::dispatcher(&dispatch).unwrap_or_else(|| self.dispatcher.clone());
         let key = self.key.clone();
         {
             assert_eq!(
                 dispatcher.parent(),
-                Some(sink.id()),
+                Some(dispatch.id()),
                 "scoped to the served dispatch"
             );
             let mut nested = dispatcher.dispatch(&key, custom(json!("nested")));
@@ -650,7 +648,7 @@ impl Serve for SelfCaller {
                     format!("the nested dispatch was not refused: {other:?}"),
                 )),
             };
-            sink.resolve(outcome).await;
+            rig_core::serve::Reply::Outcome(outcome)
         }
     }
 }
@@ -833,7 +831,7 @@ async fn a_unary_dispatch_of_a_unary_script_resolves_the_completion() {
 
     // The model is scripted unary; ask for a stream of a unary completion
     // kind by dispatching the streaming kind through a unary-only script is
-    // not possible, so exercise the sink directly through the replayer path
+    // not possible, so exercise reply conversion through the replayer path
     // below. Here: the adapter's unary arm resolves a unary dispatch.
     let outcome = within(dispatcher.dispatch(&HandlerKey::from("model"), completion_kind(false)))
         .await
@@ -862,15 +860,24 @@ async fn dropping_the_stream_cancels_the_handler() {
                 layers: Vec::new(),
             }
         }
-        async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-            let mut out = sink.writer();
-            loop {
-                if out.text("x").await.is_err() {
-                    self.cancelled.fetch_add(1, Ordering::SeqCst);
-                    return;
+        async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> CoreReply {
+            struct Cancelled(Arc<AtomicUsize>);
+            impl Drop for Cancelled {
+                fn drop(&mut self) {
+                    self.0.fetch_add(1, Ordering::SeqCst);
                 }
-                self.sends.fetch_add(1, Ordering::SeqCst);
             }
+            let sends = self.sends.clone();
+            let cancelled = self.cancelled.clone();
+            CoreReply::written(move |mut out| async move {
+                let _cancelled = Cancelled(cancelled);
+                loop {
+                    if out.text("x").await.is_err() {
+                        return;
+                    }
+                    sends.fetch_add(1, Ordering::SeqCst);
+                }
+            })
         }
     }
     let sends = Arc::new(AtomicUsize::new(0));
@@ -1132,10 +1139,10 @@ impl Serve for Hanging {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, _kind: EffectKind, dispatch: Dispatch) -> CoreReply {
         let _flag = DropFlag(self.dropped.clone());
-        let _sink = sink;
-        futures::future::pending::<()>().await;
+        let _dispatch = dispatch;
+        std::future::pending().await
     }
 }
 
@@ -1351,11 +1358,10 @@ impl Serve for RegistersOnDrop {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-        sink.resolve(Ok(Outcome::Custom {
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
+        rig_core::serve::Reply::Outcome(Ok(Outcome::Custom {
             payload: json!("never"),
         }))
-        .await;
     }
 }
 
@@ -1413,11 +1419,10 @@ impl Serve for DropCounter {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-        sink.resolve(Ok(Outcome::Custom {
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
+        rig_core::serve::Reply::Outcome(Ok(Outcome::Custom {
             payload: json!(null),
         }))
-        .await;
     }
 }
 
@@ -1490,13 +1495,14 @@ impl Serve for AskUserHandler {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let misbehave = self.misbehave;
         {
             let EffectKind::Custom { payload, .. } = kind else {
-                sink.resolve(Err(ErrorReport::new(ErrorKind::Internal, "not custom")))
-                    .await;
-                return;
+                return rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+                    ErrorKind::Internal,
+                    "not custom",
+                )));
             };
             let answer = if misbehave {
                 json!({"nope": 1})
@@ -1504,7 +1510,7 @@ impl Serve for AskUserHandler {
                 let ask: AskUser = serde_json::from_value(payload).expect("an AskUser");
                 json!({"text": format!("you asked: {}", ask.prompt)})
             };
-            sink.resolve(Ok(Outcome::Custom { payload: answer })).await;
+            rig_core::serve::Reply::Outcome(Ok(Outcome::Custom { payload: answer }))
         }
     }
 }
@@ -1703,19 +1709,20 @@ async fn a_stream_written_through_the_writer_is_well_formed() {
             }
         }
 
-        async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-            let mut out = sink.writer();
-            let _ = out.reasoning("thinking").await;
-            let _ = out.text("hel").await;
-            let _ = out.text("lo").await;
-            let _ = out.tool_call("add", json!({"x": 1})).await;
-            let _ = out.text("after").await;
-            let _ = out
-                .finish(rig_core::streaming::StreamFinal::new(
-                    "writer",
-                    rig_core::completion::Usage::new(),
-                ))
-                .await;
+        async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> CoreReply {
+            CoreReply::written(|mut out| async move {
+                let _ = out.reasoning("thinking").await;
+                let _ = out.text("hel").await;
+                let _ = out.text("lo").await;
+                let _ = out.tool_call("add", json!({"x": 1})).await;
+                let _ = out.text("after").await;
+                let _ = out
+                    .finish(rig_core::streaming::StreamFinal::new(
+                        "writer",
+                        rig_core::completion::Usage::new(),
+                    ))
+                    .await;
+            })
         }
     }
 
@@ -2136,10 +2143,10 @@ fn a_parked_value_dropped_before_the_drain_leaves_no_slot_to_wake() {
     );
 }
 
-/// Detaches every sink it is given into a mailbox and returns at once —
+/// Publishes each resolver in a mailbox, then awaits its external answer —
 /// the shape of a tool answered by a Bevy system.
 struct Detaching {
-    mailbox: Arc<Mutex<Vec<rig_core::serve::DetachedSink>>>,
+    mailbox: Arc<Mutex<Vec<rig_core::serve::Resolver>>>,
 }
 
 impl Serve for Detaching {
@@ -2155,13 +2162,15 @@ impl Serve for Detaching {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-        self.mailbox.lock().expect("mailbox").push(sink.detach());
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> CoreReply {
+        let (resolver, answer) = rig_core::serve::deferred();
+        self.mailbox.lock().expect("mailbox").push(resolver);
+        CoreReply::Outcome(answer.await)
     }
 }
 
 #[test]
-fn a_detached_sink_keeps_its_serial_slot_until_answered() {
+fn a_deferred_answer_keeps_its_serial_slot_until_answered() {
     let (dispatcher, _registrar, mut driver) = Bus::channel_with(ServingPolicy {
         serial_per_handler: true,
         ..ServingPolicy::default()
@@ -2188,15 +2197,16 @@ fn a_detached_sink_keeps_its_serial_slot_until_answered() {
     // The handler returned at once, but the dispatch is still in flight:
     // the key is busy and the second command waits behind it.
     assert_eq!(mailbox.lock().expect("mailbox").len(), 1);
-    assert_eq!(driver.in_flight(), 1, "keyed on the sink, not the future");
+    assert_eq!(driver.in_flight(), 1, "the pending answer occupies its key");
     assert!(probe(&mut second).is_none());
 
     let sink = mailbox.lock().expect("mailbox").remove(0);
     assert!(!sink.is_closed());
-    let mut resolving = sink.resolve(Ok(Outcome::Custom {
+    let resolving = sink.resolve(Ok(Outcome::Custom {
         payload: json!("answered"),
     }));
-    assert!(resolving.poll_unpin(&mut cx).is_ready());
+    assert!(resolving.is_ok());
+    let _ = driver.poll_unpin(&mut cx);
     let outcome = probe(&mut first).expect("answered").expect("ok");
     assert!(matches!(outcome, Outcome::Custom { payload: ref v } if *v == json!("answered")));
     for _ in 0..4 {
@@ -2206,10 +2216,11 @@ fn a_detached_sink_keeps_its_serial_slot_until_answered() {
     assert_eq!(mailbox.lock().expect("mailbox").len(), 1);
     assert_eq!(driver.in_flight(), 1);
     let sink = mailbox.lock().expect("mailbox").remove(0);
-    let mut resolving = sink.resolve(Ok(Outcome::Custom {
+    let resolving = sink.resolve(Ok(Outcome::Custom {
         payload: json!("second"),
     }));
-    assert!(resolving.poll_unpin(&mut cx).is_ready());
+    assert!(resolving.is_ok());
+    let _ = driver.poll_unpin(&mut cx);
     assert!(probe(&mut second).is_some());
     for _ in 0..4 {
         let _ = driver.poll_unpin(&mut cx);
@@ -2218,7 +2229,7 @@ fn a_detached_sink_keeps_its_serial_slot_until_answered() {
 }
 
 #[test]
-fn dropping_the_pending_closes_a_detached_sink() {
+fn dropping_the_pending_closes_a_deferred_resolver() {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
     let mailbox = Arc::new(Mutex::new(Vec::new()));
     driver
@@ -2238,10 +2249,10 @@ fn dropping_the_pending_closes_a_detached_sink() {
     assert!(!mailbox.lock().expect("mailbox")[0].is_closed());
     drop(pending);
     let _ = driver.poll_unpin(&mut cx);
-    // The resolver sees the cancel; the dispatch stays in flight until the
-    // resolver lets the sink go.
+    // Cancellation closes the resolver and releases the slot even while
+    // the external host retains its resolver.
     assert!(mailbox.lock().expect("mailbox")[0].is_closed());
-    assert_eq!(driver.in_flight(), 1);
+    assert_eq!(driver.in_flight(), 0);
     mailbox.lock().expect("mailbox").clear();
     let _ = driver.poll_unpin(&mut cx);
     assert_eq!(driver.in_flight(), 0);
@@ -2337,7 +2348,7 @@ fn a_bind_on_a_closed_bus_is_bus_closed_not_unavailable() {
 // Causal dispatch: a command carries its parent; re-entrancy is a chain, a
 // cancel reaches the chain.
 
-/// Dispatches to `child` through its sink's dispatcher (the way back onto
+/// Dispatches to `child` through its dispatch context (the way back onto
 /// the bus), from the calling thread or from a spawned one, and reports the
 /// nested dispatch's first poll as its own outcome. The child `Pending` is
 /// parked in `held` when a slot is given, so a test can watch a child whose
@@ -2365,9 +2376,10 @@ impl Serve for Parent {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-        let dispatcher = super::SinkDispatch::dispatcher(&sink).expect("served by a bus driver");
-        assert_eq!(dispatcher.parent(), Some(sink.id()));
+    async fn serve(&self, _kind: EffectKind, dispatch: Dispatch) -> rig_core::serve::Reply {
+        let dispatcher =
+            super::DispatchScope::dispatcher(&dispatch).expect("served by a bus driver");
+        assert_eq!(dispatcher.parent(), Some(dispatch.id()));
         let child = self.child.clone();
         let first_poll = move |dispatcher: Dispatcher| {
             let mut nested = dispatcher.dispatch(&child, custom(json!("nested")));
@@ -2385,8 +2397,7 @@ impl Serve for Parent {
         if let Some(held) = &self.held {
             held.lock().expect("held").push(nested);
             // The parent stays in flight until its consumer goes.
-            futures::future::pending::<()>().await;
-            return;
+            return std::future::pending().await;
         }
         if self.await_child {
             let outcome = match first {
@@ -2402,8 +2413,7 @@ impl Serve for Parent {
                     }),
                 }),
             };
-            sink.resolve(outcome).await;
-            return;
+            return rig_core::serve::Reply::Outcome(outcome);
         }
         let outcome = match first {
             Poll::Ready(Err(report)) => Ok(Outcome::Custom {
@@ -2417,7 +2427,7 @@ impl Serve for Parent {
                 payload: json!("accepted"),
             }),
         };
-        sink.resolve(outcome).await;
+        rig_core::serve::Reply::Outcome(outcome)
     }
 }
 
@@ -2438,7 +2448,7 @@ fn drive_to_outcome(
 }
 
 #[test]
-fn a_dispatch_made_through_the_sinks_dispatcher_carries_its_parent() {
+fn a_dispatch_made_through_dispatch_context_carries_its_parent() {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
     let (echo, served) = Echo::new();
     driver.register("echo", echo).expect("register");
@@ -2641,7 +2651,7 @@ fn a_parent_cancel_reaches_a_child_in_flight_whose_pending_lives_elsewhere() {
 }
 
 #[test]
-fn a_detached_child_cannot_answer_success_after_its_parent_is_cancelled() {
+fn a_deferred_child_cannot_answer_success_after_its_parent_is_cancelled() {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
     let mailbox = Arc::new(Mutex::new(Vec::new()));
     driver
@@ -2689,13 +2699,13 @@ fn a_detached_child_cannot_answer_success_after_its_parent_is_cancelled() {
     assert!(sink.is_closed(), "driver published ancestor cancellation");
     assert_eq!(
         driver.in_flight(),
-        1,
-        "host still owns the cancelled child's sink"
+        0,
+        "retaining a closed resolver must not retain driver accounting"
     );
-    let mut resolve = sink.resolve(Ok(Outcome::Custom {
+    let resolve = sink.resolve(Ok(Outcome::Custom {
         payload: json!("late success"),
     }));
-    assert!(resolve.poll_unpin(&mut cx).is_ready());
+    assert!(resolve.is_err());
     let report = drive_to_outcome(&mut driver, &mut child)
         .expect("resolved")
         .expect_err("late host success cannot override ancestor cancellation");
@@ -2984,7 +2994,7 @@ fn cancellation_reaches_grandchild_after_middle_dispatch_completes() {
 struct CaptureLineage {
     captured: Arc<Mutex<Option<Dispatcher>>>,
     complete: bool,
-    detached: Option<Arc<Mutex<Vec<rig_core::serve::DetachedSink>>>>,
+    detached: Option<Arc<Mutex<Vec<rig_core::serve::Resolver>>>>,
 }
 impl Serve for CaptureLineage {
     type Family = rig_core::effect::family::Dynamic;
@@ -2997,29 +3007,29 @@ impl Serve for CaptureLineage {
             layers: Vec::new(),
         }
     }
-    async fn serve(&self, _: EffectKind, sink: OutcomeSink) {
-        *self.captured.lock().unwrap() = Some(super::SinkDispatch::dispatcher(&sink).unwrap());
+    async fn serve(&self, _: EffectKind, dispatch: Dispatch) -> CoreReply {
+        *self.captured.lock().unwrap() = Some(super::DispatchScope::dispatcher(&dispatch).unwrap());
         if let Some(detached) = &self.detached {
-            detached.lock().unwrap().push(sink.detach());
-            return;
+            let (resolver, answer) = rig_core::serve::deferred();
+            detached.lock().unwrap().push(resolver);
+            return CoreReply::Outcome(answer.await);
         }
         if !self.complete {
             futures::future::pending::<()>().await;
         }
-        sink.resolve(Ok(Outcome::Custom {
+        CoreReply::Outcome(Ok(Outcome::Custom {
             payload: json!("complete"),
         }))
-        .await;
     }
 }
 
 fn completed_middle_chain(policy: ServingPolicy) -> (Dispatcher, BusDriver, Pending, Dispatcher) {
-    completed_middle_chain_with_sink(policy, None)
+    completed_middle_chain_with_resolver(policy, None)
 }
 
-fn completed_middle_chain_with_sink(
+fn completed_middle_chain_with_resolver(
     policy: ServingPolicy,
-    detached: Option<Arc<Mutex<Vec<rig_core::serve::DetachedSink>>>>,
+    detached: Option<Arc<Mutex<Vec<rig_core::serve::Resolver>>>>,
 ) -> (Dispatcher, BusDriver, Pending, Dispatcher) {
     let (root, _registrar, mut driver) = Bus::channel_with(policy);
     let outer_capture = Arc::new(Mutex::new(None));
@@ -3181,9 +3191,9 @@ fn retained_lineage_reclaims_deep_unique_and_shared_chains_without_recursion() {
 }
 
 #[test]
-fn retained_lineage_refuses_queued_child_while_cancelled_ancestor_sink_stays_detached() {
+fn retained_lineage_refuses_queued_child_while_the_host_retains_a_cancelled_resolver() {
     let detached = Arc::new(Mutex::new(Vec::new()));
-    let (root, mut driver, outer, retained) = completed_middle_chain_with_sink(
+    let (root, mut driver, outer, retained) = completed_middle_chain_with_resolver(
         ServingPolicy {
             serial_per_handler: true,
             ..ServingPolicy::default()
@@ -3205,12 +3215,102 @@ fn retained_lineage_refuses_queued_child_while_cancelled_ancestor_sink_stays_det
     let _ = driver.poll_unpin(&mut cx);
     assert_eq!(
         driver.in_flight(),
-        2,
-        "detached ancestor and unrelated blocker remain"
+        1,
+        "only the unrelated blocker remains after ancestor cancellation"
     );
     assert!(detached.lock().unwrap()[0].is_closed());
     assert!(
         matches!(child.poll_unpin(&mut cx), Poll::Ready(Err(ref report)) if report.kind == ErrorKind::Cancelled)
     );
     assert_eq!(driver.queued(), 0);
+}
+
+#[test]
+fn full_consumer_queue_stops_pulls_and_ancestor_cancellation_keeps_its_terminal() {
+    struct ReadyStream(Arc<AtomicUsize>, Arc<AtomicUsize>);
+    impl Serve for ReadyStream {
+        type Family = rig_core::effect::family::Dynamic;
+        fn descriptor(&self) -> HandlerDescriptor {
+            HandlerDescriptor {
+                key: "ready".into(),
+                family: FamilyDescriptor::Custom {
+                    kind: "ready".into(),
+                },
+                layers: vec![],
+            }
+        }
+        async fn serve(&self, _: EffectKind, _: Dispatch) -> CoreReply {
+            struct Guard(Arc<AtomicUsize>);
+            impl Drop for Guard {
+                fn drop(&mut self) {
+                    self.0.fetch_add(1, Ordering::SeqCst);
+                }
+            }
+            let guard = Guard(self.1.clone());
+            let polls = self.0.clone();
+            CoreReply::Stream(Box::pin(futures::stream::poll_fn(move |_| {
+                let _guard = &guard;
+                polls.fetch_add(1, Ordering::SeqCst);
+                Poll::Ready(Some(Ok(rig_core::streaming::StreamEvent::Unknown(
+                    rig_core::streaming::UnknownPayload::new(json!(null)),
+                ))))
+            })))
+        }
+    }
+    let (root, mut driver, outer, retained) = completed_middle_chain(ServingPolicy {
+        stream_capacity: 1,
+        ..ServingPolicy::default()
+    });
+    let polls = Arc::new(AtomicUsize::new(0));
+    let drops = Arc::new(AtomicUsize::new(0));
+    driver
+        .register("ready", ReadyStream(polls.clone(), drops.clone()))
+        .unwrap();
+    let mut stream = retained.dispatch_stream(&HandlerKey::from("ready"), completion_kind(true));
+    let mut cx = Context::from_waker(noop_waker_ref());
+    assert!(stream.poll_next_unpin(&mut cx).is_pending());
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    let stalled = polls.load(Ordering::SeqCst);
+    assert!(
+        (1..=3).contains(&stalled),
+        "one queue slot, one sender reservation, at most one undelivered item: {stalled}"
+    );
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert_eq!(polls.load(Ordering::SeqCst), stalled);
+    let mut other = root.dispatch(&HandlerKey::from("missing"), custom(json!(null)));
+    assert_eq!(
+        drive_to_outcome(&mut driver, &mut other)
+            .unwrap()
+            .unwrap_err()
+            .kind,
+        ErrorKind::HandlerUnavailable
+    );
+    drop(outer);
+    for _ in 0..4 {
+        let _ = driver.poll_unpin(&mut cx);
+    }
+    assert_eq!(drops.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        polls.load(Ordering::SeqCst),
+        stalled,
+        "cancellation must not pull another item"
+    );
+    let mut delivered = 0;
+    loop {
+        match stream.poll_next_unpin(&mut cx) {
+            Poll::Ready(Some(Ok(_))) => delivered += 1,
+            Poll::Ready(Some(Err(error))) => {
+                assert_eq!(error.kind, ErrorKind::Cancelled);
+                break;
+            }
+            other => panic!("the full queue lost its cancellation terminal: {other:?}"),
+        }
+    }
+    assert!(delivered <= stalled);
+    assert!(matches!(stream.poll_next_unpin(&mut cx), Poll::Ready(None)));
+    assert_eq!(driver.in_flight(), 0);
 }
