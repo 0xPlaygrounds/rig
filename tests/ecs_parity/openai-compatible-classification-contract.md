@@ -48,8 +48,7 @@ usage, tool call counters, hook state or the caller-owned history. Covers the
 smoke families (context, loaders, tools, multimodal, structured output, typed
 prompt with tools, provider selection, chat history, document file_data,
 Anthropic-compatible transports on moonshot/minimax/xiaomimimo/zai) and the
-blocking agent cells inside matrices where the cell body is a plain
-`prompt`/`chat`.
+blocking agent cell of the refusal matrix, whose body is a plain `prompt`.
 
 ### OC-A2 agent streaming run
 
@@ -60,7 +59,7 @@ blocking agent cells inside matrices where the cell body is a plain
 the final response, streamed tool calls/results, ordering helpers or the
 provider final. Covers streaming smoke, streaming tools, streaming reasoning,
 the streaming halves of the reasoning-tool roundtrips and the streaming agent
-cells of the refusal and reasoning-usage matrices.
+cell of the refusal matrix. The reasoning-usage agent cells are OC-A6.
 
 ### OC-A3 agent run with hooks
 
