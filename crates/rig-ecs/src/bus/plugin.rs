@@ -185,10 +185,9 @@ pub fn run_to_quiescence(world: &mut World) {
             return;
         }
         if pass + 1 == QUIESCENCE_CAP {
-            tracing::warn!(
+            log::warn!(
                 target: "rig_ecs::bus",
-                cap = QUIESCENCE_CAP,
-                "RigSchedule reached the quiescence cap in one tick; the rest waits for the next"
+                "RigSchedule reached the quiescence cap ({QUIESCENCE_CAP}) in one tick; the rest waits for the next"
             );
         }
     }

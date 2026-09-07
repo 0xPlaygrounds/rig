@@ -159,9 +159,9 @@ pub fn grant_tools(
                 Some(tool) => {
                     commands.spawn((Grant(tool), next_order_in(&mut orders), ChildOf(agent)));
                 }
-                None => tracing::warn!(
-                    tool = definition.name,
-                    "a tool definition no handler serves: not granted"
+                None => log::warn!(
+                    "a tool definition no handler serves: not granted: {}",
+                    definition.name
                 ),
             }
         }

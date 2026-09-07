@@ -102,6 +102,21 @@ fn rig_ecs_is_rig_core_and_bevy_only() {
     let forbidden = ["rig-agent", "rig-rmcp", "rmcp", "bevy", "tokio", "reqwest"];
     assert_absent("rig-ecs", &[], &forbidden);
     assert_absent("rig-ecs", &[], &["bevy_app", "bevy_reflect", "bevy_asset"]);
+    // `tracing` and `schemars` reach the crate through rig-core; the manifest
+    // names neither, reaching `schemars` through rig-core's re-export.
+    let manifest = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/crates/rig-ecs/Cargo.toml"
+    ))
+    .expect("the rig-ecs manifest");
+    for direct in ["tracing", "schemars", "async-channel"] {
+        assert!(
+            !manifest
+                .lines()
+                .any(|line| line.starts_with(&format!("{direct} "))),
+            "`rig-ecs` must not name `{direct}` directly"
+        );
+    }
     assert_absent("rig-ecs", &["--all-features"], &forbidden);
     assert_absent("rig-ecs", &["--features", "reflect"], &["bevy_app"]);
     assert_absent("rig-ecs", &["--no-default-features"], &["rig-effect-log"]);

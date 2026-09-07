@@ -10574,12 +10574,11 @@ dependencies = [
  "bevy_reflect",
  "bevy_tasks",
  "futures",
+ "log",
  "rig-core",
  "rig-effect-log",
- "schemars 1.2.1",
  "serde",
  "serde_json",
- "tracing",
  "wasm-bindgen-test",
 ]
 

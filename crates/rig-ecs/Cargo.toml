@@ -8,10 +8,6 @@ repository = "https://github.com/0xPlaygrounds/rig"
 # Not published yet; rig-verify is the precedent.
 publish = false
 
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
-
 [lints]
 workspace = true
 
@@ -29,7 +25,7 @@ reflect = ["dep:bevy_reflect", "bevy_ecs/bevy_reflect"]
 # with `bevy_asset` loaders, and the systems that turn them into a
 # `Preamble` and `Grant`s. The one feature that needs `bevy_app`:
 # `bevy_asset` is built on it.
-assets = ["dep:bevy_asset", "dep:bevy_app", "reflect"]
+assets = ["dep:bevy_asset", "dep:bevy_app", "dep:bevy_reflect"]
 
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
@@ -47,10 +43,9 @@ bevy_app = { workspace = true, optional = true }
 # The channel types rig-core's `OutcomeSink` names; rig-core already
 # depends on the crate.
 futures = { workspace = true }
-schemars = { workspace = true }
+log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tracing = { workspace = true }
 
 [dev-dependencies]
 rig-core = { path = "../rig-core", version = "0.42.0", features = ["test-utils"] }

@@ -225,7 +225,9 @@ pub fn fold_request(graph: &RequestGraph<'_>) -> CompletionRequest {
     }
 
     let output_schema = match (graph.output, graph.schema) {
-        (OutputKind::Native, Some(schema)) => schemars::Schema::try_from(schema.clone()).ok(),
+        (OutputKind::Native, Some(schema)) => {
+            rig_core::schemars::Schema::try_from(schema.clone()).ok()
+        }
         (OutputKind::Native, None)
         | (OutputKind::Auto | OutputKind::Tool | OutputKind::Prompted, _) => None,
     };
