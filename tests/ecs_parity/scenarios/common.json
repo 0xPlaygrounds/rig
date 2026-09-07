@@ -13,7 +13,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite anthropic: source_dir tests/providers/anthropic/cassette; wrappers ['with_anthropic_cassette', 'with_anthropic_lifecycle_cassette', 'with_anthropic_turn_metadata_cassette', 'with_anthropic_cassette_result', 'with_anthropic_cassette_bogus_key', 'with_anthropic_files_cassette', 'with_anthropic_gateway_cassette', 'with_anthropic_stop_sequence_cassette', 'with_anthropic_empty_stop_cassette', 'with_anthropic_reasoning_usage_cassette', 'with_anthropic_corpus_request_shape_cassette', 'with_anthropic_corpus_hooks_cassette', 'with_anthropic_corpus_serving_cassette', 'with_anthropic_corpus_outcome_cassette', 'with_anthropic_corpus_endings_cassette', 'with_anthropic_corpus_output_cassette', 'with_anthropic_corpus_host_cassette', 'with_anthropic_corpus_memory_cassette', 'with_anthropic_corpus_shaping_cassette', 'with_anthropic_corpus_oracle_cassette', 'with_anthropic_corpus_causal_cassette', 'with_anthropic_corpus_layers_cassette'] defined in ['tests/providers/anthropic/support.rs'] and called from 84 other modules under tests/providers/anthropic (git grep); modules calling cassettes::cassette_path directly: ['tests/providers/anthropic/cassette/empty_stop_sequence_matrix.rs', 'tests/providers/anthropic/cassette/opus_4_7.rs', 'tests/providers/anthropic/cassette/opus_4_8.rs', 'tests/providers/anthropic/cassette/reasoning_usage_matrix.rs', 'tests/providers/anthropic/cassette/request_override.rs', 'tests/providers/anthropic/cassette/stop_sequence_terminal_matrix.rs', 'tests/providers/anthropic/cassette/streamed_server_tools.rs', 'tests/providers/anthropic/cassette/streaming.rs', 'tests/providers/anthropic/cassette/streaming_tools.rs', 'tests/providers/anthropic/cassette/turn_termination_matrix.rs', 'tests/providers/anthropic/support.rs']. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::anthropic::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -31,7 +31,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/anthropic only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/anthropic calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::anthropic::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -1149,7 +1149,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite bedrock: source_dir tests/providers/bedrock/cassette; wrappers ['with_bedrock_cassette'] defined in ['tests/providers/bedrock/support.rs'] and called from 12 other modules under tests/providers/bedrock (git grep); modules calling cassettes::cassette_path directly: ['tests/providers/bedrock/cassette/document_ordering.rs']. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::bedrock::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -1167,7 +1167,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/bedrock only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/bedrock calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::bedrock::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -2285,7 +2285,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite chatgpt: source_dir tests/providers/chatgpt/cassette; wrappers ['with_chatgpt_cassette', 'with_chatgpt_cassette_default_instructions', 'with_chatgpt_noninteractive_oauth_cassette'] defined in ['tests/providers/chatgpt/support.rs'] and called from 10 other modules under tests/providers/chatgpt (git grep); modules calling cassettes::cassette_path directly: ['tests/providers/chatgpt/cassette/streaming_tools.rs']. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::chatgpt::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -2303,7 +2303,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/chatgpt only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/chatgpt calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::chatgpt::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -3421,7 +3421,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite cohere: source_dir tests/providers/cohere/cassette; wrappers ['with_cohere_cassette', 'with_cohere_prompt_caching_cassette'] defined in ['tests/providers/cohere/support.rs'] and called from 15 other modules under tests/providers/cohere (git grep); modules calling cassettes::cassette_path directly: none. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::cohere::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -3439,7 +3439,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/cohere only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/cohere calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::cohere::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -4557,7 +4557,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite copilot: source_dir tests/providers/copilot; wrappers ['with_copilot_cassette', 'with_copilot_cassette_result', 'with_copilot_noninteractive_oauth_cassette'] defined in ['tests/providers/copilot/mod.rs'] and called from 22 other modules under tests/providers/copilot (git grep); modules calling cassettes::cassette_path directly: ['tests/providers/copilot/raw_completion_parity_matrix.rs']. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::copilot::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -4575,7 +4575,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/copilot only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/copilot calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::copilot::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -5693,7 +5693,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite deepseek: source_dir tests/providers/deepseek; wrappers ['with_deepseek_prompt_caching_cassette', 'with_deepseek_cassette', 'with_deepseek_cassette_result', 'with_deepseek_cassette_bogus_key_result', 'with_deepseek_truncation_cassette_result', 'with_deepseek_block_order_cassette_result', 'with_deepseek_wire_shape_cassette_result', 'with_deepseek_followup_hunt_cassette_result', 'with_deepseek_stream_logprobs_cassette_result'] defined in ['tests/providers/deepseek/support.rs'] and called from 28 other modules under tests/providers/deepseek (git grep); modules calling cassettes::cassette_path directly: ['tests/providers/deepseek/document_ordering.rs', 'tests/providers/deepseek/support.rs']. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::deepseek::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -5711,7 +5711,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/deepseek only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/deepseek calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::deepseek::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -6829,7 +6829,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite doubleword: source_dir tests/providers/doubleword/cassette; wrappers ['with_doubleword_prompt_caching_cassette', 'with_doubleword_cassette', 'with_doubleword_bogus_key_cassette', 'with_doubleword_cassette_result', 'with_doubleword_embedding_cassette'] defined in ['tests/providers/doubleword/support.rs'] and called from 23 other modules under tests/providers/doubleword (git grep); modules calling cassettes::cassette_path directly: ['tests/providers/doubleword/support.rs']. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::doubleword::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -6847,7 +6847,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/doubleword only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/doubleword calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::doubleword::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -7965,7 +7965,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite gemini: source_dir tests/providers/gemini/cassette; wrappers ['with_gemini_prompt_caching_cassette', 'with_gemini_cassette', 'with_gemini_corpus_retrieval_cassette', 'with_gemini_corpus_delta_cassette', 'with_gemini_corpus_breadth_cassette', 'with_gemini_lifecycle_cassette', 'with_gemini_turn_metadata_cassette', 'with_gemini_cassette_bogus_key', 'with_gemini_code_execution_cassette', 'with_gemini_interactions_cassette', 'with_gemini_stream_terminal_cassette', 'with_gemini_thought_text_cassette'] defined in ['tests/providers/gemini/support.rs'] and called from 71 other modules under tests/providers/gemini (git grep); modules calling cassettes::cassette_path directly: ['tests/providers/gemini/cassette/document_ordering.rs', 'tests/providers/gemini/cassette/regression_suite.rs', 'tests/providers/gemini/cassette/turn_termination_matrix.rs', 'tests/providers/gemini/support.rs']. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::gemini::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -7983,7 +7983,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/gemini only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/gemini calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::gemini::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -9101,7 +9101,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite groq: source_dir tests/providers/groq; wrappers ['with_groq_prompt_caching_cassette', 'with_groq_cassette_result', 'with_groq_cassette_bogus_key_result'] defined in ['tests/providers/groq/support.rs'] and called from 7 other modules under tests/providers/groq (git grep); modules calling cassettes::cassette_path directly: ['tests/providers/groq/support.rs']. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::groq::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -9119,7 +9119,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/groq only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/groq calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::groq::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -10237,7 +10237,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite llamacpp: source_dir tests/providers/llamacpp/cassette; wrappers ['with_llamacpp_cassette', 'with_llamacpp_cassette_result', 'with_llamacpp_bare_openai_cassette', 'with_llamacpp_embeddings_cassette', 'with_llamacpp_vision_cassette', 'with_llamacpp_small_context_cassette', 'with_llamacpp_no_jinja_cassette', 'with_llamacpp_rerank_cassette', 'with_llamacpp_pooling_none_cassette', 'with_llamacpp_causal_embeddings_cassette', 'with_llamacpp_competent_cassette', 'with_llamacpp_llama_family_cassette', 'with_llamacpp_mistral_family_cassette', 'with_llamacpp_gemma_family_cassette', 'with_llamacpp_prompt_caching_cassette', 'with_llamacpp_large_vision_cassette', 'with_llamacpp_raw_http_cassette', 'with_llamacpp_api_key_cassette', 'with_llamacpp_missing_api_key_cassette'] defined in ['tests/providers/llamacpp/cassette_support.rs'] and called from 37 other modules under tests/providers/llamacpp (git grep); modules calling cassettes::cassette_path directly: ['tests/providers/llamacpp/cassette_support.rs']. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::llamacpp::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -10255,7 +10255,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/llamacpp only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/llamacpp calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::llamacpp::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -11373,7 +11373,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite mistral: source_dir tests/providers/mistral; wrappers ['with_mistral_embedding_cassette', 'with_mistral_prompt_caching_cassette', 'with_mistral_cassette_result', 'with_mistral_multimodal_cassette', 'with_mistral_cassette_bogus_key_result', 'with_mistral_capability_cassette', 'with_mistral_terminal_metadata_cassette_result', 'with_mistral_tool_truncation_cassette_result', 'with_mistral_tool_lifecycle_cassette_result', 'with_mistral_history_roundtrip_cassette_result', 'with_mistral_request_shape_cassette_result', 'with_mistral_logprobs_rejection_cassette_result'] defined in ['tests/providers/mistral/support.rs'] and called from 15 other modules under tests/providers/mistral (git grep); modules calling cassettes::cassette_path directly: ['tests/providers/mistral/capability_edges.rs', 'tests/providers/mistral/multimodal_content.rs', 'tests/providers/mistral/support.rs']. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::mistral::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -11391,7 +11391,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/mistral only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/mistral calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::mistral::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -12509,7 +12509,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite mistralrs: source_dir tests/providers/mistralrs/cassette; wrappers ['with_mistralrs_cassette', 'with_mistralrs_completions_cassette', 'with_mistralrs_raw_cassette'] defined in ['tests/providers/mistralrs/support.rs'] and called from 7 other modules under tests/providers/mistralrs (git grep); modules calling cassettes::cassette_path directly: none. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::mistralrs::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -12527,7 +12527,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/mistralrs only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/mistralrs calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::mistralrs::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -13645,7 +13645,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite ollama: source_dir tests/providers/ollama/cassette; wrappers ['with_ollama_cassette'] defined in ['tests/providers/ollama/support.rs'] and called from 14 other modules under tests/providers/ollama (git grep); modules calling cassettes::cassette_path directly: none. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::ollama::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -13663,7 +13663,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/ollama only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/ollama calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::ollama::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -14781,7 +14781,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite openai: source_dir tests/providers/openai/cassette; wrappers ['with_openai_cassette', 'with_openai_corpus_retrieval_cassette', 'with_openai_corpus_output_cassette', 'with_openai_corpus_host_cassette', 'with_openai_corpus_delta_cassette', 'with_openai_corpus_breadth_cassette', 'with_openai_lifecycle_cassette', 'with_openai_prompt_caching_cassette', 'with_openai_completions_prompt_caching_cassette', 'with_openai_turn_metadata_cassette', 'with_openai_cassette_bogus_key', 'with_openai_completions_cassette', 'with_openai_cassette_result', 'with_openai_completions_cassette_result', 'with_openai_vllm_cassette', 'with_local_reasoning_content_cassette', 'with_openai_refusal_cassette', 'with_openai_max_tokens_cassette', 'with_openai_image_params_cassette', 'with_openai_truncation_cassette', 'with_openai_chat_stream_logprobs_cassette_result', 'with_openai_tool_truncation_cassette_result', 'with_openai_tool_lifecycle_cassette_result', 'with_openai_terminal_metadata_cassette_result', 'with_openai_history_roundtrip_cassette_result', 'with_openai_transcription_cassette', 'with_openai_audio_cassette', 'with_openai_websocket_cassette'] defined in ['tests/providers/openai/cassette/openai_compatible_reasoning_content.rs', 'tests/providers/openai/cassette/vllm.rs', 'tests/providers/openai/support.rs'] and called from 66 other modules under tests/providers/openai (git grep); modules calling cassettes::cassette_path directly: ['tests/providers/openai/cassette/document_ordering.rs', 'tests/providers/openai/cassette/image_params_matrix.rs', 'tests/providers/openai/cassette/openai_compatible_reasoning_content.rs', 'tests/providers/openai/cassette/refusal_matrix.rs', 'tests/providers/openai/cassette/truncated_turn_matrix.rs', 'tests/providers/openai/cassette/turn_termination_matrix.rs', 'tests/providers/openai/support.rs']. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::openai::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -14799,7 +14799,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/openai only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/openai calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::openai::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -15917,7 +15917,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite openrouter: source_dir tests/providers/openrouter/cassette; wrappers ['with_openrouter_prompt_caching_cassette', 'with_openrouter_cassette', 'with_openrouter_cassette_result', 'with_openrouter_cassette_bogus_key_result', 'with_openrouter_openai_cassette', 'with_openrouter_refusal_cassette', 'with_openrouter_usage_cassette', 'with_openrouter_stream_logprobs_cassette_result', 'with_openrouter_tool_truncation_cassette_result', 'with_openrouter_tool_lifecycle_cassette_result', 'with_openrouter_terminal_metadata_cassette_result', 'with_openrouter_history_roundtrip_cassette_result', 'with_openrouter_reasoning_tool_order_cassette_result'] defined in ['tests/providers/openrouter/support.rs'] and called from 38 other modules under tests/providers/openrouter (git grep); modules calling cassettes::cassette_path directly: ['tests/providers/openrouter/cassette/document_ordering.rs', 'tests/providers/openrouter/cassette/reasoning_usage_matrix.rs', 'tests/providers/openrouter/cassette/refusal_matrix.rs']. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::openrouter::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -15935,7 +15935,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/openrouter only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/openrouter calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::openrouter::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -17053,7 +17053,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite perplexity: source_dir tests/providers/perplexity/cassette; wrappers ['with_perplexity_cassette', 'with_perplexity_prompt_caching_cassette'] defined in ['tests/providers/perplexity/support.rs'] and called from 9 other modules under tests/providers/perplexity (git grep); modules calling cassettes::cassette_path directly: none. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::perplexity::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -17071,7 +17071,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/perplexity only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/perplexity calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::perplexity::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -18189,7 +18189,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite venice: source_dir tests/providers/venice/cassette; wrappers ['with_venice_prompt_caching_cassette', 'with_venice_cassette', 'with_venice_cassette_result', 'with_venice_direct_cassette'] defined in ['tests/providers/venice/support.rs'] and called from 23 other modules under tests/providers/venice (git grep); modules calling cassettes::cassette_path directly: none. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::venice::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -18207,7 +18207,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/venice only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/venice calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::venice::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
@@ -19325,7 +19325,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Registry scan, identical in every binary: syn-parses every .rs under each suite's source_dir for calls to its registered wrapper names, expects tests/cassettes/<q>/<scenario>.yaml per call and tests/cassettes/<q>/ecs_consumer/<case>.yaml per consumer_registry::cases() entry with a cassette provider, and fails on missing or orphaned .yaml. Helpers: cassettes::cassette_path, consumer_registry::cases (tests/consumer/registry.rs via #[path]). Suite xai: source_dir tests/providers/xai; wrappers ['with_xai_prompt_caching_cassette', 'with_xai_cassette', 'with_xai_cassette_bogus_key', 'with_xai_cassette_result'] defined in ['tests/providers/xai/support.rs'] and called from 25 other modules under tests/providers/xai (git grep); modules calling cassettes::cassette_path directly: ['tests/providers/xai/support.rs']. A new wrapper name or cassette directory needs a PROVIDER_CASSETTE_SUITES entry in tests/common/cassette_safety.rs (no lane owns that file).",
       "fixtures": [],
       "id": "rig::xai::cassette_safety::cassette_files_match_registered_scenarios",
       "source": "tests/common/cassette_safety.rs"
@@ -19343,7 +19343,7 @@
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixture_disposition": "Dynamic registry/directory scan: full per-binary fixture membership and assertion dependencies remain to be frozen.",
+      "fixture_disposition": "Secret scan of tests/cassettes/xai only (own_dir = env!(CARGO_CRATE_NAME)), after asserting the partition in this binary: every entry under tests/cassettes is a directory named in PROVIDER_CASSETTE_SUITES (18 suites), every registered name is an identifier, and tests/<q>.rs includes common/cassette_safety.rs as an unconditional mod for each suite q (syn-parsed). Helpers provided by tests/common/cassettes.rs: cassette_safety_failures, scrub_cassette_contents. Consumers outside this scan (git grep): tests/consumer/artifacts.rs (cassette_safety_failures, artifact_safety_failures), tests/consumer/runner/tests.rs (scrub_cassette_contents); no module under tests/providers/xai calls either helper, so this row is the only secret scan of that provider's recordings.",
       "fixtures": [],
       "id": "rig::xai::cassette_safety::cassettes_do_not_contain_obvious_secrets",
       "source": "tests/common/cassette_safety.rs"
