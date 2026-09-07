@@ -138,7 +138,6 @@ pub fn collect_streams(
         if budget.remaining == 0 {
             break;
         }
-        budget.last = Some(seq);
         let Ok((_, _, Issued(id), mut streaming, mut streamed, publishing)) =
             streaming.get_mut(entity)
         else {
@@ -216,6 +215,12 @@ pub fn collect_streams(
                 *id,
                 rig_core::effect::DeliveryKind::Stream { items: delivered },
             );
+        }
+        if budget.remaining == 0 {
+            // Advance the cursor only when a tick exhausts its allowance. Empty
+            // setup polls must not reorder a later ready batch; complete passes
+            // retain the previous cursor so partial ticks share service fairly.
+            budget.last = Some(seq);
         }
     }
 }
