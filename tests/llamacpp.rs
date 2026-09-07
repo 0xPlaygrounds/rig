@@ -27,5 +27,12 @@ mod reasoning;
 #[path = "common/support.rs"]
 mod support;
 
+#[allow(dead_code)]
+#[path = "common/ecs_observation.rs"]
+mod ecs_observation;
+#[allow(dead_code)]
+#[path = "common/ecs_session.rs"]
+mod ecs_session;
+
 #[path = "providers/llamacpp/mod.rs"]
 mod llamacpp;

@@ -24,5 +24,12 @@ mod cassette_safety;
 #[path = "common/cassettes.rs"]
 mod cassettes;
 
+#[allow(dead_code)]
+#[path = "common/ecs_observation.rs"]
+mod ecs_observation;
+#[allow(dead_code)]
+#[path = "common/ecs_session.rs"]
+mod ecs_session;
+
 #[path = "providers/doubleword/mod.rs"]
 mod doubleword;
