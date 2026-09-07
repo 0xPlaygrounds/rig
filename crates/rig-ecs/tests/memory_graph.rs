@@ -20,6 +20,7 @@
 
 mod run_support;
 
+use rig_core::serve::Dispatch;
 use std::sync::{Arc, Mutex};
 
 use bevy_ecs::prelude::*;
@@ -30,7 +31,7 @@ use rig_core::{
     },
     error::{ErrorKind, ErrorReport},
     message::{AssistantContent, Message},
-    serve::{OutcomeSink, Serve},
+    serve::Serve,
 };
 use rig_ecs::{
     agent::{
@@ -69,11 +70,12 @@ impl Serve for Store {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let EffectKind::Memory { op } = kind else {
-            sink.resolve(Err(ErrorReport::new(ErrorKind::Internal, "not memory")))
-                .await;
-            return;
+            return rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+                ErrorKind::Internal,
+                "not memory",
+            )));
         };
         let outcome = match op {
             MemoryOp::Load { conversation } => {
@@ -109,7 +111,7 @@ impl Serve for Store {
                 Ok(MemoryOutcome::Cleared)
             }
         };
-        sink.resolve(outcome.map(Outcome::Memory)).await;
+        rig_core::serve::Reply::Outcome(outcome.map(Outcome::Memory))
     }
 }
 
@@ -132,14 +134,12 @@ impl Serve for Index {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let EffectKind::Retrieve { query } = kind else {
-            sink.resolve(Err(ErrorReport::new(
+            return rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
                 ErrorKind::Internal,
                 "not a retrieval",
-            )))
-            .await;
-            return;
+            )));
         };
         let answer = match query {
             RetrieveQuery::TopN { req } => {
@@ -157,7 +157,7 @@ impl Serve for Index {
                 RetrievedDocuments::Ids(self.ids.clone())
             }
         };
-        sink.resolve(Ok(Outcome::Documents(answer))).await;
+        rig_core::serve::Reply::Outcome(Ok(Outcome::Documents(answer)))
     }
 }
 
@@ -500,20 +500,20 @@ impl Serve for Subtractor {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let EffectKind::ToolCall { args, .. } = kind else {
-            sink.resolve(Err(ErrorReport::new(ErrorKind::Internal, "not a call")))
-                .await;
-            return;
+            return rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+                ErrorKind::Internal,
+                "not a call",
+            )));
         };
         let args: serde_json::Value = serde_json::from_str(&args).unwrap_or_default();
         let value = args["x"].as_i64().unwrap_or(0) - args["y"].as_i64().unwrap_or(0);
-        sink.resolve(Ok(Outcome::ToolResult {
+        rig_core::serve::Reply::Outcome(Ok(Outcome::ToolResult {
             result: rig_core::tool::ToolResult::success(rig_core::tool::ToolOutput::json(
                 serde_json::json!(value),
             )),
         }))
-        .await;
     }
 }
 

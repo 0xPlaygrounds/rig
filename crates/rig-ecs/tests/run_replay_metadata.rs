@@ -13,7 +13,7 @@ use bevy_ecs::prelude::*;
 use rig_core::{
     completion::{ModelRef, ProviderCapabilities},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey},
-    serve::{OutcomeSink, Serve},
+    serve::{Dispatch, Serve},
 };
 use rig_ecs::{
     agent::{
@@ -42,8 +42,8 @@ impl Serve for Composing {
         };
         descriptor
     }
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
-        self.0.serve(kind, sink).await;
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> rig_core::serve::Reply {
+        self.0.serve(kind, dispatch).await
     }
 }
 

@@ -1,7 +1,7 @@
 use super::super::{Case, Error, Provider};
 use super::*;
 use rig_core::effect::{EffectKind, HandlerDescriptor};
-use rig_core::serve::{OutcomeSink, Serve};
+use rig_core::serve::{Dispatch, Serve};
 
 struct PendingModel(tokio::sync::mpsc::UnboundedSender<()>);
 impl Serve for PendingModel {
@@ -9,9 +9,9 @@ impl Serve for PendingModel {
     fn descriptor(&self) -> HandlerDescriptor {
         super::super::Scripted.descriptor()
     }
-    async fn serve(&self, _: EffectKind, _sink: OutcomeSink) {
+    async fn serve(&self, _: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         self.0.send(()).expect("receiver waits for serving");
-        std::future::pending::<()>().await;
+        std::future::pending().await
     }
 }
 

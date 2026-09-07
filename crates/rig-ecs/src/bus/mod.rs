@@ -25,7 +25,7 @@
 //! - **Causality is `ChildOf`.** A handler that is a system spawns child
 //!   effects `ChildOf` the one it answers; the record's `parent` is read off
 //!   the relationship, its `scope` off the nearest [`Scope`] ancestor.
-//!   Despawning an effect cancels it — its task drops, its handler's sink
+//!   Despawning an effect cancels it — its task drops, its owned reply
 //!   with it, the record says `Cancelled` — and Bevy despawns its
 //!   descendants, so a parent's cancel reaches its children with no table.
 //! - **Serial serving is a query.** Under

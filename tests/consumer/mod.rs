@@ -31,7 +31,7 @@ use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     message::{AssistantContent, Message, UserContent},
-    serve::{OutcomeSink, Serve, ServingPolicy},
+    serve::{Dispatch, Reply, Serve, ServingPolicy},
     tool::{ContextValue, ToolContext, ToolOutput, ToolResult},
 };
 use rig_ecs::{
@@ -169,15 +169,49 @@ impl<S: Serve + 'static> Serve for TokioHandler<S> {
     fn descriptor(&self) -> HandlerDescriptor {
         self.handler.descriptor()
     }
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
-        let id = sink.id().as_u64();
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
+        let id = dispatch.id().as_u64();
         let handler = Arc::clone(&self.handler);
-        let task = self.runtime.spawn(async move {
-            handler.serve(kind, sink).await;
-        });
+        let task = self
+            .runtime
+            .spawn(async move { handler.serve(kind, dispatch).await });
         let _abort = AbortOnDrop(task.abort_handle());
-        if task.await.is_err() {
-            self.failures.record(id);
+        let reply = match task.await {
+            Ok(reply) => reply,
+            Err(_) => {
+                self.failures.record(id);
+                return Reply::Outcome(Err(rig_core::error::ErrorReport::new(
+                    rig_core::error::ErrorKind::Internal,
+                    "handler task failed",
+                )));
+            }
+        };
+        match reply {
+            Reply::Outcome(outcome) => Reply::Outcome(outcome),
+            Reply::Stream(mut stream) => {
+                let runtime = self.runtime.clone();
+                let failures = self.failures.clone();
+                let mut stopped = false;
+                Reply::Stream(Box::pin(futures::stream::poll_fn(move |cx| {
+                    if stopped {
+                        return std::task::Poll::Ready(None);
+                    }
+                    let _entered = runtime.enter();
+                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        stream.as_mut().poll_next(cx)
+                    })) {
+                        Ok(item) => item,
+                        Err(_) => {
+                            stopped = true;
+                            failures.record(id);
+                            std::task::Poll::Ready(Some(Err(rig_core::error::ErrorReport::new(
+                                rig_core::error::ErrorKind::Internal,
+                                "handler stream failed",
+                            ))))
+                        }
+                    }
+                })))
+            }
         }
     }
 }
@@ -1313,7 +1347,6 @@ pub(crate) async fn execute_with_deadline(
             control: app.world().resource::<scheduled::DeliveryControl>().clone(),
             batch_size: case.stream_batch,
             fault: case.fault,
-            failures: app.world().resource::<ExecutionFailures>().clone(),
         }),
         runtime: tokio::runtime::Handle::current(),
         failures: app.world().resource::<ExecutionFailures>().clone(),
@@ -1344,9 +1377,12 @@ impl Serve for Scripted {
             layers: Vec::new(),
         }
     }
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         let EffectKind::Completion { request, stream } = kind else {
-            return;
+            return Reply::Outcome(Err(rig_core::error::ErrorReport::new(
+                rig_core::error::ErrorKind::Internal,
+                "the handler dropped its outcome sink without answering",
+            )));
         };
         let results: Vec<_> = request
             .chat_history
@@ -1385,53 +1421,54 @@ impl Serve for Scripted {
             }
         };
         if stream {
-            let mut writer = sink.writer();
-            if let Some(count) = request
-                .additional_params
-                .as_ref()
-                .and_then(|params| params.get("synthetic_background_chunks"))
-                .and_then(Value::as_u64)
-            {
-                for _ in 0..count.min(64) {
-                    if writer
-                        .text("Checking the maintenance task. ")
-                        .await
-                        .is_err()
-                    {
+            let result_count = results.len();
+            Reply::written(move |mut writer| async move {
+                if let Some(count) = request
+                    .additional_params
+                    .as_ref()
+                    .and_then(|params| params.get("synthetic_background_chunks"))
+                    .and_then(Value::as_u64)
+                {
+                    for _ in 0..count.min(64) {
+                        if writer
+                            .text("Checking the maintenance task. ")
+                            .await
+                            .is_err()
+                        {
+                            return;
+                        }
+                    }
+                }
+                if result_count < 5 && writer.text("Inspecting the project. ").await.is_err() {
+                    return;
+                }
+                for part in choice {
+                    let sent = match part {
+                        AssistantContent::Text(text) => writer.text(text.text).await,
+                        AssistantContent::ToolCall(call) => {
+                            writer
+                                .tool_call(call.function.name, call.function.arguments)
+                                .await
+                        }
+                        AssistantContent::Reasoning(_) | AssistantContent::Image(_) => return,
+                    };
+                    if sent.is_err() {
                         return;
                     }
                 }
-            }
-            if results.len() < 5 && writer.text("Inspecting the project. ").await.is_err() {
-                return;
-            }
-            for part in choice {
-                let sent = match part {
-                    AssistantContent::Text(text) => writer.text(text.text).await,
-                    AssistantContent::ToolCall(call) => {
-                        writer
-                            .tool_call(call.function.name, call.function.arguments)
-                            .await
-                    }
-                    AssistantContent::Reasoning(_) | AssistantContent::Image(_) => return,
-                };
-                if sent.is_err() {
-                    return;
-                }
-            }
-            let _ = writer
-                .finish(rig_core::streaming::StreamFinal::new(
-                    "synthetic",
-                    Usage::new(),
-                ))
-                .await;
+                let _ = writer
+                    .finish(rig_core::streaming::StreamFinal::new(
+                        "synthetic",
+                        Usage::new(),
+                    ))
+                    .await;
+            })
         } else {
-            sink.resolve(Ok(Outcome::Completion(CompletionResponse::new(
+            Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
                 choice,
                 Usage::new(),
                 "synthetic",
             ))))
-            .await;
         }
     }
 }

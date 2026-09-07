@@ -8,6 +8,7 @@
 
 mod run_support;
 
+use rig_core::serve::Dispatch;
 use std::sync::{Arc, Mutex};
 
 use bevy_ecs::prelude::*;
@@ -16,7 +17,7 @@ use rig_core::{
         EffectId, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp,
         MemoryOutcome, Outcome,
     },
-    serve::{OutcomeSink, Serve},
+    serve::Serve,
 };
 use rig_ecs::{
     agent::{
@@ -47,7 +48,7 @@ impl Serve for Store {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> rig_core::serve::Reply {
         let answer = match kind {
             EffectKind::Memory {
                 op: MemoryOp::Load { .. },
@@ -56,7 +57,7 @@ impl Serve for Store {
                 op: MemoryOp::Append { .. },
             } => {
                 // The external write happens before an outcome is observable.
-                self.calls.lock().unwrap().push(sink.id());
+                self.calls.lock().unwrap().push(dispatch.id());
                 if self.hold_after_write {
                     futures::future::pending::<()>().await;
                 }
@@ -64,7 +65,7 @@ impl Serve for Store {
             }
             other => panic!("unexpected operation: {other:?}"),
         };
-        sink.resolve(Ok(Outcome::Memory(answer))).await;
+        rig_core::serve::Reply::Outcome(Ok(Outcome::Memory(answer)))
     }
 }
 

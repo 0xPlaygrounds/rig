@@ -14,7 +14,7 @@ use rig_core::{
     completion::CompletionModel,
     effect::{EffectKind, HandlerDescriptor},
     serve::{
-        OutcomeSink, Serve, ServingPolicy,
+        Dispatch, Reply, Serve, ServingPolicy,
         adapters::{CompletionAdapter, ToolAdapter},
     },
     tool::Tool,
@@ -43,14 +43,24 @@ impl<S: Serve + 'static> Serve for RuntimeHandler<S> {
         self.inner.descriptor()
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
-        let future = self.inner.serve(kind, sink);
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
+        let future = self.inner.serve(kind, dispatch);
         futures::pin_mut!(future);
-        std::future::poll_fn(|context| {
+        let reply = std::future::poll_fn(|context| {
             let _entered = self.runtime.enter();
             future.as_mut().poll(context)
         })
         .await;
+        match reply {
+            Reply::Outcome(outcome) => Reply::Outcome(outcome),
+            Reply::Stream(mut stream) => {
+                let runtime = self.runtime.clone();
+                Reply::Stream(Box::pin(futures::stream::poll_fn(move |context| {
+                    let _entered = runtime.enter();
+                    stream.as_mut().poll_next(context)
+                })))
+            }
+        }
     }
 }
 

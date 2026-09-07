@@ -2,7 +2,7 @@
 use super::*;
 use rig::{
     effect::{EffectKind, HandlerDescriptor},
-    serve::{OutcomeSink, Serve},
+    serve::{Dispatch, Serve},
     test_utils::{MockCompletionModel, MockTurn},
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -15,10 +15,10 @@ impl Serve for GatedNote {
     fn descriptor(&self) -> HandlerDescriptor {
         NoteTaker.descriptor()
     }
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> rig_core::serve::Reply {
         self.started.notify_one();
         self.release.acquire().await.expect("gate open").forget();
-        NoteTaker.serve(kind, sink).await;
+        NoteTaker.serve(kind, dispatch).await
     }
 }
 #[derive(Resource)]

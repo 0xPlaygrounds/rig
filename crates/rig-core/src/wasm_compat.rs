@@ -26,13 +26,13 @@ compile_error!(
 ///
 /// ```compile_fail
 /// use std::rc::Rc;
-/// use rig_core::{serve::{OutcomeSink, Serve}, effect::{EffectKind, HandlerDescriptor, family}};
+/// use rig_core::{serve::{Dispatch, Reply, Serve}, effect::{EffectKind, HandlerDescriptor, family}};
 ///
 /// struct Local(Rc<u8>);
 /// impl Serve for Local {
 ///     type Family = family::Dynamic;
 ///     fn descriptor(&self) -> HandlerDescriptor { unimplemented!() }
-///     async fn serve(&self, _kind: EffectKind, _sink: OutcomeSink) {}
+///     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply { unimplemented!() }
 /// }
 /// ```
 #[diagnostic::on_unimplemented(
@@ -85,13 +85,13 @@ where
 ///
 /// ```compile_fail
 /// use std::cell::Cell;
-/// use rig_core::{serve::{OutcomeSink, Serve}, effect::{EffectKind, HandlerDescriptor, family}};
+/// use rig_core::{serve::{Dispatch, Reply, Serve}, effect::{EffectKind, HandlerDescriptor, family}};
 ///
 /// struct Local(Cell<u8>);
 /// impl Serve for Local {
 ///     type Family = family::Dynamic;
 ///     fn descriptor(&self) -> HandlerDescriptor { unimplemented!() }
-///     async fn serve(&self, _kind: EffectKind, _sink: OutcomeSink) {}
+///     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply { unimplemented!() }
 /// }
 /// ```
 #[diagnostic::on_unimplemented(

@@ -46,3 +46,5 @@ provider Final. Only middleware_streaming requires usage>0; the entry-log case
 requires Final existence. WireProbe's named test asserts final phase counts; it
 does not itself timestamp response-vs-consumption, so no extra timing guarantee
 is claimed from that test name.
+
+Initial handler tasks return owned replies. Effect-owned workers poll returned streams into bounded queues; native provider parsing and layer work run on the executor. Collect checks at most 64 queue entries per effect per pass and 4,096 across a host tick. Dropping an effect cancels its worker, while serial accounting remains through EOF during normal streaming completion. Browser execution is local and cannot preempt synchronous work on the browser thread.

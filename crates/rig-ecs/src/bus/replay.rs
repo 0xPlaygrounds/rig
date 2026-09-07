@@ -79,6 +79,9 @@ impl Replay {
         }
     }
 
+    /// Install before dispatching the effects to replay. A delivery plan cannot
+    /// retroactively constrain work that a live worker has already observed.
+    ///
     /// Register a by-id replayer for every recorded or required key in `log`,
     /// including all scoped required rows. Refuses conflicting families,
     /// descriptors and inconsistent delivery metadata. Recorded semantic

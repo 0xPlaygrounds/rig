@@ -443,7 +443,7 @@ pub const WORLD_DENY_REASON: &str = "blocked by the world";
 pub const CANCEL_STREAM_REASON: &str = "the answer is cancelled by a layer";
 
 /// What the `lookup` tool dispatches from inside its own service, through
-/// the dispatcher its sink carries (`rig_agent::bus::SinkDispatch`), so the child
+/// the dispatcher its sink carries (`rig_agent::bus::DispatchScope`), so the child
 /// record names the tool's record as its parent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Nesting {
@@ -1663,27 +1663,28 @@ impl rig_core::serve::Serve for Lookup {
         }
     }
 
-    async fn serve(&self, kind: rig_core::effect::EffectKind, sink: rig_core::serve::OutcomeSink) {
+    async fn serve(
+        &self,
+        kind: rig_core::effect::EffectKind,
+        dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
         let rig_core::effect::EffectKind::ToolCall { args, .. } = kind else {
-            sink.resolve(Err(rig_core::error::ErrorReport::new(
+            return rig_core::serve::Reply::Outcome(Err(rig_core::error::ErrorReport::new(
                 rig_core::error::ErrorKind::Request,
                 "a tool call",
-            )))
-            .await;
-            return;
+            )));
         };
         let args: LookupArgs = serde_json::from_str(&args).unwrap_or_default();
         if args.leaf {
-            sink.resolve(Ok(tool_text("leaf".to_owned()))).await;
-            return;
+            return rig_core::serve::Reply::Outcome(Ok(tool_text("leaf".to_owned())));
         }
         if self.nesting.detached {
             // Answered later, by a task holding the detached sink: the
             // child is dispatched through the detached sink's dispatcher.
-            let sink = sink.detach();
+            let (resolver, answer) = rig_core::serve::deferred();
             let dispatcher =
-                rig_agent::bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
-            assert_eq!(dispatcher.parent(), Some(sink.id()));
+                rig_agent::bus::DispatchScope::dispatcher(&dispatch).expect("a scoped sink");
+            assert_eq!(dispatcher.parent(), Some(dispatch.id()));
             let lookup = Lookup {
                 nesting: Nesting {
                     detached: false,
@@ -1693,14 +1694,15 @@ impl rig_core::serve::Serve for Lookup {
             };
             tokio::spawn(async move {
                 let text = lookup.nest(dispatcher, args).await;
-                sink.resolve(Ok(tool_text(text))).await;
+                let _ = resolver.resolve(Ok(tool_text(text)));
             });
-            return;
+            return rig_core::serve::Reply::Outcome(answer.await);
         }
-        let dispatcher = rig_agent::bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
-        assert_eq!(dispatcher.parent(), Some(sink.id()));
+        let dispatcher =
+            rig_agent::bus::DispatchScope::dispatcher(&dispatch).expect("a scoped sink");
+        assert_eq!(dispatcher.parent(), Some(dispatch.id()));
         let text = self.nest(dispatcher, args).await;
-        sink.resolve(Ok(tool_text(text))).await;
+        rig_core::serve::Reply::Outcome(Ok(tool_text(text)))
     }
 }
 
@@ -1721,17 +1723,20 @@ impl rig_core::serve::Serve for Relay {
         }
     }
 
-    async fn serve(&self, kind: rig_core::effect::EffectKind, sink: rig_core::serve::OutcomeSink) {
+    async fn serve(
+        &self,
+        kind: rig_core::effect::EffectKind,
+        dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
         let rig_core::effect::EffectKind::Custom { payload, .. } = kind else {
-            sink.resolve(Err(rig_core::error::ErrorReport::new(
+            return rig_core::serve::Reply::Outcome(Err(rig_core::error::ErrorReport::new(
                 rig_core::error::ErrorKind::Request,
                 "a relay note",
-            )))
-            .await;
-            return;
+            )));
         };
         let note: RelayNote = serde_json::from_value(payload).expect("a relay note");
-        let dispatcher = rig_agent::bus::SinkDispatch::dispatcher(&sink).expect("a scoped sink");
+        let dispatcher =
+            rig_agent::bus::DispatchScope::dispatcher(&dispatch).expect("a scoped dispatch");
         let ack = dispatcher
             .bind(&note_key())
             .expect("the host serves notes")
@@ -1740,14 +1745,13 @@ impl rig_core::serve::Serve for Relay {
             })
             .await
             .expect("acknowledged");
-        sink.resolve(Ok(rig_core::effect::Outcome::Custom {
+        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Custom {
             payload: serde_json::to_value(NoteAck {
                 accepted: ack.accepted,
                 at: ack.at,
             })
             .expect("an ack serializes"),
         }))
-        .await;
     }
 }
 
@@ -1770,10 +1774,13 @@ impl rig_core::serve::Serve for Never {
         }
     }
 
-    async fn serve(&self, _kind: rig_core::effect::EffectKind, sink: rig_core::serve::OutcomeSink) {
+    async fn serve(
+        &self,
+        _kind: rig_core::effect::EffectKind,
+        _dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
         self.reached.notify_one();
-        futures::future::pending::<()>().await;
-        drop(sink);
+        std::future::pending().await
     }
 }
 

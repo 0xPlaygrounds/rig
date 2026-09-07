@@ -6,18 +6,18 @@ use std::{
 };
 
 use bevy_ecs::prelude::*;
-use bevy_tasks::IoTaskPool;
-use futures::channel::{mpsc, oneshot};
+
+use rig_core::serve::Reply;
 use rig_core::{
     effect::{EffectId, HandlerKey},
     error::{ErrorKind, ErrorReport},
-    serve::{Origin, OutcomeSink},
+    serve::{Dispatch, Origin},
 };
 
 use super::{
     effect::{
-        EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing, Reserved,
-        Scope, Seq, Serving, Streamed, Streaming, ToolInputs,
+        EffectOutcome, Executions, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing,
+        Reserved, Scope, Seq, Serving, Streamed, ToolInputs,
     },
     handlers::{Bound, HandlerTable, Served},
     plugin::{Intake, Policy, Progress},
@@ -55,9 +55,9 @@ pub type CandidateView = (
 /// - otherwise issues the id ([`Reserved`] or minted), opens the record
 ///   (`parent` from the nearest issued ancestor, `scope` from the nearest
 ///   [`Scope`]; a tool call's [`ToolInputs`] and a [`Publishing`] slot on
-///   the sink), and either spawns the handler's future on the task pool —
-///   into [`Serving`] for a unary effect, [`Streaming`] plus an empty
-///   [`Streamed`] for a stream — or, for a handler that is a system, puts
+///   dispatch context), and starts one initial task in [`Executions`], with
+///   a [`Serving`] marker and an empty [`Streamed`] for a streaming consumer;
+///   for a handler that is a system, puts
 ///   the effect on the entity as `Asked<E>` (an open key adds nothing: the
 ///   entity is the question); then marks it [`InFlight`].
 #[allow(
@@ -68,6 +68,7 @@ pub fn dispatch(
     mut commands: Commands,
     policy: Res<Policy>,
     table: NonSend<HandlerTable>,
+    mut executions: NonSendMut<Executions>,
     bound: Query<(Entity, &Bound)>,
     pending: Query<CandidateView, Candidate>,
     in_flight: Query<&InFlight>,
@@ -107,11 +108,10 @@ pub fn dispatch(
             }
             continue;
         }
-        let (served, layered) = bound
+        let served = bound
             .iter()
             .find(|(_, bound)| &bound.key == key)
-            .map(|(handler, bound)| (table.served(handler), !bound.descriptor.layers.is_empty()))
-            .unwrap_or((None, false));
+            .and_then(|(handler, _)| table.served(handler));
         let Some(served) = served else {
             commands
                 .entity(entity)
@@ -147,69 +147,37 @@ pub fn dispatch(
                 }
                 let handler = handler.clone();
                 let kind = effect.kind.clone();
-                // A layered handler's decisions reach the record only
-                // through the sink's observer; the outcome it is told is
-                // the innermost handler's, which is what the record holds.
-                let observed = layered.then(|| {
-                    let observed = Arc::new(super::record::ObservedState::default());
-                    entity_commands.insert(super::record::Observed(Arc::clone(&observed)));
-                    observed
+                let observed = Arc::new(super::record::ObservedState::default());
+                entity_commands.insert(super::record::Observed(observed.clone()));
+                let mut dispatch = Dispatch::new(id, effect.is_stream());
+                if let rig_core::effect::EffectKind::ToolCall { .. } = &kind {
+                    let inbound = inputs.map(|inputs| inputs.0.clone()).unwrap_or_default();
+                    let published = rig_core::tool::PublishedContext::new();
+                    dispatch = dispatch
+                        .with_scope(Arc::new(inbound))
+                        .with_scope(published.clone());
+                    entity_commands.insert(Publishing(published));
+                }
+                let published = dispatch.scope::<rig_core::tool::PublishedContext>();
+                let dispatch = dispatch.with_observer(Box::new(super::record::WorldObserver {
+                    published,
+                    id,
+                    recording: recording.as_ref().map(|r| (**r).clone()),
+                    observed,
+                }));
+                let streaming = effect.is_stream();
+
+                let task = bevy_tasks::IoTaskPool::get().spawn(async move {
+                    let reply = handler.handle(kind, dispatch).await;
+                    if !streaming {
+                        return Reply::Outcome(reply.into_outcome().await);
+                    }
+                    reply
                 });
-                let observe = |sink: OutcomeSink| {
-                    let published = sink.scope::<rig_core::tool::PublishedContext>();
-                    match &observed {
-                        Some(observed) => {
-                            sink.with_observer(Box::new(super::record::WorldObserver {
-                                published,
-                                id,
-                                recording: recording.as_ref().map(|r| (**r).clone()),
-                                observed: Arc::clone(observed),
-                            }))
-                        }
-                        None => sink,
-                    }
-                };
+                executions.tasks.insert(entity, task);
+                entity_commands.insert(Serving);
                 if effect.is_stream() {
-                    let (events, receiver) = mpsc::channel(policy.stream_capacity);
-                    let sink = observe(OutcomeSink::stream(id, events));
-                    let task = IoTaskPool::get().spawn(async move {
-                        handler.handle(kind, sink).await;
-                    });
-                    entity_commands.insert((
-                        Streaming {
-                            task,
-                            events: receiver,
-                            fold: rig_core::serve::StreamTap::new(),
-                        },
-                        Streamed::default(),
-                    ));
-                } else {
-                    let (reply, receiver) = oneshot::channel();
-                    let mut sink = OutcomeSink::unary(id, reply);
-                    // A tool call's context travels beside the effect
-                    // (format 5): the inbound values on the sink, and the
-                    // slot the tool publishes into, read by `Collect`.
-                    if let rig_core::effect::EffectKind::ToolCall { .. } = &kind {
-                        let inbound = inputs.map(|inputs| inputs.0.clone()).unwrap_or_default();
-                        let published = rig_core::tool::PublishedContext::new();
-                        sink = sink
-                            .with_scope(std::sync::Arc::new(inbound))
-                            .with_scope(std::sync::Arc::clone(&published)
-                                as std::sync::Arc<dyn std::any::Any + Send + Sync>);
-                        entity_commands.insert(Publishing(published));
-                    }
-                    let sink = observe(sink);
-                    let task = IoTaskPool::get().spawn(async move {
-                        handler.handle(kind, sink).await;
-                        match receiver.await {
-                            Ok(outcome) => outcome,
-                            Err(oneshot::Canceled) => Err(ErrorReport::new(
-                                ErrorKind::Internal,
-                                "the handler dropped its outcome sink without answering",
-                            )),
-                        }
-                    });
-                    entity_commands.insert(Serving(task));
+                    entity_commands.insert(Streamed::default());
                 }
             }
             Served::World(world) => {

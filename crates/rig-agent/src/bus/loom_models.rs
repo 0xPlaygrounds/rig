@@ -134,7 +134,16 @@ impl Serve for Nothing {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, _sink: rig_core::serve::OutcomeSink) {}
+    async fn serve(
+        &self,
+        _kind: EffectKind,
+        _dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
+        rig_core::serve::Reply::Outcome(Err(rig_core::error::ErrorReport::new(
+            rig_core::error::ErrorKind::Internal,
+            "the handler dropped its outcome sink without answering",
+        )))
+    }
 }
 
 struct Tagged(&'static str);
@@ -152,11 +161,14 @@ impl Serve for Tagged {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, sink: rig_core::serve::OutcomeSink) {
-        sink.resolve(Ok(rig_core::effect::Outcome::Custom {
+    async fn serve(
+        &self,
+        _kind: EffectKind,
+        _dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
+        return rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Custom {
             payload: serde_json::json!(self.0),
-        }))
-        .await;
+        }));
     }
 }
 
@@ -357,7 +369,11 @@ impl Serve for Counted {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, sink: rig_core::serve::OutcomeSink) {
+    async fn serve(
+        &self,
+        _kind: EffectKind,
+        _dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
         self.polled.fetch_add(1, StdOrdering::SeqCst);
         // One yield before answering, the shape of any handler that does IO.
         let mut yielded = false;
@@ -371,10 +387,9 @@ impl Serve for Counted {
             }
         })
         .await;
-        sink.resolve(Ok(rig_core::effect::Outcome::Custom {
+        return rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Custom {
             payload: serde_json::Value::Null,
-        }))
-        .await;
+        }));
     }
 }
 

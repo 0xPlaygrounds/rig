@@ -14,7 +14,7 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
 };
 
-use rig_core::serve::{OutcomeSink, Serve};
+use rig_core::serve::{Dispatch, Reply, Serve};
 
 use super::{EffectLog, stable_hash};
 
@@ -583,7 +583,7 @@ impl Serve for EffectLogReplayer {
         self.descriptor.clone()
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let (next, missing) = {
             let mut records = self.records.lock().unwrap_or_else(PoisonError::into_inner);
             match &mut *records {
@@ -596,12 +596,12 @@ impl Serve for EffectLogReplayer {
                     ),
                 ),
                 Records::ById(records) => (
-                    records.remove(&sink.id()),
+                    records.remove(&dispatch.id()),
                     format!(
                         "replay divergence: `{}` received a `{}` dispatch as {}, and the log has no record of that id",
                         self.key,
                         kind.name(),
-                        sink.id()
+                        dispatch.id()
                     ),
                 ),
             }
@@ -622,16 +622,15 @@ impl Serve for EffectLogReplayer {
                     ))),
                     None => {
                         if let Some(output) = record.tool_output {
-                            let Some(published) = sink.scope::<rig_core::tool::PublishedContext>()
+                            let Some(published) =
+                                dispatch.scope::<rig_core::tool::PublishedContext>()
                             else {
-                                sink.resolve(Err(self.refuse(ErrorReport::new(
+                                return Reply::Outcome(Err(self.refuse(ErrorReport::new(
                                     ErrorKind::Divergence,
                                     "replay requires a tool-result publication slot",
-                                ))))
-                                .await;
-                                return;
+                                ))));
                             };
-                            let context = sink
+                            let context = dispatch
                                 .scope::<rig_core::tool::ToolContext>()
                                 .map(|context| context.for_dispatch())
                                 .unwrap_or_default();
@@ -640,43 +639,47 @@ impl Serve for EffectLogReplayer {
                         // Merge kept successful events and errors by original item
                         // position, including late frames after the first terminal.
                         // Without recorded errors, preserve the legacy folded-error
-                        // fallback (also needed for cancellation and truncation).
-                        if let (Some(events), true) = (record.events, sink.is_stream()) {
-                            let mut sink = sink;
+                        // fallback. A canonical truncation is reconstructed by EOF,
+                        // not an invented in-band error.
+                        if let (Some(events), true) = (record.events, dispatch.is_stream()) {
                             let errors = self
                                 .stream_errors
                                 .get(&record.id)
-                                .map(Vec::as_slice)
+                                .cloned()
                                 .unwrap_or_default();
+                            let mut tap = rig_core::serve::StreamTap::new();
+                            let truncated = errors.is_empty()
+                                && record.outcome.as_ref().is_err_and(|error| {
+                                    error == &rig_core::serve::stream_truncated()
+                                })
+                                && !events
+                                    .iter()
+                                    .any(|event| tap.observe(&Ok(event.clone())).is_some());
+                            let fallback = if errors.is_empty() && !truncated {
+                                record.outcome.err()
+                            } else {
+                                None
+                            };
                             let total = events.len() + errors.len();
-                            let mut errors_iter = errors.iter().peekable();
+                            let mut errors = errors.into_iter().peekable();
                             let mut events = events.into_iter();
-                            for position in 0..total {
-                                let item = if errors_iter
-                                    .peek()
-                                    .is_some_and(|error| error.item == position)
-                                {
-                                    errors_iter.next().map(|error| Err(error.error.clone()))
-                                } else {
-                                    events.next().map(Ok)
-                                };
-                                if let Some(item) = item
-                                    && sink.send(item).await.is_err()
-                                {
-                                    return;
-                                }
-                            }
-                            if errors.is_empty() && record.outcome.is_err() {
-                                sink.resolve(record.outcome).await;
-                            }
-                            return;
+                            let items = (0..total)
+                                .filter_map(move |position| {
+                                    if errors.peek().is_some_and(|error| error.item == position) {
+                                        errors.next().map(|error| Err(error.error))
+                                    } else {
+                                        events.next().map(Ok)
+                                    }
+                                })
+                                .chain(fallback.map(Err));
+                            return Reply::Stream(Box::pin(futures::stream::iter(items)));
                         }
                         record.outcome
                     }
                 },
             };
             debug_assert_eq!(self.family, self.descriptor.family.family());
-            sink.resolve(outcome).await;
+            Reply::Outcome(outcome)
         }
     }
 }

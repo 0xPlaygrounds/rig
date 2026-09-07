@@ -193,7 +193,7 @@ A tool served by a system (a world-served handler, §8.4) answers by submitting 
 
 ### 8.4 The tool context off the wire (format 5)
 
-`EffectKind::ToolCall { name, args }` and `Outcome::ToolResult { result }` carry no context. The inbound values reach the adapter through the sink's scope (`OutcomeSink::scope::<ToolContext>()`), attached by the driver — the world from the effect entity's `bus::ToolInputs`, rig-bus from the dispatch's own context — and the values a tool published come back beside the sink (`rig_core::tool::PublishedContext`), which the world reads into `bus::ToolOutputs` when the outcome lands. Published context is recorded separately from the tool outcome and restored by the consumer’s replay projection. The repository-repair consumer verifies typed write receipts before applying that projection; application state and approval decisions must also be saved for continuation.
+`EffectKind::ToolCall { name, args }` and `Outcome::ToolResult { result }` carry no context. The inbound values reach the adapter through the dispatch scope (`Dispatch::scope::<ToolContext>()`), attached by the driver — the world from the effect entity's `bus::ToolInputs`, rig-bus from the dispatch's own context — and the values a tool published come back beside the reply (`rig_core::tool::PublishedContext`), which the world reads into `bus::ToolOutputs` when the outcome lands. Published context is recorded separately from the tool outcome and restored by the consumer’s replay projection. The repository-repair consumer verifies typed write receipts before applying that projection; application state and approval decisions must also be saved for continuation.
 
 ## 9. Steering: every hook is a system
 
@@ -256,7 +256,7 @@ A `PendingEffect` the system spawns `ChildOf` the run at the hook's moment (its 
 
 ### 9.6 Layers
 
-A layer is the handler's: the world registers the layered `ErasedHandler` (`handler.layered(intercept)`) exactly as `Replay::open` does, under the key the header names. A decision the layer makes before the handler is served leaves no record, and a verdict after leaves the handler's answer in the record: the world's `Dispatch` installs a sink observer (`bus::WorldObserver`, its slots on the entity as `bus::Observed`) for a handler whose descriptor names layers — the one way a layer's `discard` and `patch` reach any recorder, and the innermost handler's outcome the observer is told is what `settle` records (`bus_world::a_layers_decisions_reach_the_record_through_the_sinks_observer`). The suspending layer (`ApprovalLayer`) is answered by a thread the interpreter spawns as the program says.
+A layer is the handler's: the world registers the layered `ErasedHandler` (`handler.layered(intercept)`) exactly as `Replay::open` does, under the key the header names. A decision the layer makes before the handler is served leaves no record, and a verdict after leaves the handler's answer in the record: the world's `Dispatch` installs a recording observer (`bus::WorldObserver`, its slots on the entity as `bus::Observed`) for every task-served handler — the one way a layer's `discard` and `patch` reach any recorder, and the innermost handler's outcome the observer is told is what `settle` records (`bus_world::a_layers_decisions_reach_the_record_through_the_sinks_observer`). The suspending layer (`ApprovalLayer`) is answered by a thread the interpreter spawns as the program says.
 
 | cell | records | pinned by |
 |---|---|---|
@@ -409,3 +409,56 @@ external deduplication or reconciliation is the host's responsibility.
 | an effect in flight at the cut | saved as intent, re-issued in the second world under its saved id, answered by the tail's replayer there: a note an outcome hook dispatched just before the cut is the tail's first record | `anthropic_host_custom_at_outcome{,_streamed}` resumed |
 | a system that answers an open key (the nesting program's `lookup`) | runs after `Dispatch` and before `Collect`, so `settle` records its answer in the same pass: a scene saved when the run wants its next turn has no open record | `mock_causal_depth_two` checkpointed |
 | two runs on one agent | two `spawn_run`s in sequence, the second after the first ended and the world went quiet; the conversation shared through memory (§11) | `anthropic_memory_two_runs`, `openai_breadth_memory_two_runs` |
+
+## Returned replies and collection cadence
+
+An initial `Serve` task prepares the reply and folds a unary stream to its first
+answer on the executor. A streaming reply gets one long-lived worker and a
+bounded private delivery queue. Native source polls, parsing, writer work and
+streamed verdicts run on pool threads. Browser `!Send` streams run on the local
+executor selected by the target-specific `bevy_platform/web` feature; synchronous
+source work still occupies the browser thread.
+
+Live Collect performs at most 64 queue checks per effect per invocation, with
+4,096 shared across every quiescence pass in one host tick. Pending ends that
+effect's turn. The next pass resumes after the last served dispatch sequence,
+wrapping once, so a hot early effect cannot permanently exclude later ones.
+Direct host invocations of `RigSchedule` reset the allowance per invocation.
+Deltas do not count as quiescence progress. These are streaming delivery limits,
+not total CPU-time or payload-size guarantees. Hosts must keep ticking to expose
+ready items and settle replies; quiescence is not completion.
+
+`Executions` owns task handles, removed when an effect leaves `InFlight`.
+Task cancellation reaches pending setup, unary folding and full delivery queues.
+An active native poll cannot be interrupted synchronously; observation closes
+atomically with cancellation so a late result cannot mutate the closed record.
+Registry replacement does not replace in-flight work. Streamed effects retain
+their serial slot through EOF, including post-final frames. Both reply forms
+converge through Collect, durable publication, `EffectOutcome` and `settle`.
+
+The observer records the innermost request and original answer. Denial discards
+the exchange. An observed original answer survives cancellation during an outer
+verdict or before collection; it does not claim successful consumer delivery.
+Cancelling an external deferred waiter closes its resolver and releases driver
+accounting even while the external host retains that resolver.
+
+Install the replay plan before dispatching its effects. For an implicitly
+cancelled kept prefix, replay limits source polling as well as visible delivery:
+it parks before any synthesized cancellation error and retains the source until
+policy cancellation. Re-recording therefore preserves the original error items.
+
+Each live `DeliveryKind::Stream { items }` records the number of items exposed
+for that effect in one Collect pass. Replay preserves both historical single-item
+and multi-item boundaries, including error positions. `bus_delivery` compares
+live policy observations with replay of the actual recorded cadence.
+`ServingPolicy::stream_capacity` supplies shared queue slots in ECS, clamped to
+at least one, with one additional sender-reserved slot. Awaiting each send
+prevents another source poll while that sender is parked. This transport bound
+is independent of the collection allowance and any source-internal buffers.
+
+Cancellation after an original handler answer has been observed records a
+`DeliveryKind::Cancelled` boundary instead of an outcome delivery. This preserves
+that original answer (including one awaiting a layer verdict) without claiming
+that the consumer received it. Policy replay must reproduce the cancellation;
+exchange replay returns cancellation and leaves undelivered terminal items hidden.
+Ordinary cancellation without an observed answer retains its existing encoding.

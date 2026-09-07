@@ -9,7 +9,7 @@ use std::{
 };
 
 use futures::{
-    StreamExt,
+    Sink, SinkExt, StreamExt,
     stream::{FusedStream, FuturesUnordered},
 };
 use tracing::Instrument;
@@ -17,7 +17,7 @@ use tracing::Instrument;
 use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
-    serve::{Observe, Origin, OutcomeSink, Recorder},
+    serve::{Dispatch, Observe, Origin, Recorder},
     streaming::StreamEvent,
     wasm_compat::WasmBoxedFuture,
 };
@@ -36,11 +36,11 @@ type InFlightServing = Pin<Box<Serving>>;
 
 /// The driver's hold on a recorder: closures, so the driver names no
 /// recorder type, and one observer per dispatch — the driver is not on the
-/// reply path (the consumer holds the reply channel), so the sink tells it.
+/// reply path (the consumer holds the reply channel), so the dispatch tells it.
 struct Recording {
     handlers: Box<dyn Fn(Vec<HandlerDescriptor>) + Send + Sync>,
     begin: Box<dyn Fn(EffectId, HandlerKey, EffectKind, Origin) + Send + Sync>,
-    observe: Box<dyn Fn(OutcomeSink, EffectId) -> OutcomeSink + Send + Sync>,
+    observe: Box<dyn Fn(Dispatch, EffectId) -> Dispatch + Send + Sync>,
 }
 
 /// The record's view of one dispatch: the recorder, told by id.
@@ -88,9 +88,9 @@ impl Recording {
         let handlers = Box::new(move |described| for_handlers.handlers(described));
         let for_begin = recorder.clone();
         let begin = Box::new(move |id, key, kind, origin| for_begin.begin(id, key, kind, origin));
-        let observe = Box::new(move |sink: OutcomeSink, id: EffectId| {
-            let published = sink.scope::<rig_core::tool::PublishedContext>();
-            sink.with_observer(Box::new(Recorded {
+        let observe = Box::new(move |dispatch: Dispatch, id: EffectId| {
+            let published = dispatch.scope::<rig_core::tool::PublishedContext>();
+            dispatch.with_observer(Box::new(Recorded {
                 published,
                 recorder: recorder.clone(),
                 id,
@@ -325,7 +325,6 @@ impl BusDriver {
         if self.config.serial_per_handler {
             self.busy.insert(key.clone());
         }
-        let (done, sink_done) = futures::channel::oneshot::channel();
         // The handler's way back onto this bus: a dispatcher whose dispatches
         // descend from this one.
         let scoped = Dispatcher::parented(
@@ -334,62 +333,99 @@ impl BusDriver {
             lineage,
             scope.clone(),
         );
-        let mut sink = reply
-            .into_sink(id)
-            .with_done(done)
-            .with_cancel(flag.marker())
+        let mut dispatch = Dispatch::new(id, matches!(&reply, super::dispatcher::Reply::Stream(_)))
             .with_scope(Arc::new(scoped));
         // A tool call's context, beside the effect: the inbound values the
         // tool runs with, and where what it publishes comes back.
         if let Some(context) = context {
-            sink = sink.with_scope(Arc::new(context));
+            dispatch = dispatch.with_scope(Arc::new(context));
         }
         if let Some(published) = published {
-            sink = sink.with_scope(published);
+            dispatch = dispatch.with_scope(published);
         }
-        let sink = match &self.recorder {
+        let dispatch = match &self.recorder {
             Some(recorder) => {
                 (recorder.begin)(id, key.clone(), kind.clone(), Origin { parent, scope });
-                (recorder.observe)(sink, id)
+                (recorder.observe)(dispatch, id)
             }
-            None => sink,
+            None => dispatch,
         };
         let task_key = key.clone();
         let shared = Arc::clone(&self.shared);
         let task = Box::pin(
             async move {
                 use futures::future::{Either, select};
-                let serving = handler.handle(kind, sink);
-                let ancestor_cancelled = flag.wait();
-                // The handler races the consumer's cancel and an ancestor's:
-                // either drops the handler future (and the sink, which
-                // reports the cancel); the consumer's also reaches every
-                // descendant of this dispatch. A handler that returned with
-                // its sink detached is still a dispatch in flight, so the
-                // cancels keep racing the sink's answer after it.
-                // The loser of a race is dropped before the sink is awaited:
-                // a handler future dropped is the sink dropped (unless it was
-                // detached), which is what resolves `sink_done`.
-                match select(serving, select(cancel, ancestor_cancelled)).await {
-                    Either::Left((_, cancels)) => match select(sink_done, cancels).await {
-                        Either::Left(_) => {}
-                        Either::Right((Either::Left(_), sink_done)) => {
+                let mut reply = Some(reply);
+                let serving = Box::pin(async {
+                    let answer = handler.handle(kind, dispatch).await;
+                    match reply.as_mut() {
+                        Some(super::dispatcher::Reply::Stream(sender)) => {
+                            let mut stream = answer.into_stream();
+                            while !flag.is_set() {
+                                let Some(item) = stream.next().await else {
+                                    break;
+                                };
+                                // Retain at most this item beyond the consumer queue.
+                                // Recheck cancellation after readiness, before transfer.
+                                let mut item = Some(item);
+                                let sent = std::future::poll_fn(|cx| {
+                                    if flag.is_set() {
+                                        return Poll::Ready(Err(()));
+                                    }
+                                    match Pin::new(&mut *sender).poll_ready(cx) {
+                                        Poll::Pending => return Poll::Pending,
+                                        Poll::Ready(Err(_)) => return Poll::Ready(Err(())),
+                                        Poll::Ready(Ok(())) => {}
+                                    }
+                                    if flag.is_set() {
+                                        return Poll::Ready(Err(()));
+                                    }
+                                    let Some(item) = item.take() else {
+                                        return Poll::Ready(Ok(()));
+                                    };
+                                    Poll::Ready(
+                                        Pin::new(&mut *sender).start_send(item).map_err(|_| ()),
+                                    )
+                                })
+                                .await;
+                                if sent.is_err() || sender.flush().await.is_err() {
+                                    return true;
+                                }
+                            }
+                        }
+                        Some(super::dispatcher::Reply::Unary(_)) => {
+                            let answer = answer.into_outcome().await;
+                            if flag.is_set() {
+                                return false;
+                            }
+                            if let Some(super::dispatcher::Reply::Unary(sender)) = reply.take() {
+                                return sender.send(answer).is_err();
+                            }
+                        }
+                        None => {}
+                    }
+                    false
+                });
+                // Cancellation wins when both sides are ready on this poll.
+                // Drop execution before notifying the remaining consumer.
+                let cancels = select(cancel, flag.wait());
+                let cancelled = match select(cancels, serving).await {
+                    Either::Right((consumer_gone, _)) => {
+                        if consumer_gone {
                             shared.cancel_descendants(id);
-                            let _ = sink_done.await;
                         }
-                        Either::Right((Either::Right(_), sink_done)) => {
-                            let _ = sink_done.await;
+                        consumer_gone || flag.is_set()
+                    }
+                    Either::Left((reason, serving)) => {
+                        if matches!(reason, Either::Left(_)) {
+                            shared.cancel_descendants(id);
                         }
-                    },
-                    Either::Right((Either::Left(_), serving)) => {
-                        shared.cancel_descendants(id);
                         drop(serving);
-                        let _ = sink_done.await;
+                        true
                     }
-                    Either::Right((Either::Right(_), serving)) => {
-                        drop(serving);
-                        let _ = sink_done.await;
-                    }
+                };
+                if cancelled && let Some(reply) = reply.take() {
+                    reply.fail(rig_core::serve::cancelled());
                 }
                 (task_key, id)
             }
@@ -484,7 +520,7 @@ impl BusDriver {
 }
 
 /// An in-flight task: the handler's future, the cancels it races and the
-/// sink's answer, ending as the key it occupied and the dispatch's id so
+/// dispatch's answer, ending as the key it occupied and the dispatch's id so
 /// the driver can release the one and end the other.
 struct Serving {
     task: InFlight,
@@ -549,8 +585,7 @@ impl Future for BusDriver {
                     Poll::Ready(None) | Poll::Pending => break,
                 }
             }
-            // Cancellation can leave a detached sink in flight; queued descendants
-            // must still be refused on this pass even without a completed task.
+            // Refuse queued descendants on this pass even if no task completed.
             this.drain_cancelled_queues();
             if progressed {
                 continue;

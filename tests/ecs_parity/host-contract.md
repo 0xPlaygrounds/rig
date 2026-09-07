@@ -81,3 +81,5 @@ configuration.
 
 Scope remains default root features/native host/replay. These cases do not establish complete feature coverage, network isolation,
 arbitrary multi-run scheduling or interruption/capability guarantees.
+
+RuntimeHandler enters the supplied Tokio runtime for initial handler polls and returned stream polls. The host keeps ticking on Pending; stream work is owned by its effect through EOF.

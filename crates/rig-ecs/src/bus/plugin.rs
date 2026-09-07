@@ -78,7 +78,9 @@ pub const QUIESCENCE_CAP: usize = 64;
 /// initialiser finds it in place).
 #[derive(Debug, Clone)]
 pub struct Bus {
-    /// The serving policy: intake per tick, stream buffer, serial keys.
+    /// The serving policy: intake per tick, serial keys and bounded delivery.
+    /// `stream_capacity` supplies shared queue slots, clamped to at least one;
+    /// the single sender has one additional reserved slot.
     pub policy: ServingPolicy,
     /// Ambiguity detection on the schedule: `Warn` by default; the crate's
     /// tests build with `Error`.
@@ -121,10 +123,13 @@ impl Bus {
         world.init_resource::<SeqCounter>();
         world.init_resource::<IdCounter>();
         world.init_resource::<Progress>();
+        world.init_resource::<super::collect::CollectionBudget>();
         world.init_resource::<Intake>();
         world.init_resource::<DeliveryBatch>();
         world.init_resource::<WorldOutcomeCounter>();
         world.init_non_send::<HandlerTable>();
+        world.init_non_send::<super::effect::Executions>();
+        world.add_observer(super::effect::drop_execution);
         world.add_observer(unbound);
         world.add_observer(record_outcome);
         world.add_observer(record_cancelled);
@@ -176,13 +181,23 @@ pub fn install_bus(world: &mut World, policy: ServingPolicy) {
 /// plugin system reports [`Progress`], at most [`QUIESCENCE_CAP`] passes.
 pub fn run_to_quiescence(world: &mut World) {
     world.resource_mut::<Intake>().0 = 0;
+    {
+        let mut budget = world.resource_mut::<super::collect::CollectionBudget>();
+        budget.in_runner = true;
+        budget.remaining = super::collect::STREAM_WORK_PER_TICK;
+    }
     for pass in 0..QUIESCENCE_CAP {
         world.resource_mut::<Progress>().0 = false;
         world.run_schedule(RigSchedule);
         #[cfg(feature = "replay")]
         super::delivery::diagnose_idle_replay(world);
-        if !world.resource::<Progress>().0 {
-            return;
+        if !world.resource::<Progress>().0
+            || world
+                .resource::<super::collect::CollectionBudget>()
+                .remaining
+                == 0
+        {
+            break;
         }
         if pass + 1 == QUIESCENCE_CAP {
             log::warn!(
@@ -191,4 +206,7 @@ pub fn run_to_quiescence(world: &mut World) {
             );
         }
     }
+    world
+        .resource_mut::<super::collect::CollectionBudget>()
+        .in_runner = false;
 }

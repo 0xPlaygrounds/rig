@@ -101,11 +101,19 @@
         "id": 9,
         "kind": {
           "delivery": "stream",
-          "items": 70
+          "items": 64
         }
       },
       {
-        "batch": 8,
+        "batch": 9,
+        "id": 9,
+        "kind": {
+          "delivery": "stream",
+          "items": 6
+        }
+      },
+      {
+        "batch": 9,
         "id": 9,
         "kind": {
           "delivery": "outcome"

@@ -21,6 +21,7 @@
 
 mod bus_support;
 
+use rig_core::serve::Dispatch;
 use std::sync::{Arc, atomic::Ordering};
 
 use bevy_ecs::prelude::*;
@@ -28,7 +29,7 @@ use bus_support::*;
 use rig_core::{
     completion::CompletionRequest,
     effect::{EffectFamily, EffectKind, HandlerKey, Key, Outcome, family},
-    serve::{OutcomeSink, Serve},
+    serve::Serve,
 };
 use rig_ecs::bus::{
     EffectLogResource, EffectOutcome, Handlers, InFlight, Issued, PendingEffect, Replay, Reserved,
@@ -459,19 +460,16 @@ impl Serve for Echo {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let EffectKind::ToolCall { args, .. } = kind else {
-            sink.resolve(Err(rig_core::error::ErrorReport::new(
+            return rig_core::serve::Reply::Outcome(Err(rig_core::error::ErrorReport::new(
                 rig_core::error::ErrorKind::Request,
                 "not a tool call",
-            )))
-            .await;
-            return;
+            )));
         };
-        sink.resolve(Ok(Outcome::ToolResult {
+        rig_core::serve::Reply::Outcome(Ok(Outcome::ToolResult {
             result: rig_core::tool::ToolResult::success(args.into()),
         }))
-        .await;
     }
 }
 

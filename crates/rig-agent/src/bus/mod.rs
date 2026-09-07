@@ -129,7 +129,7 @@
 //!   with the key in the message. The two are distinct on purpose: closed is
 //!   a lifecycle event, unavailable is a wiring event.
 //! - Cancellation is drop: dropping a [`Pending`] or [`EffectStream`]
-//!   closes the handler's [`OutcomeSink`](rig_core::serve::OutcomeSink), and the adapters stop.
+//!   drops the handler future or owned reply stream, stopping its adapters.
 //!   The driver propagates cancellation through retained ancestry even when
 //!   intermediate dispatches have completed. Descendants still waiting to send
 //!   or serve are refused; a retained handler dispatcher also refuses new work
@@ -165,8 +165,8 @@
 //!
 //! # Causal dispatch
 //!
-//! A handler's way back onto the bus is its sink's dispatcher
-//! ([`SinkDispatch::dispatcher`]): every dispatch made through it — and
+//! A handler's way back onto the bus is its dispatch context
+//! ([`DispatchScope::dispatcher`]): every dispatch made through it — and
 //! every [`Handle`] bound from it — carries the served dispatch's id as its
 //! **parent**, readable on the [`Pending`]/[`EffectStream`]/[`Typed`]
 //! (`parent()`) and passed to the recorder, so a record names the dispatch
@@ -180,12 +180,12 @@
 //!   spawned task exactly as from the handler's own poll.
 //! - A cancel reaches the chain: dropping a [`Pending`] whose handler
 //!   dispatched children flags every descendant in flight (its handler is
-//!   dropped, its sink reads closed, its record and any consumer still
-//!   holding it say `Cancelled`) and drops the ones still queued or
+//!   dropped, its resolver closes, any observed original answer remains recorded, and
+//!   a listening consumer receives `Cancelled`) and drops the ones still queued or
 //!   buffered unserved — no handler poll, no record.
 //!
 //! A consumer's dispatcher holds the bus open for commands; the scoped one
-//! a handler reads off its sink does not — the dispatch it serves does.
+//! a handler reads from its dispatch context does not — the dispatch it serves does.
 //! What the chain cannot see it cannot refuse: a nested run made on the
 //! *same* dispatcher that made the outer call — an agent prompting itself
 //! from inside its own tool over its own bus — carries no parent, and
@@ -222,8 +222,8 @@ mod registrar;
 pub use dispatcher::{BusId, Dispatcher, EffectStream, Pending};
 pub use driver::BusDriver;
 pub use handle::{
-    Completion, EmbedHandle, Handle, IndexHandle, MemoryHandle, ModelHandle, RerankHandle,
-    Retrieval, SinkDispatch, ToolAnswer, ToolCall, ToolHandle, Typed, wrap_stream,
+    Completion, DispatchScope, EmbedHandle, Handle, IndexHandle, MemoryHandle, ModelHandle,
+    RerankHandle, Retrieval, ToolAnswer, ToolCall, ToolHandle, Typed, wrap_stream,
 };
 pub use registrar::Registrar;
 use rig_core::serve::ServingPolicy;

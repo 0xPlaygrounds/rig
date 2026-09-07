@@ -60,9 +60,20 @@ impl rig::serve::Serve for PanicsAfterAnswer {
         clippy::panic,
         reason = "deliberate handler fault, after a valid answer"
     )]
-    async fn serve(&self, kind: rig::effect::EffectKind, sink: rig::serve::OutcomeSink) {
-        rig::serve::Serve::serve(&consumer::Scripted, kind, sink).await;
-        panic!("controlled panic after successful answer");
+    async fn serve(
+        &self,
+        kind: rig::effect::EffectKind,
+        dispatch: rig::serve::Dispatch,
+    ) -> rig::serve::Reply {
+        use futures::StreamExt;
+        match rig::serve::Serve::serve(&consumer::Scripted, kind, dispatch).await {
+            rig::serve::Reply::Stream(stream) => {
+                rig::serve::Reply::Stream(Box::pin(stream.chain(futures::stream::poll_fn(|_| {
+                    panic!("controlled panic after successful answer")
+                }))))
+            }
+            rig::serve::Reply::Outcome(_) => panic!("controlled panic after successful answer"),
+        }
     }
 }
 

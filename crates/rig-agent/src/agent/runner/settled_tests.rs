@@ -55,7 +55,7 @@ mod slow_stream {
 
     use rig_core::{
         effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey},
-        serve::{OutcomeSink, Serve},
+        serve::{Dispatch, Reply, Serve},
     };
 
     use crate::agent::{AgentBuilder, AgentHook, HookContext, ObservationAction, TextDelta};
@@ -78,19 +78,20 @@ mod slow_stream {
             }
         }
 
-        async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-            let mut out = sink.writer();
-            for word in ["one", "two", "three"] {
-                if out.text(word).await.is_err() {
-                    return;
+        async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+            Reply::written(|mut out| async move {
+                for word in ["one", "two", "three"] {
+                    if out.text(word).await.is_err() {
+                        return;
+                    }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
                 }
-                tokio::time::sleep(Duration::from_millis(50)).await;
-            }
-            let _ = out
-                .finish(rig_core::test_utils::mock_final(
-                    rig_core::completion::Usage::new(),
-                ))
-                .await;
+                let _ = out
+                    .finish(rig_core::test_utils::mock_final(
+                        rig_core::completion::Usage::new(),
+                    ))
+                    .await;
+            })
         }
     }
 

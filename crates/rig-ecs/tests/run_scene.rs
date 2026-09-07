@@ -16,6 +16,7 @@
 
 mod run_support;
 
+use rig_core::serve::Dispatch;
 use std::time::Instant;
 
 use bevy_app::{App, Update};
@@ -350,7 +351,7 @@ fn a_run_saved_with_its_effect_in_flight_resumes_and_the_effect_is_answered_ther
 fn a_run_saved_while_retrieving_resumes_and_attaches() {
     use rig_core::{
         effect::{FamilyDescriptor, HandlerDescriptor, RetrieveQuery, RetrievedDocuments},
-        serve::{OutcomeSink, Serve},
+        serve::Serve,
     };
     use rig_ecs::agent::{Retrieval, RetrievalKind, Retrieves, Retrieving};
 
@@ -368,20 +369,26 @@ fn a_run_saved_while_retrieving_resumes_and_attaches() {
                 layers: Vec::new(),
             }
         }
-        async fn serve(&self, kind: rig_core::effect::EffectKind, sink: OutcomeSink) {
+        async fn serve(
+            &self,
+            kind: rig_core::effect::EffectKind,
+            _dispatch: Dispatch,
+        ) -> rig_core::serve::Reply {
             let rig_core::effect::EffectKind::Retrieve {
                 query: RetrieveQuery::TopN { .. },
             } = kind
             else {
-                return;
+                return rig_core::serve::Reply::Outcome(Err(rig_core::error::ErrorReport::new(
+                    rig_core::error::ErrorKind::Internal,
+                    "the handler dropped its outcome sink without answering",
+                )));
             };
             if !self.answers {
                 std::future::pending::<()>().await;
             }
-            sink.resolve(Ok(rig_core::effect::Outcome::Documents(
+            rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Documents(
                 RetrievedDocuments::Scored(vec![(0.9, "d1".to_owned(), serde_json::json!("a"))]),
             )))
-            .await;
         }
     }
     fn world(answers: bool) -> (App, Entity, Entity) {

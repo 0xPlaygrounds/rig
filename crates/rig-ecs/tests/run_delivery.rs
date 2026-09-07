@@ -10,6 +10,7 @@
 )]
 mod run_support;
 
+use rig_core::serve::Dispatch;
 use std::sync::{Arc, Mutex};
 
 use bevy_ecs::prelude::*;
@@ -18,7 +19,7 @@ use rig_core::{
     completion::{CompletionRequest, CompletionResponse, ModelRef, ProviderCapabilities, Usage},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     message::{AssistantContent, Message, UserContent},
-    serve::{OutcomeSink, Serve},
+    serve::Serve,
     tool::{ToolOutput, ToolResult},
 };
 use rig_ecs::{
@@ -104,7 +105,7 @@ impl Serve for Latched {
             layers: Vec::new(),
         }
     }
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let EffectKind::Completion { request, .. } = kind else {
             unreachable!()
         };
@@ -120,12 +121,11 @@ impl Serve for Latched {
         } else {
             vec![call("c-two", "add", serde_json::json!({"x": 2, "y": 0}))]
         };
-        sink.resolve(Ok(Outcome::Completion(CompletionResponse::new(
+        rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
             choice,
             Usage::new(),
             "latched",
         ))))
-        .await;
     }
 }
 
@@ -147,7 +147,7 @@ impl Serve for Releasing {
             layers: Vec::new(),
         }
     }
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let EffectKind::ToolCall { args, .. } = kind else {
             unreachable!()
         };
@@ -158,10 +158,9 @@ impl Serve for Releasing {
         {
             let _ = release.send(());
         }
-        sink.resolve(Ok(Outcome::ToolResult {
+        rig_core::serve::Reply::Outcome(Ok(Outcome::ToolResult {
             result: ToolResult::success(ToolOutput::json(serde_json::json!(x * 10))),
         }))
-        .await;
     }
 }
 

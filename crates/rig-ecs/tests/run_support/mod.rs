@@ -3,6 +3,7 @@
 
 #![allow(dead_code, reason = "each suite uses the part of the support it needs")]
 
+use rig_core::serve::Dispatch;
 use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -15,7 +16,7 @@ use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
-    serve::{OutcomeSink, Serve, ServingPolicy},
+    serve::{Serve, ServingPolicy},
 };
 use rig_ecs::{
     agent::{
@@ -63,7 +64,7 @@ impl Serve for Capturing {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         match kind {
             EffectKind::Completion { request, .. } => {
                 self.requests.lock().expect("requests").push(request);
@@ -72,15 +73,12 @@ impl Serve for Capturing {
                     Usage::new(),
                     "capturing",
                 );
-                sink.resolve(Ok(Outcome::Completion(response))).await;
+                rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
             }
-            other => {
-                sink.resolve(Err(ErrorReport::new(
-                    ErrorKind::HandlerUnavailable,
-                    format!("a model cannot serve {}", other.name()),
-                )))
-                .await;
-            }
+            other => rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+                ErrorKind::HandlerUnavailable,
+                format!("a model cannot serve {}", other.name()),
+            ))),
         }
     }
 }
@@ -106,12 +104,11 @@ impl Serve for NeverCalled {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-        sink.resolve(Err(ErrorReport::new(
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
+        rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
             ErrorKind::Internal,
             "a tool advertised and never called was called",
         )))
-        .await;
     }
 }
 
@@ -225,9 +222,8 @@ impl Serve for NeverAnswers {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-        futures::future::pending::<()>().await;
-        drop(sink);
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
+        std::future::pending().await
     }
 }
 
@@ -270,7 +266,7 @@ impl Serve for Scripted {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         match kind {
             EffectKind::Completion { request, .. } => {
                 self.requests.lock().expect("requests").push(request);
@@ -281,15 +277,12 @@ impl Serve for Scripted {
                     .pop_front()
                     .unwrap_or_else(|| vec![AssistantContent::text("done")]);
                 let response = CompletionResponse::new(choice, Usage::new(), "scripted");
-                sink.resolve(Ok(Outcome::Completion(response))).await;
+                rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
             }
-            other => {
-                sink.resolve(Err(ErrorReport::new(
-                    ErrorKind::HandlerUnavailable,
-                    format!("a model cannot serve {}", other.name()),
-                )))
-                .await;
-            }
+            other => rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+                ErrorKind::HandlerUnavailable,
+                format!("a model cannot serve {}", other.name()),
+            ))),
         }
     }
 }
@@ -335,12 +328,13 @@ impl Serve for Adder {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         use std::sync::atomic::Ordering;
         let EffectKind::ToolCall { args, .. } = kind else {
-            sink.resolve(Err(ErrorReport::new(ErrorKind::Request, "a tool call")))
-                .await;
-            return;
+            return rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
+                ErrorKind::Request,
+                "a tool call",
+            )));
         };
         let now = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
         self.peak.fetch_max(now, Ordering::SeqCst);
@@ -351,11 +345,10 @@ impl Serve for Adder {
             bevy_tasks::futures_lite::future::yield_now().await;
         }
         self.in_flight.fetch_sub(1, Ordering::SeqCst);
-        sink.resolve(Ok(Outcome::ToolResult {
+        rig_core::serve::Reply::Outcome(Ok(Outcome::ToolResult {
             result: rig_core::tool::ToolResult::success(rig_core::tool::ToolOutput::json(
                 serde_json::json!(sum),
             )),
         }))
-        .await;
     }
 }

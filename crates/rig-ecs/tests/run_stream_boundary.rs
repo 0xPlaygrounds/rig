@@ -13,7 +13,7 @@ use futures::channel::oneshot;
 use rig_core::{
     completion::{ModelRef, ProviderCapabilities},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey},
-    serve::{OutcomeSink, Serve},
+    serve::{Dispatch, Reply, Serve},
     streaming::{BlockId, BlockKind, Delta, StreamEvent},
 };
 use rig_ecs::{
@@ -46,56 +46,59 @@ impl Serve for FinishingName {
     fn descriptor(&self) -> HandlerDescriptor {
         NameThenGate(Arc::clone(&self.0)).descriptor()
     }
-    async fn serve(&self, _kind: EffectKind, mut sink: OutcomeSink) {
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
         let gate = self.0.lock().expect("gate lock").take();
         let Some(gate) = gate else {
-            sink.resolve(Ok(Outcome::Completion(CompletionResponse::new(
+            return Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
                 vec![AssistantContent::text("done")],
                 ProviderUsage {
                     total_tokens: 3,
                     ..ProviderUsage::new()
                 },
                 "boundary",
-            ))))
-            .await;
-            return;
+            ))));
         };
-        let id = BlockId::Wire("assembly-block".into());
-        for event in [
-            StreamEvent::BlockStart {
-                id: id.clone(),
-                kind: BlockKind::ToolCall,
-            },
-            StreamEvent::BlockDelta {
-                id: id.clone(),
-                delta: Delta::ToolName {
-                    name: "wrong".into(),
+
+        Reply::written(move |mut writer| async move {
+            let id = BlockId::Wire("assembly-block".into());
+            for event in [
+                StreamEvent::BlockStart {
+                    id: id.clone(),
+                    kind: BlockKind::ToolCall,
                 },
-            },
-        ] {
-            sink.send(Ok(event)).await.expect("stream open");
-        }
-        gate.await.expect("test releases producer");
-        sink.send(Ok(StreamEvent::BlockEnd {
-            id,
-            end: BlockClose::ToolCall(
-                ToolCallEnd::whole("wrong", serde_json::json!({"x": 2, "y": 3}))
-                    .with_tool_id("provider-tool")
-                    .with_call_id("provider-call"),
-            ),
-            block: None,
-        }))
-        .await
-        .expect("stream open");
-        sink.send(Ok(StreamEvent::Final(StreamFinal::new(
-            "boundary",
-            ProviderUsage {
-                total_tokens: 7,
-                ..ProviderUsage::new()
-            },
-        ))))
-        .await
-        .expect("stream open");
+                StreamEvent::BlockDelta {
+                    id: id.clone(),
+                    delta: Delta::ToolName {
+                        name: "wrong".into(),
+                    },
+                },
+            ] {
+                writer.event(event).await.expect("stream open");
+            }
+            gate.await.expect("test releases producer");
+            writer
+                .event(StreamEvent::BlockEnd {
+                    id,
+                    end: BlockClose::ToolCall(
+                        ToolCallEnd::whole("wrong", serde_json::json!({"x": 2, "y": 3}))
+                            .with_tool_id("provider-tool")
+                            .with_call_id("provider-call"),
+                    ),
+                    block: None,
+                })
+                .await
+                .expect("stream open");
+            writer
+                .event(StreamEvent::Final(StreamFinal::new(
+                    "boundary",
+                    ProviderUsage {
+                        total_tokens: 7,
+                        ..ProviderUsage::new()
+                    },
+                )))
+                .await
+                .expect("stream open");
+        })
     }
 }
 
@@ -345,29 +348,34 @@ impl Serve for NameThenGate {
             layers: vec![],
         }
     }
-    async fn serve(&self, _kind: EffectKind, mut sink: OutcomeSink) {
-        let id = BlockId::Wire("invalid-call".into());
-        sink.send(Ok(StreamEvent::BlockStart {
-            id: id.clone(),
-            kind: BlockKind::ToolCall,
-        }))
-        .await
-        .expect("stream open");
-        sink.send(Ok(StreamEvent::BlockDelta {
-            id,
-            delta: Delta::ToolName {
-                name: "unavailable_tool".into(),
-            },
-        }))
-        .await
-        .expect("stream open");
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
         let gate = self
             .0
             .lock()
             .expect("gate lock")
             .take()
             .expect("one request");
-        let _ = gate.await;
+
+        Reply::written(move |mut writer| async move {
+            let id = BlockId::Wire("invalid-call".into());
+            writer
+                .event(StreamEvent::BlockStart {
+                    id: id.clone(),
+                    kind: BlockKind::ToolCall,
+                })
+                .await
+                .expect("stream open");
+            writer
+                .event(StreamEvent::BlockDelta {
+                    id,
+                    delta: Delta::ToolName {
+                        name: "unavailable_tool".into(),
+                    },
+                })
+                .await
+                .expect("stream open");
+            let _ = gate.await;
+        })
     }
 }
 

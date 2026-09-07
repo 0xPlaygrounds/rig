@@ -177,7 +177,7 @@ pub struct ToolContext {
     /// The driver's scopes for the call — not data: never on the wire, not
     /// part of equality, dropped by the adapter before the result is
     /// resolved. The adapter copies them from the sink it serves
-    /// (`OutcomeSink::scopes`) so a tool can reach its runtime by type —
+    /// (`Dispatch::scopes`) so a tool can reach its runtime by type —
     /// rig-agent's bus hands a `Dispatcher` whose every dispatch, and every agent
     /// built over it, descends from this call. Empty for an inline call.
     #[serde(skip)]
@@ -410,7 +410,7 @@ impl std::fmt::Debug for ToolContext {
 
 /// What a tool published into its dispatch context, handed back beside the
 /// sink rather than on the wire: the driver attaches an empty one to the
-/// sink's scope (`OutcomeSink::with_scope`), the adapter fills it once the
+/// sink's scope (`Dispatch::with_scope`), the adapter fills it once the
 /// tool ran, the driver reads it after the outcome. One per dispatch; a
 /// second publish replaces the first.
 #[derive(Debug, Default)]

@@ -1,9 +1,6 @@
-use std::sync::{
-    Mutex,
-    atomic::{AtomicBool, Ordering},
-};
+use std::{sync::Mutex, task::Context};
 
-use futures::{FutureExt, StreamExt, executor::block_on, task::noop_waker_ref};
+use futures::{StreamExt, executor::block_on, task::noop_waker_ref};
 
 use super::*;
 
@@ -38,13 +35,10 @@ fn resolved_stream_preserves_original_response_for_outcome_only_replay() {
     use crate::message::{AssistantContent, DocumentSourceKind, Image};
 
     for keep_events in [false, true] {
-        let (events, receiver) = mpsc::channel(16);
         let seen = Arc::new(Mutex::new(Seen {
             discard_events: !keep_events,
             ..Seen::default()
         }));
-        let sink = OutcomeSink::stream(EffectId::from_raw(1), events)
-            .with_observer(Box::new(Observer(seen.clone())));
         let mut response = CompletionResponse::new(
             vec![
                 AssistantContent::text("generated image"),
@@ -61,8 +55,15 @@ fn resolved_stream_preserves_original_response_for_outcome_only_replay() {
         response.provider_request_id = Some("request".into());
         response.model = Some("image-model".into());
         let expected = serde_json::to_value(&response).expect("response JSON");
-        block_on(sink.resolve(Ok(Outcome::Completion(response))));
-        let delivered = block_on(receiver.collect::<Vec<_>>());
+        let reply = Reply::Outcome(Ok(Outcome::Completion(response))).observed(
+            true,
+            Some(Observed {
+                observer: Box::new(Observer(seen.clone())),
+                told: false,
+            }),
+            None,
+        );
+        let delivered = block_on(reply.into_stream().collect::<Vec<_>>());
         assert!(
             delivered
                 .iter()
@@ -87,199 +88,106 @@ fn resolved_stream_preserves_original_response_for_outcome_only_replay() {
 }
 
 #[test]
-fn ancestor_cancelled_detached_unary_resolve_records_and_delivers_cancellation() {
-    let (reply, receiver) = oneshot::channel();
-    let marker = Arc::new(AtomicBool::new(false));
-    let seen = Arc::new(Mutex::new(Seen::default()));
-    let sink = OutcomeSink::unary(EffectId::from_raw(1), reply)
-        .with_cancel(marker.clone())
-        .with_observer(Box::new(Observer(seen.clone())))
-        .detach();
-    marker.store(true, Ordering::SeqCst);
-    assert!(sink.is_closed());
-    block_on(sink.resolve(Ok(Outcome::Custom {
-        payload: serde_json::json!("late success"),
-    })));
-    let report = block_on(receiver)
-        .expect("answered")
-        .expect_err("ancestor cancelled");
-    assert_eq!(report.kind, ErrorKind::Cancelled);
-    let seen = seen.lock().expect("seen");
-    assert_eq!(seen.outcomes.len(), 1);
-    assert_eq!(
-        seen.outcomes[0]
-            .as_ref()
-            .expect_err("recorded cancellation")
-            .kind,
-        ErrorKind::Cancelled
-    );
-}
-
-#[test]
-fn ancestor_cancelled_detached_stream_rejects_and_does_not_record_late_events() {
-    let (events, mut receiver) = mpsc::channel(4);
-    let marker = Arc::new(AtomicBool::new(false));
-    let seen = Arc::new(Mutex::new(Seen::default()));
-    let mut sink = OutcomeSink::stream(EffectId::from_raw(1), events)
-        .with_cancel(marker.clone())
-        .with_observer(Box::new(Observer(seen.clone())))
-        .detach();
-    marker.store(true, Ordering::SeqCst);
-    assert!(sink.is_closed());
-    let result = block_on(sink.send(Ok(StreamEvent::Final(StreamFinal::new(
-        "test",
-        Default::default(),
-    )))));
-    drop(sink);
-    assert_eq!(result, Err(SinkClosed));
-    let report = block_on(receiver.next())
-        .expect("cancellation item")
-        .expect_err("cancelled");
-    assert_eq!(report.kind, ErrorKind::Cancelled);
-    assert!(block_on(receiver.next()).is_none());
-    let seen = seen.lock().expect("seen");
-    assert_eq!(
-        seen.events, 0,
-        "a rejected Final is not evidence of completion"
-    );
-    assert_eq!(seen.outcomes.len(), 1);
-    assert_eq!(
-        seen.outcomes[0]
-            .as_ref()
-            .expect_err("recorded cancellation")
-            .kind,
-        ErrorKind::Cancelled
-    );
-}
-
-#[test]
-fn ancestor_cancelled_sink_is_not_ready_for_more_output() {
-    let (events, _receiver) = mpsc::channel(4);
-    let marker = Arc::new(AtomicBool::new(true));
-    let mut sink = OutcomeSink::stream(EffectId::from_raw(1), events).with_cancel(marker);
-    let mut cx = Context::from_waker(noop_waker_ref());
-    assert_eq!(sink.poll_ready(&mut cx), Poll::Ready(Err(SinkClosed)));
-}
-
-struct FullStream {
-    sink: OutcomeSink,
-    receiver: mpsc::Receiver<Result<StreamEvent, ErrorReport>>,
-    marker: Arc<AtomicBool>,
-    seen: Arc<Mutex<Seen>>,
-}
-
-impl FullStream {
-    fn new() -> Self {
-        let (mut events, receiver) = mpsc::channel(0);
-        let (prefix_events, mut prefix_receiver) = mpsc::channel(4);
-        let mut writer = OutcomeSink::stream(EffectId::from_raw(1), prefix_events).writer();
-        block_on(writer.text("prefix")).expect("writer creates the prefix");
-        let prefix = block_on(prefix_receiver.next()).expect("text block start");
-        events
-            .try_send(prefix)
-            .expect("fill the sender's reserved slot");
-        let marker = Arc::new(AtomicBool::new(false));
-        let seen = Arc::new(Mutex::new(Seen::default()));
-        let sink = OutcomeSink::stream(EffectId::from_raw(1), events)
-            .with_cancel(marker.clone())
-            .with_observer(Box::new(Observer(seen.clone())));
-        Self {
-            sink,
-            receiver,
-            marker,
-            seen,
+fn dropping_a_pending_deferred_handler_records_cancellation_and_closes_the_resolver() {
+    struct External(Arc<Mutex<Option<Resolver>>>);
+    impl Serve for External {
+        type Family = crate::effect::family::Dynamic;
+        fn descriptor(&self) -> HandlerDescriptor {
+            HandlerDescriptor {
+                key: crate::effect::HandlerKey::from("external"),
+                family: crate::effect::FamilyDescriptor::Custom {
+                    kind: "external".into(),
+                },
+                layers: vec![],
+            }
+        }
+        async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+            let (resolver, answer) = deferred();
+            *self.0.lock().expect("slot") = Some(resolver);
+            Reply::Outcome(answer.await)
         }
     }
-}
-
-#[test]
-fn backpressured_send_rechecks_cancellation_before_publishing_final() {
-    let FullStream {
-        mut sink,
-        mut receiver,
-        marker,
-        seen,
-    } = FullStream::new();
-    let mut cx = Context::from_waker(noop_waker_ref());
-    let mut send = Box::pin(sink.send(Ok(StreamEvent::Final(StreamFinal::new(
-        "test",
-        Default::default(),
-    )))));
-    assert!(send.poll_unpin(&mut cx).is_pending());
+    let slot = Arc::new(Mutex::new(None));
+    let handler = ErasedHandler::new(External(slot.clone()));
+    let seen = Arc::new(Mutex::new(Seen::default()));
+    let mut serving = handler.handle(
+        EffectKind::Custom {
+            kind: Arc::from("external"),
+            payload: serde_json::Value::Null,
+        },
+        Dispatch::new(EffectId::from_raw(1), false).with_observer(Box::new(Observer(seen.clone()))),
+    );
     assert!(
-        seen.lock().expect("seen").outcomes.is_empty(),
-        "unsent Final must not record success"
+        serving
+            .as_mut()
+            .poll(&mut Context::from_waker(noop_waker_ref()))
+            .is_pending()
     );
-    marker.store(true, Ordering::SeqCst);
-    assert!(block_on(receiver.next()).expect("prefix").is_ok());
-    assert_eq!(send.poll_unpin(&mut cx), Poll::Ready(Err(SinkClosed)));
-    drop(send);
-    drop(sink);
-    let report = block_on(receiver.next())
-        .expect("cancellation")
-        .expect_err("no late Final");
-    assert_eq!(report.kind, ErrorKind::Cancelled);
-    assert!(block_on(receiver.next()).is_none());
-}
-
-#[test]
-fn backpressured_resolve_rechecks_cancellation_before_publishing_completion() {
-    let FullStream {
-        sink,
-        mut receiver,
-        marker,
-        seen,
-    } = FullStream::new();
-    let mut cx = Context::from_waker(noop_waker_ref());
-    let response = CompletionResponse::new(
-        vec![crate::message::AssistantContent::text("late response")],
-        Default::default(),
-        "test",
-    );
-    let mut resolve = sink.resolve(Ok(Outcome::Completion(response)));
-    assert!(resolve.poll_unpin(&mut cx).is_pending());
-    assert!(
-        seen.lock().expect("seen").outcomes.is_empty(),
-        "unsent response must not record success"
-    );
-    marker.store(true, Ordering::SeqCst);
-    assert!(block_on(receiver.next()).expect("prefix").is_ok());
-    assert!(resolve.poll_unpin(&mut cx).is_ready());
-    let report = block_on(receiver.next())
-        .expect("cancellation")
-        .expect_err("no late response");
-    assert_eq!(report.kind, ErrorKind::Cancelled);
+    let resolver = slot.lock().expect("slot").take().expect("published");
+    drop(serving);
+    assert!(resolver.is_closed());
     assert_eq!(
-        seen.lock().expect("seen").outcomes[0]
-            .as_ref()
-            .expect_err("recorded cancellation")
-            .kind,
+        resolver.resolve(Ok(Outcome::Custom {
+            payload: serde_json::Value::Null
+        })),
+        Err(SinkClosed)
+    );
+    let seen = seen.lock().expect("seen");
+    assert_eq!(seen.outcomes.len(), 1);
+    assert_eq!(
+        seen.outcomes[0].as_ref().expect_err("cancelled").kind,
         ErrorKind::Cancelled
     );
 }
 
 #[test]
-fn cancellation_terminal_survives_a_full_stream_buffer() {
-    let FullStream {
-        sink,
-        mut receiver,
-        marker,
-        seen,
-    } = FullStream::new();
-    marker.store(true, Ordering::SeqCst);
-    drop(sink);
-    assert!(block_on(receiver.next()).expect("prefix").is_ok());
-    let report = block_on(receiver.next())
-        .expect("cancellation terminal after buffered prefix")
-        .expect_err("cancelled");
-    assert_eq!(report.kind, ErrorKind::Cancelled);
-    assert!(block_on(receiver.next()).is_none());
+fn dropping_a_backpressured_writer_does_not_record_its_unpulled_final() {
+    let seen = Arc::new(Mutex::new(Seen::default()));
+    let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let finished_in_writer = finished.clone();
+    let reply = Reply::written(move |mut writer| async move {
+        writer.text("prefix").await.expect("consumer present");
+        writer
+            .finish(StreamFinal::new("test", Default::default()))
+            .await
+            .expect("consumer present");
+        finished_in_writer.store(true, std::sync::atomic::Ordering::SeqCst);
+    })
+    .observed(
+        true,
+        Some(Observed {
+            observer: Box::new(Observer(seen.clone())),
+            told: false,
+        }),
+        None,
+    );
+    let mut stream = reply.into_stream();
+    assert!(matches!(
+        stream
+            .as_mut()
+            .poll_next(&mut Context::from_waker(noop_waker_ref())),
+        Poll::Ready(Some(Ok(_)))
+    ));
+    assert!(!finished.load(std::sync::atomic::Ordering::SeqCst));
+    assert!(seen.lock().expect("seen").outcomes.is_empty());
+    drop(stream);
+    let seen = seen.lock().expect("seen");
+    assert_eq!(seen.events, 1, "only the pulled prefix was observed");
+    assert_eq!(seen.outcomes.len(), 1);
     assert_eq!(
-        seen.lock().expect("seen").outcomes[0]
-            .as_ref()
-            .expect_err("recorded cancellation")
-            .kind,
+        seen.outcomes[0].as_ref().expect_err("cancelled").kind,
         ErrorKind::Cancelled
+    );
+}
+
+#[test]
+fn dropping_the_writer_without_finishing_is_truncation() {
+    let reply = Reply::written(|mut writer| async move {
+        writer.text("prefix").await.expect("open");
+    });
+    assert_eq!(
+        block_on(reply.into_outcome()).expect_err("truncated"),
+        stream_truncated()
     );
 }
 
@@ -326,4 +234,135 @@ fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
         calls,
         "final response preserves local identities"
     );
+}
+
+#[test]
+fn writer_execution_outlives_its_final_until_the_owned_future_finishes() {
+    let (release, wait) = futures::channel::oneshot::channel::<()>();
+    let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let finished = completed.clone();
+    let mut stream = Reply::written(move |writer| async move {
+        writer
+            .finish(StreamFinal::new("writer", Default::default()))
+            .await
+            .expect("open");
+        wait.await.expect("released");
+        finished.store(true, std::sync::atomic::Ordering::SeqCst);
+    })
+    .into_stream();
+    let mut cx = Context::from_waker(noop_waker_ref());
+    assert!(matches!(
+        stream.as_mut().poll_next(&mut cx),
+        std::task::Poll::Ready(Some(Ok(StreamEvent::Final(_))))
+    ));
+    assert!(
+        stream.as_mut().poll_next(&mut cx).is_pending(),
+        "Final must not end the owned writing future"
+    );
+    assert!(!completed.load(std::sync::atomic::Ordering::SeqCst));
+    release.send(()).expect("writer remains alive");
+    assert!(matches!(
+        stream.as_mut().poll_next(&mut cx),
+        std::task::Poll::Ready(None)
+    ));
+    assert!(completed.load(std::sync::atomic::Ordering::SeqCst));
+}
+
+#[test]
+fn terminal_items_carry_the_original_answer_in_one_observer_call() {
+    use crate::message::{AssistantContent, DocumentSourceKind, Image};
+    type Observation = (
+        Result<StreamEvent, ErrorReport>,
+        Option<Result<Outcome, ErrorReport>>,
+    );
+    struct AtomicObserver(Arc<Mutex<Vec<Observation>>>);
+    impl Observe for AtomicObserver {
+        fn outcome(&mut self, _: &Result<Outcome, ErrorReport>) {
+            panic!("a terminal item must carry its answer in stream_item");
+        }
+        fn keep_events(&self) -> bool {
+            true
+        }
+        fn event(&mut self, _: &StreamEvent) {
+            panic!("separate event callback");
+        }
+        fn stream_error(&mut self, _: &ErrorReport) {
+            panic!("separate error callback");
+        }
+        fn stream_item(
+            &mut self,
+            item: &Result<StreamEvent, ErrorReport>,
+            outcome: Option<&Result<Outcome, ErrorReport>>,
+        ) {
+            self.0
+                .lock()
+                .expect("observations")
+                .push((item.clone(), outcome.cloned()));
+        }
+        fn discard(&mut self) {}
+        fn patch(&mut self, _: &EffectKind) {}
+    }
+    let response = CompletionResponse::new(
+        vec![AssistantContent::Image(Image {
+            data: DocumentSourceKind::base64("aW1hZ2U="),
+            ..Image::default()
+        })],
+        Default::default(),
+        "image-provider",
+    );
+    let original = Ok(Outcome::Completion(response));
+    let error = ErrorReport::new(ErrorKind::Response, "first error");
+    let final_event = Ok(StreamEvent::Final(StreamFinal::new(
+        "test",
+        Default::default(),
+    )));
+    let after = Ok(StreamEvent::Unknown(crate::streaming::UnknownPayload::new(
+        serde_json::json!({"after": true}),
+    )));
+    let terminal_answer = StreamTap::new()
+        .observe(&final_event)
+        .expect("terminal folds");
+    let cases = [
+        (Reply::Outcome(original.clone()), original),
+        (
+            Reply::Stream(Box::pin(futures::stream::iter(vec![
+                final_event.clone(),
+                after.clone(),
+                Err(error.clone()),
+            ]))),
+            terminal_answer,
+        ),
+        (
+            Reply::Stream(Box::pin(futures::stream::iter(vec![
+                Err(error.clone()),
+                final_event,
+                after,
+            ]))),
+            Err(error),
+        ),
+    ];
+    for (reply, expected) in cases {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let reply = reply.observed(
+            true,
+            Some(Observed {
+                observer: Box::new(AtomicObserver(calls.clone())),
+                told: false,
+            }),
+            None,
+        );
+        let delivered = block_on(reply.into_stream().collect::<Vec<_>>());
+        let calls = calls.lock().expect("observations");
+        assert_eq!(calls.len(), delivered.len());
+        let answers: Vec<_> = calls
+            .iter()
+            .filter_map(|(item, answer)| answer.as_ref().map(|answer| (item, answer)))
+            .collect();
+        assert_eq!(answers.len(), 1);
+        assert!(matches!(answers[0].0, Ok(StreamEvent::Final(_)) | Err(_)));
+        assert_eq!(
+            serde_json::to_value(answers[0].1).expect("answer"),
+            serde_json::to_value(expected).expect("expected")
+        );
+    }
 }

@@ -15,14 +15,18 @@ impl rig_core::serve::Serve for ParkedAdder {
     fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
         self.inner.descriptor()
     }
-    async fn serve(&self, kind: rig_core::effect::EffectKind, sink: rig_core::serve::OutcomeSink) {
+    async fn serve(
+        &self,
+        kind: rig_core::effect::EffectKind,
+        dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
         self.started
             .store(true, std::sync::atomic::Ordering::SeqCst);
         let gate = self.gate.lock().unwrap().take();
         if let Some(gate) = gate {
             gate.await.unwrap();
         }
-        self.inner.serve(kind, sink).await;
+        self.inner.serve(kind, dispatch).await
     }
 }
 

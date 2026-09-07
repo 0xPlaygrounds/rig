@@ -1,21 +1,8 @@
-//! What a handler author implements, and the one erasure a bus takes.
-//!
-//! A handler is a [`Serve`]: `type Family`, a descriptor, and an
-//! `async fn serve(&self, kind, sink)` that answers into its
-//! [`OutcomeSink`]. Provider and tool authors keep implementing the
-//! impl-side traits exactly as before; the [`adapters`] wrap them. An
-//! out-of-tree kind (`EffectKind::Custom`) or a replayer implements
-//! [`Serve`] directly; a handler that streams writes through
-//! [`OutcomeSink::writer`] (a [`StreamWriter`]) and never names a block id. [`ErasedHandler`] is rig-core's **only** erasure: the
-//! handler-table entry a bus runtime (`rig_agent::bus`) carries, and what
-//! [`serve_inline`] runs without a bus.
-//!
-//! The driver seam — [`OutcomeSink::unary`], [`OutcomeSink::stream`],
-//! [`OutcomeSink::with_observer`], [`ErasedHandler::handle`], [`StreamTap`]
-//! — is what a bus driver builds to hand a handler its sink and, when the
-//! driver is not itself on the reply path, observe what it answers.
-//! `rig_agent::bus` is one such driver; a second runtime (an ECS schedule, which
-//! reads the outcome where it lands and installs no observer) is another.
+//! Handlers return a [`Reply`]: an outcome or an owned stream. [`Dispatch`]
+//! carries identity, requested delivery mode and scopes. [`ErasedHandler`]
+//! is the shared registry boundary; drivers own polling and cancellation.
+//! Provider and tool authors retain their domain traits through [`adapters`].
+//! [`Reply::written`] offers a writer that mints stream block identities.
 
 pub mod adapters;
 mod handler;
@@ -24,8 +11,8 @@ mod recorder;
 mod writer;
 
 pub use handler::{
-    DetachedSink, ErasedHandler, HandlerFuture, Observe, OutcomeSink, Serve, SinkClosed, StreamTap,
-    cancelled, serve_inline, serve_inline_with, stream_truncated,
+    Dispatch, ErasedHandler, HandlerFuture, Observe, Reply, Resolver, Serve, SinkClosed, StreamTap,
+    cancelled, deferred, serve_inline, serve_inline_with, stream_truncated,
 };
 pub use layer::{Decision, Intercept, Layer, Verdict};
 pub use recorder::{Origin, Recorder};
@@ -42,8 +29,9 @@ pub struct ServingPolicy {
     /// dispatcher and every dispatch; the caller of a dispatch is never
     /// blocked.
     pub command_capacity: usize,
-    /// Stream events buffered per streaming dispatch before the handler
-    /// stalls (the client-side pause point).
+    /// Driver delivery queue capacity. rig-agent bounds its consumer queue;
+    /// rig-ecs uses at least one shared slot plus one sender-reserved slot.
+    /// Source-internal buffers and collection work limits are separate.
     pub stream_capacity: usize,
     /// Serve one command at a time per key. `false` serves every command
     /// concurrently; `true` is the cassette-ordered property — a handler

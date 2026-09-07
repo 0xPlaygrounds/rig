@@ -277,14 +277,21 @@ impl rig_core::serve::Serve for BatchedValidation {
     fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
         rig_core::serve::Serve::descriptor(&Scripted)
     }
-    async fn serve(&self, kind: rig_core::effect::EffectKind, sink: rig_core::serve::OutcomeSink) {
+    async fn serve(
+        &self,
+        kind: rig_core::effect::EffectKind,
+        _dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
         use rig_core::{
             completion::{CompletionResponse, Usage},
             effect::{EffectKind, Outcome},
             message::{AssistantContent, Message, UserContent},
         };
         let EffectKind::Completion { request, .. } = kind else {
-            return;
+            return rig_core::serve::Reply::Outcome(Err(rig_core::error::ErrorReport::new(
+                rig_core::error::ErrorKind::Internal,
+                "the handler dropped its outcome sink without answering",
+            )));
         };
         let count = request
             .chat_history
@@ -314,12 +321,11 @@ impl rig_core::serve::Serve for BatchedValidation {
                 json!({"phase":"final"}),
             )];
         }
-        sink.resolve(Ok(Outcome::Completion(CompletionResponse::new(
+        rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
             choice,
             Usage::new(),
             "synthetic",
         ))))
-        .await;
     }
 }
 

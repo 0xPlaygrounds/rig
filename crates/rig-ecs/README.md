@@ -120,6 +120,40 @@ No hook trait: a user system writes a component at a set boundary, a library sys
 
 Every hook cell of the corpus is written against the public sets and components above with no library change beyond the sets — the claim of `how-the-ecs-dissolves-rig-agent.md` §12, tested; the one set stage 4 added is `RigSet::Release` (stage 3's, between `Patch` and the bus's `Gate`). Memory and retrieval are components on the agent, not hooks: `Remembers(memory)` + `Conversation(id)` make a run load before its first turn and append at its settle (a `ClearAtStart` hook is an observer on the load's outcome, a `ClearAtSettled` one a system after `RigSet::Settle` on the append); `Retrieves(index)` + `Retrieval { samples, what }` links make `Advance` mark the turn `Retrieving` and `Assemble`'s first pass spawn one `Retrieve` effect per link before every fold, and `attach_retrieved` turn the results into attachments and adverts (a `Retrievable` grant is advertised only when retrieved). CONTRACT §11–§12.
 
+## Handler replies and host polling
+
+`Serve::serve` returns `Reply::Outcome(Result<Outcome, ErrorReport>)` or an
+owned `Reply::Stream(StreamEvents)`. `Dispatch` carries the effect ID, requested
+delivery mode and scopes. Adapters retain their domain traits. `Reply::written`
+provides a writer whose future and bounded private receiver are polled together;
+`deferred()` provides an external resolver and the future a handler awaits.
+
+The initial task prepares the reply and folds unary requests on the executor.
+For streaming requests, one owned worker polls the stream into a bounded private
+queue. Native parsing, writer work and streamed verdicts run on pool threads;
+browser `!Send` work uses Bevy’s web executor and cannot preempt synchronous work
+on the browser thread. Keep ticking to collect ready delivery and settle effects.
+
+Collect drains at most 64 items per effect per pass, sharing 4,096 queue checks
+across all quiescence passes in one host tick. It rotates through dispatch order
+when that allowance runs out. Deltas alone do not keep quiescence running. These
+limits bound streaming delivery work, not CPU time, payload bytes, or the cost
+of user systems. A direct `RigSchedule` invocation gets one fresh allowance.
+
+`stream_capacity` supplies the queue's shared slots, clamped to at least one;
+the single sender has one additional reserved slot. The worker awaits each send
+before polling again. The writer's own bridge is separate. Task handles remain
+in effect-owned storage. Removing `InFlight`, despawning or dropping the world
+cancels those tasks, including a worker parked on a full queue. An active native
+poll can finish before cancellation drops its future; closed recordings reject
+its late observations. Handler replacement leaves already-owned work intact.
+Streaming serial slots last through EOF and layer work after `Final`.
+
+Recording keeps the original handler answer and events through layer verdicts.
+A recorded answer can survive cancellation while a verdict waits; recording an
+original item does not establish consumer delivery. Both task and stream results
+still publish tool output before reaching `EffectOutcome` and shared settlement.
+
 ## Vocabulary
 
 | design (`rig-bevy-three-layer-design.md` §2) | here |
@@ -127,25 +161,25 @@ Every hook cell of the corpus is written against the public sets and components 
 | a dispatch | `commands.spawn(PendingEffect { key, kind })`; `PendingEffect::{new, typed, custom}` |
 | dispatch order | `Seq`, stamped on add from `SeqCounter` (global, reserved) |
 | the effect's id | `Issued` after `Dispatch`; `Reserved` before it, for a scene's or a log's id |
-| taken, in flight | `InFlight { key }` plus `Serving(Task)` (unary) or `Streaming { task, events, fold }` (stream) |
+| taken, in flight | `InFlight { key }` plus `Serving` (initial task) or `Streaming { fold }`; `Executions` owns tasks and streams |
 | a handler that is a system was asked | `Asked<E>`; the system answers with `Answer<E>` — or, for a key bound open (`Handlers::register_open`, any family), the effect entity itself, answered by submitting `WorldOutcome` |
 | the answer | `EffectOutcome(Result<Outcome, ErrorReport>)`; a stream's per-tick fold in `Streamed { events, errors, text, outcome }`, with every error and its item position retained independently of recording |
 | held by a decision | `Held` |
 | a program's scope | `Scope(String)` on an ancestor; read into the record |
-| a tool call's context (format 5: beside the effect, never in it) | `ToolInputs(ToolContext)` on the effect entity, attached to the handler's sink by `Dispatch`; what the tool published lands as `ToolOutputs(ToolContext)` when the outcome does (`Publishing` holds the slot in flight) |
+| a tool call's context (format 5: beside the effect, never in it) | `ToolInputs(ToolContext)` on the effect entity, attached to the handler's `Dispatch` context; what the tool published lands as `ToolOutputs(ToolContext)` when the outcome does (`Publishing` holds the slot in flight) |
 | a handler | an entity with `Bound { key, descriptor }`; the erased handler in the `NonSend` `HandlerTable` |
 | the registry | `Handlers` (a `SystemParam`): `register`, `register_erased`, `register_typed`, `register_world`, `register_open`, `deregister`, `descriptor`, `keys`, `descriptors`; `Handlers::with(world, ..)` outside a system |
 | a typed view | `Typed<F>(Key<F>)`, wherever a system wants it |
 | the driver | `dispatch` in `BusSet::Dispatch`; `collect_tasks`, `collect_streams`, `settle` in `BusSet::Collect` |
 | interception | user systems in `BusSet::Gate` (patch, deny, hold) and `BusSet::Judge` (replace) |
-| the record | `Recording` (any `rig_core::serve::Recorder`); `EffectLogResource` under `replay`; for a handler whose descriptor names layers, `Dispatch` installs a sink observer (`WorldObserver`, its slots in `Observed`) so a layer's `discard` and `patch` reach the record and the record keeps the innermost handler's answer |
+| the record | `Recording` (any `rig_core::serve::Recorder`); `EffectLogResource` under `replay`; for every task-served handler, `Dispatch` installs a recording observer (`WorldObserver`, its slots in `Observed`) so a layer's `discard` and `patch` reach the record and the record keeps the innermost handler's answer |
 | a scene | `Scene::{save, load, first_gap}` |
 | replay | `Replay::{register, load}`, by id |
-| the policy | `Policy(ServingPolicy)`: intake per tick, stream buffer, serial keys |
+| the policy | `Policy(ServingPolicy)`: intake per tick and serial keys; `stream_capacity` bounds driver delivery queues |
 
 ## The schedule
 
-`Bus::install` (or `install_bus`) adds `RigSchedule` with four sets in order to a `World`; the host runs it to quiescence by calling `run_to_quiescence` once per tick from the schedule or loop it owns (while a bus system marks `Progress`, at most `QUIESCENCE_CAP` passes). The crate depends on `bevy_ecs` and `bevy_tasks` only: no `App`, no `bevy_app`. Users add their systems to `RigSchedule`, ordered against the sets, never beside the runner.
+`Bus::install` (or `install_bus`) adds `RigSchedule` with four sets in order to a `World`; the host runs it to quiescence by calling `run_to_quiescence` once per tick from the schedule or loop it owns (while a bus system marks `Progress`, at most `QUIESCENCE_CAP` passes). The base bus uses `bevy_ecs`, `bevy_tasks` and a private `futures` delivery queue; it does not require an `App`. Users add their systems to `RigSchedule`, ordered against the sets, never beside the runner.
 
 | set | true before | written during |
 |---|---|---|
@@ -307,3 +341,10 @@ The same programs as rig's root examples, each a page of user code over a script
 ## On wasm
 
 Everything a system holds is `Send + Sync` on every target. The erased handler lives in a `NonSend` resource on every target, one spelling, so a system that registers or dispatches runs on the main thread. `tests/bus_wasm.rs` drives the schedule by hand: `bevy_app`'s runner on the web is frame-scheduled by the browser.
+
+Cancellation after an original handler answer has been observed records a
+`DeliveryKind::Cancelled` boundary instead of an outcome delivery. This preserves
+that original answer (including one awaiting a layer verdict) without claiming
+that the consumer received it. Policy replay must reproduce the cancellation;
+exchange replay returns cancellation and leaves undelivered terminal items hidden.
+Ordinary cancellation without an observed answer retains its existing encoding.

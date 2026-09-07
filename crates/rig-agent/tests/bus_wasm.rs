@@ -26,7 +26,7 @@ use rig_core::serve::ServingPolicy;
 use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorKind,
-    serve::{OutcomeSink, Serve},
+    serve::{Dispatch, Reply, Serve},
 };
 use wasm_bindgen_test::wasm_bindgen_test;
 
@@ -51,30 +51,37 @@ impl Serve for Echo {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Custom { payload, .. } => {
                 self.served.set(self.served.get() + 1);
-                sink.resolve(Ok(Outcome::Custom { payload })).await;
+                Reply::Outcome(Ok(Outcome::Custom { payload }))
             }
             EffectKind::Completion { stream: true, .. } => {
-                let mut out = sink.writer();
-                loop {
-                    if out.text("tick ").await.is_err() {
-                        self.stream_cancelled.fetch_add(1, Ordering::SeqCst);
-                        return;
+                struct Cancelled(Arc<AtomicUsize>);
+                impl Drop for Cancelled {
+                    fn drop(&mut self) {
+                        self.0.fetch_add(1, Ordering::SeqCst);
                     }
-                    // Yield so the consumer can run.
-                    yield_now().await;
                 }
+                let cancelled = self.stream_cancelled.clone();
+                let local = Rc::clone(&self.served);
+                Reply::written(move |mut out| async move {
+                    let _local = local; // The returned stream itself is !Send.
+                    let _cancelled = Cancelled(cancelled);
+                    loop {
+                        if out.text("tick ").await.is_err() {
+                            return;
+                        }
+                        // Yield so the consumer can run.
+                        yield_now().await;
+                    }
+                })
             }
-            other => {
-                sink.resolve(Err(rig_core::error::ErrorReport::new(
-                    ErrorKind::HandlerUnavailable,
-                    format!("cannot serve {}", other.name()),
-                )))
-                .await;
-            }
+            other => Reply::Outcome(Err(rig_core::error::ErrorReport::new(
+                ErrorKind::HandlerUnavailable,
+                format!("cannot serve {}", other.name()),
+            ))),
         }
     }
 }

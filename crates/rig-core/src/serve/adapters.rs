@@ -6,8 +6,6 @@
 //! provider or tool author writes the impl-side trait exactly as before and
 //! registers the adapter.
 
-use futures::StreamExt;
-
 use crate::{
     completion::{CompletionModel, ModelRef},
     effect::{
@@ -24,7 +22,7 @@ use crate::{
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
-use super::{OutcomeSink, Serve};
+use super::{Dispatch, Reply, Serve};
 use crate::effect::family;
 
 fn wrong_family(handler: EffectFamily, kind: &EffectKind) -> ErrorReport {
@@ -77,7 +75,7 @@ where
         }
     }
 
-    async fn serve(&self, kind: EffectKind, mut sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Completion {
                 request,
@@ -89,56 +87,45 @@ where
                     .await
                     .map(Outcome::Completion)
                     .map_err(ErrorReport::from);
-                sink.resolve(outcome).await;
+                Reply::Outcome(outcome)
             }
             EffectKind::Completion {
                 request,
                 stream: true,
-            } => {
-                let mut stream = match self.model.stream(request).await {
-                    Ok(stream) => stream,
-                    Err(error) => {
-                        sink.resolve(Err(ErrorReport::from(error))).await;
-                        return;
-                    }
-                };
-                while let Some(item) = stream.next().await {
-                    if sink.send(item).await.is_err() {
-                        // The consumer is gone: dropping the provider
-                        // stream fires its abort.
-                        return;
-                    }
-                }
-            }
+            } => match self.model.stream(request).await {
+                Ok(stream) => Reply::Stream(Box::pin(stream)),
+                Err(error) => Reply::Outcome(Err(ErrorReport::from(error))),
+            },
+
             other @ (EffectKind::ToolCall { .. }
             | EffectKind::Embed { .. }
             | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
-                sink.resolve(Err(wrong_family(EffectFamily::Completion, &other)))
-                    .await;
+                Reply::Outcome(Err(wrong_family(EffectFamily::Completion, &other)))
             }
         }
     }
 }
 
 /// The context a tool call runs with: the driver's inbound values from
-/// the sink's scope (`ToolContext`, as `for_dispatch`), else empty, with
-/// every scope of the sink attached so the tool reaches its runtime by
+/// the dispatch's scope (`ToolContext`, as `for_dispatch`), else empty, with
+/// every scope of the dispatch attached so the tool reaches its runtime by
 /// type for the length of the call.
-fn dispatch_context(sink: &OutcomeSink) -> crate::tool::ToolContext {
-    sink.scope::<crate::tool::ToolContext>()
+fn dispatch_context(dispatch: &Dispatch) -> crate::tool::ToolContext {
+    dispatch
+        .scope::<crate::tool::ToolContext>()
         .map(|inbound| inbound.for_dispatch())
         .unwrap_or_default()
-        .with_scopes(sink.scopes())
+        .with_scopes(dispatch.scopes())
 }
 
-/// Hand what the tool published back beside the sink, when the driver
+/// Hand what the tool published back beside the dispatch, when the driver
 /// asked for it ([`PublishedContext`](crate::tool::PublishedContext) in
-/// the sink's scope); the result carries data only.
-fn publish(sink: &OutcomeSink, context: crate::tool::ToolContext) {
-    if let Some(published) = sink.scope::<crate::tool::PublishedContext>() {
+/// the dispatch's scope); the result carries data only.
+fn publish(dispatch: &Dispatch, context: crate::tool::ToolContext) {
+    if let Some(published) = dispatch.scope::<crate::tool::PublishedContext>() {
         published.publish(context);
     }
 }
@@ -199,13 +186,13 @@ where
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::ToolCall { args, .. } => {
-                let mut context = dispatch_context(&sink);
+                let mut context = dispatch_context(&dispatch);
                 let result = ErasedTool::execute(&self.tool, args, &mut context).await;
-                publish(&sink, context);
-                sink.resolve(Ok(Outcome::ToolResult { result })).await;
+                publish(&dispatch, context);
+                Reply::Outcome(Ok(Outcome::ToolResult { result }))
             }
             other @ (EffectKind::Completion { .. }
             | EffectKind::Embed { .. }
@@ -213,8 +200,7 @@ where
             | EffectKind::Retrieve { .. }
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
-                sink.resolve(Err(wrong_family(EffectFamily::Tool, &other)))
-                    .await;
+                Reply::Outcome(Err(wrong_family(EffectFamily::Tool, &other)))
             }
         }
     }
@@ -297,15 +283,15 @@ where
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::ToolCall { args, .. } => {
-                let mut context = dispatch_context(&sink);
+                let mut context = dispatch_context(&dispatch);
                 let result =
                     crate::tool::contextual::execute_callback(&self.callback, args, &mut context)
                         .await;
-                publish(&sink, context);
-                sink.resolve(Ok(Outcome::ToolResult { result })).await;
+                publish(&dispatch, context);
+                Reply::Outcome(Ok(Outcome::ToolResult { result }))
             }
             other @ (EffectKind::Completion { .. }
             | EffectKind::Embed { .. }
@@ -313,8 +299,7 @@ where
             | EffectKind::Retrieve { .. }
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
-                sink.resolve(Err(wrong_family(EffectFamily::Tool, &other)))
-                    .await;
+                Reply::Outcome(Err(wrong_family(EffectFamily::Tool, &other)))
             }
         }
     }
@@ -360,7 +345,7 @@ where
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Embed {
                 inputs: EmbedInputs::Texts(texts),
@@ -371,25 +356,21 @@ where
                     .await
                     .map(|response| Outcome::Embeddings(EmbedOutputs::Texts(response)))
                     .map_err(ErrorReport::from);
-                sink.resolve(outcome).await;
+                Reply::Outcome(outcome)
             }
             EffectKind::Embed {
                 inputs: EmbedInputs::Images(_),
-            } => {
-                sink.resolve(Err(ErrorReport::new(
-                    ErrorKind::HandlerUnavailable,
-                    "a text embedding handler cannot embed images",
-                )))
-                .await;
-            }
+            } => Reply::Outcome(Err(ErrorReport::new(
+                ErrorKind::HandlerUnavailable,
+                "a text embedding handler cannot embed images",
+            ))),
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }
             | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
-                sink.resolve(Err(wrong_family(EffectFamily::Embed, &other)))
-                    .await;
+                Reply::Outcome(Err(wrong_family(EffectFamily::Embed, &other)))
             }
         }
     }
@@ -433,7 +414,7 @@ where
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Rerank { request } => {
                 let outcome = self
@@ -442,7 +423,7 @@ where
                     .await
                     .map(Outcome::Reranked)
                     .map_err(ErrorReport::from);
-                sink.resolve(outcome).await;
+                Reply::Outcome(outcome)
             }
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }
@@ -450,8 +431,7 @@ where
             | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
             | EffectKind::Custom { .. }) => {
-                sink.resolve(Err(wrong_family(EffectFamily::Rerank, &other)))
-                    .await;
+                Reply::Outcome(Err(wrong_family(EffectFamily::Rerank, &other)))
             }
         }
     }
@@ -488,7 +468,7 @@ where
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Memory { op } => {
                 let outcome = match op {
@@ -511,7 +491,7 @@ where
                         .await
                         .map(|()| Outcome::Memory(MemoryOutcome::Cleared)),
                 };
-                sink.resolve(outcome.map_err(ErrorReport::from)).await;
+                Reply::Outcome(outcome.map_err(ErrorReport::from))
             }
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }
@@ -519,8 +499,7 @@ where
             | EffectKind::Retrieve { .. }
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
-                sink.resolve(Err(wrong_family(EffectFamily::Memory, &other)))
-                    .await;
+                Reply::Outcome(Err(wrong_family(EffectFamily::Memory, &other)))
             }
         }
     }
@@ -560,7 +539,7 @@ where
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Retrieve { query } => {
                 let outcome = match query {
@@ -596,7 +575,7 @@ where
                         }
                     }
                 };
-                sink.resolve(outcome).await;
+                Reply::Outcome(outcome)
             }
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }
@@ -604,8 +583,7 @@ where
             | EffectKind::Memory { .. }
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
-                sink.resolve(Err(wrong_family(EffectFamily::Retrieve, &other)))
-                    .await;
+                Reply::Outcome(Err(wrong_family(EffectFamily::Retrieve, &other)))
             }
         }
     }

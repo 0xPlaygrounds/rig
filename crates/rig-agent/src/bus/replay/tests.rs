@@ -2,6 +2,7 @@
 //! driver serves, the replayer answers it back. Written in rig-effect-log
 //! when the bus was its own crate; moved here with `register_all`.
 
+use rig_core::serve::Dispatch;
 use std::{
     sync::{
         Arc, Mutex,
@@ -19,7 +20,7 @@ use crate::bus::{Bus, BusDriver};
 use rig_effect_log::{EffectLog, EffectLogRecorder};
 
 use rig_core::serve::{
-    OutcomeSink, Serve,
+    Reply, Serve,
     adapters::{CompletionAdapter, ToolAdapter},
 };
 
@@ -50,10 +51,8 @@ async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
                 layers: vec![],
             }
         }
-        async fn serve(&self, _: EffectKind, mut sink: OutcomeSink) {
-            for item in &self.0 {
-                sink.send(item.clone()).await.unwrap();
-            }
+        async fn serve(&self, _: EffectKind, _dispatch: Dispatch) -> Reply {
+            Reply::Stream(Box::pin(futures::stream::iter(self.0.clone())))
         }
     }
     for error_first in [false, true] {
@@ -115,15 +114,14 @@ async fn replayed_model_handle_retains_live_capabilities_and_model_identity() {
                 layers: vec![],
             }
         }
-        async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-            sink.resolve(Ok(Outcome::Completion(
+        async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
+            rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(
                 rig_core::completion::CompletionResponse::new(
                     vec![AssistantContent::text("ok")],
                     rig_core::completion::Usage::new(),
                     "composing",
                 ),
             )))
-            .await;
         }
     }
     let (dispatcher, _, mut driver) = Bus::channel();
@@ -182,18 +180,18 @@ async fn raw_tool_dispatch_records_and_replays_published_output() {
                 layers: vec![],
             }
         }
-        async fn serve(&self, _: EffectKind, sink: OutcomeSink) {
+        async fn serve(&self, _: EffectKind, dispatch: Dispatch) -> rig_core::serve::Reply {
             let mut context = ToolContext::new();
             context
                 .insert_result(Artifact("result-123".into()))
                 .expect("encodes");
-            sink.scope::<PublishedContext>()
+            dispatch
+                .scope::<PublishedContext>()
                 .expect("raw dispatch has a slot")
                 .publish(context);
-            sink.resolve(Ok(Outcome::ToolResult {
+            rig_core::serve::Reply::Outcome(Ok(Outcome::ToolResult {
                 result: ToolResult::success(ToolOutput::text("ok")),
             }))
-            .await;
         }
     }
     let key = HandlerKey::from("tool:publish");
@@ -306,7 +304,7 @@ impl Serve for Echo {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let gate = self.gate.lock().expect("gate lock").take();
         {
             if let Some(gate) = gate {
@@ -320,7 +318,7 @@ impl Serve for Echo {
                     format!("echo received {}", other.name()),
                 )),
             };
-            sink.resolve(outcome).await;
+            rig_core::serve::Reply::Outcome(outcome)
         }
     }
 }
@@ -344,7 +342,7 @@ impl Serve for Ordered {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
         let (index, delay) = match &kind {
             EffectKind::Custom { payload, .. } => (
                 payload["index"].as_u64().unwrap_or(0),
@@ -354,10 +352,9 @@ impl Serve for Ordered {
         };
         tokio::time::sleep(Duration::from_millis(delay)).await;
         self.served.lock().expect("order lock").push(index);
-        sink.resolve(Ok(Outcome::Custom {
+        rig_core::serve::Reply::Outcome(Ok(Outcome::Custom {
             payload: json!(index),
         }))
-        .await;
     }
 }
 
@@ -405,10 +402,11 @@ impl Serve for CutShort {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-        let mut out = sink.writer();
-        let _ = out.text("partial").await;
-        // Dropped here, before any `Final`.
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        Reply::written(|mut out| async move {
+            let _ = out.text("partial").await;
+            // Dropped here, before any `Final`.
+        })
     }
 }
 
@@ -429,11 +427,10 @@ impl Serve for WrongFamilyAnswer {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-        sink.resolve(Ok(Outcome::Custom {
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
+        rig_core::serve::Reply::Outcome(Ok(Outcome::Custom {
             payload: json!("not a completion"),
         }))
-        .await;
     }
 }
 
@@ -825,9 +822,8 @@ impl Serve for Held {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
-        let _sink = sink;
-        futures::future::pending::<()>().await;
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        std::future::pending().await
     }
 }
 
@@ -1076,13 +1072,13 @@ impl Serve for Nesting {
         }
     }
 
-    async fn serve(&self, _kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, _kind: EffectKind, dispatch: Dispatch) -> rig_core::serve::Reply {
         let dispatcher =
-            crate::bus::SinkDispatch::dispatcher(&sink).expect("served by a bus driver");
+            crate::bus::DispatchScope::dispatcher(&dispatch).expect("served by a bus driver");
         let child = dispatcher
             .dispatch(&HandlerKey::from("echo"), custom(json!({"who": "child"})))
             .await;
-        sink.resolve(child).await;
+        rig_core::serve::Reply::Outcome(child)
     }
 }
 

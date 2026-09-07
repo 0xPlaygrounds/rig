@@ -10,10 +10,11 @@ mod bus_support;
 
 use bevy_ecs::prelude::*;
 use bus_support::*;
+use rig_core::serve::Dispatch;
 use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
-    serve::{OutcomeSink, Serve},
+    serve::Serve,
     tool::{ContextValue, PublishedContext, ToolContext, ToolOutput, ToolResult},
 };
 use rig_ecs::bus::{
@@ -65,12 +66,15 @@ impl Serve for Publish {
             layers: vec![],
         }
     }
-    async fn serve(&self, _: EffectKind, sink: OutcomeSink) {
-        let mut context = sink.scope::<ToolContext>().unwrap().for_dispatch();
+    async fn serve(&self, _: EffectKind, dispatch: Dispatch) -> rig_core::serve::Reply {
+        let mut context = dispatch.scope::<ToolContext>().unwrap().for_dispatch();
         context
             .insert_result(Artifact("artifact-123".into()))
             .unwrap();
-        sink.scope::<PublishedContext>().unwrap().publish(context);
+        dispatch
+            .scope::<PublishedContext>()
+            .unwrap()
+            .publish(context);
         let answer = if self.fail {
             Err(ErrorReport::new(ErrorKind::Request, "tool refused"))
         } else {
@@ -78,7 +82,7 @@ impl Serve for Publish {
                 result: ToolResult::success(ToolOutput::text("ok")),
             })
         };
-        sink.resolve(answer).await;
+        rig_core::serve::Reply::Outcome(answer)
     }
 }
 
@@ -293,14 +297,16 @@ impl Serve for PublishThenWait {
     fn descriptor(&self) -> HandlerDescriptor {
         Publish { fail: false }.descriptor()
     }
-    async fn serve(&self, _: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, _: EffectKind, dispatch: Dispatch) -> rig_core::serve::Reply {
         let mut context = ToolContext::new();
         context
             .insert_result(Artifact("before-cancel".into()))
             .unwrap();
-        sink.scope::<PublishedContext>().unwrap().publish(context);
-        std::future::pending::<()>().await;
-        drop(sink);
+        dispatch
+            .scope::<PublishedContext>()
+            .unwrap()
+            .publish(context);
+        std::future::pending().await
     }
 }
 

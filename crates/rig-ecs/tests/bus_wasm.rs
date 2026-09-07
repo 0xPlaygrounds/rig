@@ -38,7 +38,7 @@ use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
-    serve::{OutcomeSink, Serve, ServingPolicy},
+    serve::{Dispatch, Reply, Serve, ServingPolicy},
     streaming::StreamFinal,
 };
 use rig_ecs::bus::{
@@ -70,7 +70,7 @@ impl Serve for BrowserModel {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, sink: OutcomeSink) {
+    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Completion { stream: false, .. } => {
                 self.served.set(self.served.get() + 1);
@@ -79,27 +79,29 @@ impl Serve for BrowserModel {
                     Usage::new(),
                     "browser",
                 );
-                sink.resolve(Ok(Outcome::Completion(response))).await;
+                Reply::Outcome(Ok(Outcome::Completion(response)))
             }
             EffectKind::Completion { stream: true, .. } => {
-                let mut out = sink.writer();
-                loop {
-                    if out.text("tick ").await.is_err() {
-                        return;
+                let sends = self.sends.clone();
+                let cap = self.cap;
+                let local = Rc::clone(&self.served);
+                Reply::written(move |mut out| async move {
+                    let _local = local; // The returned stream itself is !Send.
+                    loop {
+                        if out.text("tick ").await.is_err() {
+                            return;
+                        }
+                        if sends.fetch_add(1, Ordering::SeqCst) + 1 >= cap {
+                            break;
+                        }
                     }
-                    if self.sends.fetch_add(1, Ordering::SeqCst) + 1 >= self.cap {
-                        break;
-                    }
-                }
-                let _ = out.finish(StreamFinal::new("browser", Usage::new())).await;
+                    let _ = out.finish(StreamFinal::new("browser", Usage::new())).await;
+                })
             }
-            other => {
-                sink.resolve(Err(ErrorReport::new(
-                    ErrorKind::HandlerUnavailable,
-                    format!("cannot serve {}", other.name()),
-                )))
-                .await;
-            }
+            other => Reply::Outcome(Err(ErrorReport::new(
+                ErrorKind::HandlerUnavailable,
+                format!("cannot serve {}", other.name()),
+            ))),
         }
     }
 }
@@ -120,11 +122,6 @@ fn request() -> CompletionRequest {
 }
 
 fn app() -> App {
-    // The bus initialises the IO pool it spawns on; the test ticks the
-    // pools the way `bevy_app`'s `TaskPoolPlugin` would, which needs the
-    // other two initialised as well.
-    bevy_tasks::ComputeTaskPool::get_or_init(bevy_tasks::TaskPool::default);
-    bevy_tasks::AsyncComputeTaskPool::get_or_init(bevy_tasks::TaskPool::default);
     let mut app = App::new();
     Bus::with_policy(ServingPolicy::default())
         .ambiguity_detection(LogLevel::Error)
@@ -134,12 +131,10 @@ fn app() -> App {
     app
 }
 
-/// One pass of the plugin's runner, then a yield so the single-threaded
-/// pool's tasks advance: on wasm the executor is ticked between frames.
+/// One host pass, then let the browser run its queued executor microtasks.
 async fn tick(app: &mut App) {
     run_to_quiescence(app.world_mut());
-    bevy_tasks::futures_lite::future::yield_now().await;
-    bevy_tasks::tick_global_task_pools_on_main_thread();
+    rig_core::wasm_compat::sleep(std::time::Duration::from_millis(1)).await;
 }
 
 #[wasm_bindgen_test]
@@ -282,4 +277,253 @@ fn the_components_are_send_sync_on_wasm_too() {
     assert_send_sync::<EffectOutcome>();
     assert_send_sync::<Streamed>();
     assert_send_sync::<InFlight>();
+}
+
+#[wasm_bindgen_test]
+async fn local_streams_drop_on_marker_removal_scheduled_despawn_replacement_and_shutdown() {
+    use rig_ecs::bus::effect::{Executions, Streaming};
+    struct Local(Rc<Cell<usize>>);
+    impl Drop for Local {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+    let drops = Rc::new(Cell::new(0));
+    let stream = || {
+        let local = Local(drops.clone());
+        Box::pin(futures::stream::poll_fn(move |_| {
+            let _local = &local;
+            std::task::Poll::Pending
+        })) as rig_core::streaming::StreamEvents
+    };
+    let mut world = World::new();
+    Bus::default().install(&mut world);
+    async fn dropped(drops: &Cell<usize>, expected: usize) {
+        for _ in 0..1000 {
+            if drops.get() == expected {
+                return;
+            }
+            // Yield to the browser event loop, not only this Rust test task.
+            rig_core::wasm_compat::sleep(std::time::Duration::from_millis(1)).await;
+        }
+        assert_eq!(
+            drops.get(),
+            expected,
+            "cancelled local worker was not dropped"
+        );
+    }
+    let (streaming, task) = Streaming::spawn(stream(), 1);
+    let entity = world
+        .spawn((
+            InFlight {
+                key: "local".into(),
+            },
+            streaming,
+        ))
+        .id();
+    world
+        .non_send_mut::<Executions>()
+        .streams
+        .insert(entity, task);
+    let (streaming, task) = Streaming::spawn(stream(), 1);
+    world.entity_mut(entity).insert(streaming);
+    world
+        .non_send_mut::<Executions>()
+        .streams
+        .insert(entity, task);
+    dropped(&drops, 1).await;
+    world.entity_mut(entity).remove::<InFlight>();
+    dropped(&drops, 2).await;
+    let (streaming, task) = Streaming::spawn(stream(), 1);
+    world.entity_mut(entity).insert((
+        InFlight {
+            key: "local".into(),
+        },
+        streaming,
+    ));
+    world
+        .non_send_mut::<Executions>()
+        .streams
+        .insert(entity, task);
+    let mut schedule = Schedule::default();
+    schedule.add_systems(move |mut commands: Commands| {
+        commands.entity(entity).despawn();
+    });
+    schedule.run(&mut world);
+    dropped(&drops, 3).await;
+    assert!(world.non_send::<Executions>().streams.is_empty());
+    let (streaming, task) = Streaming::spawn(stream(), 1);
+    let entity = world
+        .spawn((
+            InFlight {
+                key: "local".into(),
+            },
+            streaming,
+        ))
+        .id();
+    world
+        .non_send_mut::<Executions>()
+        .streams
+        .insert(entity, task);
+    drop(world);
+    dropped(&drops, 4).await;
+}
+
+#[wasm_bindgen_test]
+fn a_local_writer_keeps_post_final_work_alive_until_resume_or_cancellation() {
+    for resume in [false, true] {
+        let local = Rc::new(Cell::new(false));
+        let finished = local.clone();
+        let (release, wait) = futures::channel::oneshot::channel::<()>();
+        let mut stream = Reply::written(move |writer| async move {
+            writer
+                .finish(StreamFinal::new("local", Usage::new()))
+                .await
+                .unwrap();
+            wait.await.unwrap();
+            finished.set(true);
+        })
+        .into_stream();
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        assert!(matches!(
+            stream.as_mut().poll_next(&mut cx),
+            std::task::Poll::Ready(Some(Ok(rig_core::streaming::StreamEvent::Final(_))))
+        ));
+        assert!(stream.as_mut().poll_next(&mut cx).is_pending());
+        if resume {
+            release.send(()).unwrap();
+            assert!(matches!(
+                stream.as_mut().poll_next(&mut cx),
+                std::task::Poll::Ready(None)
+            ));
+            assert!(local.get());
+        } else {
+            drop(stream);
+            assert!(release.send(()).is_err());
+            assert!(!local.get());
+            assert_eq!(Rc::strong_count(&local), 1);
+        }
+    }
+}
+
+#[wasm_bindgen_test]
+async fn cancellation_reaches_setup_unary_fold_idle_and_full_queue_without_host_ticks() {
+    #[derive(Clone, Copy)]
+    enum Stage {
+        Setup,
+        Unary,
+        Idle,
+        Full,
+    }
+    struct LocalDrop(Rc<Cell<bool>>);
+    impl Drop for LocalDrop {
+        fn drop(&mut self) {
+            self.0.set(true);
+        }
+    }
+    struct Parked {
+        stage: Stage,
+        entered: Rc<Cell<bool>>,
+        produced: Rc<Cell<usize>>,
+        dropped: Rc<Cell<bool>>,
+    }
+    impl Serve for Parked {
+        type Family = rig_core::effect::family::Completion;
+        fn descriptor(&self) -> HandlerDescriptor {
+            HandlerDescriptor {
+                key: "parked".into(),
+                family: FamilyDescriptor::Completion {
+                    model: ModelRef::new("local"),
+                    capabilities: ProviderCapabilities::default(),
+                },
+                layers: Vec::new(),
+            }
+        }
+        async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+            let owned = LocalDrop(self.dropped.clone());
+            if matches!(self.stage, Stage::Setup) {
+                self.entered.set(true);
+                std::future::pending::<()>().await;
+            }
+            let entered = self.entered.clone();
+            let produced = self.produced.clone();
+            let full = matches!(self.stage, Stage::Full);
+            Reply::Stream(Box::pin(futures::stream::poll_fn(move |_| {
+                let _owned = &owned;
+                entered.set(true);
+                if full {
+                    produced.set(produced.get() + 1);
+                    std::task::Poll::Ready(Some(Ok(rig_core::streaming::StreamEvent::Unknown(
+                        rig_core::streaming::UnknownPayload::new(serde_json::Value::Null),
+                    ))))
+                } else {
+                    std::task::Poll::Pending
+                }
+            })))
+        }
+    }
+    for stage in [Stage::Setup, Stage::Unary, Stage::Idle, Stage::Full] {
+        let entered = Rc::new(Cell::new(false));
+        let produced = Rc::new(Cell::new(0));
+        let dropped = Rc::new(Cell::new(false));
+        let mut app = app();
+        app.world_mut()
+            .resource_mut::<rig_ecs::bus::Policy>()
+            .0
+            .stream_capacity = 2;
+        Handlers::with(app.world_mut(), |handlers| {
+            handlers.register(
+                "parked",
+                Parked {
+                    stage,
+                    entered: entered.clone(),
+                    produced: produced.clone(),
+                    dropped: dropped.clone(),
+                },
+            )
+        })
+        .unwrap()
+        .unwrap();
+        let effect = app
+            .world_mut()
+            .spawn(PendingEffect::new(
+                "parked",
+                EffectKind::Completion {
+                    request: request(),
+                    stream: !matches!(stage, Stage::Unary),
+                },
+            ))
+            .id();
+        for _ in 0..100 {
+            tick(&mut app).await;
+            if entered.get() {
+                break;
+            }
+        }
+        assert!(entered.get(), "owned execution must begin");
+        // No more host collection: the worker either parks in the source or
+        // fills its actual private queue. Neither may need a later spawn to stop.
+        rig_core::wasm_compat::sleep(std::time::Duration::from_millis(1)).await;
+        if matches!(stage, Stage::Full) {
+            let delivered = app.world().get::<Streamed>(effect).unwrap().events.len();
+            assert_eq!(
+                produced.get() - delivered,
+                3,
+                "two shared slots and one reserved slot"
+            );
+        }
+        let before = produced.get();
+        app.world_mut().despawn(effect);
+        for _ in 0..100 {
+            if dropped.get() {
+                break;
+            }
+            rig_core::wasm_compat::sleep(std::time::Duration::from_millis(1)).await;
+        }
+        assert!(
+            dropped.get(),
+            "cancellation must reach the pending future without a host tick"
+        );
+        assert_eq!(produced.get(), before, "cancelled work must not advance");
+    }
 }
