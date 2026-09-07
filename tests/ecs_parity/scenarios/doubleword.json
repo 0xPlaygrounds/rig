@@ -117,7 +117,7 @@
       ],
       "baseline_ignored": false,
       "classification": "agent",
-      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::cancellation_and_max_turns(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::cancellation_and_max_turns(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt(..)` on two agents (a cancelled run and a max-turn run) with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -152,7 +152,7 @@
       ],
       "baseline_ignored": false,
       "classification": "agent",
-      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::hook_rewrites_and_request_patch(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::hook_rewrites_and_request_patch(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt(..)` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -188,7 +188,7 @@
       ],
       "baseline_ignored": false,
       "classification": "agent",
-      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::invalid_tool_recovery(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::invalid_tool_recovery(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt(..)` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -223,7 +223,7 @@
       ],
       "baseline_ignored": false,
       "classification": "agent",
-      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::parallel_tools(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::parallel_tools(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder, None)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt(..)` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -258,7 +258,7 @@
       ],
       "baseline_ignored": false,
       "classification": "agent",
-      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::streaming_structured_after_tool(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::streaming_structured_after_tool(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.stream_prompt(..).stream()` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -295,7 +295,7 @@
       ],
       "baseline_ignored": false,
       "classification": "agent",
-      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::streaming_tool(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::streaming_tool(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.stream_prompt(..).stream()` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -367,7 +367,7 @@
       ],
       "baseline_ignored": false,
       "classification": "agent",
-      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::structured_after_tool(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::structured_after_tool(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt(..)` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -439,7 +439,7 @@
       ],
       "baseline_ignored": false,
       "classification": "agent",
-      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::tool_output_serialization(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::tool_output_serialization(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt(..)` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -474,7 +474,7 @@
       ],
       "baseline_ignored": false,
       "classification": "agent",
-      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::zero_argument_tool(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::zero_argument_tool(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt(..)` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -513,7 +513,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`an_unknown_model_still_puts_the_requested_width_on_the_wire`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `client.embedding_model_with_ndims(\"Qwen/Qwen4-Embedding-Unreleased\", 8192).embed_texts([PROBE]).expect_err(..)` (404 preserved); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`an_unknown_model_still_puts_the_requested_width_on_the_wire`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -530,7 +530,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::an_unknown_model_still_puts_the_requested_width_on_the_wire",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -552,7 +553,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`builder_documents_at_a_requested_width`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `EmbeddingsBuilder::new(client.embedding_model_with_ndims(MODEL, 128)).documents(..).build()`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`builder_documents_at_a_requested_width`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -569,7 +570,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::builder_documents_at_a_requested_width",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -591,7 +593,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`builder_documents_at_the_default_width`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `EmbeddingsBuilder::new(client.embedding_model(MODEL)).documents(..).build()`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`builder_documents_at_the_default_width`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -608,7 +610,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::builder_documents_at_the_default_width",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -630,7 +633,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`empty_input_at_a_requested_width`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `assert_rejected_input`: `client.embedding_model_with_ndims(MODEL, 512).embed_texts([\"\"])` expecting the provider's rejection; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`empty_input_at_a_requested_width`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -647,7 +650,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::empty_input_at_a_requested_width",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -669,7 +673,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`long_input_at_a_requested_width`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `embed_one`: `client.embedding_model_with_ndims(MODEL, w).embed_texts([input])`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`long_input_at_a_requested_width`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -686,7 +690,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::long_input_at_a_requested_width",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -708,7 +713,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`repeated_input_at_a_requested_width`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `embed_one`: `client.embedding_model_with_ndims(MODEL, w).embed_texts([input])`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`repeated_input_at_a_requested_width`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -725,7 +730,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::repeated_input_at_a_requested_width",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -747,7 +753,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`two_widths_in_one_scenario_stay_independent`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + two `embed_one` calls at different widths in one scenario (`embedding_model_with_ndims(MODEL, w).embed_texts([input])` each); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`two_widths_in_one_scenario_stay_independent`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -764,7 +770,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::two_widths_in_one_scenario_stay_independent",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -786,7 +793,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`unicode_input_at_a_requested_width`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `embed_one`: `client.embedding_model_with_ndims(MODEL, w).embed_texts([input])`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`unicode_input_at_a_requested_width`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -803,7 +810,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::unicode_input_at_a_requested_width",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -825,7 +833,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`usage_at_the_default_width`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `client.embedding_model(MODEL).embed_texts_response([PROBE])`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`usage_at_the_default_width`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -842,7 +850,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::usage_at_the_default_width",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -864,7 +873,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`usage_survives_a_requested_width`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `client.embedding_model_with_ndims(MODEL, 256).embed_texts_response([PROBE])`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`usage_survives_a_requested_width`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -881,7 +890,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::usage_survives_a_requested_width",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -903,7 +913,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_1024_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `embed_one`: `client.embedding_model_with_ndims(MODEL, w).embed_texts([input])`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`width_1024_single`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -920,7 +930,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_1024_single",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -942,7 +953,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_128_batch`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `embed_batch`: `client.embedding_model_with_ndims(MODEL, w).embed_texts(BATCH)`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`width_128_batch`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -959,7 +970,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_128_batch",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -981,7 +993,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_128_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `embed_one`: `client.embedding_model_with_ndims(MODEL, w).embed_texts([input])`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`width_128_single`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -998,7 +1010,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_128_single",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -1020,7 +1033,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_2048_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `embed_one`: `client.embedding_model_with_ndims(MODEL, w).embed_texts([input])`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`width_2048_single`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -1037,7 +1050,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_2048_single",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -1059,7 +1073,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_256_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `embed_one`: `client.embedding_model_with_ndims(MODEL, w).embed_texts([input])`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`width_256_single`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -1076,7 +1090,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_256_single",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -1098,7 +1113,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_32_batch`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `embed_batch`: `client.embedding_model_with_ndims(MODEL, w).embed_texts(BATCH)`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`width_32_batch`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -1115,7 +1130,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_32_batch",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -1137,7 +1153,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_32_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `embed_one`: `client.embedding_model_with_ndims(MODEL, w).embed_texts([input])`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`width_32_single`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -1154,7 +1170,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_32_single",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -1176,7 +1193,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_4095_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `embed_one`: `client.embedding_model_with_ndims(MODEL, w).embed_texts([input])`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`width_4095_single`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -1193,7 +1210,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_4095_single",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -1215,7 +1233,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_4096_single_is_not_sent`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `embed_one` at the native width: `client.embedding_model(MODEL)` (or the 4096 request that must not send `dimensions`) `.embed_texts([PROBE])`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`width_4096_single_is_not_sent`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -1232,7 +1250,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_4096_single_is_not_sent",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -1254,7 +1273,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_512_batch`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `embed_batch`: `client.embedding_model_with_ndims(MODEL, w).embed_texts(BATCH)`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`width_512_batch`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -1271,7 +1290,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_512_batch",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -1293,7 +1313,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_512_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `embed_one`: `client.embedding_model_with_ndims(MODEL, w).embed_texts([input])`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`width_512_single`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -1310,7 +1330,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_512_single",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -1332,7 +1353,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_64_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `embed_one`: `client.embedding_model_with_ndims(MODEL, w).embed_texts([input])`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`width_64_single`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -1349,7 +1370,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_64_single",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
@@ -1371,7 +1393,7 @@
       ],
       "baseline_ignored": false,
       "classification": "shared_provider",
-      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_default_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` (MODEL = QWEN3_EMBEDDING_8B) + `embed_one` at the native width: `client.embedding_model(MODEL)` (or the 4096 request that must not send `dimensions`) `.embed_texts([PROBE])`; the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths (`width_default_single`). Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
@@ -1388,7 +1410,8 @@
       ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_default_single",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },

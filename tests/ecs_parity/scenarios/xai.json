@@ -1066,7 +1066,7 @@
       ],
       "baseline_ignored": false,
       "classification": "agent",
-      "classification_reason": "OC-A1 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `XAI_CONTEXT_DOCS.iter().fold(client.agent(GROK_4), AgentBuilder::context).preamble(..).build().prompt(..)`; asserts the answer contains \"ancient tool\". Cassette `context/context_smoke`.",
+      "classification_reason": "OC-A1 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `XAI_CONTEXT_DOCS.iter().fold(client.agent(GROK_4), |builder, doc| builder.context(doc)).preamble(..).build().prompt(..)`; asserts the answer contains \"ancient tool\". Cassette `context/context_smoke`.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,

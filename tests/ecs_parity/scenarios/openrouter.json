@@ -1621,7 +1621,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4_1_mini_normalized_parallel_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -1660,7 +1661,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4_1_mini_normalized_single_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -1699,7 +1701,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4_1_mini_normalized_text",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -1738,7 +1741,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4_1_mini_raw_parallel_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -1777,7 +1781,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4_1_mini_raw_single_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -1816,7 +1821,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4_1_mini_raw_text",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -1855,7 +1861,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4o_mini_normalized_parallel_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -1894,7 +1901,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4o_mini_normalized_single_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -1933,7 +1941,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4o_mini_normalized_text",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -1972,7 +1981,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4o_mini_raw_parallel_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -2011,7 +2021,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4o_mini_raw_single_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -2050,7 +2061,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4o_mini_raw_text",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -2089,7 +2101,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4_1_mini_normalized_parallel_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -2128,7 +2141,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4_1_mini_normalized_single_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -2167,7 +2181,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4_1_mini_normalized_text",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -2206,7 +2221,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4_1_mini_raw_parallel_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -2245,7 +2261,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4_1_mini_raw_single_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -2284,7 +2301,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4_1_mini_raw_text",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -2323,7 +2341,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4o_mini_normalized_parallel_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -2362,7 +2381,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4o_mini_normalized_single_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -2401,7 +2421,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4o_mini_normalized_text",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -2440,7 +2461,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4o_mini_raw_parallel_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -2479,7 +2501,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4o_mini_raw_single_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -2518,7 +2541,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4o_mini_raw_text",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
     },
@@ -3696,7 +3720,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::reasoning_tool_order_matrix::blocking_parallel",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/reasoning_tool_order_matrix.rs"
     },
@@ -3770,7 +3795,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::reasoning_tool_order_matrix::blocking_single",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/reasoning_tool_order_matrix.rs"
     },
@@ -3805,7 +3831,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::reasoning_tool_order_matrix::streaming_parallel",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/reasoning_tool_order_matrix.rs"
     },
@@ -3879,7 +3906,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::reasoning_tool_order_matrix::streaming_single",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/reasoning_tool_order_matrix.rs"
     },
@@ -5835,7 +5863,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4_1_mini_length_top_absent",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -5874,7 +5903,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4_1_mini_length_top_two",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -5913,7 +5943,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4_1_mini_length_top_zero",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -5952,7 +5983,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4_1_mini_stop_top_absent",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -5991,7 +6023,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4_1_mini_stop_top_two",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6030,7 +6063,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4_1_mini_stop_top_zero",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6069,7 +6103,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4o_mini_length_top_absent",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6108,7 +6143,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4o_mini_length_top_two",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6147,7 +6183,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4o_mini_length_top_zero",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6186,7 +6223,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4o_mini_stop_top_absent",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6225,7 +6263,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4o_mini_stop_top_two",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6264,7 +6303,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4o_mini_stop_top_zero",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6303,7 +6343,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4_1_mini_length_top_absent",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6342,7 +6383,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4_1_mini_length_top_two",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6381,7 +6423,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4_1_mini_length_top_zero",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6420,7 +6463,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4_1_mini_stop_top_absent",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6459,7 +6503,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4_1_mini_stop_top_two",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6498,7 +6543,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4_1_mini_stop_top_zero",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6537,7 +6583,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4o_mini_length_top_absent",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6576,7 +6623,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4o_mini_length_top_two",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6615,7 +6663,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4o_mini_length_top_zero",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6654,7 +6703,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4o_mini_stop_top_absent",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6693,7 +6743,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4o_mini_stop_top_two",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6732,7 +6783,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4o_mini_stop_top_zero",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
     },
@@ -6972,7 +7024,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4_1_mini_roomy_plain_one",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7011,7 +7064,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4_1_mini_roomy_plain_two",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7050,7 +7104,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4_1_mini_roomy_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7089,7 +7144,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4_1_mini_tiny_plain_one",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7128,7 +7184,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4_1_mini_tiny_plain_two",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7167,7 +7224,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4_1_mini_tiny_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7206,7 +7264,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4o_mini_roomy_plain_one",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7245,7 +7304,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4o_mini_roomy_plain_two",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7284,7 +7344,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4o_mini_roomy_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7323,7 +7384,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4o_mini_tiny_plain_one",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7362,7 +7424,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4o_mini_tiny_plain_two",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7401,7 +7464,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4o_mini_tiny_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7440,7 +7504,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4_1_mini_roomy_plain_one",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7479,7 +7544,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4_1_mini_roomy_plain_two",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7518,7 +7584,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4_1_mini_roomy_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7557,7 +7624,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4_1_mini_tiny_plain_one",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7596,7 +7664,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4_1_mini_tiny_plain_two",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7635,7 +7704,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4_1_mini_tiny_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7674,7 +7744,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4o_mini_roomy_plain_one",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7713,7 +7784,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4o_mini_roomy_plain_two",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7752,7 +7824,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4o_mini_roomy_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7791,7 +7864,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4o_mini_tiny_plain_one",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7830,7 +7904,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4o_mini_tiny_plain_two",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7869,7 +7944,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4o_mini_tiny_tool",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
     },
@@ -7939,7 +8015,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt41_nested_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
     },
@@ -8009,7 +8086,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt41_parallel_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
     },
@@ -8079,7 +8157,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt41_zero_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
     },
@@ -8149,7 +8228,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt4o_nested_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
     },
@@ -8219,7 +8299,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt4o_parallel_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
     },
@@ -8289,7 +8370,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt4o_zero_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
     },
@@ -8359,7 +8441,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt41_nested_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
     },
@@ -8429,7 +8512,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt41_parallel_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
     },
@@ -8499,7 +8583,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt41_zero_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
     },
@@ -8569,7 +8654,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt4o_nested_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
     },
@@ -8639,7 +8725,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt4o_parallel_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
     },
@@ -8709,7 +8796,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt4o_zero_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
     },
@@ -8779,7 +8867,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt41_complete_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
     },
@@ -8849,7 +8938,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt41_low_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
     },
@@ -8919,7 +9009,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt41_mid_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
     },
@@ -8989,7 +9080,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt4o_complete_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
     },
@@ -9059,7 +9151,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt4o_low_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
     },
@@ -9129,7 +9222,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt4o_mid_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
     },
@@ -9199,7 +9293,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt41_complete_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
     },
@@ -9269,7 +9364,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt41_low_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
     },
@@ -9339,7 +9435,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt41_mid_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
     },
@@ -9409,7 +9506,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt4o_complete_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
     },
@@ -9479,7 +9577,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt4o_low_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
     },
@@ -9549,7 +9648,8 @@
       ],
       "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt4o_mid_model",
       "mapping_limits": [
-        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
       ],
       "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
     },
