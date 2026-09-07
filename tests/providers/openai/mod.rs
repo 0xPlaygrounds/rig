@@ -23,6 +23,7 @@ mod cassette {
     mod corpus_serving;
     mod document_ordering;
     mod ecs_chat_tool_lifecycle;
+    mod ecs_chat_tool_truncation;
     mod ecs_extractor;
     mod ecs_extractor_usage;
     mod ecs_lifecycle;
