@@ -17,6 +17,11 @@
       ],
       "ecs": null,
       "evidence_scope": "supplemental_live",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-smoke-contract.md",
+      "fixture_disposition": "Requires Copilot credentials or an OAuth cache; no capture possible here; stays supplemental_live (live-only) and is not counted as ported. This row iterates every listed model live; the cassette-backed copilot::agent::completion_smoke is the mapped counterpart.",
       "fixtures": [],
       "id": "rig::copilot::copilot::agent::all_models_completion_smoke",
       "parameterization_obligation": "Live list_models returns a dynamic model set. Freeze model IDs and per-model results before creating executable cells; the original only asserts a nonempty list and prints failures rather than asserting every model succeeded.",
@@ -127,64 +132,132 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/auth.rs",
+          "symbol": "copilot::auth::access_token_bootstrap_refresh_and_completion_smoke"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in copilot-smoke-contract.md: oauth_builder().token_dir(temp seeded with access-token and an expired api-key.json).build(), client.authorize() refresh, then client.agent(LIVE_MODEL).preamble(..).build().prompt(BASIC_PROMPT).await.expect; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires COPILOT_GITHUB_ACCESS_TOKEN or GITHUB_TOKEN\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-smoke-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires Copilot credentials (GITHUB_COPILOT_API_KEY/COPILOT_API_KEY, COPILOT_GITHUB_ACCESS_TOKEN/GITHUB_TOKEN) or an OAuth device-flow cache, none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::copilot::copilot::auth::access_token_bootstrap_refresh_and_completion_smoke",
       "source": "tests/providers/copilot/auth.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/auth.rs",
+          "symbol": "copilot::auth::api_key_completion_smoke"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in copilot-smoke-contract.md: api_key_builder(GITHUB_COPILOT_API_KEY).build(), client.authorize().await.expect, then client.agent(LIVE_MODEL).preamble(BASIC_PREAMBLE).build().prompt(BASIC_PROMPT).await.expect and assert_nonempty_response; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GITHUB_COPILOT_API_KEY or COPILOT_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-smoke-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires Copilot credentials (GITHUB_COPILOT_API_KEY/COPILOT_API_KEY, COPILOT_GITHUB_ACCESS_TOKEN/GITHUB_TOKEN) or an OAuth device-flow cache, none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::copilot::copilot::auth::api_key_completion_smoke",
       "source": "tests/providers/copilot/auth.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/auth.rs",
+          "symbol": "copilot::auth::github_access_token_completion_smoke"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in copilot-smoke-contract.md: github_access_token_builder(COPILOT_GITHUB_ACCESS_TOKEN).build(), client.authorize(), then client.agent(LIVE_MODEL).preamble(..).build().prompt(BASIC_PROMPT).await.expect; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires COPILOT_GITHUB_ACCESS_TOKEN or GITHUB_TOKEN\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-smoke-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires Copilot credentials (GITHUB_COPILOT_API_KEY/COPILOT_API_KEY, COPILOT_GITHUB_ACCESS_TOKEN/GITHUB_TOKEN) or an OAuth device-flow cache, none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::copilot::copilot::auth::github_access_token_completion_smoke",
       "source": "tests/providers/copilot/auth.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/auth.rs",
+          "symbol": "copilot::auth::oauth_device_flow_authorize_and_cached_completion_smoke"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in copilot-smoke-contract.md: oauth_builder().token_dir(temp).build(), interactive client.authorize(), then client.agent(LIVE_MODEL).build().prompt(..) twice (fresh and cached client); live, interactive OAuth.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires interactive GitHub Copilot OAuth device flow\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-smoke-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires Copilot credentials (GITHUB_COPILOT_API_KEY/COPILOT_API_KEY, COPILOT_GITHUB_ACCESS_TOKEN/GITHUB_TOKEN) or an OAuth device-flow cache, none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::copilot::copilot::auth::oauth_device_flow_authorize_and_cached_completion_smoke",
       "source": "tests/providers/copilot/auth.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/embeddings.rs",
+          "symbol": "copilot::embeddings::embeddings_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule embeddings in copilot-provider-contract.md: client.embedding_model(live_embedding_model()).embed_texts(EMBEDDING_INPUTS).await.expect with assert_embeddings_nonempty_and_consistent; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key); no agent.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/embeddings/embeddings_smoke.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::embeddings::embeddings_smoke",
       "source": "tests/providers/copilot/embeddings.rs"
     },
@@ -688,429 +761,958 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/models.rs",
+          "symbol": "copilot::models::list_models_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule listing in copilot-provider-contract.md: client.list_models().await with a non-empty listing asserted; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key); no agent.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/models/list_models_smoke.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::models::list_models_smoke",
       "source": "tests/providers/copilot/models.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/multi_extract.rs",
+          "symbol": "copilot::multi_extract::batch_multi_extract_chain"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-extractor in copilot-output-contract.md: three client.extractor::<T>(LIVE_LIGHT_MODEL).preamble(..).retries(2).build() extractors driven concurrently (try_join! inside .buffered(4)) under CassetteSpec::unordered; ensures three nonempty responses; with_copilot_cassette_result; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-output-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/multi_extract/batch_multi_extract_chain.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::multi_extract::batch_multi_extract_chain",
       "source": "tests/providers/copilot/multi_extract.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/noninteractive_oauth_cassette.rs",
+          "symbol": "copilot::noninteractive_oauth_cassette::cached_oauth_allows_noninteractive_completion"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-prompt in copilot-smoke-contract.md: with_copilot_noninteractive_oauth_cassette builds an OAuth client with allow_device_flow(false) and a temp token_dir seeded with the cassette api-key record; client.authorize().await.expect then client.agent(LIVE_MODEL).preamble(BASIC_PREAMBLE).build().prompt(BASIC_PROMPT).await.expect and assert_nonempty_response.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-smoke-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/noninteractive_oauth/cached_oauth_allows_noninteractive_completion.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::noninteractive_oauth_cassette::cached_oauth_allows_noninteractive_completion",
       "source": "tests/providers/copilot/noninteractive_oauth_cassette.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/permission_control.rs",
+          "symbol": "copilot::permission_control::permission_control_prompt_example"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-dispatch-hook in copilot-hooks-contract.md: client.agent(LIVE_LIGHT_MODEL).preamble(..).tool(ReadFileHead).tool(ReadFileTail).build().prompt(..).max_turns(5).add_hook(PermissionHook) whose on_dispatch skips the first tool call and on_outcome captures the tool result; ensures last == \"hello world\" and call_count >= 2; with_copilot_cassette_result; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "hooks"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-hooks-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/permission_control/permission_control_prompt_example.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::permission_control::permission_control_prompt_example",
       "source": "tests/providers/copilot/permission_control.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/permission_control.rs",
+          "symbol": "copilot::permission_control::permission_control_streaming_example"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in copilot-hooks-contract.md: live_client().agent(LIVE_LIGHT_MODEL).tool(ReadFileHead).tool(ReadFileTail).build().stream_prompt(..).max_turns(5).add_hook(PermissionHook).stream() drained by stream_to_stdout; ensures the final response mentions the file content and call_count >= 2; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires Copilot credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "hooks"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-hooks-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires Copilot credentials (GITHUB_COPILOT_API_KEY/COPILOT_API_KEY, COPILOT_GITHUB_ACCESS_TOKEN/GITHUB_TOKEN) or an OAuth device-flow cache, none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::copilot::copilot::permission_control::permission_control_streaming_example",
       "source": "tests/providers/copilot/permission_control.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/raw_capture_matrix.rs",
+          "symbol": "copilot::raw_capture_matrix::chat_normalized_fields_equal_raw_renormalized"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in copilot-provider-contract.md: client.completion_model(GPT_4O or GPT_5_3_CODEX).completion(request) with CompletionResponse::raw round-trip / normalize comparisons against the recorded body; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no COPILOT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::copilot::copilot::raw_capture_matrix::chat_normalized_fields_equal_raw_renormalized",
       "source": "tests/providers/copilot/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/raw_capture_matrix.rs",
+          "symbol": "copilot::raw_capture_matrix::chat_raw_exposes_system_fingerprint"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in copilot-provider-contract.md: client.completion_model(GPT_4O or GPT_5_3_CODEX).completion(request) with CompletionResponse::raw round-trip / normalize comparisons against the recorded body; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no COPILOT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::copilot::copilot::raw_capture_matrix::chat_raw_exposes_system_fingerprint",
       "source": "tests/providers/copilot/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/raw_capture_matrix.rs",
+          "symbol": "copilot::raw_capture_matrix::chat_raw_round_trips_provider_type"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in copilot-provider-contract.md: client.completion_model(GPT_4O or GPT_5_3_CODEX).completion(request) with CompletionResponse::raw round-trip / normalize comparisons against the recorded body; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no COPILOT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::copilot::copilot::raw_capture_matrix::chat_raw_round_trips_provider_type",
       "source": "tests/providers/copilot/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/raw_capture_matrix.rs",
+          "symbol": "copilot::raw_capture_matrix::responses_normalized_fields_equal_raw_renormalized"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in copilot-provider-contract.md: client.completion_model(GPT_4O or GPT_5_3_CODEX).completion(request) with CompletionResponse::raw round-trip / normalize comparisons against the recorded body; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no COPILOT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::copilot::copilot::raw_capture_matrix::responses_normalized_fields_equal_raw_renormalized",
       "source": "tests/providers/copilot/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/raw_capture_matrix.rs",
+          "symbol": "copilot::raw_capture_matrix::responses_raw_exposes_envelope"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in copilot-provider-contract.md: client.completion_model(GPT_4O or GPT_5_3_CODEX).completion(request) with CompletionResponse::raw round-trip / normalize comparisons against the recorded body; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no COPILOT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::copilot::copilot::raw_capture_matrix::responses_raw_exposes_envelope",
       "source": "tests/providers/copilot/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/raw_capture_matrix.rs",
+          "symbol": "copilot::raw_capture_matrix::responses_raw_round_trips_provider_type"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in copilot-provider-contract.md: client.completion_model(GPT_4O or GPT_5_3_CODEX).completion(request) with CompletionResponse::raw round-trip / normalize comparisons against the recorded body; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no COPILOT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::copilot::copilot::raw_capture_matrix::responses_raw_round_trips_provider_type",
       "source": "tests/providers/copilot/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/raw_completion_parity_matrix.rs",
+          "symbol": "copilot::raw_completion_parity_matrix::chat_plain_raw_completion_lacks_request_id"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in copilot-provider-contract.md: client.completion_model(..).raw_completion[_with_request_id](request) normalized by hand and compared with .completion(request); recorded headers/bodies re-read; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no COPILOT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::copilot::copilot::raw_completion_parity_matrix::chat_plain_raw_completion_lacks_request_id",
       "source": "tests/providers/copilot/raw_completion_parity_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/raw_completion_parity_matrix.rs",
+          "symbol": "copilot::raw_completion_parity_matrix::chat_raw_with_request_id_reproduces_completion"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in copilot-provider-contract.md: client.completion_model(..).raw_completion[_with_request_id](request) normalized by hand and compared with .completion(request); recorded headers/bodies re-read; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no COPILOT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::copilot::copilot::raw_completion_parity_matrix::chat_raw_with_request_id_reproduces_completion",
       "source": "tests/providers/copilot/raw_completion_parity_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/raw_completion_parity_matrix.rs",
+          "symbol": "copilot::raw_completion_parity_matrix::responses_raw_completion_carries_request_id"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in copilot-provider-contract.md: client.completion_model(..).raw_completion[_with_request_id](request) normalized by hand and compared with .completion(request); recorded headers/bodies re-read; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no COPILOT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::copilot::copilot::raw_completion_parity_matrix::responses_raw_completion_carries_request_id",
       "source": "tests/providers/copilot/raw_completion_parity_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/raw_stream_capture_matrix.rs",
+          "symbol": "copilot::raw_stream_capture_matrix::chat_stream_raw_exposes_copilot_usage"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in copilot-provider-contract.md: client.completion_model(..).stream(request) drained by terminal_of with StreamFinal::raw compared with the recorded frames; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no COPILOT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::copilot::copilot::raw_stream_capture_matrix::chat_stream_raw_exposes_copilot_usage",
       "source": "tests/providers/copilot/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/raw_stream_capture_matrix.rs",
+          "symbol": "copilot::raw_stream_capture_matrix::chat_stream_raw_terminal_round_trips_provider_type"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in copilot-provider-contract.md: client.completion_model(..).stream(request) drained by terminal_of with StreamFinal::raw compared with the recorded frames; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no COPILOT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::copilot::copilot::raw_stream_capture_matrix::chat_stream_raw_terminal_round_trips_provider_type",
       "source": "tests/providers/copilot/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/raw_stream_capture_matrix.rs",
+          "symbol": "copilot::raw_stream_capture_matrix::responses_stream_raw_exposes_terminal_status"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in copilot-provider-contract.md: client.completion_model(..).stream(request) drained by terminal_of with StreamFinal::raw compared with the recorded frames; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no COPILOT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::copilot::copilot::raw_stream_capture_matrix::responses_stream_raw_exposes_terminal_status",
       "source": "tests/providers/copilot/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/raw_stream_capture_matrix.rs",
+          "symbol": "copilot::raw_stream_capture_matrix::responses_stream_raw_terminal_round_trips_provider_type"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in copilot-provider-contract.md: client.completion_model(..).stream(request) drained by terminal_of with StreamFinal::raw compared with the recorded frames; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no COPILOT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::copilot::copilot::raw_stream_capture_matrix::responses_stream_raw_terminal_round_trips_provider_type",
       "source": "tests/providers/copilot/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/reasoning_roundtrip.rs",
+          "symbol": "copilot::reasoning_roundtrip::nonstreaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule reasoning-roundtrip-driver in copilot-provider-contract.md: reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(client.completion_model(live_responses_model()), reasoning effort medium)) builds CompletionRequests by hand and calls model.completion twice with the turn-1 assistant content replayed; no AgentBuilder despite the type name; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/reasoning_roundtrip/nonstreaming.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::reasoning_roundtrip::nonstreaming",
       "source": "tests/providers/copilot/reasoning_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/reasoning_roundtrip.rs",
+          "symbol": "copilot::reasoning_roundtrip::streaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule reasoning-roundtrip-driver in copilot-provider-contract.md: reasoning::run_reasoning_roundtrip_streaming over a CapturingProviderFinals CompletionModel wrapper of client.completion_model(live_responses_model()); the driver calls model.stream by hand for two turns and the captured StreamFinal::raw is decoded as the Responses terminal; no AgentBuilder; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/reasoning_roundtrip/streaming.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::reasoning_roundtrip::streaming",
       "source": "tests/providers/copilot/reasoning_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/reasoning_tool_roundtrip.rs",
+          "symbol": "copilot::reasoning_tool_roundtrip::nonstreaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-chat-tools in copilot-tools-contract.md: client.agent(live_responses_model()).preamble(TOOL_SYSTEM_PROMPT).max_tokens(4096).tool(WeatherTool).additional_params(reasoning effort high).default_max_turns(2).build().chat(TOOL_USER_PROMPT, &mut Vec::new()).await.expect then reasoning::assert_nonstreaming_universal on call_count; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-tools-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/reasoning_tool_roundtrip/nonstreaming.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::reasoning_tool_roundtrip::nonstreaming",
       "source": "tests/providers/copilot/reasoning_tool_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/reasoning_tool_roundtrip.rs",
+          "symbol": "copilot::reasoning_tool_roundtrip::streaming"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in copilot-tools-contract.md: live_client().agent(live_responses_model()).preamble(..).max_tokens(4096).tool(WeatherTool).additional_params(reasoning effort high).build().stream_chat(TOOL_USER_PROMPT, Vec::new()).max_turns(3).stream() collected by reasoning::collect_stream_stats then assert_universal; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires Copilot credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-tools-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires Copilot credentials (GITHUB_COPILOT_API_KEY/COPILOT_API_KEY, COPILOT_GITHUB_ACCESS_TOKEN/GITHUB_TOKEN) or an OAuth device-flow cache, none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::copilot::copilot::reasoning_tool_roundtrip::streaming",
       "source": "tests/providers/copilot/reasoning_tool_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/request_hook.rs",
+          "symbol": "copilot::request_hook::request_hook_records_prompt_and_response"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-completion-hook in copilot-hooks-contract.md: client.agent(LIVE_MODEL).preamble(..).build().prompt(\"Entertain me!\").add_hook(SessionIdHook) observing on_completion_call and on_outcome; ensures prompt_calls == 1, response_calls == 1 and the captured prompt/response; with_copilot_cassette_result; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "hooks"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-hooks-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/request_hook/request_hook_records_prompt_and_response.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::request_hook::request_hook_records_prompt_and_response",
       "source": "tests/providers/copilot/request_hook.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/routing.rs",
+          "symbol": "copilot::routing::chat_models_route_through_chat_completions"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in copilot-smoke-contract.md: live_client().agent(LIVE_MODEL).preamble(BASIC_PREAMBLE).build().prompt(BASIC_PROMPT).await.expect then assert_nonempty_response; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires Copilot credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-smoke-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires Copilot credentials (GITHUB_COPILOT_API_KEY/COPILOT_API_KEY, COPILOT_GITHUB_ACCESS_TOKEN/GITHUB_TOKEN) or an OAuth device-flow cache, none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::copilot::copilot::routing::chat_models_route_through_chat_completions",
       "source": "tests/providers/copilot/routing.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/routing.rs",
+          "symbol": "copilot::routing::codex_models_route_through_responses"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-prompt in copilot-smoke-contract.md: client.agent(live_responses_model()).preamble(BASIC_PREAMBLE).build().prompt(..).await.expect then assert_nonempty_response on the Responses route; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-smoke-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/routing/codex_models_route_through_responses.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::routing::codex_models_route_through_responses",
       "source": "tests/providers/copilot/routing.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/streaming.rs",
+          "symbol": "copilot::streaming::example_streaming_prompt"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream in copilot-smoke-contract.md: client.agent(LIVE_MODEL).preamble(..)[.temperature(0.5)].build().stream_prompt(..).stream() drained by collect_stream_final_response then assert_nonempty_response; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-smoke-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/streaming/example_streaming_prompt.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::streaming::example_streaming_prompt",
       "source": "tests/providers/copilot/streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/streaming.rs",
+          "symbol": "copilot::streaming::streaming_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream in copilot-smoke-contract.md: client.agent(LIVE_MODEL).preamble(..)[.temperature(0.5)].build().stream_prompt(..).stream() drained by collect_stream_final_response then assert_nonempty_response; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-smoke-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/streaming/streaming_smoke.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::streaming::streaming_smoke",
       "source": "tests/providers/copilot/streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/streaming_tools.rs",
+          "symbol": "copilot::streaming_tools::example_streaming_with_tools"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream-tools in copilot-tools-contract.md: client.agent(LIVE_MODEL).preamble(..).max_tokens(1024).tool(Adder).tool(Subtract).default_max_turns(2).build().stream_prompt(\"Calculate 2 - 5\").stream() drained by collect_stream_final_response; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-tools-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/streaming_tools/example_streaming_with_tools.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::streaming_tools::example_streaming_with_tools",
       "source": "tests/providers/copilot/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/streaming_tools.rs",
+          "symbol": "copilot::streaming_tools::raw_followup_uses_tool_result_without_new_tool_calls"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in copilot-provider-contract.md: two client.completion_model(LIVE_MODEL).stream(..) calls, the second replaying a hand-built assistant tool-call message and UserContent::tool_result_for; collect_raw_stream_observation; no agent; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::streaming_tools::raw_followup_uses_tool_result_without_new_tool_calls",
       "source": "tests/providers/copilot/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/streaming_tools.rs",
+          "symbol": "copilot::streaming_tools::raw_stream_emits_required_zero_arg_tool_call"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in copilot-provider-contract.md: client.completion_model(LIVE_MODEL).stream(request with zero_arg_tool_definition and ToolChoice::Required) checked by assert_stream_contains_zero_arg_tool_call_named; no agent; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/streaming_tools/raw_stream_emits_required_zero_arg_tool_call.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::streaming_tools::raw_stream_emits_required_zero_arg_tool_call",
       "source": "tests/providers/copilot/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/streaming_tools.rs",
+          "symbol": "copilot::streaming_tools::raw_stream_surfaces_two_distinct_tool_calls_before_text"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in copilot-provider-contract.md: client.completion_model(LIVE_MODEL).stream(request with AlphaSignal/BetaSignal definitions) collected by collect_raw_stream_observation; no agent; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::streaming_tools::raw_stream_surfaces_two_distinct_tool_calls_before_text",
       "source": "tests/providers/copilot/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/streaming_tools.rs",
+          "symbol": "copilot::streaming_tools::streaming_tools_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream-tools in copilot-tools-contract.md: client.agent(LIVE_MODEL).preamble(STREAMING_TOOLS_PREAMBLE).tool(Adder).tool(Subtract).default_max_turns(2).build().stream_prompt(STREAMING_TOOLS_PROMPT).stream() drained by collect_stream_final_response then assert_mentions_expected_number(-3); replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-tools-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/streaming_tools/streaming_tools_smoke.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::streaming_tools::streaming_tools_smoke",
       "source": "tests/providers/copilot/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/streaming_tools.rs",
+          "symbol": "copilot::streaming_tools::streaming_tools_surface_two_distinct_tool_calls_before_final_answer"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream-tools in copilot-tools-contract.md: client.agent(LIVE_MODEL).preamble(TWO_TOOL_STREAM_PREAMBLE).tool(AlphaSignal).tool(BetaSignal).build().stream_prompt(..).max_turns(8).stream() collected by collect_stream_observation then assert_two_tool_roundtrip_contract; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-tools-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/streaming_tools/streaming_tools_surface_two_distinct_tool_calls_before_final_answer.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::streaming_tools::streaming_tools_surface_two_distinct_tool_calls_before_final_answer",
       "source": "tests/providers/copilot/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/structured_output.rs",
+          "symbol": "copilot::structured_output::prompt_typed_and_output_schema"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-typed in copilot-output-contract.md: client.agent(LIVE_MODEL).preamble(..).build().prompt_typed::<WeatherForecast>(..) twice (the second asserting usage.total_tokens > 0) then a second agent with .output_schema::<WeatherForecast>().prompt(..) parsed with serde_json; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-output-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/structured_output/prompt_typed_and_output_schema.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::structured_output::prompt_typed_and_output_schema",
       "source": "tests/providers/copilot/structured_output.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/structured_output.rs",
+          "symbol": "copilot::structured_output::structured_output_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-typed in copilot-output-contract.md: client.agent(LIVE_MODEL).build().prompt_typed::<SmokeStructuredOutput>(STRUCTURED_OUTPUT_PROMPT).await.expect then assert_smoke_structured_output; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-output-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/structured_output/structured_output_smoke.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::structured_output::structured_output_smoke",
       "source": "tests/providers/copilot/structured_output.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/typed_prompt_tools.rs",
+          "symbol": "copilot::typed_prompt_tools::prompt_typed_with_tool_call_roundtrip"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-typed-tools in copilot-tools-contract.md: client.agent(live_responses_model()).preamble(..).tool(WeatherTool).default_max_turns(2).build().prompt_typed::<WeatherResponse>(..).await?; ensures call_count >= 1 and assert_weather_tool_roundtrip_response; with_copilot_cassette_result; replayed through with_copilot_cassette (strict ordered ProviderCassette, placeholder API key).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/copilot-tools-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/typed_prompt_tools/prompt_typed_with_tool_call_roundtrip.yaml"
+        }
+      ],
       "id": "rig::copilot::copilot::typed_prompt_tools::prompt_typed_with_tool_call_roundtrip",
       "source": "tests/providers/copilot/typed_prompt_tools.rs"
     }

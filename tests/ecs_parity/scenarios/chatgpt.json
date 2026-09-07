@@ -21,634 +21,1387 @@
       ],
       "ecs": null,
       "evidence_scope": "supplemental_live",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Requires ChatGPT OAuth (device flow or cached auth.json); no capture possible here; stays supplemental_live (live-only) and is not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::agent::completion_smoke",
       "source": "tests/providers/chatgpt/agent.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/auth.rs",
+          "symbol": "chatgpt::auth::oauth_device_flow_authorize_and_cached_completion_smoke"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: chatgpt OAuth client with a temp auth_file, interactive client.authorize(), then client.agent(LIVE_MODEL).preamble(..).build().stream_prompt(BASIC_PROMPT).stream() drained by collect_stream_final_response, repeated with a cached client; live, interactive OAuth.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires interactive ChatGPT OAuth device flow\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::auth::oauth_device_flow_authorize_and_cached_completion_smoke",
       "source": "tests/providers/chatgpt/auth.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/auth.rs",
+          "symbol": "chatgpt::auth::refresh_token_cache_authorize_and_completion_smoke"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: OAuth client whose auth_file is seeded from CHATGPT_REFRESH_TOKEN, client.authorize() refresh, then client.agent(LIVE_MODEL).build().stream_prompt(..).stream() drained by collect_stream_final_response; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires CHATGPT_REFRESH_TOKEN\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::auth::refresh_token_cache_authorize_and_completion_smoke",
       "source": "tests/providers/chatgpt/auth.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_behaviors.rs",
+          "symbol": "chatgpt::cassette::codex_behaviors::default_instructions_merge_with_explicit_preamble"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-chat in chatgpt-codex-contract.md: with_chatgpt_cassette_default_instructions client; client.agent(GPT_5_4).preamble(..).build().chat(.., &mut Vec::new()).await.expect; output must contain both markers; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "codex"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-codex-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_behaviors/default_instructions_merge_with_explicit_preamble.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_behaviors::default_instructions_merge_with_explicit_preamble",
       "source": "tests/providers/chatgpt/cassette/codex_behaviors.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_behaviors.rs",
+          "symbol": "chatgpt::cassette::codex_behaviors::explicit_preamble_and_mid_conversation_system_messages_are_instructions"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-chat in chatgpt-codex-contract.md: client.agent(GPT_5_4).preamble(..).build().chat(\"What is my codename?\", &mut history) with a mid-conversation Message::system in the caller-owned history; output must contain FALCON-9; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "codex"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-codex-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_behaviors/explicit_preamble_and_mid_conversation_system_messages_are_instructions.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_behaviors::explicit_preamble_and_mid_conversation_system_messages_are_instructions",
       "source": "tests/providers/chatgpt/cassette/codex_behaviors.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_behaviors.rs",
+          "symbol": "chatgpt::cassette::codex_behaviors::store_false_and_prompt_cache_fields_roundtrip"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).raw_completion(request).await.expect; additional_parameters.store/prompt_cache_key and usage asserted on the raw Responses type; no agent; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_behaviors/store_false_and_prompt_cache_fields_roundtrip.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_behaviors::store_false_and_prompt_cache_fields_roundtrip",
       "source": "tests/providers/chatgpt/cassette/codex_behaviors.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_behaviors.rs",
+          "symbol": "chatgpt::cassette::codex_behaviors::strict_tools_opt_in_roundtrip"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).with_strict_tools().completion(request with the Adder definition).await.expect; tool-call name/arguments asserted on the normalized choice; no agent; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_behaviors/strict_tools_opt_in_roundtrip.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_behaviors::strict_tools_opt_in_roundtrip",
       "source": "tests/providers/chatgpt/cassette/codex_behaviors.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_sessions.rs",
+          "symbol": "chatgpt::cassette::codex_sessions::long_history_replay_nonstreaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in chatgpt-provider-contract.md: two client.completion_model(GPT_5_4).completion(..) calls, the second replaying a hand-built long history with tool_call_with_call_id / tool_result_with_call_id; no agent; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_sessions/long_history_replay_nonstreaming.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_sessions::long_history_replay_nonstreaming",
       "source": "tests/providers/chatgpt/cassette/codex_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_sessions.rs",
+          "symbol": "chatgpt::cassette::codex_sessions::parallel_tool_calls_single_turn_nonstreaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-chat-tools in chatgpt-codex-contract.md: client.agent(GPT_5_4).preamble(TWO_TOOL_STREAM_PREAMBLE).tool(AlphaSignal).tool(BetaSignal).default_max_turns(5).build().chat(TWO_TOOL_STREAM_PROMPT, &mut history).await.expect; both outputs in the answer, exactly two calls/results in call order; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "codex"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-codex-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_sessions::parallel_tool_calls_single_turn_nonstreaming",
       "source": "tests/providers/chatgpt/cassette/codex_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_sessions.rs",
+          "symbol": "chatgpt::cassette::codex_sessions::parallel_tool_calls_single_turn_streaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream-tools in chatgpt-codex-contract.md: client.agent(GPT_5_4).preamble(..).tool(AlphaSignal).tool(BetaSignal).build().stream_prompt(..).max_turns(5).stream() collected by collect_stream_observation then assert_two_tool_roundtrip_contract; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "codex"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-codex-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_sessions/parallel_tool_calls_single_turn_streaming.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_sessions::parallel_tool_calls_single_turn_streaming",
       "source": "tests/providers/chatgpt/cassette/codex_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_sessions.rs",
+          "symbol": "chatgpt::cassette::codex_sessions::reasoning_session_two_tool_calls_streaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream-tools in chatgpt-codex-contract.md: client.agent(GPT_5_4).preamble(TOOL_SYSTEM_PROMPT).max_tokens(6000).tool(WeatherTool).additional_params(reasoning effort low).build().stream_chat(.., Vec::new()).max_turns(5).stream() collected by reasoning::collect_stream_stats; >= 2 real invocations, >= 2 streamed calls/results, reasoning blocks, final text with both cities; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "codex"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-codex-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_sessions/reasoning_session_two_tool_calls_streaming.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_sessions::reasoning_session_two_tool_calls_streaming",
       "source": "tests/providers/chatgpt/cassette/codex_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_sessions.rs",
+          "symbol": "chatgpt::cassette::codex_sessions::sequential_tool_calls_nonstreaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-chat-tools in chatgpt-codex-contract.md: client.agent(GPT_5_4).preamble(SEQUENTIAL_TOOLS_PREAMBLE).tool(Adder).tool(Subtract).default_max_turns(6).build().chat(.., &mut history).await.expect; assert_mentions_expected_number(2) and history tool-call/result ordering asserted; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "codex"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-codex-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_sessions/sequential_tool_calls_nonstreaming.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_sessions::sequential_tool_calls_nonstreaming",
       "source": "tests/providers/chatgpt/cassette/codex_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_sessions.rs",
+          "symbol": "chatgpt::cassette::codex_sessions::sequential_tool_calls_streaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream-tools in chatgpt-codex-contract.md: client.agent(GPT_5_4).preamble(..).tool(Adder).tool(Subtract).build().stream_chat(.., Vec::new()).max_turns(6).stream() collected by collect_stream_observation; exact tool_calls [add, subtract], tool_results == 2, final response mentions 2; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "codex"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-codex-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_sessions/sequential_tool_calls_streaming.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_sessions::sequential_tool_calls_streaming",
       "source": "tests/providers/chatgpt/cassette/codex_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_sessions.rs",
+          "symbol": "chatgpt::cassette::codex_sessions::usage_accumulates_across_streaming_multi_turn"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream-tools in chatgpt-codex-contract.md: client.agent(GPT_5_4).preamble(ORDERED_TOOL_STREAM_PREAMBLE).tool(AlphaSignal).build().stream_prompt(..).max_turns(5).stream() drained manually for StreamUserItem and FinalResponse usage; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "codex"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-codex-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_sessions/usage_accumulates_across_streaming_multi_turn.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_sessions::usage_accumulates_across_streaming_multi_turn",
       "source": "tests/providers/chatgpt/cassette/codex_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_tool_args.rs",
+          "symbol": "chatgpt::cassette::codex_tool_args::nested_arguments_roundtrip_nonstreaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-chat-tools in chatgpt-codex-contract.md: client.agent(GPT_5_4).preamble(NESTED_ARGS_PREAMBLE).tool(PlanTrip).default_max_turns(4).build().chat(NESTED_ARGS_PROMPT, &mut history).await.expect; confirmation code in the answer and the recorded history tool-call arguments asserted; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "codex"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-codex-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_tool_args/nested_arguments_roundtrip_nonstreaming.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_tool_args::nested_arguments_roundtrip_nonstreaming",
       "source": "tests/providers/chatgpt/cassette/codex_tool_args.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_tool_args.rs",
+          "symbol": "chatgpt::cassette::codex_tool_args::nested_arguments_streaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).stream(request with the PlanTrip definition) collected by collect_raw_stream_observation; nested arguments asserted; no agent; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_tool_args/nested_arguments_streaming.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_tool_args::nested_arguments_streaming",
       "source": "tests/providers/chatgpt/cassette/codex_tool_args.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_tool_args.rs",
+          "symbol": "chatgpt::cassette::codex_tool_args::unicode_arguments_streaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).stream(request with an echo ToolDefinition) collected by collect_raw_stream_observation; unicode argument text asserted; no agent; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_tool_args/unicode_arguments_streaming.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_tool_args::unicode_arguments_streaming",
       "source": "tests/providers/chatgpt/cassette/codex_tool_args.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_tool_args.rs",
+          "symbol": "chatgpt::cassette::codex_tool_args::zero_argument_tool_call_nonstreaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).completion(request with zero_arg_tool_definition).await.expect; empty-object arguments asserted; no agent; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_tool_args/zero_argument_tool_call_nonstreaming.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_tool_args::zero_argument_tool_call_nonstreaming",
       "source": "tests/providers/chatgpt/cassette/codex_tool_args.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_tool_args.rs",
+          "symbol": "chatgpt::cassette::codex_tool_args::zero_argument_tool_call_streaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).stream(request with zero_arg_tool_definition) checked by assert_stream_contains_zero_arg_tool_call_named; no agent; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_tool_args/zero_argument_tool_call_streaming.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_tool_args::zero_argument_tool_call_streaming",
       "source": "tests/providers/chatgpt/cassette/codex_tool_args.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_tool_choice.rs",
+          "symbol": "chatgpt::cassette::codex_tool_choice::none_suppresses_tool_calls"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).completion(request with tool definitions and ToolChoice::Required/None/Specific).await.expect; tool-call names on the normalized choice asserted; no agent; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_tool_choice/none_suppresses_tool_calls.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_tool_choice::none_suppresses_tool_calls",
       "source": "tests/providers/chatgpt/cassette/codex_tool_choice.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_tool_choice.rs",
+          "symbol": "chatgpt::cassette::codex_tool_choice::required_forces_a_tool_call"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).completion(request with tool definitions and ToolChoice::Required/None/Specific).await.expect; tool-call names on the normalized choice asserted; no agent; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_tool_choice/required_forces_a_tool_call.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_tool_choice::required_forces_a_tool_call",
       "source": "tests/providers/chatgpt/cassette/codex_tool_choice.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_tool_choice.rs",
+          "symbol": "chatgpt::cassette::codex_tool_choice::specific_multiple_functions_use_allowed_tools"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).completion(request with tool definitions and ToolChoice::Required/None/Specific).await.expect; tool-call names on the normalized choice asserted; no agent; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_tool_choice/specific_multiple_functions_use_allowed_tools.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_tool_choice::specific_multiple_functions_use_allowed_tools",
       "source": "tests/providers/chatgpt/cassette/codex_tool_choice.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/codex_tool_choice.rs",
+          "symbol": "chatgpt::cassette::codex_tool_choice::specific_single_function_targets_named_tool"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).completion(request with tool definitions and ToolChoice::Required/None/Specific).await.expect; tool-call names on the normalized choice asserted; no agent; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/codex_tool_choice/specific_single_function_targets_named_tool.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::codex_tool_choice::specific_single_function_targets_named_tool",
       "source": "tests/providers/chatgpt/cassette/codex_tool_choice.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/http_errors.rs",
+          "symbol": "chatgpt::cassette::http_errors::nonstreaming_unauthorized_preserves_status_and_body"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).completion(request).await.expect_err with the preserved 401 status and body asserted; no agent; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/http_errors/nonstreaming_unauthorized_preserves_status_and_body.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::http_errors::nonstreaming_unauthorized_preserves_status_and_body",
       "source": "tests/providers/chatgpt/cassette/http_errors.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/noninteractive_oauth.rs",
+          "symbol": "chatgpt::cassette::noninteractive_oauth::cached_oauth_allows_noninteractive_streaming_completion"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream in chatgpt-codex-contract.md: with_chatgpt_noninteractive_oauth_cassette builds an OAuth client with allow_device_flow(false) and an auth_file seeded from the cassette keys; client.authorize().await.expect then client.agent(GPT_5_4).preamble(BASIC_PREAMBLE).build().stream_prompt(BASIC_PROMPT).stream() drained by collect_stream_final_response and assert_nonempty_response.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "codex"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-codex-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/noninteractive_oauth/cached_oauth_allows_noninteractive_streaming_completion.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::noninteractive_oauth::cached_oauth_allows_noninteractive_streaming_completion",
       "source": "tests/providers/chatgpt/cassette/noninteractive_oauth.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/raw_capture_matrix.rs",
+          "symbol": "chatgpt::cassette::raw_capture_matrix::normalized_fields_equal_raw_renormalized"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).completion(request) with CompletionResponse::raw round-trip / normalize comparisons against the recorded terminal frame; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no CHATGPT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no CHATGPT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::cassette::raw_capture_matrix::normalized_fields_equal_raw_renormalized",
       "source": "tests/providers/chatgpt/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/raw_capture_matrix.rs",
+          "symbol": "chatgpt::cassette::raw_capture_matrix::raw_exposes_response_envelope"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).completion(request) with CompletionResponse::raw round-trip / normalize comparisons against the recorded terminal frame; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no CHATGPT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no CHATGPT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::cassette::raw_capture_matrix::raw_exposes_response_envelope",
       "source": "tests/providers/chatgpt/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/raw_capture_matrix.rs",
+          "symbol": "chatgpt::cassette::raw_capture_matrix::raw_round_trips_provider_type"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).completion(request) with CompletionResponse::raw round-trip / normalize comparisons against the recorded terminal frame; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no CHATGPT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no CHATGPT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::cassette::raw_capture_matrix::raw_round_trips_provider_type",
       "source": "tests/providers/chatgpt/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/raw_completion_parity_matrix.rs",
+          "symbol": "chatgpt::cassette::raw_completion_parity_matrix::empty_output_fallback_still_carries_raw"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).raw_completion(request).normalize compared with .completion(request); recorded terminal frames re-read; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no CHATGPT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no CHATGPT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::cassette::raw_completion_parity_matrix::empty_output_fallback_still_carries_raw",
       "source": "tests/providers/chatgpt/cassette/raw_completion_parity_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/raw_completion_parity_matrix.rs",
+          "symbol": "chatgpt::cassette::raw_completion_parity_matrix::raw_normalize_reproduces_completion"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).raw_completion(request).normalize compared with .completion(request); recorded terminal frames re-read; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no CHATGPT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no CHATGPT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::cassette::raw_completion_parity_matrix::raw_normalize_reproduces_completion",
       "source": "tests/providers/chatgpt/cassette/raw_completion_parity_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/raw_completion_parity_matrix.rs",
+          "symbol": "chatgpt::cassette::raw_completion_parity_matrix::raw_normalize_reproduces_completion_with_tool_call"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).raw_completion(request).normalize compared with .completion(request); recorded terminal frames re-read; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no CHATGPT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no CHATGPT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::cassette::raw_completion_parity_matrix::raw_normalize_reproduces_completion_with_tool_call",
       "source": "tests/providers/chatgpt/cassette/raw_completion_parity_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/raw_stream_capture_matrix.rs",
+          "symbol": "chatgpt::cassette::raw_stream_capture_matrix::stream_raw_exposes_terminal_status"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).stream(request) drained by terminal_of with StreamFinal::raw compared with the recorded response.completed frame; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no CHATGPT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no CHATGPT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::cassette::raw_stream_capture_matrix::stream_raw_exposes_terminal_status",
       "source": "tests/providers/chatgpt/cassette/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/raw_stream_capture_matrix.rs",
+          "symbol": "chatgpt::cassette::raw_stream_capture_matrix::stream_raw_terminal_round_trips_provider_type"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).stream(request) drained by terminal_of with StreamFinal::raw compared with the recorded response.completed frame; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"unrecorded (no CHATGPT credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore = unrecorded] cell whose body is complete but which has no fixture on disk (no CHATGPT credentials); classification is from source only.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::cassette::raw_stream_capture_matrix::stream_raw_terminal_round_trips_provider_type",
       "source": "tests/providers/chatgpt/cassette/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/streaming_tools.rs",
+          "symbol": "chatgpt::cassette::streaming_tools::nonstreaming_tool_call_completed_response_without_output"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).completion(request with zero_arg_tool_definition and ToolChoice::Required).await.expect after asserting the recorded terminal frame has empty output; ping call and usage asserted; no agent; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/streaming_tools/tool_call_completed_response_without_output.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::streaming_tools::nonstreaming_tool_call_completed_response_without_output",
       "source": "tests/providers/chatgpt/cassette/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/cassette/streaming_tools.rs",
+          "symbol": "chatgpt::cassette::streaming_tools::stream_tool_call_completed_response_without_output"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in chatgpt-provider-contract.md: client.completion_model(GPT_5_4).stream(request with zero_arg_tool_definition and ToolChoice::Required) drained manually for the ping BlockEnd and terminal usage; no agent; replayed through with_chatgpt_cassette (strict ordered ProviderCassette, placeholder access token and account id) (same fixture as the nonstreaming twin).",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/chatgpt/streaming_tools/tool_call_completed_response_without_output.yaml"
+        }
+      ],
       "id": "rig::chatgpt::chatgpt::cassette::streaming_tools::stream_tool_call_completed_response_without_output",
       "source": "tests/providers/chatgpt/cassette/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/completion.rs",
+          "symbol": "chatgpt::completion::default_instructions_fill_required_instructions"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: live_builder().default_instructions(..).build().agent(LIVE_MODEL).build().stream_prompt(..).stream() drained by collect_stream_final_response; assert_contains_any_case_insensitive(cedar); live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::completion::default_instructions_fill_required_instructions",
       "source": "tests/providers/chatgpt/completion.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/completion.rs",
+          "symbol": "chatgpt::completion::system_messages_are_lifted_into_instructions"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in chatgpt-provider-contract.md: live_client().completion_model(LIVE_MODEL).stream(request with Message::system) drained manually for text deltas (falling back to snapshot()); no agent; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::completion::system_messages_are_lifted_into_instructions",
       "source": "tests/providers/chatgpt/completion.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/extractor.rs",
+          "symbol": "chatgpt::extractor::extractor_smoke"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: live_client().extractor::<SmokePerson>(LIVE_MODEL).build().extract(EXTRACTOR_TEXT).await.expect; fields and usage.total_tokens > 0 asserted; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::extractor::extractor_smoke",
       "source": "tests/providers/chatgpt/extractor.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/extractor_usage.rs",
+          "symbol": "chatgpt::extractor_usage::extract_and_extract_with_usage_return_same_data"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: live_client().extractor::<Person|Address>(LIVE_MODEL).build().extract(..)[.history(..)].await? with anyhow::ensure on fields and usage; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::extractor_usage::extract_and_extract_with_usage_return_same_data",
       "source": "tests/providers/chatgpt/extractor_usage.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/extractor_usage.rs",
+          "symbol": "chatgpt::extractor_usage::extract_backward_compatibility"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: live_client().extractor::<Person|Address>(LIVE_MODEL).build().extract(..)[.history(..)].await? with anyhow::ensure on fields and usage; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::extractor_usage::extract_backward_compatibility",
       "source": "tests/providers/chatgpt/extractor_usage.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/extractor_usage.rs",
+          "symbol": "chatgpt::extractor_usage::extract_with_chat_history_with_usage_works"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: live_client().extractor::<Person|Address>(LIVE_MODEL).build().extract(..)[.history(..)].await? with anyhow::ensure on fields and usage; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::extractor_usage::extract_with_chat_history_with_usage_works",
       "source": "tests/providers/chatgpt/extractor_usage.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/extractor_usage.rs",
+          "symbol": "chatgpt::extractor_usage::extract_with_usage_returns_data_and_usage"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: live_client().extractor::<Person|Address>(LIVE_MODEL).build().extract(..)[.history(..)].await? with anyhow::ensure on fields and usage; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::extractor_usage::extract_with_usage_returns_data_and_usage",
       "source": "tests/providers/chatgpt/extractor_usage.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/extractor_usage.rs",
+          "symbol": "chatgpt::extractor_usage::usage_tracking_works_for_different_schemas"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: live_client().extractor::<Person|Address>(LIVE_MODEL).build().extract(..)[.history(..)].await? with anyhow::ensure on fields and usage; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::extractor_usage::usage_tracking_works_for_different_schemas",
       "source": "tests/providers/chatgpt/extractor_usage.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/multi_extract.rs",
+          "symbol": "chatgpt::multi_extract::batch_multi_extract_chain"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: three live_client().extractor::<T>(LIVE_MODEL).preamble(..).retries(2).build() extractors driven concurrently (try_join! inside .buffered(4)); ensures three nonempty responses; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::multi_extract::batch_multi_extract_chain",
       "source": "tests/providers/chatgpt/multi_extract.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/permission_control.rs",
+          "symbol": "chatgpt::permission_control::permission_control_prompt_example"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: live_client().agent(LIVE_MODEL).tool(ReadFileHead).tool(ReadFileTail).build().prompt(..).max_turns(5).add_hook(PermissionHook); ensures the captured result and call_count == 2; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::permission_control::permission_control_prompt_example",
       "source": "tests/providers/chatgpt/permission_control.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/permission_control.rs",
+          "symbol": "chatgpt::permission_control::permission_control_streaming_example"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: live_client().agent(LIVE_MODEL).tool(..).build().stream_prompt(..).max_turns(5).add_hook(PermissionHook).stream() drained by stream_to_stdout; ensures final content and call_count == 2; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::permission_control::permission_control_streaming_example",
       "source": "tests/providers/chatgpt/permission_control.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/reasoning_roundtrip.rs",
+          "symbol": "chatgpt::reasoning_roundtrip::streaming"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule reasoning-roundtrip-driver in chatgpt-provider-contract.md: reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(live_client().completion_model(LIVE_MODEL), reasoning effort medium)) builds CompletionRequests by hand and calls model.stream for two turns; no AgentBuilder despite the type name; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-provider-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::reasoning_roundtrip::streaming",
       "source": "tests/providers/chatgpt/reasoning_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/reasoning_tool_roundtrip.rs",
+          "symbol": "chatgpt::reasoning_tool_roundtrip::streaming"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: live_client().agent(LIVE_MODEL).preamble(TOOL_SYSTEM_PROMPT).max_tokens(4096).tool(WeatherTool).additional_params(reasoning effort high).build().stream_chat(.., Vec::new()).max_turns(3).stream() collected by reasoning::collect_stream_stats then assert_universal; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::reasoning_tool_roundtrip::streaming",
       "source": "tests/providers/chatgpt/reasoning_tool_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/request_hook.rs",
+          "symbol": "chatgpt::request_hook::request_hook_records_prompt_and_response"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: live_client().agent(LIVE_MODEL).preamble(..).build().prompt(\"Entertain me!\").add_hook(SessionIdHook) observing on_completion_call/on_outcome; ensures one prompt call and one response call; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::request_hook::request_hook_records_prompt_and_response",
       "source": "tests/providers/chatgpt/request_hook.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/streaming.rs",
+          "symbol": "chatgpt::streaming::example_streaming_prompt"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: live_client().agent(LIVE_MODEL).preamble(..)[.temperature(0.5)].build().stream_prompt(..).stream() drained by collect_stream_final_response then assert_nonempty_response; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::streaming::example_streaming_prompt",
       "source": "tests/providers/chatgpt/streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/streaming.rs",
+          "symbol": "chatgpt::streaming::streaming_smoke"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: live_client().agent(LIVE_MODEL).preamble(..)[.temperature(0.5)].build().stream_prompt(..).stream() drained by collect_stream_final_response then assert_nonempty_response; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::streaming::streaming_smoke",
       "source": "tests/providers/chatgpt/streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/streaming_tools.rs",
+          "symbol": "chatgpt::streaming_tools::example_streaming_with_tools"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: live_client().agent(LIVE_MODEL).preamble(..)[.max_tokens(1024)].tool(Adder).tool(Subtract).build().stream_prompt(..).stream() drained by collect_stream_final_response then assert_mentions_expected_number(-3); live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::streaming_tools::example_streaming_with_tools",
       "source": "tests/providers/chatgpt/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/chatgpt/streaming_tools.rs",
+          "symbol": "chatgpt::streaming_tools::streaming_tools_smoke"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in chatgpt-live-contract.md: live_client().agent(LIVE_MODEL).preamble(..)[.max_tokens(1024)].tool(Adder).tool(Subtract).build().stream_prompt(..).stream() drained by collect_stream_final_response then assert_mentions_expected_number(-3); live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires ChatGPT credentials or existing OAuth cache\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "live"
+      ],
+      "family_contract": "tests/ecs_parity/chatgpt-live-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires ChatGPT OAuth device flow or a cached auth.json (or CHATGPT_ACCESS_TOKEN/CHATGPT_ACCOUNT_ID), none configured; no fixture on disk; stays supplemental_live (OAuth), not counted as ported.",
       "fixtures": [],
       "id": "rig::chatgpt::chatgpt::streaming_tools::streaming_tools_smoke",
       "source": "tests/providers/chatgpt/streaming_tools.rs"

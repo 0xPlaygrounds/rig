@@ -21,6 +21,11 @@
       ],
       "ecs": null,
       "evidence_scope": "supplemental_live",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-smoke-contract.md",
+      "fixture_disposition": "COHERE_API_KEY is configured: Phase 2 captures one cassette for this case in an isolated checkout with the recording command restricted to it, inspects the diff, promotes it, and ports it natively; until then supplemental_live and not counted as ported.",
       "fixtures": [],
       "id": "rig::cohere::cohere::agent::completion_smoke",
       "source": "tests/providers/cohere/agent.rs"
@@ -258,435 +263,1055 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/context.rs",
+          "symbol": "cohere::cassette::context::context_documents_are_accepted"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-prompt in cohere-smoke-contract.md: CONTEXT_DOCS folded into client.agent(CASSETTE_MODEL).context(..).preamble(..).build(), then .prompt(CONTEXT_PROMPT).await.expect and assert_contains_any_case_insensitive; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-smoke-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/context/context_documents_are_accepted.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::context::context_documents_are_accepted",
       "source": "tests/providers/cohere/cassette/context.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/context.rs",
+          "symbol": "cohere::cassette::context::document_metadata_and_multiple_documents_are_accepted"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL).completion_request(..).document(Document{..}).document(..).max_tokens(32).build() then model.completion(request).await.expect; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/context/document_metadata_and_multiple_documents_are_accepted.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::context::document_metadata_and_multiple_documents_are_accepted",
       "source": "tests/providers/cohere/cassette/context.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/embedding_matrix.rs",
+          "symbol": "cohere::cassette::embedding_matrix::error_preserves_provider_body"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule embeddings in cohere-provider-contract.md: client.embedding_model(EMBED_V4, input type) / client.image_embedding_model() with embed_texts_response, embed_text_response, raw_embed_texts, embed_images_response or raw_embed_images; normalized/raw responses asserted; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/embedding_matrix/error_preserves_provider_body.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::embedding_matrix::error_preserves_provider_body",
       "source": "tests/providers/cohere/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/embedding_matrix.rs",
+          "symbol": "cohere::cassette::embedding_matrix::image_normalized_and_raw_round_trip"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule embeddings in cohere-provider-contract.md: client.embedding_model(EMBED_V4, input type) / client.image_embedding_model() with embed_texts_response, embed_text_response, raw_embed_texts, embed_images_response or raw_embed_images; normalized/raw responses asserted; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/embedding_matrix/image_normalized_and_raw_round_trip.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::embedding_matrix::image_normalized_and_raw_round_trip",
       "source": "tests/providers/cohere/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/embedding_matrix.rs",
+          "symbol": "cohere::cassette::embedding_matrix::normalized_response_is_complete"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule embeddings in cohere-provider-contract.md: client.embedding_model(EMBED_V4, input type) / client.image_embedding_model() with embed_texts_response, embed_text_response, raw_embed_texts, embed_images_response or raw_embed_images; normalized/raw responses asserted; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/embedding_matrix/normalized_response_is_complete.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::embedding_matrix::normalized_response_is_complete",
       "source": "tests/providers/cohere/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/embedding_matrix.rs",
+          "symbol": "cohere::cassette::embedding_matrix::raw_round_trips"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule embeddings in cohere-provider-contract.md: client.embedding_model(EMBED_V4, input type) / client.image_embedding_model() with embed_texts_response, embed_text_response, raw_embed_texts, embed_images_response or raw_embed_images; normalized/raw responses asserted; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/embedding_matrix/raw_round_trips.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::embedding_matrix::raw_round_trips",
       "source": "tests/providers/cohere/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/embedding_matrix.rs",
+          "symbol": "cohere::cassette::embedding_matrix::raw_route_parity"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule embeddings in cohere-provider-contract.md: client.embedding_model(EMBED_V4, input type) / client.image_embedding_model() with embed_texts_response, embed_text_response, raw_embed_texts, embed_images_response or raw_embed_images; normalized/raw responses asserted; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/embedding_matrix/raw_route_parity.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::embedding_matrix::raw_route_parity",
       "source": "tests/providers/cohere/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/embedding_matrix.rs",
+          "symbol": "cohere::cassette::embedding_matrix::single_text_convenience"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule embeddings in cohere-provider-contract.md: client.embedding_model(EMBED_V4, input type) / client.image_embedding_model() with embed_texts_response, embed_text_response, raw_embed_texts, embed_images_response or raw_embed_images; normalized/raw responses asserted; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/embedding_matrix/single_text_convenience.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::embedding_matrix::single_text_convenience",
       "source": "tests/providers/cohere/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/embeddings.rs",
+          "symbol": "cohere::cassette::embeddings::embed_classification_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule embeddings in cohere-provider-contract.md: client.embedding_model(..).embed_texts(..) or client.image_embedding_model().embed_image(s)(..) with assert_embeddings_nonempty_and_consistent and dimension checks; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/embeddings/embed_classification_smoke.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::embeddings::embed_classification_smoke",
       "source": "tests/providers/cohere/cassette/embeddings.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/embeddings.rs",
+          "symbol": "cohere::cassette::embeddings::embed_image_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule embeddings in cohere-provider-contract.md: client.embedding_model(..).embed_texts(..) or client.image_embedding_model().embed_image(s)(..) with assert_embeddings_nonempty_and_consistent and dimension checks; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/embeddings/embed_image_smoke.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::embeddings::embed_image_smoke",
       "source": "tests/providers/cohere/cassette/embeddings.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/embeddings.rs",
+          "symbol": "cohere::cassette::embeddings::embed_images_preserves_batch_order"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule embeddings in cohere-provider-contract.md: client.embedding_model(..).embed_texts(..) or client.image_embedding_model().embed_image(s)(..) with assert_embeddings_nonempty_and_consistent and dimension checks; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/embeddings/embed_images_preserves_batch_order.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::embeddings::embed_images_preserves_batch_order",
       "source": "tests/providers/cohere/cassette/embeddings.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/embeddings.rs",
+          "symbol": "cohere::cassette::embeddings::embed_search_query_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule embeddings in cohere-provider-contract.md: client.embedding_model(..).embed_texts(..) or client.image_embedding_model().embed_image(s)(..) with assert_embeddings_nonempty_and_consistent and dimension checks; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/embeddings/embed_search_query_smoke.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::embeddings::embed_search_query_smoke",
       "source": "tests/providers/cohere/cassette/embeddings.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/embeddings.rs",
+          "symbol": "cohere::cassette::embeddings::embed_texts_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule embeddings in cohere-provider-contract.md: client.embedding_model(..).embed_texts(..) or client.image_embedding_model().embed_image(s)(..) with assert_embeddings_nonempty_and_consistent and dimension checks; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/embeddings/embed_texts_smoke.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::embeddings::embed_texts_smoke",
       "source": "tests/providers/cohere/cassette/embeddings.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/errors.rs",
+          "symbol": "cohere::cassette::errors::completion_error_preserves_status_and_body"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in cohere-provider-contract.md: client.completion_model(UNKNOWN_MODEL).completion(request).await.expect_err with the preserved 404 status/body/JSON asserted; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/errors/completion_error_preserves_status_and_body.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::errors::completion_error_preserves_status_and_body",
       "source": "tests/providers/cohere/cassette/errors.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/prompt_caching.rs",
+          "symbol": "cohere::cassette::prompt_caching::agent_loop_does_not_move_its_own_prefix"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-prompt-tools in cohere-tools-contract.md: client.agent(CACHE_MODEL).preamble(..).tool(CacheProbeLookupTool).temperature(0).build().prompt(AGENT_CACHE_PROMPT).max_turns(6).await.expect; asserts completion_calls().len() >= 2 then assert_prefix_stable and assert_breakpoints_match_support over the recorded requests; with_cohere_prompt_caching_cassette; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-tools-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/prompt_caching/agent_loop.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::prompt_caching::agent_loop_does_not_move_its_own_prefix",
       "source": "tests/providers/cohere/cassette/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/prompt_caching.rs",
+          "symbol": "cohere::cassette::prompt_caching::blocking_probe_warms_to_a_full_cache_hit_over_three_turns"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule cache-probe in cohere-provider-contract.md: client.completion_model(CACHE_MODEL) driven by cache_conformance::run_cache_probe / run_cache_probe_streaming (direct model.completion / model.stream turns); assert_cache_warms_over_turns, assert_prefix_stable and assert_breakpoints_match_support re-read the fixture; no agent; with_cohere_prompt_caching_cassette; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/prompt_caching/blocking_probe.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::prompt_caching::blocking_probe_warms_to_a_full_cache_hit_over_three_turns",
       "source": "tests/providers/cohere/cassette/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/prompt_caching.rs",
+          "symbol": "cohere::cassette::prompt_caching::streaming_probe_warms_to_a_full_cache_hit_over_three_turns"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule cache-probe in cohere-provider-contract.md: client.completion_model(CACHE_MODEL) driven by cache_conformance::run_cache_probe / run_cache_probe_streaming (direct model.completion / model.stream turns); assert_cache_warms_over_turns, assert_prefix_stable and assert_breakpoints_match_support re-read the fixture; no agent; with_cohere_prompt_caching_cassette; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/prompt_caching/streaming_probe.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::prompt_caching::streaming_probe_warms_to_a_full_cache_hit_over_three_turns",
       "source": "tests/providers/cohere/cassette/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/raw_capture_matrix.rs",
+          "symbol": "cohere::cassette::raw_capture_matrix::raw_exposes_billing_metadata"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL).completion(request) with CompletionResponse::raw round-trip / try_into comparisons against the recorded body; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/raw_capture_matrix/raw_exposes_billing_metadata.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::raw_capture_matrix::raw_exposes_billing_metadata",
       "source": "tests/providers/cohere/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/raw_capture_matrix.rs",
+          "symbol": "cohere::cassette::raw_capture_matrix::raw_roundtrips_cohere_completion_response"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL).completion(request) with CompletionResponse::raw round-trip / try_into comparisons against the recorded body; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/raw_capture_matrix/raw_roundtrips_cohere_completion_response.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::raw_capture_matrix::raw_roundtrips_cohere_completion_response",
       "source": "tests/providers/cohere/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/raw_completion_parity_matrix.rs",
+          "symbol": "cohere::cassette::raw_completion_parity_matrix::raw_try_into_matches_completion"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL).raw_completion(request).try_into() compared with .completion(request); recorded request/response bodies re-read; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/raw_completion_parity_matrix/raw_try_into_matches_completion.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::raw_completion_parity_matrix::raw_try_into_matches_completion",
       "source": "tests/providers/cohere/cassette/raw_completion_parity_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/raw_stream_capture_matrix.rs",
+          "symbol": "cohere::cassette::raw_stream_capture_matrix::raw_exposes_terminal_only_fields"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL).stream(request) drained by stream_to_terminal (exactly one StreamEvent::Final) with StreamFinal::raw compared with the recorded message-end delta; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/raw_stream_capture_matrix/raw_exposes_terminal_only_fields.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::raw_stream_capture_matrix::raw_exposes_terminal_only_fields",
       "source": "tests/providers/cohere/cassette/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/raw_stream_capture_matrix.rs",
+          "symbol": "cohere::cassette::raw_stream_capture_matrix::raw_roundtrips_streaming_completion_response"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL).stream(request) drained by stream_to_terminal (exactly one StreamEvent::Final) with StreamFinal::raw compared with the recorded message-end delta; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::raw_stream_capture_matrix::raw_roundtrips_streaming_completion_response",
       "source": "tests/providers/cohere/cassette/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/response_identity.rs",
+          "symbol": "cohere::cassette::response_identity::nonstreaming_request_id_is_none_by_design"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL).completion_request(..).send() or .stream() drained for the StreamEvent::Final; provider_request_id == None asserted; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/response_identity/nonstreaming_request_id_is_none_by_design.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::response_identity::nonstreaming_request_id_is_none_by_design",
       "source": "tests/providers/cohere/cassette/response_identity.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/response_identity.rs",
+          "symbol": "cohere::cassette::response_identity::streaming_request_id_is_none_by_design"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL).completion_request(..).send() or .stream() drained for the StreamEvent::Final; provider_request_id == None asserted; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/response_identity/streaming_request_id_is_none_by_design.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::response_identity::streaming_request_id_is_none_by_design",
       "source": "tests/providers/cohere/cassette/response_identity.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/streaming.rs",
+          "symbol": "cohere::cassette::streaming::streaming_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream in cohere-smoke-contract.md: client.agent(CASSETTE_MODEL).preamble(STREAMING_PREAMBLE).max_tokens(64).build().stream_prompt(STREAMING_PROMPT).stream() drained by collect_stream_final_response_and_provider_final; nonempty answer and exact usage 553/64/480 asserted; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-smoke-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/streaming/streaming_smoke.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::streaming::streaming_smoke",
       "source": "tests/providers/cohere/cassette/streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/streaming_grammar.rs",
+          "symbol": "cohere::cassette::streaming_grammar::none_tool_choice_streams_text"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL or command-a-reasoning-08-2025).stream(request with IntegerSubtract definition / tool_choice) drained by drain_stream with assert_valid_event_stream, snapshot() and terminal assertions; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/streaming_grammar/none_tool_choice_streams_text.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::streaming_grammar::none_tool_choice_streams_text",
       "source": "tests/providers/cohere/cassette/streaming_grammar.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/streaming_grammar.rs",
+          "symbol": "cohere::cassette::streaming_grammar::reasoning_then_tool_call_closes_reasoning_before_the_call"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL or command-a-reasoning-08-2025).stream(request with IntegerSubtract definition / tool_choice) drained by drain_stream with assert_valid_event_stream, snapshot() and terminal assertions; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/streaming_grammar/reasoning_then_tool_call.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::streaming_grammar::reasoning_then_tool_call_closes_reasoning_before_the_call",
       "source": "tests/providers/cohere/cassette/streaming_grammar.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/streaming_grammar.rs",
+          "symbol": "cohere::cassette::streaming_grammar::required_tool_choice_streams_tool_call"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL or command-a-reasoning-08-2025).stream(request with IntegerSubtract definition / tool_choice) drained by drain_stream with assert_valid_event_stream, snapshot() and terminal assertions; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/streaming_grammar/required_tool_choice_streams_tool_call.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::streaming_grammar::required_tool_choice_streams_tool_call",
       "source": "tests/providers/cohere/cassette/streaming_grammar.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/streaming_grammar.rs",
+          "symbol": "cohere::cassette::streaming_grammar::thinking_stream_keeps_reasoning_and_text_discrete"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL or command-a-reasoning-08-2025).stream(request with IntegerSubtract definition / tool_choice) drained by drain_stream with assert_valid_event_stream, snapshot() and terminal assertions; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/streaming_grammar/thinking_stream.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::streaming_grammar::thinking_stream_keeps_reasoning_and_text_discrete",
       "source": "tests/providers/cohere/cassette/streaming_grammar.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/streaming_tools.rs",
+          "symbol": "cohere::cassette::streaming_tools::streaming_tool_call_roundtrip"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream-tools in cohere-tools-contract.md: client.agent(CASSETTE_MODEL).preamble(STREAMING_TOOLS_PREAMBLE).tool(IntegerAdder).tool(IntegerSubtract).default_max_turns(2).build().stream_prompt(STREAMING_TOOLS_PROMPT).stream() collected by collect_stream_observation; no errors, tool_calls == [subtract], tool_results == 1 and assert_mentions_expected_number(-3); replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-tools-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/streaming_tools/streaming_tool_call_roundtrip.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::streaming_tools::streaming_tool_call_roundtrip",
       "source": "tests/providers/cohere/cassette/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/tools.rs",
+          "symbol": "cohere::cassette::tools::none_tool_choice_with_tools_returns_text"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL).completion(request with IntegerAdder/IntegerSubtract definitions and ToolChoice::Required/None or strict_tools additional_params).await.expect; finish_reason and tool-call arguments asserted; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/tools/none_tool_choice_with_tools_returns_text.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::tools::none_tool_choice_with_tools_returns_text",
       "source": "tests/providers/cohere/cassette/tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/tools.rs",
+          "symbol": "cohere::cassette::tools::none_tool_choice_without_tools_returns_text"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL).completion(request with IntegerAdder/IntegerSubtract definitions and ToolChoice::Required/None or strict_tools additional_params).await.expect; finish_reason and tool-call arguments asserted; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/tools/none_tool_choice_without_tools_returns_text.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::tools::none_tool_choice_without_tools_returns_text",
       "source": "tests/providers/cohere/cassette/tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/tools.rs",
+          "symbol": "cohere::cassette::tools::required_tool_choice_is_accepted"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL).completion(request with IntegerAdder/IntegerSubtract definitions and ToolChoice::Required/None or strict_tools additional_params).await.expect; finish_reason and tool-call arguments asserted; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/tools/required_tool_choice_is_accepted.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::tools::required_tool_choice_is_accepted",
       "source": "tests/providers/cohere/cassette/tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/tools.rs",
+          "symbol": "cohere::cassette::tools::required_tool_choice_selects_from_multiple_tools"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL).completion(request with IntegerAdder/IntegerSubtract definitions and ToolChoice::Required/None or strict_tools additional_params).await.expect; finish_reason and tool-call arguments asserted; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/tools/required_tool_choice_selects_from_multiple_tools.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::tools::required_tool_choice_selects_from_multiple_tools",
       "source": "tests/providers/cohere/cassette/tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/tools.rs",
+          "symbol": "cohere::cassette::tools::strict_required_tool_choice_is_accepted"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in cohere-provider-contract.md: client.completion_model(CASSETTE_MODEL).completion(request with IntegerAdder/IntegerSubtract definitions and ToolChoice::Required/None or strict_tools additional_params).await.expect; finish_reason and tool-call arguments asserted; no agent; replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/tools/strict_required_tool_choice_is_accepted.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::tools::strict_required_tool_choice_is_accepted",
       "source": "tests/providers/cohere/cassette/tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/cassette/tools.rs",
+          "symbol": "cohere::cassette::tools::tool_call_roundtrip"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-prompt-tools in cohere-tools-contract.md: client.agent(CASSETTE_MODEL).preamble(TOOLS_PREAMBLE).tool(IntegerAdder).tool(IntegerSubtract).default_max_turns(2).build().prompt(TOOLS_PROMPT).await.expect then assert_mentions_expected_number(-3); replayed through with_cohere_cassette (strict ordered ProviderCassette, placeholder COHERE_API_KEY) from a hosted Cohere recording of command-a-03-2025.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-tools-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/cohere/tools/tool_call_roundtrip.yaml"
+        }
+      ],
       "id": "rig::cohere::cohere::cassette::tools::tool_call_roundtrip",
       "source": "tests/providers/cohere/cassette/tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/streaming.rs",
+          "symbol": "cohere::streaming::streaming_smoke"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in cohere-smoke-contract.md: cohere::Client::from_env().agent(COMMAND_A_03_2025).preamble(STREAMING_PREAMBLE).build().stream_prompt(STREAMING_PROMPT).stream() drained by collect_stream_final_response; live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires COHERE_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-smoke-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires COHERE_API_KEY (configured in this environment) but this cell is outside the 12-case agent::completion_smoke capture set; no fixture on disk; stays supplemental_live unless the integrator schedules a capture.",
       "fixtures": [],
       "id": "rig::cohere::cohere::streaming::streaming_smoke",
       "source": "tests/providers/cohere/streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/streaming_tools.rs",
+          "symbol": "cohere::streaming_tools::streaming_tools_smoke"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in cohere-tools-contract.md: cohere::Client::from_env().agent(COMMAND_A_03_2025).preamble(STREAMING_TOOLS_PREAMBLE).tool(Adder).tool(Subtract).build().stream_prompt(STREAMING_TOOLS_PROMPT).stream() drained by collect_stream_final_response then assert_mentions_expected_number(-3); live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires COHERE_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-tools-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires COHERE_API_KEY (configured in this environment) but this cell is outside the 12-case agent::completion_smoke capture set; no fixture on disk; stays supplemental_live unless the integrator schedules a capture.",
       "fixtures": [],
       "id": "rig::cohere::cohere::streaming_tools::streaming_tools_smoke",
       "source": "tests/providers/cohere/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/cohere/tools.rs",
+          "symbol": "cohere::tools::tools_smoke"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in cohere-tools-contract.md: cohere::Client::from_env().agent(COMMAND_A_03_2025).preamble(TOOLS_PREAMBLE).tool(Adder).tool(Subtract).build().prompt(TOOLS_PROMPT).await.expect then assert_mentions_expected_number(-3); live, credential-gated.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires COHERE_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/cohere-tools-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires COHERE_API_KEY (configured in this environment) but this cell is outside the 12-case agent::completion_smoke capture set; no fixture on disk; stays supplemental_live unless the integrator schedules a capture.",
       "fixtures": [],
       "id": "rig::cohere::cohere::tools::tools_smoke",
       "source": "tests/providers/cohere/tools.rs"

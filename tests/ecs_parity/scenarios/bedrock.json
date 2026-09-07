@@ -432,358 +432,771 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/document_ordering.rs",
+          "symbol": "bedrock::cassette::document_ordering::documents_are_prepended_before_history"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE).completion_request(PROMPT).message(system).message(assistant).document(..).send().await.expect; recorded request order re-read; no agent; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/document_ordering/documents_are_prepended_before_history.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::document_ordering::documents_are_prepended_before_history",
       "source": "tests/providers/bedrock/cassette/document_ordering.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/embeddings.rs",
+          "symbol": "bedrock::cassette::embeddings::embeddings_batch_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule embeddings in bedrock-provider-contract.md: client.embedding_model_with_ndims(AMAZON_TITAN_EMBED_TEXT_V2_0, 256).embed_texts(..).await.expect with dimension checks; no agent; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/embeddings/embeddings_batch_smoke.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::embeddings::embeddings_batch_smoke",
       "source": "tests/providers/bedrock/cassette/embeddings.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/embeddings.rs",
+          "symbol": "bedrock::cassette::embeddings::embeddings_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule embeddings in bedrock-provider-contract.md: client.embedding_model_with_ndims(AMAZON_TITAN_EMBED_TEXT_V2_0, 256).embed_texts(..).await.expect with dimension checks; no agent; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/embeddings/embeddings_smoke.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::embeddings::embeddings_smoke",
       "source": "tests/providers/bedrock/cassette/embeddings.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/model_ids.rs",
+          "symbol": "bedrock::cassette::model_ids::bare_profile_only_model_id_is_rejected"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in bedrock-provider-contract.md: client.completion_model(model id).completion(request).await with .expect or .expect_err on the preserved provider error body; no agent; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/model_ids/bare_profile_only_model_id_is_rejected.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::model_ids::bare_profile_only_model_id_is_rejected",
       "source": "tests/providers/bedrock/cassette/model_ids.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/model_ids.rs",
+          "symbol": "bedrock::cassette::model_ids::claude_profile_constant_completes"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-prompt in bedrock-smoke-contract.md: client.agent(ANTHROPIC_CLAUDE_HAIKU_4_5).preamble(\"You are concise.\").build().prompt(..).await.expect then assert_nonempty_response; replayed through with_bedrock_cassette from a hosted Bedrock recording of the Claude Haiku 4.5 profile.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-smoke-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/model_ids/claude_profile_constant_completes.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::model_ids::claude_profile_constant_completes",
       "source": "tests/providers/bedrock/cassette/model_ids.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/model_ids.rs",
+          "symbol": "bedrock::cassette::model_ids::cross_region_profile_id_completes"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in bedrock-provider-contract.md: client.completion_model(model id).completion(request).await with .expect or .expect_err on the preserved provider error body; no agent; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/model_ids/cross_region_profile_id_completes.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::model_ids::cross_region_profile_id_completes",
       "source": "tests/providers/bedrock/cassette/model_ids.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/model_ids.rs",
+          "symbol": "bedrock::cassette::model_ids::retired_model_id_preserves_provider_error"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in bedrock-provider-contract.md: client.completion_model(model id).completion(request).await with .expect or .expect_err on the preserved provider error body; no agent; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/model_ids/retired_model_id_preserves_provider_error.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::model_ids::retired_model_id_preserves_provider_error",
       "source": "tests/providers/bedrock/cassette/model_ids.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/raw_capture_matrix.rs",
+          "symbol": "bedrock::cassette::raw_capture_matrix::normalized_fields_equal_raw_renormalized"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE).completion(request) with CompletionResponse::raw round-trip / try_into comparisons against the recorded Converse body; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]",
         "# [ignore = \"unrecorded (no valid AWS credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore] cell whose body is complete but which has no fixture on disk (no valid AWS credentials); lane rule: do not recapture anything for bedrock; classification is from source only.",
       "fixtures": [],
       "id": "rig::bedrock::bedrock::cassette::raw_capture_matrix::normalized_fields_equal_raw_renormalized",
       "source": "tests/providers/bedrock/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/raw_capture_matrix.rs",
+          "symbol": "bedrock::cassette::raw_capture_matrix::raw_exposes_latency_metrics"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE).completion(request) with CompletionResponse::raw round-trip / try_into comparisons against the recorded Converse body; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]",
         "# [ignore = \"unrecorded (no valid AWS credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore] cell whose body is complete but which has no fixture on disk (no valid AWS credentials); lane rule: do not recapture anything for bedrock; classification is from source only.",
       "fixtures": [],
       "id": "rig::bedrock::bedrock::cassette::raw_capture_matrix::raw_exposes_latency_metrics",
       "source": "tests/providers/bedrock/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/raw_capture_matrix.rs",
+          "symbol": "bedrock::cassette::raw_capture_matrix::raw_round_trips_provider_type"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE).completion(request) with CompletionResponse::raw round-trip / try_into comparisons against the recorded Converse body; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]",
         "# [ignore = \"unrecorded (no valid AWS credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore] cell whose body is complete but which has no fixture on disk (no valid AWS credentials); lane rule: do not recapture anything for bedrock; classification is from source only.",
       "fixtures": [],
       "id": "rig::bedrock::bedrock::cassette::raw_capture_matrix::raw_round_trips_provider_type",
       "source": "tests/providers/bedrock/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/raw_completion.rs",
+          "symbol": "bedrock::cassette::raw_completion::raw_response_text_matches_normalized_choice_text"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE).raw_completion(request) with text_response() compared against .try_into() normalization; no agent; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/raw_completion/raw_response_text_matches_normalized_choice_text.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::raw_completion::raw_response_text_matches_normalized_choice_text",
       "source": "tests/providers/bedrock/cassette/raw_completion.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/raw_provider_data.rs",
+          "symbol": "bedrock::cassette::raw_provider_data::guardrail_trace_survives_into_raw_completion"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE)[.with_guardrail(..)].raw_completion(request).await.expect with the AwsConverseOutput trace / request_id asserted; no agent; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/raw_provider_data/guardrail_trace_survives_into_raw_completion.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::raw_provider_data::guardrail_trace_survives_into_raw_completion",
       "source": "tests/providers/bedrock/cassette/raw_provider_data.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/raw_provider_data.rs",
+          "symbol": "bedrock::cassette::raw_provider_data::request_id_survives_into_raw_completion"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE)[.with_guardrail(..)].raw_completion(request).await.expect with the AwsConverseOutput trace / request_id asserted; no agent; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/raw_provider_data/request_id_survives_into_raw_completion.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::raw_provider_data::request_id_survives_into_raw_completion",
       "source": "tests/providers/bedrock/cassette/raw_provider_data.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/raw_provider_data.rs",
+          "symbol": "bedrock::cassette::raw_provider_data::request_id_survives_into_streamed_terminal"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE).stream(request) drained manually for the StreamEvent::Final provider_request_id; no agent; #[ignore], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]",
         "# [ignore]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore] cell whose body is complete but which has no fixture on disk (no valid AWS credentials); lane rule: do not recapture anything for bedrock; classification is from source only.",
       "fixtures": [],
       "id": "rig::bedrock::bedrock::cassette::raw_provider_data::request_id_survives_into_streamed_terminal",
       "source": "tests/providers/bedrock/cassette/raw_provider_data.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/raw_stream_capture_matrix.rs",
+          "symbol": "bedrock::cassette::raw_stream_capture_matrix::stream_raw_exposes_bedrock_stop_reason"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE).stream(request) drained by terminal_of with StreamFinal::raw compared with the recorded event-stream frames; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]",
         "# [ignore = \"unrecorded (no valid AWS credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore] cell whose body is complete but which has no fixture on disk (no valid AWS credentials); lane rule: do not recapture anything for bedrock; classification is from source only.",
       "fixtures": [],
       "id": "rig::bedrock::bedrock::cassette::raw_stream_capture_matrix::stream_raw_exposes_bedrock_stop_reason",
       "source": "tests/providers/bedrock/cassette/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/raw_stream_capture_matrix.rs",
+          "symbol": "bedrock::cassette::raw_stream_capture_matrix::stream_raw_terminal_round_trips_provider_type"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE).stream(request) drained by terminal_of with StreamFinal::raw compared with the recorded event-stream frames; no agent; #[ignore = unrecorded], no fixture on disk.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]",
         "# [ignore = \"unrecorded (no valid AWS credentials in this environment)\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixture_disposition": "Unrecorded: #[ignore] cell whose body is complete but which has no fixture on disk (no valid AWS credentials); lane rule: do not recapture anything for bedrock; classification is from source only.",
       "fixtures": [],
       "id": "rig::bedrock::bedrock::cassette::raw_stream_capture_matrix::stream_raw_terminal_round_trips_provider_type",
       "source": "tests/providers/bedrock/cassette/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/raw_streaming.rs",
+          "symbol": "bedrock::cassette::raw_streaming::raw_stream_emits_required_zero_arg_tool_call"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE).stream(request with tool definitions / tool_choice / preamble) checked by assert_stream_contains_zero_arg_tool_call_named or collect_raw_stream_observation and the shared assert_raw_stream_* helpers; no agent; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/raw_streaming/raw_stream_emits_required_zero_arg_tool_call.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::raw_streaming::raw_stream_emits_required_zero_arg_tool_call",
       "source": "tests/providers/bedrock/cassette/raw_streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/raw_streaming.rs",
+          "symbol": "bedrock::cassette::raw_streaming::raw_stream_emits_tool_call_before_text"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE).stream(request with tool definitions / tool_choice / preamble) checked by assert_stream_contains_zero_arg_tool_call_named or collect_raw_stream_observation and the shared assert_raw_stream_* helpers; no agent; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/raw_streaming/raw_stream_emits_tool_call_before_text.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::raw_streaming::raw_stream_emits_tool_call_before_text",
       "source": "tests/providers/bedrock/cassette/raw_streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/raw_streaming.rs",
+          "symbol": "bedrock::cassette::raw_streaming::raw_stream_surfaces_two_distinct_tool_calls"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE).stream(request with tool definitions / tool_choice / preamble) checked by assert_stream_contains_zero_arg_tool_call_named or collect_raw_stream_observation and the shared assert_raw_stream_* helpers; no agent; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/raw_streaming/raw_stream_surfaces_two_distinct_tool_calls.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::raw_streaming::raw_stream_surfaces_two_distinct_tool_calls",
       "source": "tests/providers/bedrock/cassette/raw_streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/raw_streaming.rs",
+          "symbol": "bedrock::cassette::raw_streaming::raw_stream_text_response_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE).stream(request with tool definitions / tool_choice / preamble) checked by assert_stream_contains_zero_arg_tool_call_named or collect_raw_stream_observation and the shared assert_raw_stream_* helpers; no agent; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/raw_streaming/raw_stream_text_response_smoke.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::raw_streaming::raw_stream_text_response_smoke",
       "source": "tests/providers/bedrock/cassette/raw_streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/streaming.rs",
+          "symbol": "bedrock::cassette::streaming::streaming_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream in bedrock-smoke-contract.md: client.agent(AMAZON_NOVA_LITE).preamble(STREAMING_PREAMBLE).build().stream_prompt(STREAMING_PROMPT).stream() drained by collect_stream_final_response then assert_nonempty_response; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-smoke-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/streaming/streaming_smoke.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::streaming::streaming_smoke",
       "source": "tests/providers/bedrock/cassette/streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/streaming.rs",
+          "symbol": "bedrock::cassette::streaming::streaming_tools_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream-tools in bedrock-tools-contract.md: client.agent(AMAZON_NOVA_LITE).preamble(STREAMING_TOOLS_PREAMBLE).max_tokens(1024).tool(Subtract).default_max_turns(2).build().stream_prompt(STREAMING_TOOLS_PROMPT).stream() drained by collect_stream_final_response then assert_mentions_expected_number(-3); replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-tools-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/streaming/streaming_tools_smoke.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::streaming::streaming_tools_smoke",
       "source": "tests/providers/bedrock/cassette/streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/tool_choice.rs",
+          "symbol": "bedrock::cassette::tool_choice::none_nonstreaming_does_not_emit_tool_calls"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-chat-tools in bedrock-tools-contract.md: client.agent(AMAZON_NOVA_LITE).preamble(..).temperature(0).tool(Adder).tool(Subtract).tool_choice(ToolChoice::None).build().chat(.., &mut history).await.expect; assert_mentions_expected_number(42) and no tool calls in the history; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-tools-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/tool_choice/none_nonstreaming_no_tools.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::tool_choice::none_nonstreaming_does_not_emit_tool_calls",
       "source": "tests/providers/bedrock/cassette/tool_choice.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/tool_choice.rs",
+          "symbol": "bedrock::cassette::tool_choice::none_streaming_does_not_emit_tool_calls"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream-tools in bedrock-tools-contract.md: client.agent(AMAZON_NOVA_LITE).preamble(..).temperature(0).tool(Adder).tool(Subtract).tool_choice(ToolChoice::None).build().stream_prompt(..).stream() collected by collect_stream_observation; no errors, a final response, no tool calls/results and assert_mentions_expected_number(42); replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-tools-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/tool_choice/none_streaming_no_tools.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::tool_choice::none_streaming_does_not_emit_tool_calls",
       "source": "tests/providers/bedrock/cassette/tool_choice.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/tool_choice.rs",
+          "symbol": "bedrock::cassette::tool_choice::required_forces_function_call"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE).completion(request) / completion_request(..).send() / .stream(request) collected by collect_raw_stream_observation, with Adder/Subtract definitions and ToolChoice::Required or Specific; tool-call names/arguments asserted; no agent; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/tool_choice/required_forces_function_call.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::tool_choice::required_forces_function_call",
       "source": "tests/providers/bedrock/cassette/tool_choice.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/tool_choice.rs",
+          "symbol": "bedrock::cassette::tool_choice::specific_add_raw_nonstreaming_allows_only_add"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE).completion(request) / completion_request(..).send() / .stream(request) collected by collect_raw_stream_observation, with Adder/Subtract definitions and ToolChoice::Required or Specific; tool-call names/arguments asserted; no agent; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/tool_choice/specific_add_raw_nonstreaming.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::tool_choice::specific_add_raw_nonstreaming_allows_only_add",
       "source": "tests/providers/bedrock/cassette/tool_choice.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/tool_choice.rs",
+          "symbol": "bedrock::cassette::tool_choice::specific_add_raw_streaming_allows_only_add"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-completion in bedrock-provider-contract.md: client.completion_model(AMAZON_NOVA_LITE).completion(request) / completion_request(..).send() / .stream(request) collected by collect_raw_stream_observation, with Adder/Subtract definitions and ToolChoice::Required or Specific; tool-call names/arguments asserted; no agent; replayed through with_bedrock_cassette (direct-recording ProviderCassette with dummy AWS credentials, fixed region and loopback endpoint) from a hosted Bedrock recording of AMAZON_NOVA_LITE.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/tool_choice/specific_add_raw_streaming.yaml"
+        }
+      ],
       "id": "rig::bedrock::bedrock::cassette::tool_choice::specific_add_raw_streaming_allows_only_add",
       "source": "tests/providers/bedrock/cassette/tool_choice.rs"
     },
@@ -1004,13 +1417,25 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/streaming_conformance.rs",
+          "symbol": "bedrock::streaming_conformance::suite_families_are_registered_wire_families"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule registry-guard in bedrock-provider-contract.md: plain #[test] comparing SUITE_FAMILIES with rig_core::test_utils::streaming_conformance::WIRE_FAMILIES; constructs no client, replays nothing, drives no agent (the macro-generated conformance cells in this module are already classified shared_provider).",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"bedrock\")]"
       ],
       "ecs": null,
+      "families": [
+        "corpus"
+      ],
+      "family_contract": "tests/ecs_parity/bedrock-provider-contract.md",
+      "fixture_disposition": "No fixture: the test reads source files or an in-process registry only.",
       "fixtures": [],
       "id": "rig::bedrock::bedrock::streaming_conformance::suite_families_are_registered_wire_families",
       "source": "tests/providers/bedrock/streaming_conformance.rs"

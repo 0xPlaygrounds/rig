@@ -21,6 +21,11 @@
       ],
       "ecs": null,
       "evidence_scope": "supplemental_live",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-smoke-contract.md",
+      "fixture_disposition": "No local Ollama server is configured in this environment; no capture possible; stays supplemental_live and is not counted as ported.",
       "fixtures": [],
       "id": "rig::ollama::ollama::agent::completion_smoke",
       "source": "tests/providers/ollama/agent.rs"
@@ -233,386 +238,926 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/agentic.rs",
+          "symbol": "ollama::cassette::agentic::native_mode_emits_structured_output"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-schema-tools in ollama-output-contract.md: client.agent(MODEL).tool(WeatherTool).output_schema_raw(schema).output_mode(OutputMode::Native).default_max_turns(3).build().prompt(..).await.expect; schema JSON parsed; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-output-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/agentic/native_mode.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::agentic::native_mode_emits_structured_output",
       "source": "tests/providers/ollama/cassette/agentic.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/agentic.rs",
+          "symbol": "ollama::cassette::agentic::prompted_mode_returns_parseable_json"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-schema in ollama-output-contract.md: client.agent(MODEL).output_schema_raw(schema).output_mode(OutputMode::Prompted).build().prompt(..).await.expect; first JSON object parsed from the text; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-output-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/agentic/prompted_mode.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::agentic::prompted_mode_returns_parseable_json",
       "source": "tests/providers/ollama/cassette/agentic.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/agentic.rs",
+          "symbol": "ollama::cassette::agentic::streaming_structured_output_with_tools"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-schema-tools in ollama-output-contract.md: client.agent(MODEL).tool(WeatherTool).output_schema_raw(schema).default_max_turns(5).build().stream_prompt(..).max_turns(5).stream() drained by collect_stream_final_response; first JSON object parsed and call_count >= 1; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-output-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/agentic/streaming_structured_output_with_tools.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::agentic::streaming_structured_output_with_tools",
       "source": "tests/providers/ollama/cassette/agentic.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/agentic.rs",
+          "symbol": "ollama::cassette::agentic::structured_output_raw_with_thinking"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-schema in ollama-output-contract.md: client.agent(MODEL).output_schema_raw(schema).additional_params(think:true).build().prompt(..).await.expect; output parsed as schema JSON; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-output-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/structured_output/raw_with_thinking.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::agentic::structured_output_raw_with_thinking",
       "source": "tests/providers/ollama/cassette/agentic.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/agentic.rs",
+          "symbol": "ollama::cassette::agentic::structured_output_with_tools_and_thinking"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-schema-tools in ollama-output-contract.md: client.agent(MODEL).preamble(..).tool(WeatherTool).output_schema_raw(schema).additional_params(think:true).default_max_turns(5).build().prompt(..).await.expect; schema JSON parsed and the real tool's call_count >= 1 asserted; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-output-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/agentic/structured_output_with_tools.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::agentic::structured_output_with_tools_and_thinking",
       "source": "tests/providers/ollama/cassette/agentic.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/models.rs",
+          "symbol": "ollama::cassette::models::list_models_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule listing in ollama-provider-contract.md: client.list_models().await (GET /api/tags) with a non-empty listing asserted; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b; no agent.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/models/list_models_smoke.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::models::list_models_smoke",
       "source": "tests/providers/ollama/cassette/models.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/raw_capture_agent_matrix.rs",
+          "symbol": "ollama::cassette::raw_capture_agent_matrix::hooks_observe_raw_blocking"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-raw-hook in ollama-hooks-contract.md: client.agent(MODEL).max_tokens(64) or .preamble(TOOLS_PREAMBLE).tool(Adder), .add_hook(RawProbe).build() then .prompt(..)[.max_turns(3)] or .stream_prompt(..)[.max_turns(3)].stream() drained for CompletionCall/Final/FinalResponse items; the hook's CompletionResponse and ModelTurnFinished raw payloads and PromptResponse::completion_calls are compared with the fixture fingerprints; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "hooks"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-hooks-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/raw_capture_agent_matrix/hooks_observe_raw_blocking.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::raw_capture_agent_matrix::hooks_observe_raw_blocking",
       "source": "tests/providers/ollama/cassette/raw_capture_agent_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/raw_capture_agent_matrix.rs",
+          "symbol": "ollama::cassette::raw_capture_agent_matrix::hooks_observe_raw_streamed"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-raw-hook in ollama-hooks-contract.md: client.agent(MODEL).max_tokens(64) or .preamble(TOOLS_PREAMBLE).tool(Adder), .add_hook(RawProbe).build() then .prompt(..)[.max_turns(3)] or .stream_prompt(..)[.max_turns(3)].stream() drained for CompletionCall/Final/FinalResponse items; the hook's CompletionResponse and ModelTurnFinished raw payloads and PromptResponse::completion_calls are compared with the fixture fingerprints; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "hooks"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-hooks-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/raw_capture_agent_matrix/hooks_observe_raw_streamed.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::raw_capture_agent_matrix::hooks_observe_raw_streamed",
       "source": "tests/providers/ollama/cassette/raw_capture_agent_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/raw_capture_agent_matrix.rs",
+          "symbol": "ollama::cassette::raw_capture_agent_matrix::multi_turn_tool_run_records_distinct_raw_blocking"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-raw-hook in ollama-hooks-contract.md: client.agent(MODEL).max_tokens(64) or .preamble(TOOLS_PREAMBLE).tool(Adder), .add_hook(RawProbe).build() then .prompt(..)[.max_turns(3)] or .stream_prompt(..)[.max_turns(3)].stream() drained for CompletionCall/Final/FinalResponse items; the hook's CompletionResponse and ModelTurnFinished raw payloads and PromptResponse::completion_calls are compared with the fixture fingerprints; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "hooks"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-hooks-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::raw_capture_agent_matrix::multi_turn_tool_run_records_distinct_raw_blocking",
       "source": "tests/providers/ollama/cassette/raw_capture_agent_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/raw_capture_agent_matrix.rs",
+          "symbol": "ollama::cassette::raw_capture_agent_matrix::multi_turn_tool_run_records_distinct_raw_streamed"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-raw-hook in ollama-hooks-contract.md: client.agent(MODEL).max_tokens(64) or .preamble(TOOLS_PREAMBLE).tool(Adder), .add_hook(RawProbe).build() then .prompt(..)[.max_turns(3)] or .stream_prompt(..)[.max_turns(3)].stream() drained for CompletionCall/Final/FinalResponse items; the hook's CompletionResponse and ModelTurnFinished raw payloads and PromptResponse::completion_calls are compared with the fixture fingerprints; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "hooks"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-hooks-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::raw_capture_agent_matrix::multi_turn_tool_run_records_distinct_raw_streamed",
       "source": "tests/providers/ollama/cassette/raw_capture_agent_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/raw_capture_matrix.rs",
+          "symbol": "ollama::cassette::raw_capture_matrix::normalized_fields_equal_raw_renormalized"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in ollama-provider-contract.md: client.completion_model(MODEL).completion(request) with CompletionResponse::raw round-trip / re-normalization compared with the recorded body; no agent; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/raw_capture_matrix/normalized_fields_equal_raw_renormalized.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::raw_capture_matrix::normalized_fields_equal_raw_renormalized",
       "source": "tests/providers/ollama/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/raw_capture_matrix.rs",
+          "symbol": "ollama::cassette::raw_capture_matrix::raw_exposes_ollama_durations"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in ollama-provider-contract.md: client.completion_model(MODEL).completion(request) with CompletionResponse::raw round-trip / re-normalization compared with the recorded body; no agent; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/raw_capture_matrix/raw_exposes_ollama_durations.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::raw_capture_matrix::raw_exposes_ollama_durations",
       "source": "tests/providers/ollama/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/raw_capture_matrix.rs",
+          "symbol": "ollama::cassette::raw_capture_matrix::raw_round_trips_provider_type"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-raw in ollama-provider-contract.md: client.completion_model(MODEL).completion(request) with CompletionResponse::raw round-trip / re-normalization compared with the recorded body; no agent; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/raw_capture_matrix/raw_round_trips_provider_type.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::raw_capture_matrix::raw_round_trips_provider_type",
       "source": "tests/providers/ollama/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/raw_stream_capture_matrix.rs",
+          "symbol": "ollama::cassette::raw_stream_capture_matrix::stream_raw_exposes_terminal_durations"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in ollama-provider-contract.md: client.completion_model(MODEL).stream(request) drained by terminal_of (exactly one StreamEvent::Final) with StreamFinal::raw compared with the recorded terminal NDJSON line; no agent; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/raw_stream_capture_matrix/stream_raw_exposes_terminal_durations.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::raw_stream_capture_matrix::stream_raw_exposes_terminal_durations",
       "source": "tests/providers/ollama/cassette/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/raw_stream_capture_matrix.rs",
+          "symbol": "ollama::cassette::raw_stream_capture_matrix::stream_raw_terminal_round_trips_provider_type"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in ollama-provider-contract.md: client.completion_model(MODEL).stream(request) drained by terminal_of (exactly one StreamEvent::Final) with StreamFinal::raw compared with the recorded terminal NDJSON line; no agent; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::raw_stream_capture_matrix::stream_raw_terminal_round_trips_provider_type",
       "source": "tests/providers/ollama/cassette/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/reasoning_roundtrip.rs",
+          "symbol": "ollama::cassette::reasoning_roundtrip::nonstreaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule reasoning-roundtrip-driver in ollama-provider-contract.md: reasoning::run_reasoning_roundtrip_{nonstreaming,streaming}(ReasoningRoundtripAgent::new(client.completion_model(MODEL), think:true)) builds CompletionRequests by hand and calls model.completion / model.stream for two turns with the turn-1 assistant content replayed; despite the type name no AgentBuilder is constructed; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/reasoning_roundtrip/nonstreaming.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::reasoning_roundtrip::nonstreaming",
       "source": "tests/providers/ollama/cassette/reasoning_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/reasoning_roundtrip.rs",
+          "symbol": "ollama::cassette::reasoning_roundtrip::streaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule reasoning-roundtrip-driver in ollama-provider-contract.md: reasoning::run_reasoning_roundtrip_{nonstreaming,streaming}(ReasoningRoundtripAgent::new(client.completion_model(MODEL), think:true)) builds CompletionRequests by hand and calls model.completion / model.stream for two turns with the turn-1 assistant content replayed; despite the type name no AgentBuilder is constructed; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/reasoning_roundtrip/streaming.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::reasoning_roundtrip::streaming",
       "source": "tests/providers/ollama/cassette/reasoning_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/reasoning_tool_roundtrip.rs",
+          "symbol": "ollama::cassette::reasoning_tool_roundtrip::nonstreaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-chat-tools in ollama-tools-contract.md: client.agent(MODEL).preamble(TOOL_SYSTEM_PROMPT).tool(WeatherTool).additional_params(think:true).default_max_turns(2).build().chat(TOOL_USER_PROMPT, &mut history).await.expect; reasoning::assert_nonstreaming_universal on call_count and the history's Reasoning content asserted; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-tools-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/reasoning_tool_roundtrip/nonstreaming.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::reasoning_tool_roundtrip::nonstreaming",
       "source": "tests/providers/ollama/cassette/reasoning_tool_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/reasoning_tool_roundtrip.rs",
+          "symbol": "ollama::cassette::reasoning_tool_roundtrip::streaming"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream-tools in ollama-tools-contract.md: client.agent(MODEL).preamble(..).tool(WeatherTool).additional_params(think:true).build().stream_chat(TOOL_USER_PROMPT, Vec::new()).max_turns(3).stream() collected by reasoning::collect_stream_stats then assert_universal; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-tools-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/reasoning_tool_roundtrip/streaming.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::reasoning_tool_roundtrip::streaming",
       "source": "tests/providers/ollama/cassette/reasoning_tool_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/streaming.rs",
+          "symbol": "ollama::cassette::streaming::streaming_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream in ollama-smoke-contract.md: client.agent(MODEL).preamble(..).additional_params(think:false).build().stream_prompt(..).stream() drained by collect_stream_final_response then assert_nonempty_response; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-smoke-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/streaming/streaming_smoke.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::streaming::streaming_smoke",
       "source": "tests/providers/ollama/cassette/streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/streaming_grammar.rs",
+          "symbol": "ollama::cassette::streaming_grammar::chat_sourced_history_replays_the_tool_name_not_the_identifier"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in ollama-provider-contract.md: client.completion_model(MODEL).stream(request with tool definitions / hand-built history / think params) drained by drain_stream with assert_valid_event_stream, snapshot() and terminal assertions; no agent; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/streaming_grammar/chat_sourced_history_replay.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::streaming_grammar::chat_sourced_history_replays_the_tool_name_not_the_identifier",
       "source": "tests/providers/ollama/cassette/streaming_grammar.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/streaming_grammar.rs",
+          "symbol": "ollama::cassette::streaming_grammar::parallel_id_less_tool_calls_stay_distinct"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in ollama-provider-contract.md: client.completion_model(MODEL).stream(request with tool definitions / hand-built history / think params) drained by drain_stream with assert_valid_event_stream, snapshot() and terminal assertions; no agent; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/streaming_grammar/parallel_tool_calls.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::streaming_grammar::parallel_id_less_tool_calls_stay_distinct",
       "source": "tests/providers/ollama/cassette/streaming_grammar.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/streaming_grammar.rs",
+          "symbol": "ollama::cassette::streaming_grammar::same_tool_called_twice_in_one_turn_stays_distinct"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in ollama-provider-contract.md: client.completion_model(MODEL).stream(request with tool definitions / hand-built history / think params) drained by drain_stream with assert_valid_event_stream, snapshot() and terminal assertions; no agent; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/streaming_grammar/same_tool_twice.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::streaming_grammar::same_tool_called_twice_in_one_turn_stays_distinct",
       "source": "tests/providers/ollama/cassette/streaming_grammar.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/streaming_grammar.rs",
+          "symbol": "ollama::cassette::streaming_grammar::thinking_and_tool_call_in_one_stream"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in ollama-provider-contract.md: client.completion_model(MODEL).stream(request with tool definitions / hand-built history / think params) drained by drain_stream with assert_valid_event_stream, snapshot() and terminal assertions; no agent; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-provider-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/streaming_grammar/thinking_and_tool_call.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::streaming_grammar::thinking_and_tool_call_in_one_stream",
       "source": "tests/providers/ollama/cassette/streaming_grammar.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/streaming_tools.rs",
+          "symbol": "ollama::cassette::streaming_tools::streaming_tools_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-stream-tools in ollama-tools-contract.md: client.agent(MODEL).preamble(STREAMING_TOOLS_PREAMBLE).tool(Adder).tool(Subtract).additional_params(think:false).build().stream_prompt(..).max_turns(3).stream() drained by collect_stream_final_response then assert_mentions_expected_number(-3); replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-tools-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/streaming_tools/streaming_tools_smoke.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::streaming_tools::streaming_tools_smoke",
       "source": "tests/providers/ollama/cassette/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/structured_output.rs",
+          "symbol": "ollama::cassette::structured_output::structured_output_smoke"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-schema in ollama-output-contract.md: client.agent(MODEL).output_schema::<SmokeStructuredOutput>().additional_params(think:false).build().prompt(..).await.expect; output parsed and assert_smoke_structured_output; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-output-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/structured_output/structured_output_smoke.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::structured_output::structured_output_smoke",
       "source": "tests/providers/ollama/cassette/structured_output.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/tools.rs",
+          "symbol": "ollama::cassette::tools::tool_with_optional_argument"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-conformance in ollama-tools-contract.md: rig_agent::test_utils::{optional_argument,sequential_tools}(client.completion_model(MODEL), configure) build AgentBuilder::new(model)..tool(..).default_max_turns(4).build().prompt(..) and validate tool invocation counts and the tool round trip in result.messages, returning a ScenarioReport; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-tools-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/tools/optional_argument.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::tools::tool_with_optional_argument",
       "source": "tests/providers/ollama/cassette/tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/tools.rs",
+          "symbol": "ollama::cassette::tools::two_tools_nonstreaming_chain"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Rule agent-conformance in ollama-tools-contract.md: rig_agent::test_utils::{optional_argument,sequential_tools}(client.completion_model(MODEL), configure) build AgentBuilder::new(model)..tool(..).default_max_turns(4).build().prompt(..) and validate tool invocation counts and the tool round trip in result.messages, returning a ScenarioReport; replayed through with_ollama_cassette (strict ordered ProviderCassette, no API key) from a local Ollama daemon recording of qwen3:4b.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-tools-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/tools/two_tools_nonstreaming.yaml"
+        }
+      ],
       "id": "rig::ollama::ollama::cassette::tools::two_tools_nonstreaming_chain",
       "source": "tests/providers/ollama/cassette/tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/models.rs",
+          "symbol": "ollama::models::list_models_smoke"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule listing in ollama-provider-contract.md: ollama::Client::new(Nothing).list_models().await against a live local server; no agent.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires a local Ollama server\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-provider-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires a local Ollama server, none configured in this environment; no fixture on disk; stays supplemental_live and is not counted as ported.",
       "fixtures": [],
       "id": "rig::ollama::ollama::models::list_models_smoke",
       "source": "tests/providers/ollama/models.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/multimodal.rs",
+          "symbol": "ollama::multimodal::multimodal_image_prompt"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in ollama-smoke-contract.md: client.agent(\"llava\").preamble(..).temperature(0.5).build().prompt(Image{..}).await.expect against a live local multimodal Ollama server; assert_contains_any_case_insensitive.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires a local Ollama server with a multimodal model\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-smoke-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires a local Ollama server, none configured in this environment; no fixture on disk; stays supplemental_live and is not counted as ported.",
       "fixtures": [],
       "id": "rig::ollama::ollama::multimodal::multimodal_image_prompt",
       "source": "tests/providers/ollama/multimodal.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/pause_control.rs",
+          "symbol": "ollama::pause_control::streaming_pause_and_resume"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "Rule model-stream in ollama-provider-contract.md: completion_model(\"gemma3:4b\").stream(request) drained manually with stream.pause()/resume() against a live local server; no agent.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires a local Ollama server\"]"
       ],
       "ecs": null,
+      "families": [
+        "provider"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-provider-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires a local Ollama server, none configured in this environment; no fixture on disk; stays supplemental_live and is not counted as ported.",
       "fixtures": [],
       "id": "rig::ollama::ollama::pause_control::streaming_pause_and_resume",
       "source": "tests/providers/ollama/pause_control.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/streaming.rs",
+          "symbol": "ollama::streaming::example_streaming_prompt"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in ollama-smoke-contract.md: ollama::Client::from_env().agent(\"llama3.2\").preamble(..).temperature(0.5).build().stream_prompt(..).stream() drained by collect_stream_final_response against a live local server.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires a local Ollama server\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "smoke"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-smoke-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires a local Ollama server, none configured in this environment; no fixture on disk; stays supplemental_live and is not counted as ported.",
       "fixtures": [],
       "id": "rig::ollama::ollama::streaming::example_streaming_prompt",
       "source": "tests/providers/ollama/streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/streaming_tools.rs",
+          "symbol": "ollama::streaming_tools::example_streaming_with_tools"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in ollama-tools-contract.md: ollama::Client::from_env().agent(\"llama3.2\").preamble(..).max_tokens(1024).tool(Adder).tool(Subtract).build().stream_prompt(\"Calculate 2 - 5\").stream() drained by collect_stream_final_response against a live local server; assert_mentions_expected_number(-3).",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires a local Ollama server\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "tools"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-tools-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires a local Ollama server, none configured in this environment; no fixture on disk; stays supplemental_live and is not counted as ported.",
       "fixtures": [],
       "id": "rig::ollama::ollama::streaming_tools::example_streaming_with_tools",
       "source": "tests/providers/ollama/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/structured_output.rs",
+          "symbol": "ollama::structured_output::structured_output_prompt"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Rule live-agent in ollama-output-contract.md: client.agent(\"qwen3:4b\").preamble(..).output_schema::<Character>().build().prompt(..).await.expect against a live local server; output parsed as Character.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires a local Ollama server\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "output"
+      ],
+      "family_contract": "tests/ecs_parity/ollama-output-contract.md",
+      "fixture_disposition": "Live-only: #[ignore] requires a local Ollama server, none configured in this environment; no fixture on disk; stays supplemental_live and is not counted as ported.",
       "fixtures": [],
       "id": "rig::ollama::ollama::structured_output::structured_output_prompt",
       "source": "tests/providers/ollama/structured_output.rs"
