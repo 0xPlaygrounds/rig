@@ -105,246 +105,824 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/audio_generation.rs",
+          "symbol": "venice::cassette::audio_generation::audio_generation_smoke"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_direct_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C4 audio generation (tests/ecs_parity/openai-compatible-classification-contract.md): `with_venice_direct_cassette` (binary body recorder) + `client.audio_generation_model(venice::TTS_KOKORO).audio_generation_request().text(..).voice(\"af_sky\").speed(1.0).additional_params(response_format mp3).send()`; asserts MP3 bytes. `#[cfg(feature = \"audio\")]`: cassette-backed but outside the root-bedrock listing.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"audio\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "audio-generation"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/audio_generation/audio_generation_smoke.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::audio_generation::audio_generation_smoke",
+      "mapping_limits": [
+        "Feature-gated (`#[cfg(feature = ...)]`): not compiled in the root-bedrock listing; classified from source only.",
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/audio_generation.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/conformance.rs",
+          "symbol": "venice::cassette::conformance::cancellation_and_max_turn_diagnostics"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::cancellation_and_max_turns(client.completion_model(TOOL_MODEL (MISTRAL_SMALL_3_2_24B)), |builder| builder)` under `with_venice_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/conformance/cancellation_and_max_turns.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::conformance::cancellation_and_max_turn_diagnostics",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/conformance.rs",
+          "symbol": "venice::cassette::conformance::hooks_rewrite_tool_flow"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::hook_rewrites_and_request_patch(client.completion_model(TOOL_MODEL (MISTRAL_SMALL_3_2_24B)), |builder| builder)` under `with_venice_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance",
+        "hooks"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/conformance/hook_rewrites_and_request_patch.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::conformance::hooks_rewrite_tool_flow",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/conformance.rs",
+          "symbol": "venice::cassette::conformance::invalid_tool_call_recovers"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::invalid_tool_recovery(client.completion_model(TOOL_MODEL (MISTRAL_SMALL_3_2_24B)), |builder| builder)` under `with_venice_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/conformance/invalid_tool_recovery.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::conformance::invalid_tool_call_recovers",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/conformance.rs",
+          "symbol": "venice::cassette::conformance::parallel_tool_calls_roundtrip"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::parallel_tools(client.completion_model(TOOL_MODEL (MISTRAL_SMALL_3_2_24B)), |builder| builder)` under `with_venice_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/conformance/parallel_tools.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::conformance::parallel_tool_calls_roundtrip",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/conformance.rs",
+          "symbol": "venice::cassette::conformance::streaming_structured_output_after_tool"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::streaming_structured_after_tool(client.completion_model(TOOL_MODEL (MISTRAL_SMALL_3_2_24B)), |builder| builder)` under `with_venice_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance",
+        "streaming-tools",
+        "structured-output"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/conformance/streaming_structured_after_tool.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::conformance::streaming_structured_output_after_tool",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/conformance.rs",
+          "symbol": "venice::cassette::conformance::streaming_tool_roundtrip"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::streaming_tool(client.completion_model(TOOL_MODEL (MISTRAL_SMALL_3_2_24B)), |builder| builder)` under `with_venice_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance",
+        "streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/conformance/streaming_tool.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::conformance::streaming_tool_roundtrip",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/conformance.rs",
+          "symbol": "venice::cassette::conformance::structured_extraction_roundtrip"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A4 rig-agent Extractor (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::structured_extraction(client.completion_model(DEFAULT_MODEL (QWEN3_5_9B)))`: the shared scenario builds `ExtractorBuilder::<ExtractedPerson>::new(model).max_tokens(384).retries(0).build().extract(..)` (rig-agent Extractor) and validates the fields; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance",
+        "extractor-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/conformance/structured_extraction.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::conformance::structured_extraction_roundtrip",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/conformance.rs",
+          "symbol": "venice::cassette::conformance::structured_output_after_tool"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::structured_after_tool(client.completion_model(TOOL_MODEL (MISTRAL_SMALL_3_2_24B)), |builder| builder)` under `with_venice_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance",
+        "structured-output"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/conformance/structured_after_tool.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::conformance::structured_output_after_tool",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/conformance.rs",
+          "symbol": "venice::cassette::conformance::tool_choice_modes_roundtrip"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M5 conformance tool_choice_modes (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::tool_choice_modes(client.completion_model(TOOL_MODEL (MISTRAL_SMALL_3_2_24B)))`: three direct `model.completion(completion_request(..).tools(..).tool_choice(None/Required/Specific).build())` calls with assertions on `choice`; no AgentBuilder in this scenario.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "conformance",
+        "tool-choice"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/conformance/tool_choice_modes.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::conformance::tool_choice_modes_roundtrip",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/conformance.rs",
+          "symbol": "venice::cassette::conformance::tool_output_types_roundtrip"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::tool_output_serialization(client.completion_model(TOOL_MODEL (MISTRAL_SMALL_3_2_24B)), |builder| builder)` under `with_venice_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/conformance/tool_output_serialization.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::conformance::tool_output_types_roundtrip",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/conformance.rs",
+          "symbol": "venice::cassette::conformance::zero_argument_tool_roundtrip"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::zero_argument_tool(client.completion_model(TOOL_MODEL (MISTRAL_SMALL_3_2_24B)), |builder| builder)` under `with_venice_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/conformance/zero_argument_tool.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::conformance::zero_argument_tool_roundtrip",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/embedding_matrix.rs",
+          "symbol": "venice::cassette::embedding_matrix::dimensions_request"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `client.embedding_model(venice::TEXT_EMBEDDING_QWEN3_0_6B)` (`dimensions_request`: `embed_texts_response`/`raw_embed_texts`/`embed_text*`/`embedding_model_with_ndims(.., 256)`, or a bogus model); asserts the embedding contract. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/embedding_matrix/dimensions_request.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::embedding_matrix::dimensions_request",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/embedding_matrix.rs",
+          "symbol": "venice::cassette::embedding_matrix::error_preserves_provider_body"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `client.embedding_model(venice::TEXT_EMBEDDING_QWEN3_0_6B)` (`error_preserves_provider_body`: `embed_texts_response`/`raw_embed_texts`/`embed_text*`/`embedding_model_with_ndims(.., 256)`, or a bogus model); asserts the embedding contract. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/embedding_matrix/error_preserves_provider_body.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::embedding_matrix::error_preserves_provider_body",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/embedding_matrix.rs",
+          "symbol": "venice::cassette::embedding_matrix::normalized_response_is_complete"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `client.embedding_model(venice::TEXT_EMBEDDING_QWEN3_0_6B)` (`normalized_response_is_complete`: `embed_texts_response`/`raw_embed_texts`/`embed_text*`/`embedding_model_with_ndims(.., 256)`, or a bogus model); asserts the embedding contract. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/embedding_matrix/normalized_response_is_complete.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::embedding_matrix::normalized_response_is_complete",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/embedding_matrix.rs",
+          "symbol": "venice::cassette::embedding_matrix::raw_round_trips"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `client.embedding_model(venice::TEXT_EMBEDDING_QWEN3_0_6B)` (`raw_round_trips`: `embed_texts_response`/`raw_embed_texts`/`embed_text*`/`embedding_model_with_ndims(.., 256)`, or a bogus model); asserts the embedding contract. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/embedding_matrix/raw_round_trips.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::embedding_matrix::raw_round_trips",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/embedding_matrix.rs",
+          "symbol": "venice::cassette::embedding_matrix::raw_route_parity"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `client.embedding_model(venice::TEXT_EMBEDDING_QWEN3_0_6B)` (`raw_route_parity`: `embed_texts_response`/`raw_embed_texts`/`embed_text*`/`embedding_model_with_ndims(.., 256)`, or a bogus model); asserts the embedding contract. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/embedding_matrix/raw_route_parity.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::embedding_matrix::raw_route_parity",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/embedding_matrix.rs",
+          "symbol": "venice::cassette::embedding_matrix::single_text_convenience"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `client.embedding_model(venice::TEXT_EMBEDDING_QWEN3_0_6B)` (`single_text_convenience`: `embed_texts_response`/`raw_embed_texts`/`embed_text*`/`embedding_model_with_ndims(.., 256)`, or a bogus model); asserts the embedding contract. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/embedding_matrix/single_text_convenience.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::embedding_matrix::single_text_convenience",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/embeddings.rs",
+          "symbol": "venice::cassette::embeddings::embeddings_honor_requested_dimensions"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `client.embedding_model_with_ndims(venice::TEXT_EMBEDDING_QWEN3_0_6B, 256).embed_texts([..])`; asserts 256-wide vectors. Embeddings path.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/embeddings/requested_dimensions.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::embeddings::embeddings_honor_requested_dimensions",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/embeddings.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/embeddings.rs",
+          "symbol": "venice::cassette::embeddings::embeddings_smoke"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `client.embedding_model(venice::TEXT_EMBEDDING_QWEN3_0_6B).embed_texts(EMBEDDING_INPUTS)`; `assert_embeddings_nonempty_and_consistent`. Embeddings path.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/embeddings/embeddings_smoke.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::embeddings::embeddings_smoke",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/embeddings.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/error_envelope.rs",
+          "symbol": "venice::cassette::error_envelope::nonexistent_model_error_preserves_status_and_body"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(\"venice-nonexistent-rig-test\")` + `model.completion(completion_request(..).max_tokens(16).build()).expect_err(..)`; asserts 404 status and Venice's flat error body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "error-matrix",
+        "error-envelope"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/error_envelope/nonexistent_model_error_preserves_status_and_body.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::error_envelope::nonexistent_model_error_preserves_status_and_body",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/error_envelope.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/error_envelope.rs",
+          "symbol": "venice::cassette::error_envelope::nonexistent_model_streaming_error_preserves_status_and_body"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(\"venice-nonexistent-rig-test\")` + `model.stream(..)`; the error is taken from `stream()` or the first stream item; asserts 404 and the raw body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "error-matrix",
+        "error-envelope"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/error_envelope/nonexistent_model_streaming_error_preserves_status_and_body.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::error_envelope::nonexistent_model_streaming_error_preserves_status_and_body",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/error_envelope.rs"
     },
     {
@@ -437,26 +1015,79 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/image_generation.rs",
+          "symbol": "venice::cassette::image_generation::image_generation_smoke"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C5 image generation (tests/ecs_parity/openai-compatible-classification-contract.md): `client.image_generation_model(venice::VENICE_SD35).image_generation_request().prompt(..).width(256).height(256).additional_params(..).send()` under `with_venice_cassette`; asserts decoded bytes and Venice's raw response type. `#[cfg(feature = \"image\")]`: cassette-backed but outside the root-bedrock listing.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"image\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "image-generation"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/image_generation/image_generation_smoke.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::image_generation::image_generation_smoke",
+      "mapping_limits": [
+        "Feature-gated (`#[cfg(feature = ...)]`): not compiled in the root-bedrock listing; classified from source only.",
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/image_generation.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/model_listing.rs",
+          "symbol": "venice::cassette::model_listing::list_models_smoke"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C2 model listing (tests/ecs_parity/openai-compatible-classification-contract.md): `client.list_models()` under `with_venice_cassette`; asserts a non-empty listing containing DEFAULT_MODEL. Model-listing path.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "model-listing"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/model_listing/list_models_smoke.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::model_listing::list_models_smoke",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/model_listing.rs"
     },
     {
@@ -516,246 +1147,873 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/prompt_caching.rs",
+          "symbol": "venice::cassette::prompt_caching::blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_prompt_caching_cassette"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::run_cache_probe"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M3 cache probe (tests/ecs_parity/openai-compatible-classification-contract.md): `run_cache_probe(&client.completion_model(venice::QWEN3_5_9B), ..)`: three `model.completion(..)` turns; `assert_cache_conformance`, `assert_prefix_stable`, `assert_breakpoints_match_support`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/prompt_caching/blocking_probe.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::prompt_caching::blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/venice/cassette/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/prompt_caching.rs",
+          "symbol": "venice::cassette::prompt_caching::live_cache_economics"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::run_cache_probe"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M3 cache probe (tests/ecs_parity/openai-compatible-classification-contract.md): `venice::Client::from_env().completion_model(QWEN3_5_9B)` + `run_cache_probe` + `report_and_assert_live`; `#[ignore]` live run, no cassette. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires VENICE_API_KEY and spends real tokens\"]"
       ],
       "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::venice::venice::cassette::prompt_caching::live_cache_economics",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/prompt_caching.rs",
+          "symbol": "venice::cassette::prompt_caching::prompt_cache_key_reaches_the_wire_and_is_stable"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_prompt_caching_cassette"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::run_cache_probe"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M3 cache probe (tests/ecs_parity/openai-compatible-classification-contract.md): `run_cache_probe(&model, &probe().with_additional_params(prompt_cache_key))`: three `model.completion(..)` turns; `assert_cache_key_stable` over recorded requests. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/prompt_caching/cache_key_stable.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::prompt_caching::prompt_cache_key_reaches_the_wire_and_is_stable",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/venice/cassette/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/prompt_caching.rs",
+          "symbol": "venice::cassette::prompt_caching::streaming_probe_survives_the_streaming_accumulator"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_prompt_caching_cassette"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::run_cache_probe"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M3 cache probe (tests/ecs_parity/openai-compatible-classification-contract.md): `run_cache_probe_streaming(&client.completion_model(venice::QWEN3_5_9B), ..)`: three `model.stream(..)` turns; same cache assertions. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/prompt_caching/streaming_probe.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::prompt_caching::streaming_probe_survives_the_streaming_accumulator",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/venice/cassette/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/raw_capture_matrix.rs",
+          "symbol": "venice::cassette::raw_capture_matrix::normalized_fields_match_raw_renormalized"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL)` + `model.completion(completion_request(PROMPT).max_tokens(16).additional_params(VeniceParameters disable_thinking).build())`; `normalized_fields_match_raw_renormalized` inspects `response.raw` against `venice::CompletionResponse` and the recorded body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/raw_capture_matrix/normalized_fields_match_raw_renormalized.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::raw_capture_matrix::normalized_fields_match_raw_renormalized",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/venice/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/raw_capture_matrix.rs",
+          "symbol": "venice::cassette::raw_capture_matrix::raw_exposes_venice_parameters_and_cost"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL)` + `model.completion(completion_request(PROMPT).max_tokens(16).additional_params(VeniceParameters disable_thinking).build())`; `raw_exposes_venice_parameters_and_cost` inspects `response.raw` against `venice::CompletionResponse` and the recorded body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/raw_capture_matrix/raw_exposes_venice_parameters_and_cost.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::raw_capture_matrix::raw_exposes_venice_parameters_and_cost",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/venice/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/raw_capture_matrix.rs",
+          "symbol": "venice::cassette::raw_capture_matrix::raw_round_trips_venice_type"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL)` + `model.completion(completion_request(PROMPT).max_tokens(16).additional_params(VeniceParameters disable_thinking).build())`; `raw_round_trips_venice_type` inspects `response.raw` against `venice::CompletionResponse` and the recorded body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/raw_capture_matrix/raw_round_trips_venice_type.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::raw_capture_matrix::raw_round_trips_venice_type",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/venice/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/raw_stream_capture_matrix.rs",
+          "symbol": "venice::cassette::raw_stream_capture_matrix::stream_raw_exposes_terminal_cost"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL)` + `model.stream(request)` drained by `collect_text_and_terminal`; `stream_raw_exposes_terminal_cost` checks `terminal.raw` against the recorded terminal frame. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-stream-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/raw_stream_capture_matrix/stream_raw_exposes_terminal_cost.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::raw_stream_capture_matrix::stream_raw_exposes_terminal_cost",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/venice/cassette/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/raw_stream_capture_matrix.rs",
+          "symbol": "venice::cassette::raw_stream_capture_matrix::stream_raw_round_trips_terminal_type"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL)` + `model.stream(request)` drained by `collect_text_and_terminal`; `stream_raw_round_trips_terminal_type` checks `terminal.raw` against the recorded terminal frame. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-stream-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/raw_stream_capture_matrix/stream_raw_round_trips_terminal_type.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::raw_stream_capture_matrix::stream_raw_round_trips_terminal_type",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/venice/cassette/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/request_hook.rs",
+          "symbol": "venice::cassette::request_hook::request_hook_records_prompt_and_response"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A3 agent run with hooks (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(DEFAULT_MODEL).build().prompt(..).add_hook(ObservingHook)` (`AgentHook::on_completion_call` + `on_outcome`); asserts one prompt call, one response call and the captured prompt.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "hooks"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/request_hook/request_hook_records_prompt_and_response.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::request_hook::request_hook_records_prompt_and_response",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/request_hook.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/streaming.rs",
+          "symbol": "venice::cassette::streaming::streaming_smoke"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A2 agent streaming run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(DEFAULT_MODEL).preamble(STREAMING_PREAMBLE).build().stream_prompt(STREAMING_PROMPT).stream()` drained by `collect_stream_final_response`; asserts non-empty final text.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "streaming-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/streaming/streaming_smoke.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::streaming::streaming_smoke",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/streaming_tools.rs",
+          "symbol": "venice::cassette::streaming_tools::streaming_tools_smoke"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A2 agent streaming run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(TOOL_MODEL).preamble(STREAMING_TOOLS_PREAMBLE).tool(Adder).tool(Subtract).default_max_turns(2).build().stream_prompt(..).stream()` drained by `collect_stream_final_response`; asserts -3 in the final text.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/streaming_tools/streaming_tools_smoke.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::streaming_tools::streaming_tools_smoke",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/structured_output.rs",
+          "symbol": "venice::cassette::structured_output::structured_output_smoke"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A1 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(TOOL_MODEL).build().prompt_typed::<SmokeStructuredOutput>(STRUCTURED_OUTPUT_PROMPT)`; `assert_smoke_structured_output`.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "structured-output"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/structured_output/structured_output_smoke.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::structured_output::structured_output_smoke",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/structured_output.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/tools.rs",
+          "symbol": "venice::cassette::tools::tool_with_optional_argument"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::optional_argument(client.completion_model(TOOL_MODEL (MISTRAL_SMALL_3_2_24B)), |builder| builder)`: builds `AgentBuilder::new(model)...build()` and drives `agent.prompt(..)` with a typed optional-argument tool; `.expect`s the scenario report.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance",
+        "tools-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/tools/optional_argument.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::tools::tool_with_optional_argument",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/tools.rs",
+          "symbol": "venice::cassette::tools::two_tools_nonstreaming_chain"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::sequential_tools(client.completion_model(TOOL_MODEL (MISTRAL_SMALL_3_2_24B)), |builder| builder)`: builds `AgentBuilder::new(model)...build()` and drives `agent.prompt(..)` through two sequential typed tools; `.expect`s the scenario report.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance",
+        "tools-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/tools/two_tools_nonstreaming.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::tools::two_tools_nonstreaming_chain",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/transcription.rs",
+          "symbol": "venice::cassette::transcription::transcription_smoke"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C3 transcription (tests/ecs_parity/openai-compatible-classification-contract.md): `client.transcription_model(venice::WHISPER_LARGE_V3).transcription_request().load_file(AUDIO_FIXTURE_PATH).send()`; asserts non-empty text. Transcription path.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "transcription"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/transcription/transcription_smoke.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::transcription::transcription_smoke",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/transcription.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/typed_prompt_tools.rs",
+          "symbol": "venice::cassette::typed_prompt_tools::prompt_typed_with_tool_call_roundtrip"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A1 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(TOOL_MODEL).preamble(..).tool(WeatherTool with call counter).default_max_turns(2).build().prompt_typed::<WeatherResponse>(..)`; asserts the tool ran and the typed output.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "typed-prompt-tools"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/typed_prompt_tools/prompt_typed_with_tool_call_roundtrip.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::typed_prompt_tools::prompt_typed_with_tool_call_roundtrip",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/venice/cassette/typed_prompt_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/venice_parameters.rs",
+          "symbol": "venice::cassette::venice_parameters::character_slug_selects_a_persona"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL)` + `model.raw_completion(completion_request(..).additional_params(VeniceParameters character_slug alan-watts).build())`; asserts the echoed `venice_parameters` on the raw response. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "venice-parameters"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/venice_parameters/character_slug.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::venice_parameters::character_slug_selects_a_persona",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/venice_parameters.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/venice_parameters.rs",
+          "symbol": "venice::cassette::venice_parameters::disable_thinking_is_applied"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL)` + `model.raw_completion(completion_request(..).additional_params(VeniceParameters disable_thinking + strip_thinking_response).build())`; asserts the echoed `venice_parameters` on the raw response. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "venice-parameters"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/venice_parameters/disable_thinking.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::venice_parameters::disable_thinking_is_applied",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/venice_parameters.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/venice_parameters.rs",
+          "symbol": "venice::cassette::venice_parameters::venice_system_prompt_can_be_disabled"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL)` + `model.raw_completion(completion_request(..).additional_params(VeniceParameters include_venice_system_prompt false).build())`; asserts the echoed `venice_parameters` on the raw response. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "venice-parameters"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/venice_parameters/include_venice_system_prompt_false.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::venice_parameters::venice_system_prompt_can_be_disabled",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/venice_parameters.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/venice_parameters.rs",
+          "symbol": "venice::cassette::venice_parameters::web_search_auto_is_echoed"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL)` + `model.raw_completion(completion_request(..).additional_params(VeniceParameters enable_web_search Auto).build())`; asserts the echoed `venice_parameters` on the raw response. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "venice-parameters"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/venice_parameters/web_search_auto.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::venice_parameters::web_search_auto_is_echoed",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/venice_parameters.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/venice_parameters.rs",
+          "symbol": "venice::cassette::venice_parameters::web_search_on_returns_citations"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL)` + `model.raw_completion(completion_request(..).additional_params(VeniceParameters enable_web_search On + citations).build())`; asserts the echoed `venice_parameters` on the raw response. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "venice-parameters"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/venice_parameters/web_search_on.yaml"
+        }
+      ],
       "id": "rig::venice::venice::cassette::venice_parameters::web_search_on_returns_citations",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/venice/cassette/venice_parameters.rs"
     }
   ],
