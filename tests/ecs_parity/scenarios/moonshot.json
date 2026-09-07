@@ -14,80 +14,189 @@
       ],
       "baseline_ignored": true,
       "classification": "agent",
-      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "classification_reason": "OC-A7 live agent completion smoke (tests/ecs_parity/openai-compatible-classification-contract.md): `moonshot::Client::from_env().agent(MOONSHOT_CHAT).preamble(BASIC_PREAMBLE).temperature(0.5).max_tokens(1024).build().prompt(BASIC_PROMPT)`; `assert_nonempty_response`. `#[ignore]` live; no credential configured.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires MOONSHOT_API_KEY\"]"
       ],
       "ecs": null,
       "evidence_scope": "supplemental_live",
+      "families": [
+        "provider-completions"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::moonshot::moonshot::agent::completion_smoke",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed; counted as supplemental_live, not ported. A phase-2 isolated capture is planned only where a credential is configured (groq, perplexity)."
+      ],
       "source": "tests/providers/moonshot/agent.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/moonshot/anthropic.rs",
+          "symbol": "moonshot::anthropic::anthropic_compatible_completion_smoke"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A1 via OC-A7 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `moonshot::AnthropicClient::from_env().agent(KIMI_K2_5).preamble(BASIC_PREAMBLE).build().prompt(BASIC_PROMPT)`; `assert_nonempty_response`. Anthropic-compatible transport; `#[ignore]` live, no cassette, no credential configured.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires MOONSHOT_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "provider-completions"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::moonshot::moonshot::anthropic::anthropic_compatible_completion_smoke",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/moonshot/anthropic.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/moonshot/context.rs",
+          "symbol": "moonshot::context::context_smoke"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A1 via OC-A7 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `CONTEXT_DOCS.iter().fold(moonshot::Client::from_env().agent(MOONSHOT_CHAT), |b, d| b.context(d)).build().prompt(CONTEXT_PROMPT)`; `assert_contains_any_case_insensitive`. `#[ignore]` live, no cassette, no credential configured.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires MOONSHOT_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "context"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::moonshot::moonshot::context::context_smoke",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/moonshot/context.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/moonshot/models.rs",
+          "symbol": "moonshot::models::list_models_smoke"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C2 model listing (tests/ecs_parity/openai-compatible-classification-contract.md): `moonshot::Client::from_env().list_models()`; asserts non-empty. Model-listing path; `#[ignore]` live.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires MOONSHOT_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "model-listing"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::moonshot::moonshot::models::list_models_smoke",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/moonshot/models.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/moonshot/reasoning_history.rs",
+          "symbol": "moonshot::reasoning_history::assistant_reasoning_content_roundtrips_in_history"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `moonshot::Client::from_env().completion_model(KIMI_K2_5)` + `model.completion(completion_request(..).message(user).message(assistant with Reasoning + text).build())`; asserts the answer names the remembered color. No AgentBuilder; `#[ignore]` live.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires MOONSHOT_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "reasoning-history"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::moonshot::moonshot::reasoning_history::assistant_reasoning_content_roundtrips_in_history",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/moonshot/reasoning_history.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/moonshot/tools.rs",
+          "symbol": "moonshot::tools::required_tool_choice_agent_roundtrip"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A1 via OC-A7 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `moonshot::Client::from_env().agent(KIMI_K2_5).preamble(TOOLS_PREAMBLE).tool_choice(Required).tool(Adder).tool(Subtract).build().prompt(TOOLS_PROMPT).max_turns(3)`; asserts -3. `#[ignore]` live, no cassette, no credential configured.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires MOONSHOT_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "tools-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::moonshot::moonshot::tools::required_tool_choice_agent_roundtrip",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/moonshot/tools.rs"
     }
   ],
