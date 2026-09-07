@@ -140,6 +140,14 @@ fn scenario_rows_are_filed_by_their_source_tree() {
     assert_eq!(expected_file("tests/providers/xai/agent.rs"), "xai.json");
     assert_eq!(expected_file("tests/common/support.rs"), "common.json");
     assert_eq!(expected_file("tests/core.rs"), "common.json");
+    assert_eq!(
+        expected_file("crates/rig-agent/src/bus/tests.rs"),
+        "rig-agent.json"
+    );
+    assert_eq!(
+        expected_file("crates/rig-ecs/tests/bus_effects.rs"),
+        "rig-ecs.json"
+    );
 }
 
 #[test]

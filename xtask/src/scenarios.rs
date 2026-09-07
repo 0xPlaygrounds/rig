@@ -100,15 +100,18 @@ fn references(root: &Path, v: &Value) -> Result<()> {
     }
     Ok(())
 }
-/// The catalog file a scenario row belongs in, from its `source` path.
+/// The catalog file a scenario row belongs in, from its `source` path: one
+/// file per provider tree, one per companion crate, `common.json` otherwise.
 pub(crate) fn expected_file(source: &str) -> String {
-    source
+    let tree = source
         .strip_prefix("tests/providers/")
+        .or_else(|| source.strip_prefix("crates/"))
         .and_then(|rest| rest.split_once('/'))
-        .map_or_else(
-            || "common.json".to_string(),
-            |(provider, _)| format!("{provider}.json"),
-        )
+        .map(|(name, _)| name);
+    match tree {
+        Some(name) => format!("{name}.json"),
+        None => "common.json".to_string(),
+    }
 }
 
 /// Merge every `*.json` file under [`CATALOG_DIR`] into one catalog value,
