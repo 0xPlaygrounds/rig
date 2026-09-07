@@ -21,7 +21,7 @@ fn response_text(choice: &[AssistantContent]) -> String {
 async fn assistant_reasoning_content_roundtrips_in_history() {
     let model = moonshot::Client::from_env()
         .expect("moonshot client should build")
-        .completion_model(moonshot::KIMI_K2_5);
+        .completion_model(moonshot::KIMI_K2_6);
     let assistant = Message::Assistant {
         id: None,
         content: vec![

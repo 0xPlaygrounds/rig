@@ -7,7 +7,7 @@
 //!
 //! let client = moonshot::Client::new("YOUR_API_KEY").expect("Failed to build client");
 //!
-//! let kimi_model = client.completion_model(moonshot::KIMI_K2_5);
+//! let kimi_model = client.completion_model(moonshot::KIMI_K2_6);
 //! ```
 //!
 //! # Custom base URL
@@ -122,11 +122,16 @@ const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
 /// Moonshot v1 128K context model (legacy)
 pub const MOONSHOT_CHAT: &str = "moonshot-v1-128k";
 
-/// Kimi K2 — Mixture-of-Experts model (1T total params, 32B active)
+/// Kimi K2 — Mixture-of-Experts model (1T total params, 32B active).
+/// Discontinued 2026-05-25; the Moonshot API answers 404 for the K2 series.
 pub const KIMI_K2: &str = "kimi-k2";
 
-/// Kimi K2.5 — Native multimodal agentic model with 256K context
+/// Kimi K2.5 — Native multimodal agentic model with 256K context.
+/// Discontinued 2026-08-31; use [`KIMI_K2_6`] instead.
 pub const KIMI_K2_5: &str = "kimi-k2.5";
+
+/// Kimi K2.6 — Multimodal thinking/non-thinking agentic model with 256K context
+pub const KIMI_K2_6: &str = "kimi-k2.6";
 
 /// Moonshot completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
