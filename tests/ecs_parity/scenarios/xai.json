@@ -1014,27 +1014,77 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/audio_generation.rs",
+          "symbol": "xai::audio_generation::audio_generation_smoke"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C4 audio generation (tests/ecs_parity/openai-compatible-classification-contract.md): `xai::Client::from_env().audio_generation_model(xai::TTS_1).audio_generation_request().text(AUDIO_TEXT).voice(\"eve\").additional_params(language en).send()`; asserts non-empty bytes. `#[cfg(feature = \"audio\")]` + `#[ignore]`: outside the root-bedrock listing, live-only.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"audio\")]",
         "# [ignore = \"requires XAI_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "audio-generation"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::xai::xai::audio_generation::audio_generation_smoke",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Feature-gated (`#[cfg(feature = ...)]`): not compiled in the root-bedrock listing; classified from source only.",
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/xai/audio_generation.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/context.rs",
+          "symbol": "xai::context::context_smoke"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A1 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `XAI_CONTEXT_DOCS.iter().fold(client.agent(GROK_4), AgentBuilder::context).preamble(..).build().prompt(..)`; asserts the answer contains \"ancient tool\". Cassette `context/context_smoke`.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "context"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/context/context_smoke.yaml"
+        }
+      ],
       "id": "rig::xai::xai::context::context_smoke",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/xai/context.rs"
     },
     {
@@ -1537,358 +1587,1274 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/image_generation.rs",
+          "symbol": "xai::image_generation::image_generation_smoke"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C5 image generation (tests/ecs_parity/openai-compatible-classification-contract.md): `client.image_generation_model(GROK_IMAGINE_IMAGE_PRO).image_generation_request().prompt(IMAGE_PROMPT).additional_params(resolution, aspect_ratio).send()` under `with_xai_cassette`; asserts non-empty bytes. `#[cfg(feature = \"image\")]`: cassette-backed but outside the root-bedrock listing.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [cfg (feature = \"image\")]"
       ],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "image-generation"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/image_generation/image_generation_smoke.yaml"
+        }
+      ],
       "id": "rig::xai::xai::image_generation::image_generation_smoke",
+      "mapping_limits": [
+        "Feature-gated (`#[cfg(feature = ...)]`): not compiled in the root-bedrock listing; classified from source only.",
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/xai/image_generation.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/loaders.rs",
+          "symbol": "xai::loaders::loaders_smoke"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A1 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `FileLoader::with_glob(LOADERS_GLOB)` folded into `client.agent(GROK_4)` as `.context(..)` per file, `.preamble(..).build().prompt(..)`; `assert_loader_answer_is_relevant`. Cassette `loaders/loaders_smoke`.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "loaders"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/loaders/loaders_smoke.yaml"
+        }
+      ],
       "id": "rig::xai::xai::loaders::loaders_smoke",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/xai/loaders.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/multi_extract.rs",
+          "symbol": "xai::multi_extract::batch_multi_extract_chain"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A4 rig-agent Extractor (tests/ecs_parity/openai-compatible-classification-contract.md): Three `client.extractor::<T>(GROK_3_MINI).preamble(..).retries(2).build()` extractors driven concurrently over an unordered cassette; asserts names/topics/sentiment shape per input. rig-agent Extractor orchestration.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-multi"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/multi_extract/batch_multi_extract_chain.yaml"
+        }
+      ],
       "id": "rig::xai::xai::multi_extract::batch_multi_extract_chain",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/xai/multi_extract.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/permission_control.rs",
+          "symbol": "xai::permission_control::permission_control_prompt_example"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A3 agent run with hooks (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(GROK_4).preamble(..).tool(ReadFileHead).tool(ReadFileTail).build().prompt(..).max_turns(5).add_hook(PermissionHook)`; `on_dispatch` skips the first tool, `on_outcome` records the result; asserts last result and exactly two dispatches.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "hooks",
+        "permission-control"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/permission_control/permission_control_prompt_example.yaml"
+        }
+      ],
       "id": "rig::xai::xai::permission_control::permission_control_prompt_example",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/xai/permission_control.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/permission_control.rs",
+          "symbol": "xai::permission_control::permission_control_streaming_example"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A3 agent run with hooks (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(GROK_4)...build().stream_prompt(..).max_turns(5).add_hook(PermissionHook).stream()` drained by `stream_to_stdout`; asserts final text, last tool result and two dispatches.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "hooks",
+        "permission-control"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/permission_control/permission_control_streaming_example.yaml"
+        }
+      ],
       "id": "rig::xai::xai::permission_control::permission_control_streaming_example",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/xai/permission_control.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/prompt_caching.rs",
+          "symbol": "xai::prompt_caching::blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_prompt_caching_cassette"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::run_cache_probe"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M3 cache probe (tests/ecs_parity/openai-compatible-classification-contract.md): `run_cache_probe(&client.completion_model(GROK_3_MINI), ..)`: three `model.completion(..)` turns with hand-built history; `assert_cache_conformance` + `assert_prefix_stable`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/prompt_caching/blocking_probe.yaml"
+        }
+      ],
       "id": "rig::xai::xai::prompt_caching::blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/xai/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/prompt_caching.rs",
+          "symbol": "xai::prompt_caching::live_cache_economics"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::run_cache_probe"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M3 cache probe (tests/ecs_parity/openai-compatible-classification-contract.md): `xai::Client::from_env().completion_model(GROK_3_MINI)` + `run_cache_probe` + `report_and_assert_live`; `#[ignore]` live run, no cassette. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires XAI_API_KEY and spends real tokens\"]"
       ],
       "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::xai::xai::prompt_caching::live_cache_economics",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/xai/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/prompt_caching.rs",
+          "symbol": "xai::prompt_caching::streaming_probe_survives_the_streaming_accumulator"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_prompt_caching_cassette"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::run_cache_probe"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M3 cache probe (tests/ecs_parity/openai-compatible-classification-contract.md): `run_cache_probe_streaming(&client.completion_model(GROK_3_MINI), ..)`: three `model.stream(..)` turns; `assert_cache_conformance` + `assert_prefix_stable`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/prompt_caching/streaming_probe.yaml"
+        }
+      ],
       "id": "rig::xai::xai::prompt_caching::streaming_probe_survives_the_streaming_accumulator",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/xai/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/raw_capture_matrix.rs",
+          "symbol": "xai::raw_capture_matrix::normalized_fields_match_raw_renormalized"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(GROK_3_MINI)` + `model.completion(completion_request(PROMPT).build())`; `normalized_fields_match_raw_renormalized` inspects `response.raw` against the Responses `xai::CompletionResponse`, the recorded body and `x-request-id` header. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/raw_capture_matrix/normalized_fields_match_raw_renormalized.yaml"
+        }
+      ],
       "id": "rig::xai::xai::raw_capture_matrix::normalized_fields_match_raw_renormalized",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/xai/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/raw_capture_matrix.rs",
+          "symbol": "xai::raw_capture_matrix::raw_exposes_status_and_service_tier"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(GROK_3_MINI)` + `model.completion(completion_request(PROMPT).build())`; `raw_exposes_status_and_service_tier` inspects `response.raw` against the Responses `xai::CompletionResponse`, the recorded body and `x-request-id` header. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/raw_capture_matrix/raw_exposes_status_and_service_tier.yaml"
+        }
+      ],
       "id": "rig::xai::xai::raw_capture_matrix::raw_exposes_status_and_service_tier",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/xai/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/raw_capture_matrix.rs",
+          "symbol": "xai::raw_capture_matrix::raw_round_trips_responses_type"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(GROK_3_MINI)` + `model.completion(completion_request(PROMPT).build())`; `raw_round_trips_responses_type` inspects `response.raw` against the Responses `xai::CompletionResponse`, the recorded body and `x-request-id` header. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/raw_capture_matrix/raw_round_trips_responses_type.yaml"
+        }
+      ],
       "id": "rig::xai::xai::raw_capture_matrix::raw_round_trips_responses_type",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/xai/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/raw_completion_parity_matrix.rs",
+          "symbol": "xai::raw_completion_parity_matrix::raw_completion_carries_request_id_on_the_type"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(GROK_3_MINI)` + `model.raw_completion(..)`; asserts the typed value carries the recorded `x-request-id` and its mirrored serialization omits it. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-completion-parity"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/raw_completion_parity_matrix/raw_completion_carries_request_id_on_the_type.yaml"
+        }
+      ],
       "id": "rig::xai::xai::raw_completion_parity_matrix::raw_completion_carries_request_id_on_the_type",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/xai/raw_completion_parity_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/raw_completion_parity_matrix.rs",
+          "symbol": "xai::raw_completion_parity_matrix::raw_normalize_reproduces_completion"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(GROK_3_MINI)`: `model.completion(..)` then `model.raw_completion(..).normalize(\"xai\").with_optional_provider_request_id(..)`; two recorded interactions and headers compared. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-completion-parity"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/raw_completion_parity_matrix/raw_normalize_reproduces_completion.yaml"
+        }
+      ],
       "id": "rig::xai::xai::raw_completion_parity_matrix::raw_normalize_reproduces_completion",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/xai/raw_completion_parity_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/raw_stream_capture_matrix.rs",
+          "symbol": "xai::raw_stream_capture_matrix::stream_raw_exposes_terminal_status"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(GROK_3_MINI)` + `model.stream(request)` drained by `collect_text_and_terminal`; `stream_raw_exposes_terminal_status` checks `terminal.raw` against the Responses streaming terminal and the recorded `response.completed` event. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-stream-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/raw_stream_capture_matrix/stream_raw_exposes_terminal_status.yaml"
+        }
+      ],
       "id": "rig::xai::xai::raw_stream_capture_matrix::stream_raw_exposes_terminal_status",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/xai/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/raw_stream_capture_matrix.rs",
+          "symbol": "xai::raw_stream_capture_matrix::stream_raw_round_trips_terminal_type"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(GROK_3_MINI)` + `model.stream(request)` drained by `collect_text_and_terminal`; `stream_raw_round_trips_terminal_type` checks `terminal.raw` against the Responses streaming terminal and the recorded `response.completed` event. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-stream-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/raw_stream_capture_matrix/stream_raw_round_trips_terminal_type.yaml"
+        }
+      ],
       "id": "rig::xai::xai::raw_stream_capture_matrix::stream_raw_round_trips_terminal_type",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/xai/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/reasoning_roundtrip.rs",
+          "symbol": "xai::reasoning_roundtrip::nonstreaming"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/reasoning.rs",
+          "symbol": "reasoning"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M4 reasoning roundtrip helper (tests/ecs_parity/openai-compatible-classification-contract.md): `run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(client.completion_model(GROK_3_MINI), None))`: hand-built `CompletionRequest` + `agent.model.completion(request)` for two turns; no AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "reasoning-roundtrip"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/reasoning_roundtrip/nonstreaming.yaml"
+        }
+      ],
       "id": "rig::xai::xai::reasoning_roundtrip::nonstreaming",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/xai/reasoning_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/reasoning_roundtrip.rs",
+          "symbol": "xai::reasoning_roundtrip::streaming"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/reasoning.rs",
+          "symbol": "reasoning"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M4 reasoning roundtrip helper (tests/ecs_parity/openai-compatible-classification-contract.md): `run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(client.completion_model(GROK_3_MINI), None))`: hand-built `CompletionRequest` + `agent.model.stream(request)` for two turns; no AgentBuilder despite the type name.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "reasoning-roundtrip"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/reasoning_roundtrip/streaming.yaml"
+        }
+      ],
       "id": "rig::xai::xai::reasoning_roundtrip::streaming",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/xai/reasoning_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/reasoning_tool_roundtrip.rs",
+          "symbol": "xai::reasoning_tool_roundtrip::nonstreaming"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/reasoning.rs",
+          "symbol": "reasoning"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A1 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(GROK_3_MINI)...tool(WeatherTool).default_max_turns(2).build().chat(TOOL_USER_PROMPT, &mut [])`; `reasoning::assert_nonstreaming_universal`.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "reasoning-tool-roundtrip"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/reasoning_tool_roundtrip/nonstreaming.yaml"
+        }
+      ],
       "id": "rig::xai::xai::reasoning_tool_roundtrip::nonstreaming",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/xai/reasoning_tool_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/reasoning_tool_roundtrip.rs",
+          "symbol": "xai::reasoning_tool_roundtrip::streaming"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/reasoning.rs",
+          "symbol": "reasoning"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A2 agent streaming run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(GROK_3_MINI).preamble(TOOL_SYSTEM_PROMPT).max_tokens(4096).tool(WeatherTool).build().stream_chat(TOOL_USER_PROMPT, []).max_turns(3).stream()`; `reasoning::collect_stream_stats` + `assert_universal`.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "reasoning-tool-roundtrip"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/reasoning_tool_roundtrip/streaming.yaml"
+        }
+      ],
       "id": "rig::xai::xai::reasoning_tool_roundtrip::streaming",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/xai/reasoning_tool_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/request_hook.rs",
+          "symbol": "xai::request_hook::request_hook_records_prompt_and_response"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A3 agent run with hooks (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(GROK_3_MINI).preamble(..).build().prompt(\"Entertain me!\").add_hook(SessionIdHook)` (`AgentHook::on_completion_call` + `on_outcome`); asserts one prompt call, one response call and the captured values.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "hooks"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/request_hook/request_hook_records_prompt_and_response.yaml"
+        }
+      ],
       "id": "rig::xai::xai::request_hook::request_hook_records_prompt_and_response",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/xai/request_hook.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/response_identity.rs",
+          "symbol": "xai::response_identity::auth_rejection_classifies_with_contract"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_bogus_key"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `with_xai_cassette_bogus_key` + `client.completion_model(GROK_3_MINI).completion_request(..).send().expect_err(..)`; asserts `ProviderResponse` classification. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "response-identity",
+        "error-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/response_identity/auth_rejection_classifies_with_contract.yaml"
+        }
+      ],
       "id": "rig::xai::xai::response_identity::auth_rejection_classifies_with_contract",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/xai/response_identity.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/response_identity.rs",
+          "symbol": "xai::response_identity::nonstreaming_response_carries_identity"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(GROK_3_MINI).completion_request(..).send()`; asserts `response_id` and `provider_request_id` present. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "response-identity"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/response_identity/nonstreaming_response_carries_identity.yaml"
+        }
+      ],
       "id": "rig::xai::xai::response_identity::nonstreaming_response_carries_identity",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/xai/response_identity.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/response_identity.rs",
+          "symbol": "xai::response_identity::provider_error_classifies_with_contract_but_reports_no_id"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(\"grok-nonexistent-model-for-identity-edge\").completion_request(..).send().expect_err(..)`; asserts `ProviderResponse` classification and no request id. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "response-identity",
+        "error-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/response_identity/provider_error_classifies_with_contract_but_reports_no_id.yaml"
+        }
+      ],
       "id": "rig::xai::xai::response_identity::provider_error_classifies_with_contract_but_reports_no_id",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/xai/response_identity.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/response_identity.rs",
+          "symbol": "xai::response_identity::raw_and_normalized_views_agree_on_identity"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(GROK_3_MINI)` + `model.raw_completion(..)` then `NormalizeCompletionResponse::normalize(raw, \"xai\")`; asserts both carry the same request id. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "response-identity"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/response_identity/raw_and_normalized_views_agree_on_identity.yaml"
+        }
+      ],
       "id": "rig::xai::xai::response_identity::raw_and_normalized_views_agree_on_identity",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/xai/response_identity.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/response_identity.rs",
+          "symbol": "xai::response_identity::streamed_agent_run_reports_identity"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A3 agent run with hooks (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(GROK_3_MINI).preamble(..).add_hook(IdentityProbe).build().stream_prompt(Message::user(..)).stream()` drained to EOF; `IdentityProbe` implements `AgentHook::on_outcome`/`on_model_turn_finished`; asserts one turn identity with a transport request id.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "hooks",
+        "response-identity"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/response_identity/streamed_agent_run_reports_identity.yaml"
+        }
+      ],
       "id": "rig::xai::xai::response_identity::streamed_agent_run_reports_identity",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/xai/response_identity.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/response_identity.rs",
+          "symbol": "xai::response_identity::streaming_terminal_carries_identity"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(GROK_3_MINI).completion_request(..).stream()` drained manually to `StreamEvent::Final`; asserts terminal `provider_request_id`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "response-identity"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/response_identity/streaming_terminal_carries_identity.yaml"
+        }
+      ],
       "id": "rig::xai::xai::response_identity::streaming_terminal_carries_identity",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/xai/response_identity.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/streaming.rs",
+          "symbol": "xai::streaming::streaming_smoke"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A2 agent streaming run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(GROK_3_MINI).preamble(STREAMING_PREAMBLE).build().stream_prompt(STREAMING_PROMPT).stream()` drained by `collect_stream_final_response`; asserts non-empty final text.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "streaming-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/streaming/streaming_smoke.yaml"
+        }
+      ],
       "id": "rig::xai::xai::streaming::streaming_smoke",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/xai/streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/streaming_tools.rs",
+          "symbol": "xai::streaming_tools::raw_responses_stream_preserves_tool_then_followup_text_ordering"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): Two `model.stream(..)` turns on `client.completion_model(GROK_4)` with a hand-built assistant tool call + tool result in between; `collect_raw_stream_observation` + ordering/text assertions. No AgentBuilder, tool never executed.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/streaming_tools/raw_responses_stream_preserves_tool_then_followup_text_ordering.yaml"
+        }
+      ],
       "id": "rig::xai::xai::streaming_tools::raw_responses_stream_preserves_tool_then_followup_text_ordering",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/xai/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/streaming_tools.rs",
+          "symbol": "xai::streaming_tools::raw_stream_emits_required_zero_arg_tool_call"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(GROK_4)` + `completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT).tool(zero_arg_tool_definition(\"ping\")).tool_choice(Required)` + `model.stream(request)`; `assert_stream_contains_zero_arg_tool_call_named` drains it. No AgentBuilder, tool never executed.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/streaming_tools/raw_stream_emits_required_zero_arg_tool_call.yaml"
+        }
+      ],
       "id": "rig::xai::xai::streaming_tools::raw_stream_emits_required_zero_arg_tool_call",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/xai/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/streaming_tools.rs",
+          "symbol": "xai::streaming_tools::responses_stream_preserves_tool_result_flow"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A2 agent streaming run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(GROK_4).preamble(XAI_STATUS_TOOL_PREAMBLE).tool(StatusWordTool).build().stream_prompt(..).max_turns(5).stream()` drained by `collect_stream_observation`; `assert_tool_call_precedes_later_text` with the tool's output.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/streaming_tools/responses_stream_preserves_tool_result_flow.yaml"
+        }
+      ],
       "id": "rig::xai::xai::streaming_tools::responses_stream_preserves_tool_result_flow",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/xai/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/tools.rs",
+          "symbol": "xai::tools::tools_smoke"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A1 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(GROK_3_MINI).preamble(TOOLS_PREAMBLE).tool(Adder).tool(Subtract).default_max_turns(2).build().prompt(TOOLS_PROMPT)`; asserts the answer mentions -3. Cassette `tools/tools_smoke`.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tools-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/tools/tools_smoke.yaml"
+        }
+      ],
       "id": "rig::xai::xai::tools::tools_smoke",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/xai/tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/typed_prompt_tools.rs",
+          "symbol": "xai::typed_prompt_tools::prompt_typed_with_tool_call_roundtrip"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A1 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(GROK_4).preamble(..).tool(WeatherTool with call counter).default_max_turns(2).build().prompt_typed::<WeatherResponse>(..)`; asserts the tool ran and the typed output.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "typed-prompt-tools"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/typed_prompt_tools/prompt_typed_with_tool_call_roundtrip.yaml"
+        }
+      ],
       "id": "rig::xai::xai::typed_prompt_tools::prompt_typed_with_tool_call_roundtrip",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/xai/typed_prompt_tools.rs"
     }
   ],
