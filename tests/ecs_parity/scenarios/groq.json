@@ -14,576 +14,1730 @@
       ],
       "baseline_ignored": true,
       "classification": "agent",
-      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "classification_reason": "OC-A7 live agent completion smoke (tests/ecs_parity/openai-compatible-classification-contract.md): `groq::Client::from_env().agent(AGENT_MODEL).preamble(BASIC_PREAMBLE).build().prompt(BASIC_PROMPT)`; `assert_nonempty_response`. `#[ignore]` live; GROQ_API_KEY is configured, capture scheduled for phase 2.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
       "evidence_scope": "supplemental_live",
+      "families": [
+        "provider-completions"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::agent::completion_smoke",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed; counted as supplemental_live, not ported. A phase-2 isolated capture is planned only where a credential is configured (groq, perplexity)."
+      ],
       "source": "tests/providers/groq/agent.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/agent_tool_sessions.rs",
+          "symbol": "groq::agent_tool_sessions::json_object_response_format_roundtrip"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(\"llama-3.3-70b-versatile\")` + `raw_and_normalized_completion(request with response_format json_object)`; parses the text as JSON, asserts raw metadata. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/agent_tool_sessions/json_object_response_format_roundtrip.yaml"
+        }
+      ],
       "id": "rig::groq::groq::agent_tool_sessions::json_object_response_format_roundtrip",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/groq/agent_tool_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/agent_tool_sessions.rs",
+          "symbol": "groq::agent_tool_sessions::json_schema_structured_output_roundtrip"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(\"openai/gpt-oss-20b\")` + `raw_and_normalized_completion(request.output_schema(schema_for!(StructuredReleasePlan)))`; deserializes the text, asserts raw metadata. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml"
+        }
+      ],
       "id": "rig::groq::groq::agent_tool_sessions::json_schema_structured_output_roundtrip",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/groq/agent_tool_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/agent_tool_sessions.rs",
+          "symbol": "groq::agent_tool_sessions::long_history_replay_with_tool_result_continuation"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(SESSION_MODEL)` + hand-built eight-message history incl. a tool call/result, `tool_choice(None)`, `raw_and_normalized_completion` (= `model.raw_completion(..)` + `normalize(\"groq\")`); asserts text and raw metadata. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml"
+        }
+      ],
       "id": "rig::groq::groq::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/groq/agent_tool_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/agent_tool_sessions.rs",
+          "symbol": "groq::agent_tool_sessions::low_latency_streaming_text_surfaces_final_usage"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(SESSION_MODEL)` + `model.stream(..)` drained manually; asserts text deltas and final usage. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/agent_tool_sessions/low_latency_streaming_text_surfaces_final_usage.yaml"
+        }
+      ],
       "id": "rig::groq::groq::agent_tool_sessions::low_latency_streaming_text_surfaces_final_usage",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/groq/agent_tool_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/agent_tool_sessions.rs",
+          "symbol": "groq::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A1 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(SESSION_MODEL).preamble(TWO_TOOL_STREAM_PREAMBLE).tool(AlphaSignal).tool(BetaSignal).additional_params(parallel_tool_calls true).default_max_turns(5).build().chat(.., &mut history)`; asserts both outputs, two calls on one assistant message, two results.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml"
+        }
+      ],
       "id": "rig::groq::groq::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/agent_tool_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/agent_tool_sessions.rs",
+          "symbol": "groq::agent_tool_sessions::parallel_tool_calls_single_turn_streaming"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A2 agent streaming run (tests/ecs_parity/openai-compatible-classification-contract.md): Same agent, `stream_prompt(TWO_TOOL_STREAM_PROMPT).max_turns(5).stream()` drained by `collect_stream_observation`; `assert_two_tool_roundtrip_contract`.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/agent_tool_sessions/parallel_tool_calls_single_turn_streaming.yaml"
+        }
+      ],
       "id": "rig::groq::groq::agent_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/agent_tool_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/agent_tool_sessions.rs",
+          "symbol": "groq::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(SESSION_MODEL)` + `completion_request(..).tool(tool_definition(&InspectManifest)).tool_choice(Required)` + `model.stream(request)` drained by `collect_raw_stream_observation`; asserts object arguments and tool_call_delta events. No AgentBuilder, tool never executed.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml"
+        }
+      ],
       "id": "rig::groq::groq::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/groq/agent_tool_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/agent_tool_sessions.rs",
+          "symbol": "groq::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A1 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(\"llama-3.3-70b-versatile\").preamble(COMPLEX_SESSION_PREAMBLE).tool(x5 typed tools with an invocation log).additional_params(parallel_tool_calls false).default_max_turns(10).build().chat(COMPLEX_SESSION_PROMPT, &mut history)`; asserts markers, exact invocation order/arguments and call/result ordering in the caller-owned history. Same partition as the existing tool-sessions contract.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml"
+        }
+      ],
       "id": "rig::groq::groq::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/agent_tool_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/agent_tool_sessions.rs",
+          "symbol": "groq::agent_tool_sessions::sequential_complex_tool_calls_streaming"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A2 agent streaming run (tests/ecs_parity/openai-compatible-classification-contract.md): Same agent without a builder budget, `stream_chat(COMPLEX_SESSION_PROMPT, []).max_turns(10).stream()` drained by `collect_stream_observation`; asserts no errors, five ordered tool calls, five results, markers and invocation arguments.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml"
+        }
+      ],
       "id": "rig::groq::groq::agent_tool_sessions::sequential_complex_tool_calls_streaming",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/agent_tool_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/agent_tool_sessions.rs",
+          "symbol": "groq::agent_tool_sessions::tool_choice_auto_required_specific_and_none"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): Four direct `model.completion(completion_request(..).tool(..).tool_choice(Auto/Required/Specific/None).build())` calls on `client.completion_model(SESSION_MODEL)`; asserts `choice` contents. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions",
+        "tool-choice"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/agent_tool_sessions/tool_choice_auto_required_specific_and_none.yaml"
+        }
+      ],
       "id": "rig::groq::groq::agent_tool_sessions::tool_choice_auto_required_specific_and_none",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/groq/agent_tool_sessions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/context.rs",
+          "symbol": "groq::context::context_smoke"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A1 via OC-A7 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `groq::Client::from_env()`; `CONTEXT_DOCS.iter().fold(client.agent(CONTEXT_MODEL), |b, d| b.context(d)).build().prompt(CONTEXT_PROMPT)`; `assert_contains_any_case_insensitive`. `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "context"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::context::context_smoke",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/context.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/extractor.rs",
+          "symbol": "groq::extractor::extractor_smoke"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A4 via OC-A7 rig-agent Extractor (tests/ecs_parity/openai-compatible-classification-contract.md): `groq::Client::from_env().extractor::<SmokePerson>(EXTRACTOR_MODEL).build().extract(EXTRACTOR_TEXT)`; asserts the three fields and usage. rig-agent Extractor; `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "extractor-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::extractor::extractor_smoke",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/extractor.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/extractor_usage.rs",
+          "symbol": "groq::extractor_usage::extract_and_extract_with_usage_return_same_data"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A4 via OC-A7 rig-agent Extractor (tests/ecs_parity/openai-compatible-classification-contract.md): `groq::Client::from_env().extractor::<Person|Address>(EXTRACTOR_USAGE_* model).build().extract(..)` (`extract_and_extract_with_usage_return_same_data`; `.history(..)` where the name says so); asserts typed output and usage. rig-agent Extractor; `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "extractor-usage"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/extractor_usage.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/extractor_usage.rs",
+          "symbol": "groq::extractor_usage::extract_backward_compatibility"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A4 via OC-A7 rig-agent Extractor (tests/ecs_parity/openai-compatible-classification-contract.md): `groq::Client::from_env().extractor::<Person|Address>(EXTRACTOR_USAGE_* model).build().extract(..)` (`extract_backward_compatibility`; `.history(..)` where the name says so); asserts typed output and usage. rig-agent Extractor; `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "extractor-usage"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::extractor_usage::extract_backward_compatibility",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/extractor_usage.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/extractor_usage.rs",
+          "symbol": "groq::extractor_usage::extract_with_chat_history_with_usage_works"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A4 via OC-A7 rig-agent Extractor (tests/ecs_parity/openai-compatible-classification-contract.md): `groq::Client::from_env().extractor::<Person|Address>(EXTRACTOR_USAGE_* model).build().extract(..)` (`extract_with_chat_history_with_usage_works`; `.history(..)` where the name says so); asserts typed output and usage. rig-agent Extractor; `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "extractor-usage"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::extractor_usage::extract_with_chat_history_with_usage_works",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/extractor_usage.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/extractor_usage.rs",
+          "symbol": "groq::extractor_usage::extract_with_usage_returns_data_and_usage"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A4 via OC-A7 rig-agent Extractor (tests/ecs_parity/openai-compatible-classification-contract.md): `groq::Client::from_env().extractor::<Person|Address>(EXTRACTOR_USAGE_* model).build().extract(..)` (`extract_with_usage_returns_data_and_usage`; `.history(..)` where the name says so); asserts typed output and usage. rig-agent Extractor; `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "extractor-usage"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::extractor_usage::extract_with_usage_returns_data_and_usage",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/extractor_usage.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/extractor_usage.rs",
+          "symbol": "groq::extractor_usage::usage_tracking_works_for_different_schemas"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A4 via OC-A7 rig-agent Extractor (tests/ecs_parity/openai-compatible-classification-contract.md): `groq::Client::from_env().extractor::<Person|Address>(EXTRACTOR_USAGE_* model).build().extract(..)` (`usage_tracking_works_for_different_schemas`; `.history(..)` where the name says so); asserts typed output and usage. rig-agent Extractor; `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "extractor-usage"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::extractor_usage::usage_tracking_works_for_different_schemas",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/extractor_usage.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/loaders.rs",
+          "symbol": "groq::loaders::loaders_smoke"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A1 via OC-A7 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `FileLoader::with_glob(LOADERS_GLOB)` folded into `client.agent(LOADERS_MODEL)` as `.context(..)`, `.preamble(..).build().prompt(..)`; `assert_loader_answer_is_relevant`. `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "loaders"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::loaders::loaders_smoke",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/loaders.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/models.rs",
+          "symbol": "groq::models::list_models_rejected_key_reports_api_error_with_context"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_bogus_key_result"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C2 model listing (tests/ecs_parity/openai-compatible-classification-contract.md): `with_groq_cassette_bogus_key_result` + `client.list_models().expect_err(..)`; asserts `ModelListingError::ApiError` with provider/path/status context. Model-listing path.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "model-listing",
+        "error-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/models/list_models_rejected_key_reports_api_error_with_context.yaml"
+        }
+      ],
       "id": "rig::groq::groq::models::list_models_rejected_key_reports_api_error_with_context",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/groq/models.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/models.rs",
+          "symbol": "groq::models::list_models_smoke"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C2 model listing (tests/ecs_parity/openai-compatible-classification-contract.md): `client.list_models()` under `with_groq_cassette_result`; asserts ids and the optional fields Groq reports. Model-listing path.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "model-listing"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/models/list_models_smoke.yaml"
+        }
+      ],
       "id": "rig::groq::groq::models::list_models_smoke",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/groq/models.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/multi_extract.rs",
+          "symbol": "groq::multi_extract::batch_multi_extract_chain"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A4 via OC-A7 rig-agent Extractor (tests/ecs_parity/openai-compatible-classification-contract.md): Three `client.extractor::<T>(MULTI_EXTRACT_* models).preamble(..).retries(2).build()` extractors driven concurrently; asserts three non-empty outputs. rig-agent Extractor; `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "extractor-multi"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::multi_extract::batch_multi_extract_chain",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/multi_extract.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/permission_control.rs",
+          "symbol": "groq::permission_control::permission_control_prompt_example"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A3 via OC-A7 agent run with hooks (tests/ecs_parity/openai-compatible-classification-contract.md): `groq::Client::from_env().agent(PERMISSION_CONTROL_PROMPT_MODEL).preamble(..).tool(ReadFileHead).tool(ReadFileTail).build().prompt(..).max_turns(5).add_hook(PermissionHook)`; asserts last tool result and >= 2 dispatches. `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "hooks",
+        "permission-control"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::permission_control::permission_control_prompt_example",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/permission_control.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/permission_control.rs",
+          "symbol": "groq::permission_control::permission_control_streaming_example"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A3 via OC-A7 agent run with hooks (tests/ecs_parity/openai-compatible-classification-contract.md): `...agent(PERMISSION_CONTROL_STREAMING_MODEL)...stream_prompt(..).max_turns(5).add_hook(PermissionHook).stream()` drained by `stream_to_stdout`; asserts final text, last result and >= 2 dispatches. `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "hooks",
+        "permission-control"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::permission_control::permission_control_streaming_example",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/permission_control.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/prompt_caching.rs",
+          "symbol": "groq::prompt_caching::blocking_probe_surfaces_the_cache_read_groq_reports"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_prompt_caching_cassette"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::run_cache_probe"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M3 cache probe (tests/ecs_parity/openai-compatible-classification-contract.md): `run_cache_probe(&client.completion_model(\"openai/gpt-oss-20b\"), &padded probe)`: three `model.completion(..)` turns; `assert_cache_read_is_surfaced` + `assert_prefix_stable`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/prompt_caching/blocking_probe.yaml"
+        }
+      ],
       "id": "rig::groq::groq::prompt_caching::blocking_probe_surfaces_the_cache_read_groq_reports",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/groq/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/prompt_caching.rs",
+          "symbol": "groq::prompt_caching::streaming_probe_surfaces_the_cache_read_groq_reports"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_prompt_caching_cassette"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::run_cache_probe"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M3 cache probe (tests/ecs_parity/openai-compatible-classification-contract.md): `run_cache_probe_streaming(&client.completion_model(\"openai/gpt-oss-20b\"), ..)`: three `model.stream(..)` turns; same assertions. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/prompt_caching/streaming_probe.yaml"
+        }
+      ],
       "id": "rig::groq::groq::prompt_caching::streaming_probe_surfaces_the_cache_read_groq_reports",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/groq/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/raw_capture_matrix.rs",
+          "symbol": "groq::raw_capture_matrix::normalized_fields_match_raw_renormalized"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(RAW_CAPTURE_MATRIX_MODEL)` + `model.completion(completion_request(PROMPT).max_tokens(16).build())`; `normalized_fields_match_raw_renormalized` inspects `response.raw` against `openai::CompletionResponse`, the recorded body and `x-request-id`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/raw_capture_matrix/normalized_fields_match_raw_renormalized.yaml"
+        }
+      ],
       "id": "rig::groq::groq::raw_capture_matrix::normalized_fields_match_raw_renormalized",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/groq/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/raw_capture_matrix.rs",
+          "symbol": "groq::raw_capture_matrix::raw_exposes_queue_time"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(RAW_CAPTURE_MATRIX_MODEL)` + `model.completion(completion_request(PROMPT).max_tokens(16).build())`; `raw_exposes_queue_time` inspects `response.raw` against `openai::CompletionResponse`, the recorded body and `x-request-id`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/raw_capture_matrix/raw_exposes_queue_time.yaml"
+        }
+      ],
       "id": "rig::groq::groq::raw_capture_matrix::raw_exposes_queue_time",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/groq/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/raw_capture_matrix.rs",
+          "symbol": "groq::raw_capture_matrix::raw_round_trips_openai_type"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(RAW_CAPTURE_MATRIX_MODEL)` + `model.completion(completion_request(PROMPT).max_tokens(16).build())`; `raw_round_trips_openai_type` inspects `response.raw` against `openai::CompletionResponse`, the recorded body and `x-request-id`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/raw_capture_matrix/raw_round_trips_openai_type.yaml"
+        }
+      ],
       "id": "rig::groq::groq::raw_capture_matrix::raw_round_trips_openai_type",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/groq/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/raw_completion_parity_matrix.rs",
+          "symbol": "groq::raw_completion_parity_matrix::plain_raw_completion_lacks_request_id"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(RAW_CAPTURE_MODEL)` + `model.raw_completion(..).normalize(\"groq\")`; asserts `provider_request_id == None` although the recording carries the header. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-completion-parity"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/raw_completion_parity_matrix/plain_raw_completion_lacks_request_id.yaml"
+        }
+      ],
       "id": "rig::groq::groq::raw_completion_parity_matrix::plain_raw_completion_lacks_request_id",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/groq/raw_completion_parity_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/raw_completion_parity_matrix.rs",
+          "symbol": "groq::raw_completion_parity_matrix::raw_with_request_id_reproduces_completion"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(RAW_CAPTURE_MODEL)`: `model.completion(..)` then `model.raw_completion_with_request_id(..)` + `normalize(\"groq\").with_optional_provider_request_id(..)`; two recorded interactions/headers compared. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-completion-parity"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/raw_completion_parity_matrix/raw_with_request_id_reproduces_completion.yaml"
+        }
+      ],
       "id": "rig::groq::groq::raw_completion_parity_matrix::raw_with_request_id_reproduces_completion",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/groq/raw_completion_parity_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/raw_stream_capture_matrix.rs",
+          "symbol": "groq::raw_stream_capture_matrix::stream_raw_exposes_terminal_queue_time"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(RAW_CAPTURE_MATRIX_MODEL)` + `model.stream(request)` drained by `collect_text_and_terminal`; `stream_raw_exposes_terminal_queue_time` checks `terminal.raw` against the recorded terminal frame and `x-request-id`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-stream-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/raw_stream_capture_matrix/stream_raw_exposes_terminal_queue_time.yaml"
+        }
+      ],
       "id": "rig::groq::groq::raw_stream_capture_matrix::stream_raw_exposes_terminal_queue_time",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/groq/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/raw_stream_capture_matrix.rs",
+          "symbol": "groq::raw_stream_capture_matrix::stream_raw_round_trips_terminal_type"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(RAW_CAPTURE_MATRIX_MODEL)` + `model.stream(request)` drained by `collect_text_and_terminal`; `stream_raw_round_trips_terminal_type` checks `terminal.raw` against the recorded terminal frame and `x-request-id`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-stream-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/raw_stream_capture_matrix/stream_raw_round_trips_terminal_type.yaml"
+        }
+      ],
       "id": "rig::groq::groq::raw_stream_capture_matrix::stream_raw_round_trips_terminal_type",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/groq/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/request_hook.rs",
+          "symbol": "groq::request_hook::request_hook_records_prompt_and_response"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A3 via OC-A7 agent run with hooks (tests/ecs_parity/openai-compatible-classification-contract.md): `groq::Client::from_env().agent(REQUEST_HOOK_MODEL).preamble(..).build().prompt(\"Entertain me!\").add_hook(SessionIdHook)`; asserts one prompt call, one response call and captured values. `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "hooks"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::request_hook::request_hook_records_prompt_and_response",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/request_hook.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/response_identity_edge.rs",
+          "symbol": "groq::response_identity_edge::auth_rejection_classifies_with_contract"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_bogus_key_result"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `with_groq_cassette_bogus_key_result` + `completion_request(..).send().expect_err(..)`; asserts `ProviderResponse` and a request id. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "response-identity",
+        "error-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/response_identity_edge/auth_rejection_classifies_with_contract.yaml"
+        }
+      ],
       "id": "rig::groq::groq::response_identity_edge::auth_rejection_classifies_with_contract",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/groq/response_identity_edge.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/response_identity_edge.rs",
+          "symbol": "groq::response_identity_edge::blocking_response_carries_identity"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(\"llama-3.3-70b-versatile\").completion_request(..).send()`; asserts `provider_request_id` populated. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "response-identity"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/response_identity_edge/blocking_response_carries_identity.yaml"
+        }
+      ],
       "id": "rig::groq::groq::response_identity_edge::blocking_response_carries_identity",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/groq/response_identity_edge.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/response_identity_edge.rs",
+          "symbol": "groq::response_identity_edge::provider_error_response_carries_request_id"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(\"groq-nonexistent-model-for-identity-edge\").completion_request(..).send().expect_err(..)`; asserts the 4xx carries a request id. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "response-identity",
+        "error-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/response_identity_edge/provider_error_response_carries_request_id.yaml"
+        }
+      ],
       "id": "rig::groq::groq::response_identity_edge::provider_error_response_carries_request_id",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/groq/response_identity_edge.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/response_identity_edge.rs",
+          "symbol": "groq::response_identity_edge::streaming_terminal_carries_identity"
+        },
+        {
+          "path": "tests/providers/groq/support.rs",
+          "symbol": "groq::support::with_groq_cassette_result"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(..).completion_request(..).stream()` drained manually to `StreamEvent::Final`; asserts terminal `provider_request_id`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "response-identity"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/groq/response_identity_edge/streaming_terminal_carries_identity.yaml"
+        }
+      ],
       "id": "rig::groq::groq::response_identity_edge::streaming_terminal_carries_identity",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/groq/response_identity_edge.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/streaming.rs",
+          "symbol": "groq::streaming::streaming_smoke"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A2 via OC-A7 agent streaming run (tests/ecs_parity/openai-compatible-classification-contract.md): `groq::Client::from_env().agent(STREAMING_MODEL).preamble(STREAMING_PREAMBLE).build().stream_prompt(STREAMING_PROMPT).stream()` drained by `collect_stream_final_response`. `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "streaming-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::streaming::streaming_smoke",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/streaming_reasoning.rs",
+          "symbol": "groq::streaming_reasoning::parsed_reasoning_stream"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A2 via OC-A7 agent streaming run (tests/ecs_parity/openai-compatible-classification-contract.md): `groq::Client::from_env().agent(STREAMING_REASONING_MODEL).preamble(..).additional_params(reasoning_format parsed).build().stream_prompt(\"Entertain me!\").stream()` drained by `collect_stream_final_response`. `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "streaming-smoke",
+        "streaming-reasoning"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::streaming_reasoning::parsed_reasoning_stream",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/streaming_reasoning.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/streaming_tools.rs",
+          "symbol": "groq::streaming_tools::raw_followup_uses_tool_result_without_new_tool_calls"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): Two `model.stream(..)` turns on `client.completion_model(STREAMING_TOOLS_RAW_MODEL)` with a hand-built assistant tool call + tool result in between; asserts no new tool calls and the tool output text. No AgentBuilder; `#[ignore]` live.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::streaming_tools::raw_followup_uses_tool_result_without_new_tool_calls",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/groq/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/streaming_tools.rs",
+          "symbol": "groq::streaming_tools::raw_stream_emits_required_zero_arg_tool_call"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `groq::Client::from_env().completion_model(STREAMING_TOOLS_RAW_MODEL)` + `completion_request(..).tool(zero_arg_tool_definition(\"ping\")).tool_choice(Required)` + `model.stream(request)`; `assert_stream_contains_zero_arg_tool_call_named`. No AgentBuilder; `#[ignore]` live.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::streaming_tools::raw_stream_emits_required_zero_arg_tool_call",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/groq/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/streaming_tools.rs",
+          "symbol": "groq::streaming_tools::raw_stream_surfaces_two_distinct_tool_calls_before_text"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(STREAMING_TOOLS_RAW_MODEL)` + `completion_request(..).tool(AlphaSignal def).tool(BetaSignal def)` + `model.stream(request)` drained by `collect_raw_stream_observation`; `assert_raw_stream_contains_distinct_tool_calls_before_text`. No AgentBuilder; `#[ignore]` live.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::streaming_tools::raw_stream_surfaces_two_distinct_tool_calls_before_text",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/groq/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/streaming_tools.rs",
+          "symbol": "groq::streaming_tools::streaming_tools_emit_tool_call_before_later_text"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A2 via OC-A7 agent streaming run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(STREAMING_TOOLS_ORDERED_MODEL).preamble(ORDERED_TOOL_STREAM_PREAMBLE).tool(AlphaSignal).build().stream_prompt(..).max_turns(5).stream()` drained by `collect_stream_observation`; `assert_tool_call_precedes_later_text`. `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::streaming_tools::streaming_tools_emit_tool_call_before_later_text",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/streaming_tools.rs",
+          "symbol": "groq::streaming_tools::streaming_tools_surface_two_distinct_tool_calls_before_final_answer"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A2 via OC-A7 agent streaming run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(STREAMING_TOOLS_MULTI_MODEL).preamble(TWO_TOOL_STREAM_PREAMBLE).tool(AlphaSignal).tool(BetaSignal).build().stream_prompt(..).max_turns(8).stream()` drained by `collect_stream_observation`; `assert_two_tool_roundtrip_contract`. `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::streaming_tools::streaming_tools_surface_two_distinct_tool_calls_before_final_answer",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/tools.rs",
+          "symbol": "groq::tools::tools_smoke"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A1 via OC-A7 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `groq::Client::from_env().agent(TOOLS_MODEL).preamble(..).tool(Adder).tool(Subtract).build().prompt(..).max_turns(3)`; asserts -3. `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "tools-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::tools::tools_smoke",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/transcription.rs",
+          "symbol": "groq::transcription::transcription_smoke"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C3 transcription (tests/ecs_parity/openai-compatible-classification-contract.md): `groq::Client::from_env().transcription_model(groq::WHISPER_LARGE_V3).transcription_request().load_file(AUDIO_FIXTURE_PATH).send()`; asserts non-empty text. Transcription path; `#[ignore]` live.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "transcription"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::transcription::transcription_smoke",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/groq/transcription.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/typed_prompt_tools.rs",
+          "symbol": "groq::typed_prompt_tools::prompt_typed_with_tool_call_roundtrip"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "OC-A1 via OC-A7 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `groq::Client::from_env().agent(TYPED_PROMPT_TOOLS_MODEL).preamble(..).tool(WeatherTool with call counter).build().prompt_typed::<WeatherResponse>(..)`; asserts the tool ran and the typed output. `#[ignore]` live, no cassette.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires GROQ_API_KEY\"]"
       ],
       "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "families": [
+        "typed-prompt-tools"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::groq::groq::typed_prompt_tools::prompt_typed_with_tool_call_roundtrip",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed at the base; no cassette.",
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/groq/typed_prompt_tools.rs"
     }
   ],
