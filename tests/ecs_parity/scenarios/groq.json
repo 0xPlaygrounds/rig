@@ -1,0 +1,591 @@
+{
+  "scenarios": [
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/groq/agent.rs",
+          "symbol": "groq::agent::completion_smoke"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "fixtures": [],
+      "id": "rig::groq::groq::agent::completion_smoke",
+      "source": "tests/providers/groq/agent.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::agent_tool_sessions::json_object_response_format_roundtrip",
+      "source": "tests/providers/groq/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::agent_tool_sessions::json_schema_structured_output_roundtrip",
+      "source": "tests/providers/groq/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "source": "tests/providers/groq/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::agent_tool_sessions::low_latency_streaming_text_surfaces_final_usage",
+      "source": "tests/providers/groq/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "source": "tests/providers/groq/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::agent_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "source": "tests/providers/groq/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "source": "tests/providers/groq/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "source": "tests/providers/groq/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::agent_tool_sessions::sequential_complex_tool_calls_streaming",
+      "source": "tests/providers/groq/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::agent_tool_sessions::tool_choice_auto_required_specific_and_none",
+      "source": "tests/providers/groq/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::context::context_smoke",
+      "source": "tests/providers/groq/context.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::extractor::extractor_smoke",
+      "source": "tests/providers/groq/extractor.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "source": "tests/providers/groq/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::extractor_usage::extract_backward_compatibility",
+      "source": "tests/providers/groq/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::extractor_usage::extract_with_chat_history_with_usage_works",
+      "source": "tests/providers/groq/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::extractor_usage::extract_with_usage_returns_data_and_usage",
+      "source": "tests/providers/groq/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::extractor_usage::usage_tracking_works_for_different_schemas",
+      "source": "tests/providers/groq/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::loaders::loaders_smoke",
+      "source": "tests/providers/groq/loaders.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::models::list_models_rejected_key_reports_api_error_with_context",
+      "source": "tests/providers/groq/models.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::models::list_models_smoke",
+      "source": "tests/providers/groq/models.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::multi_extract::batch_multi_extract_chain",
+      "source": "tests/providers/groq/multi_extract.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::permission_control::permission_control_prompt_example",
+      "source": "tests/providers/groq/permission_control.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::permission_control::permission_control_streaming_example",
+      "source": "tests/providers/groq/permission_control.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::prompt_caching::blocking_probe_surfaces_the_cache_read_groq_reports",
+      "source": "tests/providers/groq/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::prompt_caching::streaming_probe_surfaces_the_cache_read_groq_reports",
+      "source": "tests/providers/groq/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::raw_capture_matrix::normalized_fields_match_raw_renormalized",
+      "source": "tests/providers/groq/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::raw_capture_matrix::raw_exposes_queue_time",
+      "source": "tests/providers/groq/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::raw_capture_matrix::raw_round_trips_openai_type",
+      "source": "tests/providers/groq/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::raw_completion_parity_matrix::plain_raw_completion_lacks_request_id",
+      "source": "tests/providers/groq/raw_completion_parity_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::raw_completion_parity_matrix::raw_with_request_id_reproduces_completion",
+      "source": "tests/providers/groq/raw_completion_parity_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::raw_stream_capture_matrix::stream_raw_exposes_terminal_queue_time",
+      "source": "tests/providers/groq/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::raw_stream_capture_matrix::stream_raw_round_trips_terminal_type",
+      "source": "tests/providers/groq/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::request_hook::request_hook_records_prompt_and_response",
+      "source": "tests/providers/groq/request_hook.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::response_identity_edge::auth_rejection_classifies_with_contract",
+      "source": "tests/providers/groq/response_identity_edge.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::response_identity_edge::blocking_response_carries_identity",
+      "source": "tests/providers/groq/response_identity_edge.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::response_identity_edge::provider_error_response_carries_request_id",
+      "source": "tests/providers/groq/response_identity_edge.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::response_identity_edge::streaming_terminal_carries_identity",
+      "source": "tests/providers/groq/response_identity_edge.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::streaming::streaming_smoke",
+      "source": "tests/providers/groq/streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::streaming_reasoning::parsed_reasoning_stream",
+      "source": "tests/providers/groq/streaming_reasoning.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::streaming_tools::raw_followup_uses_tool_result_without_new_tool_calls",
+      "source": "tests/providers/groq/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::streaming_tools::raw_stream_emits_required_zero_arg_tool_call",
+      "source": "tests/providers/groq/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::streaming_tools::raw_stream_surfaces_two_distinct_tool_calls_before_text",
+      "source": "tests/providers/groq/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::streaming_tools::streaming_tools_emit_tool_call_before_later_text",
+      "source": "tests/providers/groq/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::streaming_tools::streaming_tools_surface_two_distinct_tool_calls_before_final_answer",
+      "source": "tests/providers/groq/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::tools::tools_smoke",
+      "source": "tests/providers/groq/tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::transcription::transcription_smoke",
+      "source": "tests/providers/groq/transcription.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GROQ_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::groq::groq::typed_prompt_tools::prompt_typed_with_tool_call_roundtrip",
+      "source": "tests/providers/groq/typed_prompt_tools.rs"
+    }
+  ],
+  "schema": 1
+}

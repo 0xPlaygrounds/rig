@@ -1,0 +1,1119 @@
+{
+  "scenarios": [
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/agent.rs",
+          "symbol": "copilot::agent::all_models_completion_smoke"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires Copilot credentials or existing OAuth cache\"]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "fixtures": [],
+      "id": "rig::copilot::copilot::agent::all_models_completion_smoke",
+      "parameterization_obligation": "Live list_models returns a dynamic model set. Freeze model IDs and per-model results before creating executable cells; the original only asserts a nonempty list and prints failures rather than asserting every model succeeded.",
+      "source": "tests/providers/copilot/agent.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "copilot::agent::completion_smoke",
+          "comparison": "Original prompt await.expect succeeds; native requires real Settled/RunResult, rejects actual Failed and transport errors; deadline is failure, never success.",
+          "ecs_symbol": "copilot::ecs_completion::completion_smoke",
+          "id": "rig::copilot::copilot::agent::completion_smoke::successful-run"
+        },
+        {
+          "baseline_symbol": "support::assert_nonempty_response",
+          "comparison": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails.",
+          "ecs_symbol": "copilot::ecs_completion::completion_smoke",
+          "id": "rig::copilot::copilot::agent::completion_smoke::response-assertion"
+        },
+        {
+          "baseline_symbol": "provider wrapper -> ProviderCassette start/finish_after_test -> ReplayServer::assert_consumed -> assert_replay_finished",
+          "comparison": "Same literal fixture path and unchanged provider wrapper. Original method/path/query/required-header/body matching and ordered consumption retained; unused interactions or replay misses fail after successful closure.",
+          "ecs_symbol": "copilot::ecs_completion::completion_smoke",
+          "id": "rig::copilot::copilot::agent::completion_smoke::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "copilot::agent::completion_smoke",
+          "comparison": "Exact model, prompt, preamble, context IDs/text/order, max_tokens, temperature, extra JSON, tools/order and builder budget preserved by native components; no run override.",
+          "ecs_symbol": "copilot::ecs_completion::completion_smoke",
+          "id": "rig::copilot::copilot::agent::completion_smoke::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/agent.rs",
+          "symbol": "copilot::agent::completion_smoke"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        },
+        {
+          "path": "tests/providers/copilot/mod.rs",
+          "symbol": "copilot::with_copilot_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "history": [],
+        "native_DefaultMaxTurns": null,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": false,
+        "original_effective_default_max_turns": 1,
+        "run_max_turns_override": null,
+        "scope": "Native None marks unset builder default; effective MaxTurns1 matches original AgentConfig::new max_turns1. No effect-header fingerprint equality claimed.",
+        "settings": "LIVE_MODEL=GPT_4O; BASIC_PREAMBLE/BASIC_PROMPT; API-key cassette client, not live OAuth",
+        "streamed": false
+      },
+      "declared_gates": [],
+      "ecs": {
+        "binary": "copilot",
+        "execution_path": "Native BusPlugin/AgentPlugin App; actual provider CompletionAdapter and ToolAdapter through per-poll Tokio context bridge; no legacy agent runner, policy, or effect replayer.",
+        "source": "tests/providers/copilot/cassette/ecs_completion.rs",
+        "test": "copilot::ecs_completion::completion_smoke"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output-config-regression",
+        "provider-completions"
+      ],
+      "family_contract": "tests/ecs_parity/provider-completions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/copilot/agent/completion_smoke.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Manually traced original free functions, provider client constructors and completion_model, builder context/default budget, await.expect, unchanged neutral Adder/Subtract and parameter schema, ProviderCassette impl methods, ReplayServer::assert_consumed and teardown. No original stream collectors or hooks in these 16 cases.",
+        "copilot": "Its mod.rs changes only by native module registration; provider wrapper and client helper bodies are unchanged. Paired source index retains full module; separate reviewed exact insertion-removal comparison freezes its original body.",
+        "response": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails."
+      },
+      "id": "rig::copilot::copilot::agent::completion_smoke",
+      "mapping_limits": [
+        "Sixteen recorded blocking workflows only; ignored live Copilot and other live cases remain separate.",
+        "Request/response fidelity and actual final-result obligations; no effect-golden equality, hook, streaming, raw usage, terminal-count or scheduling claim.",
+        "Bedrock arithmetic retains original real tools and assertion, but original does not require an explicit tool-execution counter.",
+        "Full feature/capability matrix, OS network barrier, remaining families, aggregate verification, publication and CI remain unfinished."
+      ],
+      "resolved_helper_chain": [
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message",
+        "copilot::with_copilot_cassette",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/copilot/agent.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires COPILOT_GITHUB_ACCESS_TOKEN or GITHUB_TOKEN\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::auth::access_token_bootstrap_refresh_and_completion_smoke",
+      "source": "tests/providers/copilot/auth.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires GITHUB_COPILOT_API_KEY or COPILOT_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::auth::api_key_completion_smoke",
+      "source": "tests/providers/copilot/auth.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires COPILOT_GITHUB_ACCESS_TOKEN or GITHUB_TOKEN\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::auth::github_access_token_completion_smoke",
+      "source": "tests/providers/copilot/auth.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires interactive GitHub Copilot OAuth device flow\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::auth::oauth_device_flow_authorize_and_cached_completion_smoke",
+      "source": "tests/providers/copilot/auth.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::embeddings::embeddings_smoke",
+      "source": "tests/providers/copilot/embeddings.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "copilot::extractor::extractor_smoke",
+          "comparison": "Original extract await.expect requires success. Native helper requires actual settled run/submit call, deserialization and Usage; no expected data drives execution.",
+          "ecs_symbol": "copilot::ecs_extractor::extractor_smoke",
+          "id": "rig::copilot::copilot::extractor::extractor_smoke::success"
+        },
+        {
+          "baseline_symbol": "copilot::extractor::extractor_smoke",
+          "comparison": "All three original Option fields required through expect; trim-nonempty checks retained. Positive total_tokens retained where original requires it (DeepSeek has no usage assertion).",
+          "ecs_symbol": "copilot::ecs_extractor::extractor_smoke",
+          "id": "rig::copilot::copilot::extractor::extractor_smoke::fields-and-usage"
+        },
+        {
+          "baseline_symbol": "provider wrapper -> ProviderCassette finish_after_test -> ReplayServer::assert_consumed",
+          "comparison": "Same strict ordered fixture and wrapper; exact model, prompt, extractor preamble/schema/submit description/required tool choice/no augmentation/one turn; Gemini typed parameters serialize through original expect. Full cassette consumption and original teardown preserved.",
+          "ecs_symbol": "copilot::ecs_extractor::extractor_smoke",
+          "id": "rig::copilot::copilot::extractor::extractor_smoke::request-and-teardown"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/extractor.rs",
+          "symbol": "copilot::extractor::extractor_smoke"
+        },
+        {
+          "path": "tests/providers/copilot/mod.rs",
+          "symbol": "copilot::with_copilot_cassette"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original typed extractor builds and executes rig-agent orchestration, then validates actual extracted fields and where required reported usage.",
+      "configuration": "root-bedrock",
+      "configuration_sources": [
+        {
+          "path": "crates/rig-agent/src/test_utils/model_conformance.rs"
+        },
+        {
+          "path": "crates/rig-core/src/completion/request.rs"
+        }
+      ],
+      "declared_gates": [],
+      "ecs": {
+        "binary": "copilot",
+        "execution_path": "Unchanged EcsExtractor with actual native AgentPlugin/BusPlugin and real provider adapter; no legacy extraction runtime.",
+        "source": "tests/providers/copilot/cassette/ecs_extractor.rs",
+        "test": "copilot::ecs_extractor::extractor_smoke"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-smoke-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/copilot/extractor/extractor_smoke.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "configuration": "Existing native helper reviewed in extractor-usage contract; zero-retry, one-turn, unaugmented submit mode. Gemini serde_json conversion expect preserved. Shared SmokePerson unchanged; additional Gemini Person widens visibility only.",
+        "option_and_nonempty_semantics": "All three original Option fields required through expect; trim-nonempty checks retained. Positive total_tokens retained where original requires it (DeepSeek has no usage assertion).",
+        "portable_validator": false,
+        "portable_validator_semantics": "Pure validation only, no agent runtime calls. Its if-return-Err condition and ScenarioError conversion are obligations despite no assert macro. Usage::has_values means any nondefault field, not specifically positive total.",
+        "portable_validator_source": "crates/rig-agent/src/test_utils/model_conformance.rs::validate_extraction_fields"
+      },
+      "id": "rig::copilot::copilot::extractor::extractor_smoke",
+      "mapping_limits": [
+        "Ten recorded one-call zero-retry scenarios; no stream, retry, effect-golden or policy timing equality claim.",
+        "Shared rig-agent test_utils import is a pure validator, not legacy orchestration.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "copilot::with_copilot_cassette",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/copilot/extractor.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "copilot::extractor_usage::extract_and_extract_with_usage_return_same_data",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "copilot::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+          "id": "rig::copilot::copilot::extractor_usage::extract_and_extract_with_usage_return_same_data::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::copilot::copilot::extractor_usage::extract_and_extract_with_usage_return_same_data::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_copilot_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "copilot::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+          "id": "rig::copilot::copilot::extractor_usage::extract_and_extract_with_usage_return_same_data::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/extractor_usage.rs",
+          "symbol": "copilot::extractor_usage::extract_and_extract_with_usage_return_same_data"
+        },
+        {
+          "path": "tests/providers/copilot/extractor_usage.rs",
+          "symbol": "copilot::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/copilot/mod.rs",
+          "symbol": "copilot::with_copilot_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "copilot",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/copilot/cassette/ecs_extractor_usage.rs",
+        "test": "copilot::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/copilot/extractor_usage/extract_and_extract_with_usage_return_same_data.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::copilot::copilot::extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "copilot::extractor_usage::assert_compatible_professions",
+        "copilot::with_copilot_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/copilot/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "copilot::extractor_usage::extract_backward_compatibility",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "copilot::ecs_extractor_usage::extract_backward_compatibility",
+          "id": "rig::copilot::copilot::extractor_usage::extract_backward_compatibility::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::copilot::copilot::extractor_usage::extract_backward_compatibility::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_copilot_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "copilot::ecs_extractor_usage::extract_backward_compatibility",
+          "id": "rig::copilot::copilot::extractor_usage::extract_backward_compatibility::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/extractor_usage.rs",
+          "symbol": "copilot::extractor_usage::extract_backward_compatibility"
+        },
+        {
+          "path": "tests/providers/copilot/extractor_usage.rs",
+          "symbol": "copilot::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/copilot/mod.rs",
+          "symbol": "copilot::with_copilot_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "copilot",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/copilot/cassette/ecs_extractor_usage.rs",
+        "test": "copilot::ecs_extractor_usage::extract_backward_compatibility"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/copilot/extractor_usage/extract_backward_compatibility.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::copilot::copilot::extractor_usage::extract_backward_compatibility",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "copilot::extractor_usage::assert_compatible_professions",
+        "copilot::with_copilot_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/copilot/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "copilot::extractor_usage::extract_with_chat_history_with_usage_works",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "copilot::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+          "id": "rig::copilot::copilot::extractor_usage::extract_with_chat_history_with_usage_works::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::copilot::copilot::extractor_usage::extract_with_chat_history_with_usage_works::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_copilot_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "copilot::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+          "id": "rig::copilot::copilot::extractor_usage::extract_with_chat_history_with_usage_works::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/extractor_usage.rs",
+          "symbol": "copilot::extractor_usage::extract_with_chat_history_with_usage_works"
+        },
+        {
+          "path": "tests/providers/copilot/extractor_usage.rs",
+          "symbol": "copilot::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/copilot/mod.rs",
+          "symbol": "copilot::with_copilot_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "copilot",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/copilot/cassette/ecs_extractor_usage.rs",
+        "test": "copilot::ecs_extractor_usage::extract_with_chat_history_with_usage_works"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/copilot/extractor_usage/extract_with_chat_history_with_usage_works.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::copilot::copilot::extractor_usage::extract_with_chat_history_with_usage_works",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "copilot::extractor_usage::assert_compatible_professions",
+        "copilot::with_copilot_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/copilot/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "copilot::extractor_usage::extract_with_usage_returns_data_and_usage",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "copilot::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+          "id": "rig::copilot::copilot::extractor_usage::extract_with_usage_returns_data_and_usage::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::copilot::copilot::extractor_usage::extract_with_usage_returns_data_and_usage::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_copilot_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "copilot::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+          "id": "rig::copilot::copilot::extractor_usage::extract_with_usage_returns_data_and_usage::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/extractor_usage.rs",
+          "symbol": "copilot::extractor_usage::extract_with_usage_returns_data_and_usage"
+        },
+        {
+          "path": "tests/providers/copilot/extractor_usage.rs",
+          "symbol": "copilot::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/copilot/mod.rs",
+          "symbol": "copilot::with_copilot_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "copilot",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/copilot/cassette/ecs_extractor_usage.rs",
+        "test": "copilot::ecs_extractor_usage::extract_with_usage_returns_data_and_usage"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/copilot/extractor_usage/extract_with_usage_returns_data_and_usage.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::copilot::copilot::extractor_usage::extract_with_usage_returns_data_and_usage",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "copilot::extractor_usage::assert_compatible_professions",
+        "copilot::with_copilot_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/copilot/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "copilot::extractor_usage::usage_tracking_works_for_different_schemas",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "copilot::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+          "id": "rig::copilot::copilot::extractor_usage::usage_tracking_works_for_different_schemas::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::copilot::copilot::extractor_usage::usage_tracking_works_for_different_schemas::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_copilot_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "copilot::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+          "id": "rig::copilot::copilot::extractor_usage::usage_tracking_works_for_different_schemas::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/copilot/extractor_usage.rs",
+          "symbol": "copilot::extractor_usage::usage_tracking_works_for_different_schemas"
+        },
+        {
+          "path": "tests/providers/copilot/extractor_usage.rs",
+          "symbol": "copilot::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/copilot/mod.rs",
+          "symbol": "copilot::with_copilot_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "copilot",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/copilot/cassette/ecs_extractor_usage.rs",
+        "test": "copilot::ecs_extractor_usage::usage_tracking_works_for_different_schemas"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/copilot/extractor_usage/usage_tracking_works_for_different_schemas.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::copilot::copilot::extractor_usage::usage_tracking_works_for_different_schemas",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "copilot::extractor_usage::assert_compatible_professions",
+        "copilot::with_copilot_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/copilot/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::models::list_models_smoke",
+      "source": "tests/providers/copilot/models.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::multi_extract::batch_multi_extract_chain",
+      "source": "tests/providers/copilot/multi_extract.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::noninteractive_oauth_cassette::cached_oauth_allows_noninteractive_completion",
+      "source": "tests/providers/copilot/noninteractive_oauth_cassette.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::permission_control::permission_control_prompt_example",
+      "source": "tests/providers/copilot/permission_control.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires Copilot credentials or existing OAuth cache\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::permission_control::permission_control_streaming_example",
+      "source": "tests/providers/copilot/permission_control.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::raw_capture_matrix::chat_normalized_fields_equal_raw_renormalized",
+      "source": "tests/providers/copilot/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::raw_capture_matrix::chat_raw_exposes_system_fingerprint",
+      "source": "tests/providers/copilot/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::raw_capture_matrix::chat_raw_round_trips_provider_type",
+      "source": "tests/providers/copilot/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::raw_capture_matrix::responses_normalized_fields_equal_raw_renormalized",
+      "source": "tests/providers/copilot/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::raw_capture_matrix::responses_raw_exposes_envelope",
+      "source": "tests/providers/copilot/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::raw_capture_matrix::responses_raw_round_trips_provider_type",
+      "source": "tests/providers/copilot/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::raw_completion_parity_matrix::chat_plain_raw_completion_lacks_request_id",
+      "source": "tests/providers/copilot/raw_completion_parity_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::raw_completion_parity_matrix::chat_raw_with_request_id_reproduces_completion",
+      "source": "tests/providers/copilot/raw_completion_parity_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::raw_completion_parity_matrix::responses_raw_completion_carries_request_id",
+      "source": "tests/providers/copilot/raw_completion_parity_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::raw_stream_capture_matrix::chat_stream_raw_exposes_copilot_usage",
+      "source": "tests/providers/copilot/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::raw_stream_capture_matrix::chat_stream_raw_terminal_round_trips_provider_type",
+      "source": "tests/providers/copilot/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::raw_stream_capture_matrix::responses_stream_raw_exposes_terminal_status",
+      "source": "tests/providers/copilot/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no COPILOT credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::raw_stream_capture_matrix::responses_stream_raw_terminal_round_trips_provider_type",
+      "source": "tests/providers/copilot/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::reasoning_roundtrip::nonstreaming",
+      "source": "tests/providers/copilot/reasoning_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::reasoning_roundtrip::streaming",
+      "source": "tests/providers/copilot/reasoning_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::reasoning_tool_roundtrip::nonstreaming",
+      "source": "tests/providers/copilot/reasoning_tool_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires Copilot credentials or existing OAuth cache\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::reasoning_tool_roundtrip::streaming",
+      "source": "tests/providers/copilot/reasoning_tool_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::request_hook::request_hook_records_prompt_and_response",
+      "source": "tests/providers/copilot/request_hook.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires Copilot credentials or existing OAuth cache\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::routing::chat_models_route_through_chat_completions",
+      "source": "tests/providers/copilot/routing.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::routing::codex_models_route_through_responses",
+      "source": "tests/providers/copilot/routing.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::streaming::example_streaming_prompt",
+      "source": "tests/providers/copilot/streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::streaming::streaming_smoke",
+      "source": "tests/providers/copilot/streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::streaming_tools::example_streaming_with_tools",
+      "source": "tests/providers/copilot/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::streaming_tools::raw_followup_uses_tool_result_without_new_tool_calls",
+      "source": "tests/providers/copilot/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::streaming_tools::raw_stream_emits_required_zero_arg_tool_call",
+      "source": "tests/providers/copilot/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::streaming_tools::raw_stream_surfaces_two_distinct_tool_calls_before_text",
+      "source": "tests/providers/copilot/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::streaming_tools::streaming_tools_smoke",
+      "source": "tests/providers/copilot/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::streaming_tools::streaming_tools_surface_two_distinct_tool_calls_before_final_answer",
+      "source": "tests/providers/copilot/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::structured_output::prompt_typed_and_output_schema",
+      "source": "tests/providers/copilot/structured_output.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::structured_output::structured_output_smoke",
+      "source": "tests/providers/copilot/structured_output.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::copilot::copilot::typed_prompt_tools::prompt_typed_with_tool_call_roundtrip",
+      "source": "tests/providers/copilot/typed_prompt_tools.rs"
+    }
+  ],
+  "schema": 1
+}

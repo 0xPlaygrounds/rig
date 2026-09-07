@@ -1,0 +1,2963 @@
+{
+  "scenarios": [
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::agent::completion_smoke",
+          "comparison": "Original prompt await.expect succeeds; native requires real Settled/RunResult, rejects actual Failed and transport errors; deadline is failure, never success.",
+          "ecs_symbol": "deepseek::ecs_completion::completion_smoke",
+          "id": "rig::deepseek::deepseek::agent::completion_smoke::successful-run"
+        },
+        {
+          "baseline_symbol": "support::assert_nonempty_response",
+          "comparison": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails.",
+          "ecs_symbol": "deepseek::ecs_completion::completion_smoke",
+          "id": "rig::deepseek::deepseek::agent::completion_smoke::response-assertion"
+        },
+        {
+          "baseline_symbol": "provider wrapper -> ProviderCassette start/finish_after_test -> ReplayServer::assert_consumed -> assert_replay_finished",
+          "comparison": "Same literal fixture path and unchanged provider wrapper. Original method/path/query/required-header/body matching and ordered consumption retained; unused interactions or replay misses fail after successful closure.",
+          "ecs_symbol": "deepseek::ecs_completion::completion_smoke",
+          "id": "rig::deepseek::deepseek::agent::completion_smoke::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "deepseek::agent::completion_smoke",
+          "comparison": "Exact model, prompt, preamble, context IDs/text/order, max_tokens, temperature, extra JSON, tools/order and builder budget preserved by native components; no run override.",
+          "ecs_symbol": "deepseek::ecs_completion::completion_smoke",
+          "id": "rig::deepseek::deepseek::agent::completion_smoke::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/agent.rs",
+          "symbol": "deepseek::agent::completion_smoke"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "history": [],
+        "native_DefaultMaxTurns": null,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": false,
+        "original_effective_default_max_turns": 1,
+        "run_max_turns_override": null,
+        "scope": "Native None marks unset builder default; effective MaxTurns1 matches original AgentConfig::new max_turns1. No effect-header fingerprint equality claimed.",
+        "settings": "DEEPSEEK_V4_FLASH; BASIC_PREAMBLE/BASIC_PROMPT",
+        "streamed": false
+      },
+      "declared_gates": [],
+      "ecs": {
+        "binary": "deepseek",
+        "execution_path": "Native BusPlugin/AgentPlugin App; actual provider CompletionAdapter and ToolAdapter through per-poll Tokio context bridge; no legacy agent runner, policy, or effect replayer.",
+        "source": "tests/providers/deepseek/cassette/ecs_completion.rs",
+        "test": "deepseek::ecs_completion::completion_smoke"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output-config-regression",
+        "provider-completions"
+      ],
+      "family_contract": "tests/ecs_parity/provider-completions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/agent/completion_smoke.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Manually traced original free functions, provider client constructors and completion_model, builder context/default budget, await.expect, unchanged neutral Adder/Subtract and parameter schema, ProviderCassette impl methods, ReplayServer::assert_consumed and teardown. No original stream collectors or hooks in these 16 cases.",
+        "copilot": "Its mod.rs changes only by native module registration; provider wrapper and client helper bodies are unchanged. Paired source index retains full module; separate reviewed exact insertion-removal comparison freezes its original body.",
+        "response": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails."
+      },
+      "id": "rig::deepseek::deepseek::agent::completion_smoke",
+      "mapping_limits": [
+        "Sixteen recorded blocking workflows only; ignored live Copilot and other live cases remain separate.",
+        "Request/response fidelity and actual final-result obligations; no effect-golden equality, hook, streaming, raw usage, terminal-count or scheduling claim.",
+        "Bedrock arithmetic retains original real tools and assertion, but original does not require an explicit tool-execution counter.",
+        "Full feature/capability matrix, OS network barrier, remaining families, aggregate verification, publication and CI remain unfinished."
+      ],
+      "resolved_helper_chain": [
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message",
+        "deepseek::support::with_deepseek_cassette",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/deepseek/agent.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior",
+          "comparison": "Exact original provider test and all request construction/normalization/metadata/stream collector assertions execute unchanged in both revisions; no migration count.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assistant_text_response"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::run_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::deepseek_cassette"
+        }
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Independently reviewed direct completion_model request/stream/raw completion plus normalization only. Tool objects supply definitions; no legacy agent runtime through helpers.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/deepseek/agent_tool_sessions/chat_alias_vs_reasoner_alias_behavior.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::deepseek::deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "deepseek::support::deepseek_cassette",
+        "deepseek::support::run_deepseek_cassette_result",
+        "deepseek::support::with_deepseek_cassette_result",
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response",
+        "support::assistant_text_response"
+      ],
+      "source": "tests/providers/deepseek/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::json_object_response_format_roundtrip",
+          "comparison": "Exact original provider test and all request construction/normalization/metadata/stream collector assertions execute unchanged in both revisions; no migration count.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::json_object_response_format_roundtrip",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::json_object_response_format_roundtrip::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::json_object_response_format_roundtrip",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::json_object_response_format_roundtrip::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::json_object_response_format_roundtrip",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::json_object_response_format_roundtrip",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::json_object_response_format_roundtrip::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::json_object_response_format_roundtrip"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::json_utils_merge"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::raw_and_normalized_completion"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assistant_text_response"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::assert_response_metadata"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::run_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::deepseek_cassette"
+        }
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Independently reviewed direct completion_model request/stream/raw completion plus normalization only. Tool objects supply definitions; no legacy agent runtime through helpers.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/deepseek/agent_tool_sessions/json_object_response_format_roundtrip.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::deepseek::deepseek::agent_tool_sessions::json_object_response_format_roundtrip",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "deepseek::agent_tool_sessions::assert_response_metadata",
+        "deepseek::agent_tool_sessions::json_utils_merge",
+        "deepseek::agent_tool_sessions::raw_and_normalized_completion",
+        "deepseek::support::deepseek_cassette",
+        "deepseek::support::run_deepseek_cassette_result",
+        "deepseek::support::with_deepseek_cassette_result",
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response",
+        "support::assistant_text_response"
+      ],
+      "source": "tests/providers/deepseek/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+          "comparison": "Exact original provider test and all request construction/normalization/metadata/stream collector assertions execute unchanged in both revisions; no migration count.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::raw_and_normalized_completion"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assistant_text_response"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::assert_response_metadata"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::run_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::deepseek_cassette"
+        }
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Independently reviewed direct completion_model request/stream/raw completion plus normalization only. Tool objects supply definitions; no legacy agent runtime through helpers.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/deepseek/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::deepseek::deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "deepseek::agent_tool_sessions::assert_response_metadata",
+        "deepseek::agent_tool_sessions::raw_and_normalized_completion",
+        "deepseek::support::deepseek_cassette",
+        "deepseek::support::run_deepseek_cassette_result",
+        "deepseek::support::with_deepseek_cassette_result",
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response",
+        "support::assistant_text_response"
+      ],
+      "source": "tests/providers/deepseek/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+          "comparison": "Original assertion expressions and shared validators remain on actual native observations: tool invocation arguments/count/order, caller history calls/results/ordering, streaming tool/text/result phases, typed schema fields, or image response nonempty as applicable.",
+          "ecs_symbol": "deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::json_utils_merge"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::history_tool_calls"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::run_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::deepseek_cassette"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original invokes legacy chat/stream/prompt_typed or multimodal prompt orchestration; native counterpart required.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "deepseek",
+        "execution_path": "Native ECS components/graph, real provider and tool adapters, actual stream schedule observers and ordered Utterance history; no legacy runtime/policy.",
+        "source": "tests/providers/deepseek/cassette/ecs_tool_sessions.rs",
+        "test": "deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/deepseek/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::deepseek::deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "deepseek::agent_tool_sessions::history_tool_calls",
+        "deepseek::agent_tool_sessions::json_utils_merge",
+        "deepseek::support::deepseek_cassette",
+        "deepseek::support::run_deepseek_cassette_result",
+        "deepseek::support::with_deepseek_cassette_result",
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/deepseek/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_streaming",
+          "comparison": "Original assertion expressions and shared validators remain on actual native observations: tool invocation arguments/count/order, caller history calls/results/ordering, streaming tool/text/result phases, typed schema fields, or image response nonempty as applicable.",
+          "ecs_symbol": "deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_streaming::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_streaming::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_streaming",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_streaming::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_streaming"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::json_utils_merge"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::collect_stream_observation"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_two_tool_roundtrip_contract"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::first_event_index"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::event_count_before"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::first_unique_tool_calls"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::run_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::deepseek_cassette"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original invokes legacy chat/stream/prompt_typed or multimodal prompt orchestration; native counterpart required.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "deepseek",
+        "execution_path": "Native ECS components/graph, real provider and tool adapters, actual stream schedule observers and ordered Utterance history; no legacy runtime/policy.",
+        "source": "tests/providers/deepseek/cassette/ecs_tool_sessions.rs",
+        "test": "deepseek::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/deepseek/agent_tool_sessions/parallel_tool_calls_single_turn_streaming.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::deepseek::deepseek::agent_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "deepseek::agent_tool_sessions::json_utils_merge",
+        "deepseek::support::deepseek_cassette",
+        "deepseek::support::run_deepseek_cassette_result",
+        "deepseek::support::with_deepseek_cassette_result",
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response",
+        "support::assert_two_tool_roundtrip_contract",
+        "support::collect_stream_observation",
+        "support::event_count_before",
+        "support::first_event_index",
+        "support::first_unique_tool_calls"
+      ],
+      "source": "tests/providers/deepseek/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+          "comparison": "Exact original provider test and all request construction/normalization/metadata/stream collector assertions execute unchanged in both revisions; no migration count.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::collect_raw_stream_observation"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_raw_stream_tool_call_arguments_are_objects"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::run_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::deepseek_cassette"
+        }
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Independently reviewed direct completion_model request/stream/raw completion plus normalization only. Tool objects supply definitions; no legacy agent runtime through helpers.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/deepseek/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::deepseek::deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "deepseek::support::deepseek_cassette",
+        "deepseek::support::run_deepseek_cassette_result",
+        "deepseek::support::with_deepseek_cassette_result",
+        "support::assert_raw_stream_tool_call_arguments_are_objects",
+        "support::collect_raw_stream_observation"
+      ],
+      "source": "tests/providers/deepseek/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
+          "comparison": "Exact original provider test and all request construction/normalization/metadata/stream collector assertions execute unchanged in both revisions; no migration count.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::raw_and_normalized_completion"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::assert_response_metadata"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::collect_raw_stream_observation"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::run_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::deepseek_cassette"
+        }
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Independently reviewed direct completion_model request/stream/raw completion plus normalization only. Tool objects supply definitions; no legacy agent runtime through helpers.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/deepseek/agent_tool_sessions/reasoning_enabled_preserves_reasoning_content_deltas_and_usage.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::deepseek::deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "deepseek::agent_tool_sessions::assert_response_metadata",
+        "deepseek::agent_tool_sessions::raw_and_normalized_completion",
+        "deepseek::support::deepseek_cassette",
+        "deepseek::support::run_deepseek_cassette_result",
+        "deepseek::support::with_deepseek_cassette_result",
+        "support::assert_nonempty_response",
+        "support::collect_raw_stream_observation"
+      ],
+      "source": "tests/providers/deepseek/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+          "comparison": "Original assertion expressions and shared validators remain on actual native observations: tool invocation arguments/count/order, caller history calls/results/ordering, streaming tool/text/result phases, typed schema fields, or image response nonempty as applicable.",
+          "ecs_symbol": "deepseek::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "deepseek::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "deepseek::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::complex_tools"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::json_utils_merge"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::assert_complex_invocations"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::assert_history_records_sequential_tool_roundtrips"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::history_tool_calls"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::history_tool_results"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::run_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::deepseek_cassette"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original invokes legacy chat/stream/prompt_typed or multimodal prompt orchestration; native counterpart required.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "deepseek",
+        "execution_path": "Native ECS components/graph, real provider and tool adapters, actual stream schedule observers and ordered Utterance history; no legacy runtime/policy.",
+        "source": "tests/providers/deepseek/cassette/ecs_tool_sessions.rs",
+        "test": "deepseek::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/deepseek/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::deepseek::deepseek::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "deepseek::agent_tool_sessions::assert_complex_invocations",
+        "deepseek::agent_tool_sessions::assert_history_records_sequential_tool_roundtrips",
+        "deepseek::agent_tool_sessions::complex_tools",
+        "deepseek::agent_tool_sessions::history_tool_calls",
+        "deepseek::agent_tool_sessions::history_tool_results",
+        "deepseek::agent_tool_sessions::json_utils_merge",
+        "deepseek::support::deepseek_cassette",
+        "deepseek::support::run_deepseek_cassette_result",
+        "deepseek::support::with_deepseek_cassette_result",
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/deepseek/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::sequential_complex_tool_calls_streaming",
+          "comparison": "Original assertion expressions and shared validators remain on actual native observations: tool invocation arguments/count/order, caller history calls/results/ordering, streaming tool/text/result phases, typed schema fields, or image response nonempty as applicable.",
+          "ecs_symbol": "deepseek::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::sequential_complex_tool_calls_streaming::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "deepseek::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::sequential_complex_tool_calls_streaming::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::sequential_complex_tool_calls_streaming",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "deepseek::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::sequential_complex_tool_calls_streaming::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::sequential_complex_tool_calls_streaming"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::complex_tools"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::json_utils_merge"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::collect_stream_observation"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::assert_complex_invocations"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::run_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::deepseek_cassette"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original invokes legacy chat/stream/prompt_typed or multimodal prompt orchestration; native counterpart required.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "deepseek",
+        "execution_path": "Native ECS components/graph, real provider and tool adapters, actual stream schedule observers and ordered Utterance history; no legacy runtime/policy.",
+        "source": "tests/providers/deepseek/cassette/ecs_tool_sessions.rs",
+        "test": "deepseek::ecs_tool_sessions::sequential_complex_tool_calls_streaming"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/deepseek/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::deepseek::deepseek::agent_tool_sessions::sequential_complex_tool_calls_streaming",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "deepseek::agent_tool_sessions::assert_complex_invocations",
+        "deepseek::agent_tool_sessions::complex_tools",
+        "deepseek::agent_tool_sessions::json_utils_merge",
+        "deepseek::support::deepseek_cassette",
+        "deepseek::support::run_deepseek_cassette_result",
+        "deepseek::support::with_deepseek_cassette_result",
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response",
+        "support::collect_stream_observation"
+      ],
+      "source": "tests/providers/deepseek/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::tool_choice_required_specific_and_none",
+          "comparison": "Exact original provider test and all request construction/normalization/metadata/stream collector assertions execute unchanged in both revisions; no migration count.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::tool_choice_required_specific_and_none",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::tool_choice_required_specific_and_none::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::tool_choice_required_specific_and_none",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::tool_choice_required_specific_and_none::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "deepseek::agent_tool_sessions::tool_choice_required_specific_and_none",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "deepseek::agent_tool_sessions::tool_choice_required_specific_and_none",
+          "id": "rig::deepseek::deepseek::agent_tool_sessions::tool_choice_required_specific_and_none::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/agent_tool_sessions.rs",
+          "symbol": "deepseek::agent_tool_sessions::tool_choice_required_specific_and_none"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assistant_text_response"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::run_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::deepseek_cassette"
+        }
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Independently reviewed direct completion_model request/stream/raw completion plus normalization only. Tool objects supply definitions; no legacy agent runtime through helpers.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/deepseek/agent_tool_sessions/tool_choice_required_specific_and_none.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::deepseek::deepseek::agent_tool_sessions::tool_choice_required_specific_and_none",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "deepseek::support::deepseek_cassette",
+        "deepseek::support::run_deepseek_cassette_result",
+        "deepseek::support::with_deepseek_cassette_result",
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response",
+        "support::assistant_text_response"
+      ],
+      "source": "tests/providers/deepseek/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::document_ordering::chat_completions_keeps_documents_after_system_before_history",
+      "source": "tests/providers/deepseek/document_ordering.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::extractor::extractor_smoke",
+          "comparison": "Original extract await.expect requires success. Native helper requires actual settled run/submit call, deserialization and Usage; no expected data drives execution.",
+          "ecs_symbol": "deepseek::ecs_extractor::extractor_smoke",
+          "id": "rig::deepseek::deepseek::extractor::extractor_smoke::success"
+        },
+        {
+          "baseline_symbol": "deepseek::extractor::extractor_smoke",
+          "comparison": "All three original Option fields required through expect; trim-nonempty checks retained. Positive total_tokens retained where original requires it (DeepSeek has no usage assertion).",
+          "ecs_symbol": "deepseek::ecs_extractor::extractor_smoke",
+          "id": "rig::deepseek::deepseek::extractor::extractor_smoke::fields-and-usage"
+        },
+        {
+          "baseline_symbol": "provider wrapper -> ProviderCassette finish_after_test -> ReplayServer::assert_consumed",
+          "comparison": "Same strict ordered fixture and wrapper; exact model, prompt, extractor preamble/schema/submit description/required tool choice/no augmentation/one turn; Gemini typed parameters serialize through original expect. Full cassette consumption and original teardown preserved.",
+          "ecs_symbol": "deepseek::ecs_extractor::extractor_smoke",
+          "id": "rig::deepseek::deepseek::extractor::extractor_smoke::request-and-teardown"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/extractor.rs",
+          "symbol": "deepseek::extractor::extractor_smoke"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original typed extractor builds and executes rig-agent orchestration, then validates actual extracted fields and where required reported usage.",
+      "configuration": "root-bedrock",
+      "configuration_sources": [
+        {
+          "path": "crates/rig-agent/src/test_utils/model_conformance.rs"
+        },
+        {
+          "path": "crates/rig-core/src/completion/request.rs"
+        }
+      ],
+      "declared_gates": [],
+      "ecs": {
+        "binary": "deepseek",
+        "execution_path": "Unchanged EcsExtractor with actual native AgentPlugin/BusPlugin and real provider adapter; no legacy extraction runtime.",
+        "source": "tests/providers/deepseek/cassette/ecs_extractor.rs",
+        "test": "deepseek::ecs_extractor::extractor_smoke"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-smoke-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/deepseek/extractor/extractor_smoke.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "configuration": "Existing native helper reviewed in extractor-usage contract; zero-retry, one-turn, unaugmented submit mode. Gemini serde_json conversion expect preserved. Shared SmokePerson unchanged; additional Gemini Person widens visibility only.",
+        "option_and_nonempty_semantics": "All three original Option fields required through expect; trim-nonempty checks retained. Positive total_tokens retained where original requires it (DeepSeek has no usage assertion).",
+        "portable_validator": false,
+        "portable_validator_semantics": "Pure validation only, no agent runtime calls. Its if-return-Err condition and ScenarioError conversion are obligations despite no assert macro. Usage::has_values means any nondefault field, not specifically positive total.",
+        "portable_validator_source": "crates/rig-agent/src/test_utils/model_conformance.rs::validate_extraction_fields"
+      },
+      "id": "rig::deepseek::deepseek::extractor::extractor_smoke",
+      "mapping_limits": [
+        "Ten recorded one-call zero-retry scenarios; no stream, retry, effect-golden or policy timing equality claim.",
+        "Shared rig-agent test_utils import is a pure validator, not legacy orchestration.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "deepseek::support::with_deepseek_cassette",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/deepseek/extractor.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::extractor_usage::extract_and_extract_with_usage_return_same_data",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "deepseek::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+          "id": "rig::deepseek::deepseek::extractor_usage::extract_and_extract_with_usage_return_same_data::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::deepseek::deepseek::extractor_usage::extract_and_extract_with_usage_return_same_data::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_deepseek_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "deepseek::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+          "id": "rig::deepseek::deepseek::extractor_usage::extract_and_extract_with_usage_return_same_data::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/extractor_usage.rs",
+          "symbol": "deepseek::extractor_usage::extract_and_extract_with_usage_return_same_data"
+        },
+        {
+          "path": "tests/providers/deepseek/extractor_usage.rs",
+          "symbol": "deepseek::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "deepseek",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/deepseek/cassette/ecs_extractor_usage.rs",
+        "test": "deepseek::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/deepseek/extractor_usage/extract_and_extract_with_usage_return_same_data.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::deepseek::deepseek::extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "deepseek::extractor_usage::assert_compatible_professions",
+        "deepseek::support::with_deepseek_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/deepseek/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::extractor_usage::extract_backward_compatibility",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "deepseek::ecs_extractor_usage::extract_backward_compatibility",
+          "id": "rig::deepseek::deepseek::extractor_usage::extract_backward_compatibility::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::deepseek::deepseek::extractor_usage::extract_backward_compatibility::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_deepseek_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "deepseek::ecs_extractor_usage::extract_backward_compatibility",
+          "id": "rig::deepseek::deepseek::extractor_usage::extract_backward_compatibility::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/extractor_usage.rs",
+          "symbol": "deepseek::extractor_usage::extract_backward_compatibility"
+        },
+        {
+          "path": "tests/providers/deepseek/extractor_usage.rs",
+          "symbol": "deepseek::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "deepseek",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/deepseek/cassette/ecs_extractor_usage.rs",
+        "test": "deepseek::ecs_extractor_usage::extract_backward_compatibility"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/deepseek/extractor_usage/extract_backward_compatibility.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::deepseek::deepseek::extractor_usage::extract_backward_compatibility",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "deepseek::extractor_usage::assert_compatible_professions",
+        "deepseek::support::with_deepseek_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/deepseek/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::extractor_usage::extract_with_chat_history_with_usage_works",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "deepseek::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+          "id": "rig::deepseek::deepseek::extractor_usage::extract_with_chat_history_with_usage_works::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::deepseek::deepseek::extractor_usage::extract_with_chat_history_with_usage_works::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_deepseek_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "deepseek::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+          "id": "rig::deepseek::deepseek::extractor_usage::extract_with_chat_history_with_usage_works::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/extractor_usage.rs",
+          "symbol": "deepseek::extractor_usage::extract_with_chat_history_with_usage_works"
+        },
+        {
+          "path": "tests/providers/deepseek/extractor_usage.rs",
+          "symbol": "deepseek::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "deepseek",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/deepseek/cassette/ecs_extractor_usage.rs",
+        "test": "deepseek::ecs_extractor_usage::extract_with_chat_history_with_usage_works"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/deepseek/extractor_usage/extract_with_chat_history_with_usage_works.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::deepseek::deepseek::extractor_usage::extract_with_chat_history_with_usage_works",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "deepseek::extractor_usage::assert_compatible_professions",
+        "deepseek::support::with_deepseek_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/deepseek/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::extractor_usage::extract_with_usage_returns_data_and_usage",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "deepseek::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+          "id": "rig::deepseek::deepseek::extractor_usage::extract_with_usage_returns_data_and_usage::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::deepseek::deepseek::extractor_usage::extract_with_usage_returns_data_and_usage::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_deepseek_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "deepseek::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+          "id": "rig::deepseek::deepseek::extractor_usage::extract_with_usage_returns_data_and_usage::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/extractor_usage.rs",
+          "symbol": "deepseek::extractor_usage::extract_with_usage_returns_data_and_usage"
+        },
+        {
+          "path": "tests/providers/deepseek/extractor_usage.rs",
+          "symbol": "deepseek::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "deepseek",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/deepseek/cassette/ecs_extractor_usage.rs",
+        "test": "deepseek::ecs_extractor_usage::extract_with_usage_returns_data_and_usage"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/deepseek/extractor_usage/extract_with_usage_returns_data_and_usage.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::deepseek::deepseek::extractor_usage::extract_with_usage_returns_data_and_usage",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "deepseek::extractor_usage::assert_compatible_professions",
+        "deepseek::support::with_deepseek_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/deepseek/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::extractor_usage::usage_tracking_works_for_different_schemas",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "deepseek::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+          "id": "rig::deepseek::deepseek::extractor_usage::usage_tracking_works_for_different_schemas::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::deepseek::deepseek::extractor_usage::usage_tracking_works_for_different_schemas::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_deepseek_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "deepseek::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+          "id": "rig::deepseek::deepseek::extractor_usage::usage_tracking_works_for_different_schemas::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/extractor_usage.rs",
+          "symbol": "deepseek::extractor_usage::usage_tracking_works_for_different_schemas"
+        },
+        {
+          "path": "tests/providers/deepseek/extractor_usage.rs",
+          "symbol": "deepseek::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/deepseek/support.rs",
+          "symbol": "deepseek::support::with_deepseek_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "deepseek",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/deepseek/cassette/ecs_extractor_usage.rs",
+        "test": "deepseek::ecs_extractor_usage::usage_tracking_works_for_different_schemas"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/deepseek/extractor_usage/usage_tracking_works_for_different_schemas.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::deepseek::deepseek::extractor_usage::usage_tracking_works_for_different_schemas",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "deepseek::extractor_usage::assert_compatible_professions",
+        "deepseek::support::with_deepseek_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/deepseek/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::followup_hunt_matrix::blocking_stop_sequence_reaches_the_wire_and_stops_generation",
+      "source": "tests/providers/deepseek/followup_hunt_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::followup_hunt_matrix::low_reasoning_effort_produces_a_reasoning_turn",
+      "source": "tests/providers/deepseek/followup_hunt_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::followup_hunt_matrix::policy_sensitive_response_content_shape_is_recorded",
+      "source": "tests/providers/deepseek/followup_hunt_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::followup_hunt_matrix::streaming_stop_sequence_reaches_the_wire_and_stops_generation",
+      "source": "tests/providers/deepseek/followup_hunt_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::models::list_models_rejected_key_reports_api_error_with_context",
+      "source": "tests/providers/deepseek/models.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::models::list_models_smoke",
+      "source": "tests/providers/deepseek/models.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::multi_extract::batch_multi_extract_chain",
+      "source": "tests/providers/deepseek/multi_extract.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::permission_control::permission_control_prompt_example",
+      "source": "tests/providers/deepseek/permission_control.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::permission_control::permission_control_streaming_example",
+      "source": "tests/providers/deepseek/permission_control.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::prompt_caching::blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows",
+      "source": "tests/providers/deepseek/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires DEEPSEEK_API_KEY and spends real tokens\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::prompt_caching::live_cache_economics",
+      "source": "tests/providers/deepseek/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::prompt_caching::streaming_probe_survives_the_streaming_accumulator",
+      "source": "tests/providers/deepseek/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::raw_capture_matrix::normalized_fields_match_raw_renormalized",
+      "source": "tests/providers/deepseek/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::raw_capture_matrix::raw_exposes_prompt_cache_miss_tokens",
+      "source": "tests/providers/deepseek/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::raw_capture_matrix::raw_round_trips_deepseek_type",
+      "source": "tests/providers/deepseek/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::raw_capture_matrix::reasoning_raw_round_trips_and_exposes_reasoning_content",
+      "source": "tests/providers/deepseek/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::raw_stream_capture_matrix::stream_raw_exposes_terminal_cache_miss_tokens",
+      "source": "tests/providers/deepseek/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::raw_stream_capture_matrix::stream_raw_round_trips_terminal_type",
+      "source": "tests/providers/deepseek/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::raw_stream_capture_matrix::stream_reasoning_raw_round_trips_terminal_type",
+      "source": "tests/providers/deepseek/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::reasoning_block_order::agent_blocking_reasoner_roundtrip_keeps_reasoning_first_in_history",
+      "source": "tests/providers/deepseek/reasoning_block_order.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::reasoning_block_order::agent_streaming_reasoner_roundtrip_streams_reasoning_first",
+      "source": "tests/providers/deepseek/reasoning_block_order.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::reasoning_block_order::blocking_non_thinking_tool_turn_has_no_reasoning_block",
+      "source": "tests/providers/deepseek/reasoning_block_order.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::reasoning_block_order::blocking_reasoner_parallel_tool_turn_leads_with_reasoning",
+      "source": "tests/providers/deepseek/reasoning_block_order.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::reasoning_block_order::blocking_reasoner_text_turn_leads_with_reasoning",
+      "source": "tests/providers/deepseek/reasoning_block_order.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::reasoning_block_order::blocking_reasoner_tool_turn_leads_with_reasoning",
+      "source": "tests/providers/deepseek/reasoning_block_order.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::reasoning_block_order::streaming_non_thinking_tool_turn_has_no_reasoning_block",
+      "source": "tests/providers/deepseek/reasoning_block_order.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::reasoning_block_order::streaming_reasoner_parallel_tool_turn_leads_with_reasoning",
+      "source": "tests/providers/deepseek/reasoning_block_order.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::reasoning_block_order::streaming_reasoner_text_turn_leads_with_reasoning",
+      "source": "tests/providers/deepseek/reasoning_block_order.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::reasoning_block_order::streaming_reasoner_tool_turn_leads_with_reasoning",
+      "source": "tests/providers/deepseek/reasoning_block_order.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::reasoning_roundtrip::nonstreaming",
+      "source": "tests/providers/deepseek/reasoning_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::reasoning_roundtrip::streaming",
+      "source": "tests/providers/deepseek/reasoning_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::reasoning_tool_roundtrip::nonstreaming",
+      "source": "tests/providers/deepseek/reasoning_tool_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::reasoning_tool_roundtrip::streaming",
+      "source": "tests/providers/deepseek/reasoning_tool_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::request_hook::request_hook_records_prompt_and_response",
+      "source": "tests/providers/deepseek/request_hook.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::response_identity_edge::blocking_contract_captures_none",
+      "source": "tests/providers/deepseek/response_identity_edge.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming::streaming_prompt_smoke",
+      "source": "tests/providers/deepseek/streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_disabled_length_top_absent",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_disabled_length_top_two",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_disabled_length_top_zero",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_disabled_stop_top_absent",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_disabled_stop_top_two",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_disabled_stop_top_zero",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_low_length_top_absent",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_low_length_top_two",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_low_length_top_zero",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_low_stop_top_absent",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_low_stop_top_two",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_low_stop_top_zero",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_disabled_length_top_absent",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_disabled_length_top_two",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_disabled_length_top_zero",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_disabled_stop_top_absent",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_disabled_stop_top_two",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_disabled_stop_top_zero",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_low_length_top_absent",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_low_length_top_two",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_low_length_top_zero",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_low_stop_top_absent",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_low_stop_top_two",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_low_stop_top_zero",
+      "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_tools::raw_followup_uses_tool_result_without_new_tool_calls",
+      "source": "tests/providers/deepseek/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_tools::raw_stream_emits_required_zero_arg_tool_call",
+      "source": "tests/providers/deepseek/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_tools::raw_stream_surfaces_two_distinct_tool_calls_before_text",
+      "source": "tests/providers/deepseek/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_tools::raw_stream_tool_call_arguments_are_objects",
+      "source": "tests/providers/deepseek/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_tools::streaming_chat_emits_tool_call_before_later_text",
+      "source": "tests/providers/deepseek/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_tools::streaming_chat_surfaces_two_distinct_tool_calls_before_final_answer",
+      "source": "tests/providers/deepseek/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::streaming_tools::streaming_chat_with_tools",
+      "source": "tests/providers/deepseek/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::tools::tools_smoke",
+      "source": "tests/providers/deepseek/tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::a_truncated_call_is_dropped_at_decode_and_the_turn_survives",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::truncation_matrix::agent_blocking_empty_arguments_on_length_are_not_invoked",
+          "comparison": "Real invocation counters remain zero, actual materialised tool calls empty, original truncation/length fixture predicates retained. Native completion success strengthens original tolerated-error checks; declared blocking and run-local stream budgets preserved.",
+          "ecs_symbol": "deepseek::ecs_truncation::agent_blocking_empty_arguments_on_length_are_not_invoked",
+          "id": "rig::deepseek::deepseek::truncation_matrix::agent_blocking_empty_arguments_on_length_are_not_invoked::scenario-and-helpers"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/truncation_matrix.rs",
+          "symbol": "deepseek::truncation_matrix::agent_blocking_empty_arguments_on_length_are_not_invoked"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "deepseek",
+        "execution_path": "Independent native ECS/provider bus with actual observers and real tools",
+        "source": "tests/providers/deepseek/ecs_truncation.rs",
+        "test": "deepseek::ecs_truncation::agent_blocking_empty_arguments_on_length_are_not_invoked"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "code-and-truncation"
+      ],
+      "family_contract": "tests/ecs_parity/code-and-truncation-contract.md",
+      "fixtures": [
+        {
+          "origin": "unchanged original cassette",
+          "path": "tests/cassettes/deepseek/truncation_matrix/agent_blocking_empty_arguments_on_length_are_not_invoked.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "chain": "Pinned full original sources plus provider/cassette wrappers and unchanged fixture-reading/assertion helpers; real neutral tool methods and native text/call observers",
+        "limits": "Direct machine anchors supplemented by complete helper observations; eight recorded cases only"
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::agent_blocking_empty_arguments_on_length_are_not_invoked",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::truncation_matrix::agent_blocking_truncated_call_is_not_invoked",
+          "comparison": "Real invocation counters remain zero, actual materialised tool calls empty, original truncation/length fixture predicates retained. Native completion success strengthens original tolerated-error checks; declared blocking and run-local stream budgets preserved.",
+          "ecs_symbol": "deepseek::ecs_truncation::agent_blocking_truncated_call_is_not_invoked",
+          "id": "rig::deepseek::deepseek::truncation_matrix::agent_blocking_truncated_call_is_not_invoked::scenario-and-helpers"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/truncation_matrix.rs",
+          "symbol": "deepseek::truncation_matrix::agent_blocking_truncated_call_is_not_invoked"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "deepseek",
+        "execution_path": "Independent native ECS/provider bus with actual observers and real tools",
+        "source": "tests/providers/deepseek/ecs_truncation.rs",
+        "test": "deepseek::ecs_truncation::agent_blocking_truncated_call_is_not_invoked"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "code-and-truncation"
+      ],
+      "family_contract": "tests/ecs_parity/code-and-truncation-contract.md",
+      "fixtures": [
+        {
+          "origin": "unchanged original cassette",
+          "path": "tests/cassettes/deepseek/truncation_matrix/agent_blocking_truncated_call_is_not_invoked.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "chain": "Pinned full original sources plus provider/cassette wrappers and unchanged fixture-reading/assertion helpers; real neutral tool methods and native text/call observers",
+        "limits": "Direct machine anchors supplemented by complete helper observations; eight recorded cases only"
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::agent_blocking_truncated_call_is_not_invoked",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::truncation_matrix::agent_streaming_empty_arguments_on_length_are_not_invoked",
+          "comparison": "Real invocation counters remain zero, actual materialised tool calls empty, original truncation/length fixture predicates retained. Native completion success strengthens original tolerated-error checks; declared blocking and run-local stream budgets preserved.",
+          "ecs_symbol": "deepseek::ecs_truncation::agent_streaming_empty_arguments_on_length_are_not_invoked",
+          "id": "rig::deepseek::deepseek::truncation_matrix::agent_streaming_empty_arguments_on_length_are_not_invoked::scenario-and-helpers"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/truncation_matrix.rs",
+          "symbol": "deepseek::truncation_matrix::agent_streaming_empty_arguments_on_length_are_not_invoked"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "deepseek",
+        "execution_path": "Independent native ECS/provider bus with actual observers and real tools",
+        "source": "tests/providers/deepseek/ecs_truncation.rs",
+        "test": "deepseek::ecs_truncation::agent_streaming_empty_arguments_on_length_are_not_invoked"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "code-and-truncation"
+      ],
+      "family_contract": "tests/ecs_parity/code-and-truncation-contract.md",
+      "fixtures": [
+        {
+          "origin": "unchanged original cassette",
+          "path": "tests/cassettes/deepseek/truncation_matrix/agent_streaming_empty_arguments_on_length_are_not_invoked.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "chain": "Pinned full original sources plus provider/cassette wrappers and unchanged fixture-reading/assertion helpers; real neutral tool methods and native text/call observers",
+        "limits": "Direct machine anchors supplemented by complete helper observations; eight recorded cases only"
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::agent_streaming_empty_arguments_on_length_are_not_invoked",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "deepseek::truncation_matrix::agent_streaming_truncated_call_is_not_invoked",
+          "comparison": "Real invocation counters remain zero, actual materialised tool calls empty, original truncation/length fixture predicates retained. Native completion success strengthens original tolerated-error checks; declared blocking and run-local stream budgets preserved.",
+          "ecs_symbol": "deepseek::ecs_truncation::agent_streaming_truncated_call_is_not_invoked",
+          "id": "rig::deepseek::deepseek::truncation_matrix::agent_streaming_truncated_call_is_not_invoked::scenario-and-helpers"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/deepseek/truncation_matrix.rs",
+          "symbol": "deepseek::truncation_matrix::agent_streaming_truncated_call_is_not_invoked"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "deepseek",
+        "execution_path": "Independent native ECS/provider bus with actual observers and real tools",
+        "source": "tests/providers/deepseek/ecs_truncation.rs",
+        "test": "deepseek::ecs_truncation::agent_streaming_truncated_call_is_not_invoked"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "code-and-truncation"
+      ],
+      "family_contract": "tests/ecs_parity/code-and-truncation-contract.md",
+      "fixtures": [
+        {
+          "origin": "unchanged original cassette",
+          "path": "tests/cassettes/deepseek/truncation_matrix/agent_streaming_truncated_call_is_not_invoked.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "chain": "Pinned full original sources plus provider/cassette wrappers and unchanged fixture-reading/assertion helpers; real neutral tool methods and native text/call observers",
+        "limits": "Direct machine anchors supplemented by complete helper observations; eight recorded cases only"
+      },
+      "id": "rig::deepseek::deepseek::truncation_matrix::agent_streaming_truncated_call_is_not_invoked",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_budget_12_truncates_before_any_tool_call",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_budget_16_empty_arguments_are_dropped_on_length",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_budget_20_empty_arguments_are_dropped_on_length",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_budget_24_truncated_arguments_keep_the_turn",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_budget_32_truncated_arguments_keep_the_turn",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_budget_48_truncated_arguments_keep_the_turn",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_budget_64_truncated_arguments_keep_the_turn",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_budget_96_complete_arguments_are_untouched",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_parallel_calls_keep_the_complete_one",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_reasoner_truncated_call_keeps_the_reasoning_block",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::blocking_text_before_a_truncated_call_survives",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_budget_12_truncates_before_any_tool_call",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_budget_16_empty_arguments_are_dropped_on_length",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_budget_24_truncated_arguments_keep_the_turn",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_budget_32_truncated_arguments_keep_the_turn",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_budget_48_truncated_arguments_keep_the_turn",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_budget_64_truncated_arguments_keep_the_turn",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_budget_96_complete_arguments_are_untouched",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_parallel_calls_keep_the_complete_one",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_reasoner_truncated_call_keeps_the_reasoning_block",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "shared_provider",
+      "classification_reason": "21 recorded raw_completion.normalize/model.stream cases and1synthetic provider normalization;4explicit agent prompt/stream-chat invocation-counter cases.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::truncation_matrix::streaming_text_before_a_truncated_call_survives",
+      "source": "tests/providers/deepseek/truncation_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_all_text_parts_still_flatten_to_a_string",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_assistant_and_tool_history_still_flattens",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_audio_part_reaches_the_wire",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_image_base64_part_reaches_the_wire",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_image_only_message_reaches_the_wire",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_image_url_part_reaches_the_wire",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_pdf_document_part_reaches_the_wire",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_repeated_prompt_reports_the_cache_split",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_text_document_still_flattens_to_a_string",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_video_part_reaches_the_wire",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::chat_completion_rejects_a_bogus_key_with_the_provider_body",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::chat_completion_rejects_an_unknown_model_with_the_provider_body",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::forced_tool_choice_under_thinking_is_rejected_upstream",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::rig_keeps_a_forced_tool_choice_when_thinking_is_disabled",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::rig_suppresses_a_forced_tool_choice_while_thinking_is_on",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::streaming_image_part_reaches_the_wire",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::deepseek::deepseek::wire_shape_matrix::streaming_repeated_prompt_reports_the_cache_split",
+      "source": "tests/providers/deepseek/wire_shape_matrix.rs"
+    }
+  ],
+  "schema": 1
+}

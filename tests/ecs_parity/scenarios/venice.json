@@ -1,0 +1,763 @@
+{
+  "scenarios": [
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "venice::cassette::agent::completion_smoke",
+          "comparison": "Original prompt await.expect succeeds; native requires real Settled/RunResult, rejects actual Failed and transport errors; deadline is failure, never success.",
+          "ecs_symbol": "venice::cassette::ecs_completion::completion_smoke",
+          "id": "rig::venice::venice::cassette::agent::completion_smoke::successful-run"
+        },
+        {
+          "baseline_symbol": "support::assert_nonempty_response",
+          "comparison": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails.",
+          "ecs_symbol": "venice::cassette::ecs_completion::completion_smoke",
+          "id": "rig::venice::venice::cassette::agent::completion_smoke::response-assertion"
+        },
+        {
+          "baseline_symbol": "provider wrapper -> ProviderCassette start/finish_after_test -> ReplayServer::assert_consumed -> assert_replay_finished",
+          "comparison": "Same literal fixture path and unchanged provider wrapper. Original method/path/query/required-header/body matching and ordered consumption retained; unused interactions or replay misses fail after successful closure.",
+          "ecs_symbol": "venice::cassette::ecs_completion::completion_smoke",
+          "id": "rig::venice::venice::cassette::agent::completion_smoke::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "venice::cassette::agent::completion_smoke",
+          "comparison": "Exact model, prompt, preamble, context IDs/text/order, max_tokens, temperature, extra JSON, tools/order and builder budget preserved by native components; no run override.",
+          "ecs_symbol": "venice::cassette::ecs_completion::completion_smoke",
+          "id": "rig::venice::venice::cassette::agent::completion_smoke::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/agent.rs",
+          "symbol": "venice::cassette::agent::completion_smoke"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "history": [],
+        "native_DefaultMaxTurns": null,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": false,
+        "original_effective_default_max_turns": 1,
+        "run_max_turns_override": null,
+        "scope": "Native None marks unset builder default; effective MaxTurns1 matches original AgentConfig::new max_turns1. No effect-header fingerprint equality claimed.",
+        "settings": "DEFAULT_MODEL from original parent module; BASIC_PREAMBLE/BASIC_PROMPT",
+        "streamed": false
+      },
+      "declared_gates": [],
+      "ecs": {
+        "binary": "venice",
+        "execution_path": "Native BusPlugin/AgentPlugin App; actual provider CompletionAdapter and ToolAdapter through per-poll Tokio context bridge; no legacy agent runner, policy, or effect replayer.",
+        "source": "tests/providers/venice/cassette/ecs_completion.rs",
+        "test": "venice::cassette::ecs_completion::completion_smoke"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output-config-regression",
+        "provider-completions"
+      ],
+      "family_contract": "tests/ecs_parity/provider-completions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/venice/agent/completion_smoke.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Manually traced original free functions, provider client constructors and completion_model, builder context/default budget, await.expect, unchanged neutral Adder/Subtract and parameter schema, ProviderCassette impl methods, ReplayServer::assert_consumed and teardown. No original stream collectors or hooks in these 16 cases.",
+        "copilot": "Its mod.rs changes only by native module registration; provider wrapper and client helper bodies are unchanged. Paired source index retains full module; separate reviewed exact insertion-removal comparison freezes its original body.",
+        "response": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails."
+      },
+      "id": "rig::venice::venice::cassette::agent::completion_smoke",
+      "mapping_limits": [
+        "Sixteen recorded blocking workflows only; ignored live Copilot and other live cases remain separate.",
+        "Request/response fidelity and actual final-result obligations; no effect-golden equality, hook, streaming, raw usage, terminal-count or scheduling claim.",
+        "Bedrock arithmetic retains original real tools and assertion, but original does not require an explicit tool-execution counter.",
+        "Full feature/capability matrix, OS network barrier, remaining families, aggregate verification, publication and CI remain unfinished."
+      ],
+      "resolved_helper_chain": [
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message",
+        "support::assert_nonempty_response",
+        "venice::support::with_venice_cassette"
+      ],
+      "source": "tests/providers/venice/cassette/agent.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"audio\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::audio_generation::audio_generation_smoke",
+      "source": "tests/providers/venice/cassette/audio_generation.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::conformance::cancellation_and_max_turn_diagnostics",
+      "source": "tests/providers/venice/cassette/conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::conformance::hooks_rewrite_tool_flow",
+      "source": "tests/providers/venice/cassette/conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::conformance::invalid_tool_call_recovers",
+      "source": "tests/providers/venice/cassette/conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::conformance::parallel_tool_calls_roundtrip",
+      "source": "tests/providers/venice/cassette/conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::conformance::streaming_structured_output_after_tool",
+      "source": "tests/providers/venice/cassette/conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::conformance::streaming_tool_roundtrip",
+      "source": "tests/providers/venice/cassette/conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::conformance::structured_extraction_roundtrip",
+      "source": "tests/providers/venice/cassette/conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::conformance::structured_output_after_tool",
+      "source": "tests/providers/venice/cassette/conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::conformance::tool_choice_modes_roundtrip",
+      "source": "tests/providers/venice/cassette/conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::conformance::tool_output_types_roundtrip",
+      "source": "tests/providers/venice/cassette/conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::conformance::zero_argument_tool_roundtrip",
+      "source": "tests/providers/venice/cassette/conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::embedding_matrix::dimensions_request",
+      "source": "tests/providers/venice/cassette/embedding_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::embedding_matrix::error_preserves_provider_body",
+      "source": "tests/providers/venice/cassette/embedding_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::embedding_matrix::normalized_response_is_complete",
+      "source": "tests/providers/venice/cassette/embedding_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::embedding_matrix::raw_round_trips",
+      "source": "tests/providers/venice/cassette/embedding_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::embedding_matrix::raw_route_parity",
+      "source": "tests/providers/venice/cassette/embedding_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::embedding_matrix::single_text_convenience",
+      "source": "tests/providers/venice/cassette/embedding_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::embeddings::embeddings_honor_requested_dimensions",
+      "source": "tests/providers/venice/cassette/embeddings.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::embeddings::embeddings_smoke",
+      "source": "tests/providers/venice/cassette/embeddings.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::error_envelope::nonexistent_model_error_preserves_status_and_body",
+      "source": "tests/providers/venice/cassette/error_envelope.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::error_envelope::nonexistent_model_streaming_error_preserves_status_and_body",
+      "source": "tests/providers/venice/cassette/error_envelope.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "venice::cassette::extractor::extractor_smoke",
+          "comparison": "Original extract await.expect requires success. Native helper requires actual settled run/submit call, deserialization and Usage; no expected data drives execution.",
+          "ecs_symbol": "venice::cassette::ecs_extractor::extractor_smoke",
+          "id": "rig::venice::venice::cassette::extractor::extractor_smoke::success"
+        },
+        {
+          "baseline_symbol": "venice::cassette::extractor::extractor_smoke",
+          "comparison": "Same pure validate_extraction_fields: Ada/Lovelace case-insensitive and job contains mathematician case-insensitively; Usage != Usage::new(). Retain each additional original option-presence/nonempty/total-token assertion.",
+          "ecs_symbol": "venice::cassette::ecs_extractor::extractor_smoke",
+          "id": "rig::venice::venice::cassette::extractor::extractor_smoke::fields-and-usage"
+        },
+        {
+          "baseline_symbol": "provider wrapper -> ProviderCassette finish_after_test -> ReplayServer::assert_consumed",
+          "comparison": "Same strict ordered fixture and wrapper; exact model, prompt, extractor preamble/schema/submit description/required tool choice/no augmentation/one turn; Gemini typed parameters serialize through original expect. Full cassette consumption and original teardown preserved.",
+          "ecs_symbol": "venice::cassette::ecs_extractor::extractor_smoke",
+          "id": "rig::venice::venice::cassette::extractor::extractor_smoke::request-and-teardown"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/extractor.rs",
+          "symbol": "venice::cassette::extractor::extractor_smoke"
+        },
+        {
+          "path": "tests/providers/venice/support.rs",
+          "symbol": "venice::support::with_venice_cassette"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original typed extractor builds and executes rig-agent orchestration, then validates actual extracted fields and where required reported usage.",
+      "configuration": "root-bedrock",
+      "configuration_sources": [
+        {
+          "path": "crates/rig-agent/src/test_utils/model_conformance.rs"
+        },
+        {
+          "path": "crates/rig-core/src/completion/request.rs"
+        }
+      ],
+      "declared_gates": [],
+      "ecs": {
+        "binary": "venice",
+        "execution_path": "Unchanged EcsExtractor with actual native AgentPlugin/BusPlugin and real provider adapter; no legacy extraction runtime.",
+        "source": "tests/providers/venice/cassette/ecs_extractor.rs",
+        "test": "venice::cassette::ecs_extractor::extractor_smoke"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-smoke-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/venice/extractor/extractor_smoke.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "configuration": "Existing native helper reviewed in extractor-usage contract; zero-retry, one-turn, unaugmented submit mode. Gemini serde_json conversion expect preserved. Shared SmokePerson unchanged; additional Gemini Person widens visibility only.",
+        "option_and_nonempty_semantics": "Same pure validate_extraction_fields: Ada/Lovelace case-insensitive and job contains mathematician case-insensitively; Usage != Usage::new(). Retain each additional original option-presence/nonempty/total-token assertion.",
+        "portable_validator": true,
+        "portable_validator_semantics": "Pure validation only, no agent runtime calls. Its if-return-Err condition and ScenarioError conversion are obligations despite no assert macro. Usage::has_values means any nondefault field, not specifically positive total.",
+        "portable_validator_source": "crates/rig-agent/src/test_utils/model_conformance.rs::validate_extraction_fields"
+      },
+      "id": "rig::venice::venice::cassette::extractor::extractor_smoke",
+      "mapping_limits": [
+        "Ten recorded one-call zero-retry scenarios; no stream, retry, effect-golden or policy timing equality claim.",
+        "Shared rig-agent test_utils import is a pure validator, not legacy orchestration.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "venice::support::with_venice_cassette",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/venice/cassette/extractor.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"image\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::image_generation::image_generation_smoke",
+      "source": "tests/providers/venice/cassette/image_generation.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::model_listing::list_models_smoke",
+      "source": "tests/providers/venice/cassette/model_listing.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "assert_agent_growth_still_hits plus original post-wrapper assertions",
+          "comparison": "Same full neutral cache-ratio growth predicates on actual native ordered completion usages; same prefix and provider-specific breakpoint assertions",
+          "ecs_symbol": "venice::cassette::ecs_prompt_caching::agent_loop_keeps_hitting_across_tool_turns",
+          "id": "rig::venice::venice::cassette::prompt_caching::agent_loop_keeps_hitting_across_tool_turns::cache-growth"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/venice/cassette/prompt_caching.rs",
+          "symbol": "venice::cassette::prompt_caching::agent_loop_keeps_hitting_across_tool_turns"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::assert_agent_growth_still_hits"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::assert_prefix_stable"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::assert_breakpoints_match_support"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Reviewed explicit agent builder/prompt execution with CacheProbeLookupTool, six-turn budget and real completion-call usage observations.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "venice",
+        "execution_path": "Native ECS systems/provider bus and actual ordered completion outcomes",
+        "source": "tests/providers/venice/cassette/ecs_prompt_caching.rs",
+        "test": "venice::cassette::ecs_prompt_caching::agent_loop_keeps_hitting_across_tool_turns"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "agent-cache-growth"
+      ],
+      "family_contract": "tests/ecs_parity/agent-cache-growth-contract.md",
+      "fixtures": [
+        {
+          "origin": "unchanged original provider cassette",
+          "path": "tests/cassettes/venice/prompt_caching/agent_loop.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "chain": "Original provider wrapper, original probe preamble and CacheProbeLookupTool, AGENT_CACHE_PROMPT, assert_agent_growth_still_hits and post-wrapper prefix/breakpoint validators",
+        "limits": "Recorded cache-growth workloads only; no live cache economics claim"
+      },
+      "id": "rig::venice::venice::cassette::prompt_caching::agent_loop_keeps_hitting_across_tool_turns",
+      "source": "tests/providers/venice/cassette/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::prompt_caching::blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows",
+      "source": "tests/providers/venice/cassette/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires VENICE_API_KEY and spends real tokens\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::prompt_caching::live_cache_economics",
+      "source": "tests/providers/venice/cassette/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::prompt_caching::prompt_cache_key_reaches_the_wire_and_is_stable",
+      "source": "tests/providers/venice/cassette/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::prompt_caching::streaming_probe_survives_the_streaming_accumulator",
+      "source": "tests/providers/venice/cassette/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::raw_capture_matrix::normalized_fields_match_raw_renormalized",
+      "source": "tests/providers/venice/cassette/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::raw_capture_matrix::raw_exposes_venice_parameters_and_cost",
+      "source": "tests/providers/venice/cassette/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::raw_capture_matrix::raw_round_trips_venice_type",
+      "source": "tests/providers/venice/cassette/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::raw_stream_capture_matrix::stream_raw_exposes_terminal_cost",
+      "source": "tests/providers/venice/cassette/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::raw_stream_capture_matrix::stream_raw_round_trips_terminal_type",
+      "source": "tests/providers/venice/cassette/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::request_hook::request_hook_records_prompt_and_response",
+      "source": "tests/providers/venice/cassette/request_hook.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::streaming::streaming_smoke",
+      "source": "tests/providers/venice/cassette/streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::streaming_tools::streaming_tools_smoke",
+      "source": "tests/providers/venice/cassette/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::structured_output::structured_output_smoke",
+      "source": "tests/providers/venice/cassette/structured_output.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::tools::tool_with_optional_argument",
+      "source": "tests/providers/venice/cassette/tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::tools::two_tools_nonstreaming_chain",
+      "source": "tests/providers/venice/cassette/tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::transcription::transcription_smoke",
+      "source": "tests/providers/venice/cassette/transcription.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::typed_prompt_tools::prompt_typed_with_tool_call_roundtrip",
+      "source": "tests/providers/venice/cassette/typed_prompt_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::venice_parameters::character_slug_selects_a_persona",
+      "source": "tests/providers/venice/cassette/venice_parameters.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::venice_parameters::disable_thinking_is_applied",
+      "source": "tests/providers/venice/cassette/venice_parameters.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::venice_parameters::venice_system_prompt_can_be_disabled",
+      "source": "tests/providers/venice/cassette/venice_parameters.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::venice_parameters::web_search_auto_is_echoed",
+      "source": "tests/providers/venice/cassette/venice_parameters.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::venice::venice::cassette::venice_parameters::web_search_on_returns_citations",
+      "source": "tests/providers/venice/cassette/venice_parameters.rs"
+    }
+  ],
+  "schema": 1
+}

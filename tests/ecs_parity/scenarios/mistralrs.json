@@ -1,0 +1,158 @@
+{
+  "scenarios": [
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::mistralrs::mistralrs::cassette::chat_completions::chat_completions_agent_prompt_completes",
+      "source": "tests/providers/mistralrs/cassette/chat_completions.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::mistralrs::mistralrs::cassette::chat_completions::raw_chat_completion_surfaces_reasoning_or_text",
+      "source": "tests/providers/mistralrs/cassette/chat_completions.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no mistral.rs server in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::mistralrs::mistralrs::cassette::raw_capture_matrix::normalized_fields_equal_raw_renormalized",
+      "source": "tests/providers/mistralrs/cassette/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no mistral.rs server in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::mistralrs::mistralrs::cassette::raw_capture_matrix::raw_exposes_envelope_fields",
+      "source": "tests/providers/mistralrs/cassette/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no mistral.rs server in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::mistralrs::mistralrs::cassette::raw_capture_matrix::raw_round_trips_provider_type",
+      "source": "tests/providers/mistralrs/cassette/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no mistral.rs server in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::mistralrs::mistralrs::cassette::raw_stream_capture_matrix::stream_raw_exposes_envelope_fields",
+      "source": "tests/providers/mistralrs/cassette/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"unrecorded (no mistral.rs server in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::mistralrs::mistralrs::cassette::raw_stream_capture_matrix::stream_raw_terminal_round_trips_provider_type",
+      "source": "tests/providers/mistralrs/cassette/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::mistralrs::mistralrs::cassette::responses_api::responses_api_multi_turn_replays_history",
+      "source": "tests/providers/mistralrs/cassette/responses_api.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::mistralrs::mistralrs::cassette::responses_api::responses_api_no_think_returns_text",
+      "source": "tests/providers/mistralrs/cassette/responses_api.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::mistralrs::mistralrs::cassette::responses_api::responses_api_reasoning_plus_answer_completes",
+      "source": "tests/providers/mistralrs/cassette/responses_api.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::mistralrs::mistralrs::cassette::streaming::chat_completions_stream_emits_reasoning_and_text_incrementally",
+      "source": "tests/providers/mistralrs/cassette/streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::mistralrs::mistralrs::cassette::tools::raw_chat_completion_emits_requested_tool_call",
+      "source": "tests/providers/mistralrs/cassette/tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::mistralrs::mistralrs::cassette::usage::chat_completion_usage_without_output_tokens_details_deserializes",
+      "source": "tests/providers/mistralrs/cassette/usage.rs"
+    }
+  ],
+  "schema": 1
+}

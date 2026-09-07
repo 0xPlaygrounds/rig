@@ -1,0 +1,31 @@
+{
+  "scenarios": [
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires AZURE_OPENAI_API_KEY and related Azure env vars\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::azure::azure::structured_output::test_azure_structured_output",
+      "source": "tests/providers/azure/structured_output.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires AZURE_OPENAI_API_KEY and related Azure env vars\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::azure::azure::transcription::transcription_smoke",
+      "source": "tests/providers/azure/transcription.rs"
+    }
+  ],
+  "schema": 1
+}

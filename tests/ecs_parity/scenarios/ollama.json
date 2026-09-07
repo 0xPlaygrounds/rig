@@ -1,0 +1,622 @@
+{
+  "scenarios": [
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/agent.rs",
+          "symbol": "ollama::agent::completion_smoke"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires a local Ollama server\"]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "fixtures": [],
+      "id": "rig::ollama::ollama::agent::completion_smoke",
+      "source": "tests/providers/ollama/agent.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "ollama::cassette::agent::completion_respects_max_tokens",
+          "comparison": "Original prompt await.expect succeeds; native requires real Settled/RunResult, rejects actual Failed and transport errors; deadline is failure, never success.",
+          "ecs_symbol": "ollama::cassette::ecs_completion::completion_respects_max_tokens",
+          "id": "rig::ollama::ollama::cassette::agent::completion_respects_max_tokens::successful-run"
+        },
+        {
+          "baseline_symbol": "support::assert_nonempty_response",
+          "comparison": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails.",
+          "ecs_symbol": "ollama::cassette::ecs_completion::completion_respects_max_tokens",
+          "id": "rig::ollama::ollama::cassette::agent::completion_respects_max_tokens::response-assertion"
+        },
+        {
+          "baseline_symbol": "provider wrapper -> ProviderCassette start/finish_after_test -> ReplayServer::assert_consumed -> assert_replay_finished",
+          "comparison": "Same literal fixture path and unchanged provider wrapper. Original method/path/query/required-header/body matching and ordered consumption retained; unused interactions or replay misses fail after successful closure.",
+          "ecs_symbol": "ollama::cassette::ecs_completion::completion_respects_max_tokens",
+          "id": "rig::ollama::ollama::cassette::agent::completion_respects_max_tokens::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "ollama::cassette::agent::completion_respects_max_tokens",
+          "comparison": "Exact model, prompt, preamble, context IDs/text/order, max_tokens, temperature, extra JSON, tools/order and builder budget preserved by native components; no run override.",
+          "ecs_symbol": "ollama::cassette::ecs_completion::completion_respects_max_tokens",
+          "id": "rig::ollama::ollama::cassette::agent::completion_respects_max_tokens::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/agent.rs",
+          "symbol": "ollama::cassette::agent::completion_respects_max_tokens"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        },
+        {
+          "path": "tests/providers/ollama/support.rs",
+          "symbol": "ollama::support::with_ollama_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "history": [],
+        "native_DefaultMaxTurns": null,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": false,
+        "original_effective_default_max_turns": 1,
+        "run_max_turns_override": null,
+        "scope": "Native None marks unset builder default; effective MaxTurns1 matches original AgentConfig::new max_turns1. No effect-header fingerprint equality claimed.",
+        "settings": "MODEL=qwen3:4b; BASIC_PREAMBLE/BASIC_PROMPT; think:false; max_tokens24 only in completion_respects_max_tokens",
+        "streamed": false
+      },
+      "declared_gates": [],
+      "ecs": {
+        "binary": "ollama",
+        "execution_path": "Native BusPlugin/AgentPlugin App; actual provider CompletionAdapter and ToolAdapter through per-poll Tokio context bridge; no legacy agent runner, policy, or effect replayer.",
+        "source": "tests/providers/ollama/cassette/ecs_completion.rs",
+        "test": "ollama::cassette::ecs_completion::completion_respects_max_tokens"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output-config-regression",
+        "provider-completions"
+      ],
+      "family_contract": "tests/ecs_parity/provider-completions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/agent/max_tokens.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Manually traced original free functions, provider client constructors and completion_model, builder context/default budget, await.expect, unchanged neutral Adder/Subtract and parameter schema, ProviderCassette impl methods, ReplayServer::assert_consumed and teardown. No original stream collectors or hooks in these 16 cases.",
+        "copilot": "Its mod.rs changes only by native module registration; provider wrapper and client helper bodies are unchanged. Paired source index retains full module; separate reviewed exact insertion-removal comparison freezes its original body.",
+        "response": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails."
+      },
+      "id": "rig::ollama::ollama::cassette::agent::completion_respects_max_tokens",
+      "mapping_limits": [
+        "Sixteen recorded blocking workflows only; ignored live Copilot and other live cases remain separate.",
+        "Request/response fidelity and actual final-result obligations; no effect-golden equality, hook, streaming, raw usage, terminal-count or scheduling claim.",
+        "Bedrock arithmetic retains original real tools and assertion, but original does not require an explicit tool-execution counter.",
+        "Full feature/capability matrix, OS network barrier, remaining families, aggregate verification, publication and CI remain unfinished."
+      ],
+      "resolved_helper_chain": [
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message",
+        "ollama::support::with_ollama_cassette",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/ollama/cassette/agent.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "ollama::cassette::agent::completion_smoke",
+          "comparison": "Original prompt await.expect succeeds; native requires real Settled/RunResult, rejects actual Failed and transport errors; deadline is failure, never success.",
+          "ecs_symbol": "ollama::cassette::ecs_completion::completion_smoke",
+          "id": "rig::ollama::ollama::cassette::agent::completion_smoke::successful-run"
+        },
+        {
+          "baseline_symbol": "support::assert_nonempty_response",
+          "comparison": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails.",
+          "ecs_symbol": "ollama::cassette::ecs_completion::completion_smoke",
+          "id": "rig::ollama::ollama::cassette::agent::completion_smoke::response-assertion"
+        },
+        {
+          "baseline_symbol": "provider wrapper -> ProviderCassette start/finish_after_test -> ReplayServer::assert_consumed -> assert_replay_finished",
+          "comparison": "Same literal fixture path and unchanged provider wrapper. Original method/path/query/required-header/body matching and ordered consumption retained; unused interactions or replay misses fail after successful closure.",
+          "ecs_symbol": "ollama::cassette::ecs_completion::completion_smoke",
+          "id": "rig::ollama::ollama::cassette::agent::completion_smoke::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "ollama::cassette::agent::completion_smoke",
+          "comparison": "Exact model, prompt, preamble, context IDs/text/order, max_tokens, temperature, extra JSON, tools/order and builder budget preserved by native components; no run override.",
+          "ecs_symbol": "ollama::cassette::ecs_completion::completion_smoke",
+          "id": "rig::ollama::ollama::cassette::agent::completion_smoke::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/ollama/cassette/agent.rs",
+          "symbol": "ollama::cassette::agent::completion_smoke"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        },
+        {
+          "path": "tests/providers/ollama/support.rs",
+          "symbol": "ollama::support::with_ollama_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "history": [],
+        "native_DefaultMaxTurns": null,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": false,
+        "original_effective_default_max_turns": 1,
+        "run_max_turns_override": null,
+        "scope": "Native None marks unset builder default; effective MaxTurns1 matches original AgentConfig::new max_turns1. No effect-header fingerprint equality claimed.",
+        "settings": "MODEL=qwen3:4b; BASIC_PREAMBLE/BASIC_PROMPT; think:false; max_tokens24 only in completion_respects_max_tokens",
+        "streamed": false
+      },
+      "declared_gates": [],
+      "ecs": {
+        "binary": "ollama",
+        "execution_path": "Native BusPlugin/AgentPlugin App; actual provider CompletionAdapter and ToolAdapter through per-poll Tokio context bridge; no legacy agent runner, policy, or effect replayer.",
+        "source": "tests/providers/ollama/cassette/ecs_completion.rs",
+        "test": "ollama::cassette::ecs_completion::completion_smoke"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output-config-regression",
+        "provider-completions"
+      ],
+      "family_contract": "tests/ecs_parity/provider-completions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/ollama/agent/completion_smoke.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Manually traced original free functions, provider client constructors and completion_model, builder context/default budget, await.expect, unchanged neutral Adder/Subtract and parameter schema, ProviderCassette impl methods, ReplayServer::assert_consumed and teardown. No original stream collectors or hooks in these 16 cases.",
+        "copilot": "Its mod.rs changes only by native module registration; provider wrapper and client helper bodies are unchanged. Paired source index retains full module; separate reviewed exact insertion-removal comparison freezes its original body.",
+        "response": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails."
+      },
+      "id": "rig::ollama::ollama::cassette::agent::completion_smoke",
+      "mapping_limits": [
+        "Sixteen recorded blocking workflows only; ignored live Copilot and other live cases remain separate.",
+        "Request/response fidelity and actual final-result obligations; no effect-golden equality, hook, streaming, raw usage, terminal-count or scheduling claim.",
+        "Bedrock arithmetic retains original real tools and assertion, but original does not require an explicit tool-execution counter.",
+        "Full feature/capability matrix, OS network barrier, remaining families, aggregate verification, publication and CI remain unfinished."
+      ],
+      "resolved_helper_chain": [
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message",
+        "ollama::support::with_ollama_cassette",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/ollama/cassette/agent.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::agentic::native_mode_emits_structured_output",
+      "source": "tests/providers/ollama/cassette/agentic.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::agentic::prompted_mode_returns_parseable_json",
+      "source": "tests/providers/ollama/cassette/agentic.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::agentic::streaming_structured_output_with_tools",
+      "source": "tests/providers/ollama/cassette/agentic.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::agentic::structured_output_raw_with_thinking",
+      "source": "tests/providers/ollama/cassette/agentic.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::agentic::structured_output_with_tools_and_thinking",
+      "source": "tests/providers/ollama/cassette/agentic.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::models::list_models_smoke",
+      "source": "tests/providers/ollama/cassette/models.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::raw_capture_agent_matrix::hooks_observe_raw_blocking",
+      "source": "tests/providers/ollama/cassette/raw_capture_agent_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::raw_capture_agent_matrix::hooks_observe_raw_streamed",
+      "source": "tests/providers/ollama/cassette/raw_capture_agent_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::raw_capture_agent_matrix::multi_turn_tool_run_records_distinct_raw_blocking",
+      "source": "tests/providers/ollama/cassette/raw_capture_agent_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::raw_capture_agent_matrix::multi_turn_tool_run_records_distinct_raw_streamed",
+      "source": "tests/providers/ollama/cassette/raw_capture_agent_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::raw_capture_matrix::normalized_fields_equal_raw_renormalized",
+      "source": "tests/providers/ollama/cassette/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::raw_capture_matrix::raw_exposes_ollama_durations",
+      "source": "tests/providers/ollama/cassette/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::raw_capture_matrix::raw_round_trips_provider_type",
+      "source": "tests/providers/ollama/cassette/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::raw_stream_capture_matrix::stream_raw_exposes_terminal_durations",
+      "source": "tests/providers/ollama/cassette/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::raw_stream_capture_matrix::stream_raw_terminal_round_trips_provider_type",
+      "source": "tests/providers/ollama/cassette/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::reasoning_roundtrip::nonstreaming",
+      "source": "tests/providers/ollama/cassette/reasoning_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::reasoning_roundtrip::streaming",
+      "source": "tests/providers/ollama/cassette/reasoning_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::reasoning_tool_roundtrip::nonstreaming",
+      "source": "tests/providers/ollama/cassette/reasoning_tool_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::reasoning_tool_roundtrip::streaming",
+      "source": "tests/providers/ollama/cassette/reasoning_tool_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::streaming::streaming_smoke",
+      "source": "tests/providers/ollama/cassette/streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::streaming_grammar::chat_sourced_history_replays_the_tool_name_not_the_identifier",
+      "source": "tests/providers/ollama/cassette/streaming_grammar.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::streaming_grammar::parallel_id_less_tool_calls_stay_distinct",
+      "source": "tests/providers/ollama/cassette/streaming_grammar.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::streaming_grammar::same_tool_called_twice_in_one_turn_stays_distinct",
+      "source": "tests/providers/ollama/cassette/streaming_grammar.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::streaming_grammar::thinking_and_tool_call_in_one_stream",
+      "source": "tests/providers/ollama/cassette/streaming_grammar.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::streaming_tools::streaming_tools_smoke",
+      "source": "tests/providers/ollama/cassette/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::structured_output::structured_output_smoke",
+      "source": "tests/providers/ollama/cassette/structured_output.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::tools::tool_with_optional_argument",
+      "source": "tests/providers/ollama/cassette/tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::cassette::tools::two_tools_nonstreaming_chain",
+      "source": "tests/providers/ollama/cassette/tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires a local Ollama server\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::models::list_models_smoke",
+      "source": "tests/providers/ollama/models.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires a local Ollama server with a multimodal model\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::multimodal::multimodal_image_prompt",
+      "source": "tests/providers/ollama/multimodal.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires a local Ollama server\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::pause_control::streaming_pause_and_resume",
+      "source": "tests/providers/ollama/pause_control.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires a local Ollama server\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::streaming::example_streaming_prompt",
+      "source": "tests/providers/ollama/streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires a local Ollama server\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::streaming_tools::example_streaming_with_tools",
+      "source": "tests/providers/ollama/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires a local Ollama server\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::ollama::ollama::structured_output::structured_output_prompt",
+      "source": "tests/providers/ollama/structured_output.rs"
+    }
+  ],
+  "schema": 1
+}

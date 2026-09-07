@@ -1,0 +1,95 @@
+{
+  "scenarios": [
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/moonshot/agent.rs",
+          "symbol": "moonshot::agent::completion_smoke"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        }
+      ],
+      "baseline_ignored": true,
+      "classification": "agent",
+      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires MOONSHOT_API_KEY\"]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_live",
+      "fixtures": [],
+      "id": "rig::moonshot::moonshot::agent::completion_smoke",
+      "source": "tests/providers/moonshot/agent.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires MOONSHOT_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::moonshot::moonshot::anthropic::anthropic_compatible_completion_smoke",
+      "source": "tests/providers/moonshot/anthropic.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires MOONSHOT_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::moonshot::moonshot::context::context_smoke",
+      "source": "tests/providers/moonshot/context.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires MOONSHOT_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::moonshot::moonshot::models::list_models_smoke",
+      "source": "tests/providers/moonshot/models.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires MOONSHOT_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::moonshot::moonshot::reasoning_history::assistant_reasoning_content_roundtrips_in_history",
+      "source": "tests/providers/moonshot/reasoning_history.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires MOONSHOT_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::moonshot::moonshot::tools::required_tool_choice_agent_roundtrip",
+      "source": "tests/providers/moonshot/tools.rs"
+    }
+  ],
+  "schema": 1
+}

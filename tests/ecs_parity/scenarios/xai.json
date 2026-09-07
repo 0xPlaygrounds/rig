@@ -1,0 +1,1896 @@
+{
+  "scenarios": [
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::agent::completion_smoke",
+          "comparison": "Original prompt await.expect succeeds; native requires real Settled/RunResult, rejects actual Failed and transport errors; deadline is failure, never success.",
+          "ecs_symbol": "xai::ecs_completion::completion_smoke",
+          "id": "rig::xai::xai::agent::completion_smoke::successful-run"
+        },
+        {
+          "baseline_symbol": "support::assert_nonempty_response",
+          "comparison": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails.",
+          "ecs_symbol": "xai::ecs_completion::completion_smoke",
+          "id": "rig::xai::xai::agent::completion_smoke::response-assertion"
+        },
+        {
+          "baseline_symbol": "provider wrapper -> ProviderCassette start/finish_after_test -> ReplayServer::assert_consumed -> assert_replay_finished",
+          "comparison": "Same literal fixture path and unchanged provider wrapper. Original method/path/query/required-header/body matching and ordered consumption retained; unused interactions or replay misses fail after successful closure.",
+          "ecs_symbol": "xai::ecs_completion::completion_smoke",
+          "id": "rig::xai::xai::agent::completion_smoke::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "xai::agent::completion_smoke",
+          "comparison": "Exact model, prompt, preamble, context IDs/text/order, max_tokens, temperature, extra JSON, tools/order and builder budget preserved by native components; no run override.",
+          "ecs_symbol": "xai::ecs_completion::completion_smoke",
+          "id": "rig::xai::xai::agent::completion_smoke::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/agent.rs",
+          "symbol": "xai::agent::completion_smoke"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "history": [],
+        "native_DefaultMaxTurns": null,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": false,
+        "original_effective_default_max_turns": 1,
+        "run_max_turns_override": null,
+        "scope": "Native None marks unset builder default; effective MaxTurns1 matches original AgentConfig::new max_turns1. No effect-header fingerprint equality claimed.",
+        "settings": "GROK_3_MINI; BASIC_PREAMBLE/BASIC_PROMPT",
+        "streamed": false
+      },
+      "declared_gates": [],
+      "ecs": {
+        "binary": "xai",
+        "execution_path": "Native BusPlugin/AgentPlugin App; actual provider CompletionAdapter and ToolAdapter through per-poll Tokio context bridge; no legacy agent runner, policy, or effect replayer.",
+        "source": "tests/providers/xai/cassette/ecs_completion.rs",
+        "test": "xai::ecs_completion::completion_smoke"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output-config-regression",
+        "provider-completions"
+      ],
+      "family_contract": "tests/ecs_parity/provider-completions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/xai/agent/completion_smoke.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Manually traced original free functions, provider client constructors and completion_model, builder context/default budget, await.expect, unchanged neutral Adder/Subtract and parameter schema, ProviderCassette impl methods, ReplayServer::assert_consumed and teardown. No original stream collectors or hooks in these 16 cases.",
+        "copilot": "Its mod.rs changes only by native module registration; provider wrapper and client helper bodies are unchanged. Paired source index retains full module; separate reviewed exact insertion-removal comparison freezes its original body.",
+        "response": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails."
+      },
+      "id": "rig::xai::xai::agent::completion_smoke",
+      "mapping_limits": [
+        "Sixteen recorded blocking workflows only; ignored live Copilot and other live cases remain separate.",
+        "Request/response fidelity and actual final-result obligations; no effect-golden equality, hook, streaming, raw usage, terminal-count or scheduling claim.",
+        "Bedrock arithmetic retains original real tools and assertion, but original does not require an explicit tool-execution counter.",
+        "Full feature/capability matrix, OS network barrier, remaining families, aggregate verification, publication and CI remain unfinished."
+      ],
+      "resolved_helper_chain": [
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message",
+        "support::assert_nonempty_response",
+        "xai::support::with_xai_cassette"
+      ],
+      "source": "tests/providers/xai/agent.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+          "comparison": "Exact original provider test and all request construction/normalization/metadata/stream collector assertions execute unchanged in both revisions; no migration count.",
+          "ecs_symbol": "xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+          "id": "rig::xai::xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+          "id": "rig::xai::xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+          "id": "rig::xai::xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::assert_raw_response_metadata"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assistant_text_response"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::assert_response_metadata"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::xai_cassette"
+        }
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Independently reviewed direct completion_model request/stream/raw completion plus normalization only. Tool objects supply definitions; no legacy agent runtime through helpers.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/xai/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::xai::xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response",
+        "support::assistant_text_response",
+        "xai::agent_tool_sessions::assert_raw_response_metadata",
+        "xai::agent_tool_sessions::assert_response_metadata",
+        "xai::support::with_xai_cassette_result",
+        "xai::support::xai_cassette"
+      ],
+      "source": "tests/providers/xai/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::multimodal_image_input_mixed_text_ordering",
+          "comparison": "Original assertion expressions and shared validators remain on actual native observations: tool invocation arguments/count/order, caller history calls/results/ordering, streaming tool/text/result phases, typed schema fields, or image response nonempty as applicable.",
+          "ecs_symbol": "xai::ecs_tool_sessions::multimodal_image_input_mixed_text_ordering",
+          "id": "rig::xai::xai::agent_tool_sessions::multimodal_image_input_mixed_text_ordering::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "xai::ecs_tool_sessions::multimodal_image_input_mixed_text_ordering",
+          "id": "rig::xai::xai::agent_tool_sessions::multimodal_image_input_mixed_text_ordering::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::multimodal_image_input_mixed_text_ordering",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "xai::ecs_tool_sessions::multimodal_image_input_mixed_text_ordering",
+          "id": "rig::xai::xai::agent_tool_sessions::multimodal_image_input_mixed_text_ordering::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::multimodal_image_input_mixed_text_ordering"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::xai_cassette"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original invokes legacy chat/stream/prompt_typed or multimodal prompt orchestration; native counterpart required.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "xai",
+        "execution_path": "Native ECS components/graph, real provider and tool adapters, actual stream schedule observers and ordered Utterance history; no legacy runtime/policy.",
+        "source": "tests/providers/xai/cassette/ecs_tool_sessions.rs",
+        "test": "xai::ecs_tool_sessions::multimodal_image_input_mixed_text_ordering"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/xai/agent_tool_sessions/multimodal_image_input_mixed_text_ordering.yaml"
+        },
+        {
+          "origin": "original image input fixture",
+          "path": "tests/data/camponotus_flavomarginatus_ant.jpg"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::xai::xai::agent_tool_sessions::multimodal_image_input_mixed_text_ordering",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "support::assert_nonempty_response",
+        "xai::support::with_xai_cassette_result",
+        "xai::support::xai_cassette"
+      ],
+      "source": "tests/providers/xai/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip",
+          "comparison": "Exact original provider test and all request construction/normalization/metadata/stream collector assertions execute unchanged in both revisions; no migration count.",
+          "ecs_symbol": "xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip",
+          "id": "rig::xai::xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip",
+          "id": "rig::xai::xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip",
+          "id": "rig::xai::xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::assert_raw_response_metadata"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assistant_text_response"
+        },
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::assert_response_metadata"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::xai_cassette"
+        }
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Independently reviewed direct completion_model request/stream/raw completion plus normalization only. Tool objects supply definitions; no legacy agent runtime through helpers.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/xai/agent_tool_sessions/nested_json_schema_response_format_roundtrip.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::xai::xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "support::assert_nonempty_response",
+        "support::assistant_text_response",
+        "xai::agent_tool_sessions::assert_raw_response_metadata",
+        "xai::agent_tool_sessions::assert_response_metadata",
+        "xai::support::with_xai_cassette_result",
+        "xai::support::xai_cassette"
+      ],
+      "source": "tests/providers/xai/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+          "comparison": "Original assertion expressions and shared validators remain on actual native observations: tool invocation arguments/count/order, caller history calls/results/ordering, streaming tool/text/result phases, typed schema fields, or image response nonempty as applicable.",
+          "ecs_symbol": "xai::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+          "id": "rig::xai::xai::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "xai::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+          "id": "rig::xai::xai::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "xai::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+          "id": "rig::xai::xai::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::history_tool_calls"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::xai_cassette"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original invokes legacy chat/stream/prompt_typed or multimodal prompt orchestration; native counterpart required.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "xai",
+        "execution_path": "Native ECS components/graph, real provider and tool adapters, actual stream schedule observers and ordered Utterance history; no legacy runtime/policy.",
+        "source": "tests/providers/xai/cassette/ecs_tool_sessions.rs",
+        "test": "xai::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/xai/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::xai::xai::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response",
+        "xai::agent_tool_sessions::history_tool_calls",
+        "xai::support::with_xai_cassette_result",
+        "xai::support::xai_cassette"
+      ],
+      "source": "tests/providers/xai/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::parallel_tool_calls_single_turn_streaming",
+          "comparison": "Original assertion expressions and shared validators remain on actual native observations: tool invocation arguments/count/order, caller history calls/results/ordering, streaming tool/text/result phases, typed schema fields, or image response nonempty as applicable.",
+          "ecs_symbol": "xai::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+          "id": "rig::xai::xai::agent_tool_sessions::parallel_tool_calls_single_turn_streaming::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "xai::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+          "id": "rig::xai::xai::agent_tool_sessions::parallel_tool_calls_single_turn_streaming::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::parallel_tool_calls_single_turn_streaming",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "xai::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+          "id": "rig::xai::xai::agent_tool_sessions::parallel_tool_calls_single_turn_streaming::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::parallel_tool_calls_single_turn_streaming"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::collect_stream_observation"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_two_tool_roundtrip_contract"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::first_event_index"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::event_count_before"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::first_unique_tool_calls"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::xai_cassette"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original invokes legacy chat/stream/prompt_typed or multimodal prompt orchestration; native counterpart required.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "xai",
+        "execution_path": "Native ECS components/graph, real provider and tool adapters, actual stream schedule observers and ordered Utterance history; no legacy runtime/policy.",
+        "source": "tests/providers/xai/cassette/ecs_tool_sessions.rs",
+        "test": "xai::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/xai/agent_tool_sessions/parallel_tool_calls_single_turn_streaming.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::xai::xai::agent_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response",
+        "support::assert_two_tool_roundtrip_contract",
+        "support::collect_stream_observation",
+        "support::event_count_before",
+        "support::first_event_index",
+        "support::first_unique_tool_calls",
+        "xai::support::with_xai_cassette_result",
+        "xai::support::xai_cassette"
+      ],
+      "source": "tests/providers/xai/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+          "comparison": "Exact original provider test and all request construction/normalization/metadata/stream collector assertions execute unchanged in both revisions; no migration count.",
+          "ecs_symbol": "xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+          "id": "rig::xai::xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+          "id": "rig::xai::xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+          "id": "rig::xai::xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::collect_raw_stream_observation"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_raw_stream_tool_call_arguments_are_objects"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::xai_cassette"
+        }
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Independently reviewed direct completion_model request/stream/raw completion plus normalization only. Tool objects supply definitions; no legacy agent runtime through helpers.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/xai/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::xai::xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "support::assert_raw_stream_tool_call_arguments_are_objects",
+        "support::collect_raw_stream_observation",
+        "xai::support::with_xai_cassette_result",
+        "xai::support::xai_cassette"
+      ],
+      "source": "tests/providers/xai/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage",
+          "comparison": "Exact original provider test and all request construction/normalization/metadata/stream collector assertions execute unchanged in both revisions; no migration count.",
+          "ecs_symbol": "xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage",
+          "id": "rig::xai::xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage",
+          "id": "rig::xai::xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage",
+          "id": "rig::xai::xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::assert_raw_response_metadata"
+        },
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::assert_response_metadata"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::xai_cassette"
+        }
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Independently reviewed direct completion_model request/stream/raw completion plus normalization only. Tool objects supply definitions; no legacy agent runtime through helpers.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/xai/agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::xai::xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "support::assert_nonempty_response",
+        "xai::agent_tool_sessions::assert_raw_response_metadata",
+        "xai::agent_tool_sessions::assert_response_metadata",
+        "xai::support::with_xai_cassette_result",
+        "xai::support::xai_cassette"
+      ],
+      "source": "tests/providers/xai/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+          "comparison": "Original assertion expressions and shared validators remain on actual native observations: tool invocation arguments/count/order, caller history calls/results/ordering, streaming tool/text/result phases, typed schema fields, or image response nonempty as applicable.",
+          "ecs_symbol": "xai::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+          "id": "rig::xai::xai::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "xai::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+          "id": "rig::xai::xai::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "xai::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+          "id": "rig::xai::xai::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::complex_tools"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::assert_complex_invocations"
+        },
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::assert_history_records_sequential_tool_roundtrips"
+        },
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::history_tool_calls"
+        },
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::history_tool_results"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::xai_cassette"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original invokes legacy chat/stream/prompt_typed or multimodal prompt orchestration; native counterpart required.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "xai",
+        "execution_path": "Native ECS components/graph, real provider and tool adapters, actual stream schedule observers and ordered Utterance history; no legacy runtime/policy.",
+        "source": "tests/providers/xai/cassette/ecs_tool_sessions.rs",
+        "test": "xai::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/xai/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::xai::xai::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response",
+        "xai::agent_tool_sessions::assert_complex_invocations",
+        "xai::agent_tool_sessions::assert_history_records_sequential_tool_roundtrips",
+        "xai::agent_tool_sessions::complex_tools",
+        "xai::agent_tool_sessions::history_tool_calls",
+        "xai::agent_tool_sessions::history_tool_results",
+        "xai::support::with_xai_cassette_result",
+        "xai::support::xai_cassette"
+      ],
+      "source": "tests/providers/xai/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::sequential_complex_tool_calls_streaming",
+          "comparison": "Original assertion expressions and shared validators remain on actual native observations: tool invocation arguments/count/order, caller history calls/results/ordering, streaming tool/text/result phases, typed schema fields, or image response nonempty as applicable.",
+          "ecs_symbol": "xai::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+          "id": "rig::xai::xai::agent_tool_sessions::sequential_complex_tool_calls_streaming::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "xai::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+          "id": "rig::xai::xai::agent_tool_sessions::sequential_complex_tool_calls_streaming::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::sequential_complex_tool_calls_streaming",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "xai::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+          "id": "rig::xai::xai::agent_tool_sessions::sequential_complex_tool_calls_streaming::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::sequential_complex_tool_calls_streaming"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::complex_tools"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::collect_stream_observation"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::assert_complex_invocations"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::xai_cassette"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original invokes legacy chat/stream/prompt_typed or multimodal prompt orchestration; native counterpart required.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "xai",
+        "execution_path": "Native ECS components/graph, real provider and tool adapters, actual stream schedule observers and ordered Utterance history; no legacy runtime/policy.",
+        "source": "tests/providers/xai/cassette/ecs_tool_sessions.rs",
+        "test": "xai::ecs_tool_sessions::sequential_complex_tool_calls_streaming"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/xai/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::xai::xai::agent_tool_sessions::sequential_complex_tool_calls_streaming",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response",
+        "support::collect_stream_observation",
+        "xai::agent_tool_sessions::assert_complex_invocations",
+        "xai::agent_tool_sessions::complex_tools",
+        "xai::support::with_xai_cassette_result",
+        "xai::support::xai_cassette"
+      ],
+      "source": "tests/providers/xai/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::tool_choice_required_specific_and_none",
+          "comparison": "Exact original provider test and all request construction/normalization/metadata/stream collector assertions execute unchanged in both revisions; no migration count.",
+          "ecs_symbol": "xai::agent_tool_sessions::tool_choice_required_specific_and_none",
+          "id": "rig::xai::xai::agent_tool_sessions::tool_choice_required_specific_and_none::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "xai::agent_tool_sessions::tool_choice_required_specific_and_none",
+          "id": "rig::xai::xai::agent_tool_sessions::tool_choice_required_specific_and_none::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "xai::agent_tool_sessions::tool_choice_required_specific_and_none",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "xai::agent_tool_sessions::tool_choice_required_specific_and_none",
+          "id": "rig::xai::xai::agent_tool_sessions::tool_choice_required_specific_and_none::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/agent_tool_sessions.rs",
+          "symbol": "xai::agent_tool_sessions::tool_choice_required_specific_and_none"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assistant_text_response"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::xai_cassette"
+        }
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Independently reviewed direct completion_model request/stream/raw completion plus normalization only. Tool objects supply definitions; no legacy agent runtime through helpers.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/xai/agent_tool_sessions/tool_choice_required_specific_and_none.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::xai::xai::agent_tool_sessions::tool_choice_required_specific_and_none",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response",
+        "support::assistant_text_response",
+        "xai::support::with_xai_cassette_result",
+        "xai::support::xai_cassette"
+      ],
+      "source": "tests/providers/xai/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"audio\")]",
+        "# [ignore = \"requires XAI_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::audio_generation::audio_generation_smoke",
+      "source": "tests/providers/xai/audio_generation.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::context::context_smoke",
+      "source": "tests/providers/xai/context.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::extractor::extractor_smoke",
+          "comparison": "Original extract await.expect requires success. Native helper requires actual settled run/submit call, deserialization and Usage; no expected data drives execution.",
+          "ecs_symbol": "xai::ecs_extractor::extractor_smoke",
+          "id": "rig::xai::xai::extractor::extractor_smoke::success"
+        },
+        {
+          "baseline_symbol": "xai::extractor::extractor_smoke",
+          "comparison": "All three original Option fields required through expect; trim-nonempty checks retained. Positive total_tokens retained where original requires it (DeepSeek has no usage assertion).",
+          "ecs_symbol": "xai::ecs_extractor::extractor_smoke",
+          "id": "rig::xai::xai::extractor::extractor_smoke::fields-and-usage"
+        },
+        {
+          "baseline_symbol": "provider wrapper -> ProviderCassette finish_after_test -> ReplayServer::assert_consumed",
+          "comparison": "Same strict ordered fixture and wrapper; exact model, prompt, extractor preamble/schema/submit description/required tool choice/no augmentation/one turn; Gemini typed parameters serialize through original expect. Full cassette consumption and original teardown preserved.",
+          "ecs_symbol": "xai::ecs_extractor::extractor_smoke",
+          "id": "rig::xai::xai::extractor::extractor_smoke::request-and-teardown"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/extractor.rs",
+          "symbol": "xai::extractor::extractor_smoke"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original typed extractor builds and executes rig-agent orchestration, then validates actual extracted fields and where required reported usage.",
+      "configuration": "root-bedrock",
+      "configuration_sources": [
+        {
+          "path": "crates/rig-agent/src/test_utils/model_conformance.rs"
+        },
+        {
+          "path": "crates/rig-core/src/completion/request.rs"
+        }
+      ],
+      "declared_gates": [],
+      "ecs": {
+        "binary": "xai",
+        "execution_path": "Unchanged EcsExtractor with actual native AgentPlugin/BusPlugin and real provider adapter; no legacy extraction runtime.",
+        "source": "tests/providers/xai/cassette/ecs_extractor.rs",
+        "test": "xai::ecs_extractor::extractor_smoke"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-smoke-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/xai/extractor/extractor_smoke.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "configuration": "Existing native helper reviewed in extractor-usage contract; zero-retry, one-turn, unaugmented submit mode. Gemini serde_json conversion expect preserved. Shared SmokePerson unchanged; additional Gemini Person widens visibility only.",
+        "option_and_nonempty_semantics": "All three original Option fields required through expect; trim-nonempty checks retained. Positive total_tokens retained where original requires it (DeepSeek has no usage assertion).",
+        "portable_validator": false,
+        "portable_validator_semantics": "Pure validation only, no agent runtime calls. Its if-return-Err condition and ScenarioError conversion are obligations despite no assert macro. Usage::has_values means any nondefault field, not specifically positive total.",
+        "portable_validator_source": "crates/rig-agent/src/test_utils/model_conformance.rs::validate_extraction_fields"
+      },
+      "id": "rig::xai::xai::extractor::extractor_smoke",
+      "mapping_limits": [
+        "Ten recorded one-call zero-retry scenarios; no stream, retry, effect-golden or policy timing equality claim.",
+        "Shared rig-agent test_utils import is a pure validator, not legacy orchestration.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "xai::support::with_xai_cassette",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/xai/extractor.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::extractor_usage::extract_and_extract_with_usage_return_same_data",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "xai::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+          "id": "rig::xai::xai::extractor_usage::extract_and_extract_with_usage_return_same_data::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::xai::xai::extractor_usage::extract_and_extract_with_usage_return_same_data::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_xai_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "xai::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+          "id": "rig::xai::xai::extractor_usage::extract_and_extract_with_usage_return_same_data::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/extractor_usage.rs",
+          "symbol": "xai::extractor_usage::extract_and_extract_with_usage_return_same_data"
+        },
+        {
+          "path": "tests/providers/xai/extractor_usage.rs",
+          "symbol": "xai::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "xai",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/xai/cassette/ecs_extractor_usage.rs",
+        "test": "xai::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/xai/extractor_usage/extract_and_extract_with_usage_return_same_data.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::xai::xai::extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "xai::extractor_usage::assert_compatible_professions",
+        "xai::support::with_xai_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/xai/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::extractor_usage::extract_backward_compatibility",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "xai::ecs_extractor_usage::extract_backward_compatibility",
+          "id": "rig::xai::xai::extractor_usage::extract_backward_compatibility::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::xai::xai::extractor_usage::extract_backward_compatibility::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_xai_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "xai::ecs_extractor_usage::extract_backward_compatibility",
+          "id": "rig::xai::xai::extractor_usage::extract_backward_compatibility::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/extractor_usage.rs",
+          "symbol": "xai::extractor_usage::extract_backward_compatibility"
+        },
+        {
+          "path": "tests/providers/xai/extractor_usage.rs",
+          "symbol": "xai::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "xai",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/xai/cassette/ecs_extractor_usage.rs",
+        "test": "xai::ecs_extractor_usage::extract_backward_compatibility"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/xai/extractor_usage/extract_backward_compatibility.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::xai::xai::extractor_usage::extract_backward_compatibility",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "xai::extractor_usage::assert_compatible_professions",
+        "xai::support::with_xai_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/xai/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::extractor_usage::extract_with_chat_history_with_usage_works",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "xai::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+          "id": "rig::xai::xai::extractor_usage::extract_with_chat_history_with_usage_works::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::xai::xai::extractor_usage::extract_with_chat_history_with_usage_works::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_xai_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "xai::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+          "id": "rig::xai::xai::extractor_usage::extract_with_chat_history_with_usage_works::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/extractor_usage.rs",
+          "symbol": "xai::extractor_usage::extract_with_chat_history_with_usage_works"
+        },
+        {
+          "path": "tests/providers/xai/extractor_usage.rs",
+          "symbol": "xai::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "xai",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/xai/cassette/ecs_extractor_usage.rs",
+        "test": "xai::ecs_extractor_usage::extract_with_chat_history_with_usage_works"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/xai/extractor_usage/extract_with_chat_history_with_usage_works.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::xai::xai::extractor_usage::extract_with_chat_history_with_usage_works",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "xai::extractor_usage::assert_compatible_professions",
+        "xai::support::with_xai_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/xai/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::extractor_usage::extract_with_usage_returns_data_and_usage",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "xai::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+          "id": "rig::xai::xai::extractor_usage::extract_with_usage_returns_data_and_usage::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::xai::xai::extractor_usage::extract_with_usage_returns_data_and_usage::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_xai_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "xai::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+          "id": "rig::xai::xai::extractor_usage::extract_with_usage_returns_data_and_usage::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/extractor_usage.rs",
+          "symbol": "xai::extractor_usage::extract_with_usage_returns_data_and_usage"
+        },
+        {
+          "path": "tests/providers/xai/extractor_usage.rs",
+          "symbol": "xai::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "xai",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/xai/cassette/ecs_extractor_usage.rs",
+        "test": "xai::ecs_extractor_usage::extract_with_usage_returns_data_and_usage"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/xai/extractor_usage/extract_with_usage_returns_data_and_usage.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::xai::xai::extractor_usage::extract_with_usage_returns_data_and_usage",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "xai::extractor_usage::assert_compatible_professions",
+        "xai::support::with_xai_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/xai/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "xai::extractor_usage::usage_tracking_works_for_different_schemas",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "xai::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+          "id": "rig::xai::xai::extractor_usage::usage_tracking_works_for_different_schemas::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::xai::xai::extractor_usage::usage_tracking_works_for_different_schemas::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_xai_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "xai::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+          "id": "rig::xai::xai::extractor_usage::usage_tracking_works_for_different_schemas::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/xai/extractor_usage.rs",
+          "symbol": "xai::extractor_usage::usage_tracking_works_for_different_schemas"
+        },
+        {
+          "path": "tests/providers/xai/extractor_usage.rs",
+          "symbol": "xai::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/xai/support.rs",
+          "symbol": "xai::support::with_xai_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "xai",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/xai/cassette/ecs_extractor_usage.rs",
+        "test": "xai::ecs_extractor_usage::usage_tracking_works_for_different_schemas"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/xai/extractor_usage/usage_tracking_works_for_different_schemas.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::xai::xai::extractor_usage::usage_tracking_works_for_different_schemas",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "xai::extractor_usage::assert_compatible_professions",
+        "xai::support::with_xai_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/xai/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"image\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::image_generation::image_generation_smoke",
+      "source": "tests/providers/xai/image_generation.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::loaders::loaders_smoke",
+      "source": "tests/providers/xai/loaders.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::multi_extract::batch_multi_extract_chain",
+      "source": "tests/providers/xai/multi_extract.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::permission_control::permission_control_prompt_example",
+      "source": "tests/providers/xai/permission_control.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::permission_control::permission_control_streaming_example",
+      "source": "tests/providers/xai/permission_control.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::prompt_caching::blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows",
+      "source": "tests/providers/xai/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires XAI_API_KEY and spends real tokens\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::prompt_caching::live_cache_economics",
+      "source": "tests/providers/xai/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::prompt_caching::streaming_probe_survives_the_streaming_accumulator",
+      "source": "tests/providers/xai/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::raw_capture_matrix::normalized_fields_match_raw_renormalized",
+      "source": "tests/providers/xai/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::raw_capture_matrix::raw_exposes_status_and_service_tier",
+      "source": "tests/providers/xai/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::raw_capture_matrix::raw_round_trips_responses_type",
+      "source": "tests/providers/xai/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::raw_completion_parity_matrix::raw_completion_carries_request_id_on_the_type",
+      "source": "tests/providers/xai/raw_completion_parity_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::raw_completion_parity_matrix::raw_normalize_reproduces_completion",
+      "source": "tests/providers/xai/raw_completion_parity_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::raw_stream_capture_matrix::stream_raw_exposes_terminal_status",
+      "source": "tests/providers/xai/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::raw_stream_capture_matrix::stream_raw_round_trips_terminal_type",
+      "source": "tests/providers/xai/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::reasoning_roundtrip::nonstreaming",
+      "source": "tests/providers/xai/reasoning_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::reasoning_roundtrip::streaming",
+      "source": "tests/providers/xai/reasoning_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::reasoning_tool_roundtrip::nonstreaming",
+      "source": "tests/providers/xai/reasoning_tool_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::reasoning_tool_roundtrip::streaming",
+      "source": "tests/providers/xai/reasoning_tool_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::request_hook::request_hook_records_prompt_and_response",
+      "source": "tests/providers/xai/request_hook.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::response_identity::auth_rejection_classifies_with_contract",
+      "source": "tests/providers/xai/response_identity.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::response_identity::nonstreaming_response_carries_identity",
+      "source": "tests/providers/xai/response_identity.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::response_identity::provider_error_classifies_with_contract_but_reports_no_id",
+      "source": "tests/providers/xai/response_identity.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::response_identity::raw_and_normalized_views_agree_on_identity",
+      "source": "tests/providers/xai/response_identity.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::response_identity::streamed_agent_run_reports_identity",
+      "source": "tests/providers/xai/response_identity.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::response_identity::streaming_terminal_carries_identity",
+      "source": "tests/providers/xai/response_identity.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::streaming::streaming_smoke",
+      "source": "tests/providers/xai/streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::streaming_tools::raw_responses_stream_preserves_tool_then_followup_text_ordering",
+      "source": "tests/providers/xai/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::streaming_tools::raw_stream_emits_required_zero_arg_tool_call",
+      "source": "tests/providers/xai/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::streaming_tools::responses_stream_preserves_tool_result_flow",
+      "source": "tests/providers/xai/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::tools::tools_smoke",
+      "source": "tests/providers/xai/tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::xai::xai::typed_prompt_tools::prompt_typed_with_tool_call_roundtrip",
+      "source": "tests/providers/xai/typed_prompt_tools.rs"
+    }
+  ],
+  "schema": 1
+}

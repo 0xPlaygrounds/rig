@@ -1,0 +1,115 @@
+{
+  "configurations": {
+    "root-bedrock": {
+      "features": [
+        "bedrock"
+      ],
+      "listing_command": "cargo nextest list --locked -p rig --features bedrock --message-format json",
+      "package": "rig"
+    }
+  },
+  "purpose": "Scenario correspondences and behavioral obligations for maintained regression tests. This catalog is not an execution result or a functional-superset proof. Unclassified and unmapped cases remain explicit; current test runs and CI establish current results.",
+  "schema": 1,
+  "shared_provider_correspondences": [
+    {
+      "counterpart": "rig::deepseek::deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior",
+      "original": "rig::deepseek::deepseek::agent_tool_sessions::chat_alias_vs_reasoner_alias_behavior"
+    },
+    {
+      "counterpart": "rig::deepseek::deepseek::agent_tool_sessions::json_object_response_format_roundtrip",
+      "original": "rig::deepseek::deepseek::agent_tool_sessions::json_object_response_format_roundtrip"
+    },
+    {
+      "counterpart": "rig::deepseek::deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "original": "rig::deepseek::deepseek::agent_tool_sessions::long_history_replay_with_tool_result_continuation"
+    },
+    {
+      "counterpart": "rig::deepseek::deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "original": "rig::deepseek::deepseek::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments"
+    },
+    {
+      "counterpart": "rig::deepseek::deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
+      "original": "rig::deepseek::deepseek::agent_tool_sessions::reasoning_enabled_preserves_reasoning_content_deltas_and_usage"
+    },
+    {
+      "counterpart": "rig::deepseek::deepseek::agent_tool_sessions::tool_choice_required_specific_and_none",
+      "original": "rig::deepseek::deepseek::agent_tool_sessions::tool_choice_required_specific_and_none"
+    },
+    {
+      "counterpart": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_model",
+      "original": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_nested_model"
+    },
+    {
+      "counterpart": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_model",
+      "original": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_parallel_model"
+    },
+    {
+      "counterpart": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_model",
+      "original": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt41_zero_model"
+    },
+    {
+      "counterpart": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_model",
+      "original": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_nested_model"
+    },
+    {
+      "counterpart": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_model",
+      "original": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_parallel_model"
+    },
+    {
+      "counterpart": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_model",
+      "original": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::blocking_gpt4o_zero_model"
+    },
+    {
+      "counterpart": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_model",
+      "original": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_nested_model"
+    },
+    {
+      "counterpart": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_model",
+      "original": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_parallel_model"
+    },
+    {
+      "counterpart": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_model",
+      "original": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt41_zero_model"
+    },
+    {
+      "counterpart": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_model",
+      "original": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_nested_model"
+    },
+    {
+      "counterpart": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_model",
+      "original": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_parallel_model"
+    },
+    {
+      "counterpart": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_model",
+      "original": "rig::openai::openai::cassette::chat_tool_lifecycle_matrix::streaming_gpt4o_zero_model"
+    },
+    {
+      "counterpart": "rig::openrouter::openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "original": "rig::openrouter::openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation"
+    },
+    {
+      "counterpart": "rig::openrouter::openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "original": "rig::openrouter::openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments"
+    },
+    {
+      "counterpart": "rig::xai::xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "original": "rig::xai::xai::agent_tool_sessions::long_history_replay_with_tool_result_continuation"
+    },
+    {
+      "counterpart": "rig::xai::xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip",
+      "original": "rig::xai::xai::agent_tool_sessions::nested_json_schema_response_format_roundtrip"
+    },
+    {
+      "counterpart": "rig::xai::xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "original": "rig::xai::xai::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments"
+    },
+    {
+      "counterpart": "rig::xai::xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage",
+      "original": "rig::xai::xai::agent_tool_sessions::reasoning_effort_preserves_reasoning_content_and_usage"
+    },
+    {
+      "counterpart": "rig::xai::xai::agent_tool_sessions::tool_choice_required_specific_and_none",
+      "original": "rig::xai::xai::agent_tool_sessions::tool_choice_required_specific_and_none"
+    }
+  ]
+}

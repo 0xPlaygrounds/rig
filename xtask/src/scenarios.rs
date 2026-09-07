@@ -1,11 +1,27 @@
 //! Validate maintained scenario correspondences against current files and,
 //! optionally, a fresh nextest listing. This does not certify execution/parity.
-use serde_json::Value;
+//!
+//! The catalog is a directory, `tests/ecs_parity/scenarios/`, so that work on
+//! different provider trees never edits the same file: rows whose `source` is
+//! under `tests/providers/<provider>/` live in `<provider>.json`, every other
+//! row lives in `common.json`, and `shared.json` carries the configurations,
+//! the purpose statement and the shared-provider correspondences. Every file
+//! declares `schema: 1`; the loader merges them into one catalog value.
+use serde_json::{Map, Value};
 use std::{
     collections::BTreeSet,
     fs,
     path::{Component, Path},
 };
+
+pub(crate) const CATALOG_DIR: &str = "tests/ecs_parity/scenarios";
+const CATALOG_KEYS: [&str; 5] = [
+    "schema",
+    "purpose",
+    "configurations",
+    "scenarios",
+    "shared_provider_correspondences",
+];
 #[cfg(test)]
 mod tests;
 #[derive(Debug, thiserror::Error)]
@@ -84,6 +100,110 @@ fn references(root: &Path, v: &Value) -> Result<()> {
     }
     Ok(())
 }
+/// The catalog file a scenario row belongs in, from its `source` path.
+pub(crate) fn expected_file(source: &str) -> String {
+    source
+        .strip_prefix("tests/providers/")
+        .and_then(|rest| rest.split_once('/'))
+        .map_or_else(
+            || "common.json".to_string(),
+            |(provider, _)| format!("{provider}.json"),
+        )
+}
+
+/// Merge every `*.json` file under [`CATALOG_DIR`] into one catalog value,
+/// enforcing that each scenario row sits in the file its `source` selects.
+pub(crate) fn load(root: &Path) -> Result<Value> {
+    let dir = root.join(CATALOG_DIR);
+    let mut names: Vec<String> = fs::read_dir(&dir)
+        .map_err(|e| invalid(format!("missing catalog directory {CATALOG_DIR}: {e}")))?
+        .filter_map(|entry| {
+            entry
+                .ok()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+        })
+        .filter(|name| name.ends_with(".json"))
+        .collect();
+    names.sort();
+    if names.is_empty() {
+        return Err(invalid(format!("no catalog files under {CATALOG_DIR}")));
+    }
+    let mut merged = Map::new();
+    let mut configurations = Map::new();
+    let mut scenarios = Vec::new();
+    let mut shared = Vec::new();
+    for name in &names {
+        let part: Value = serde_json::from_slice(&fs::read(dir.join(name))?)?;
+        let object = part
+            .as_object()
+            .ok_or_else(|| invalid(format!("{name}: catalog file must be an object")))?;
+        if object.get("schema") != Some(&Value::from(1)) {
+            return Err(invalid(format!(
+                "{name}: unsupported scenario catalog schema"
+            )));
+        }
+        for key in object.keys() {
+            if !CATALOG_KEYS.contains(&key.as_str()) {
+                return Err(invalid(format!("{name}: unknown catalog key {key}")));
+            }
+        }
+        if let Some(purpose) = object.get("purpose")
+            && merged.insert("purpose".into(), purpose.clone()).is_some()
+        {
+            return Err(invalid(format!("{name}: purpose is declared twice")));
+        }
+        if let Some(part) = object.get("configurations") {
+            for (id, configuration) in part
+                .as_object()
+                .ok_or_else(|| invalid(format!("{name}: configurations must be an object")))?
+            {
+                if configurations
+                    .insert(id.clone(), configuration.clone())
+                    .is_some()
+                {
+                    return Err(invalid(format!("{name}: duplicate configuration {id}")));
+                }
+            }
+        }
+        if let Some(rows) = object.get("scenarios") {
+            for row in rows
+                .as_array()
+                .ok_or_else(|| invalid(format!("{name}: scenarios must be an array")))?
+            {
+                let expected = expected_file(text(row, "source")?);
+                if &expected != name {
+                    return Err(invalid(format!(
+                        "{name}: scenario {} belongs in {expected}",
+                        text(row, "id")?
+                    )));
+                }
+                scenarios.push(row.clone());
+            }
+        }
+        if let Some(pairs) = object.get("shared_provider_correspondences") {
+            shared.extend(
+                pairs
+                    .as_array()
+                    .ok_or_else(|| {
+                        invalid(format!(
+                            "{name}: shared-provider correspondences must be an array"
+                        ))
+                    })?
+                    .iter()
+                    .cloned(),
+            );
+        }
+    }
+    merged.insert("schema".into(), Value::from(1));
+    merged.insert("configurations".into(), Value::Object(configurations));
+    merged.insert("scenarios".into(), Value::Array(scenarios));
+    merged.insert(
+        "shared_provider_correspondences".into(),
+        Value::Array(shared),
+    );
+    Ok(Value::Object(merged))
+}
+
 fn compiled(list: &Value) -> Result<BTreeSet<String>> {
     let suites = list["rust-suites"]
         .as_object()
@@ -214,7 +334,7 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<()> {
             ));
         }
     };
-    let catalog = serde_json::from_slice(&fs::read(root.join("tests/ecs_parity/scenarios.json"))?)?;
+    let catalog = load(root)?;
     let (originals, natives, unlisted) = validate(root, &catalog, listing.as_ref())?;
     if listing.is_some() {
         println!(

@@ -1,0 +1,44 @@
+{
+  "scenarios": [
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires MINIMAX_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::minimax::minimax::anthropic::anthropic_compatible_completion_smoke",
+      "source": "tests/providers/minimax/anthropic.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires MINIMAX_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::minimax::minimax::models::list_models_smoke",
+      "source": "tests/providers/minimax/models.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires MINIMAX_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::minimax::minimax::openai::openai_compatible_completion_smoke",
+      "source": "tests/providers/minimax/openai.rs"
+    }
+  ],
+  "schema": 1
+}

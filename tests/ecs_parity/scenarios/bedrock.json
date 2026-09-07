@@ -1,0 +1,1164 @@
+{
+  "scenarios": [
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "bedrock::cassette::agent::completion_smoke",
+          "comparison": "Original prompt await.expect succeeds; native requires real Settled/RunResult, rejects actual Failed and transport errors; deadline is failure, never success.",
+          "ecs_symbol": "bedrock::cassette::ecs_completion::completion_smoke",
+          "id": "rig::bedrock::bedrock::cassette::agent::completion_smoke::successful-run"
+        },
+        {
+          "baseline_symbol": "support::assert_nonempty_response",
+          "comparison": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails.",
+          "ecs_symbol": "bedrock::cassette::ecs_completion::completion_smoke",
+          "id": "rig::bedrock::bedrock::cassette::agent::completion_smoke::response-assertion"
+        },
+        {
+          "baseline_symbol": "provider wrapper -> ProviderCassette start/finish_after_test -> ReplayServer::assert_consumed -> assert_replay_finished",
+          "comparison": "Same literal fixture path and unchanged provider wrapper. Original method/path/query/required-header/body matching and ordered consumption retained; unused interactions or replay misses fail after successful closure.",
+          "ecs_symbol": "bedrock::cassette::ecs_completion::completion_smoke",
+          "id": "rig::bedrock::bedrock::cassette::agent::completion_smoke::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "bedrock::cassette::agent::completion_smoke",
+          "comparison": "Exact model, prompt, preamble, context IDs/text/order, max_tokens, temperature, extra JSON, tools/order and builder budget preserved by native components; no run override.",
+          "ecs_symbol": "bedrock::cassette::ecs_completion::completion_smoke",
+          "id": "rig::bedrock::bedrock::cassette::agent::completion_smoke::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/agent.rs",
+          "symbol": "bedrock::cassette::agent::completion_smoke"
+        },
+        {
+          "path": "tests/providers/bedrock/support.rs",
+          "symbol": "bedrock::support::with_bedrock_cassette"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "history": [],
+        "native_DefaultMaxTurns": null,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": false,
+        "original_effective_default_max_turns": 1,
+        "run_max_turns_override": null,
+        "scope": "Native None marks unset builder default; effective MaxTurns1 matches original AgentConfig::new max_turns1. No effect-header fingerprint equality claimed.",
+        "settings": "AMAZON_NOVA_LITE; ordinary or with_prompt_caching actual model as original; context static_doc_0/1/2 with exact CONTEXT_DOCS order and empty extra props; tool case Adder then Subtract, max_tokens1024, default budget2",
+        "streamed": false
+      },
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": {
+        "binary": "bedrock",
+        "execution_path": "Native BusPlugin/AgentPlugin App; actual provider CompletionAdapter and ToolAdapter through per-poll Tokio context bridge; no legacy agent runner, policy, or effect replayer.",
+        "source": "tests/providers/bedrock/cassette/ecs_completion.rs",
+        "test": "bedrock::cassette::ecs_completion::completion_smoke"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output-config-regression",
+        "provider-completions"
+      ],
+      "family_contract": "tests/ecs_parity/provider-completions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/agent/completion_smoke.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Manually traced original free functions, provider client constructors and completion_model, builder context/default budget, await.expect, unchanged neutral Adder/Subtract and parameter schema, ProviderCassette impl methods, ReplayServer::assert_consumed and teardown. No original stream collectors or hooks in these 16 cases.",
+        "copilot": "Its mod.rs changes only by native module registration; provider wrapper and client helper bodies are unchanged. Paired source index retains full module; separate reviewed exact insertion-removal comparison freezes its original body.",
+        "response": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails."
+      },
+      "id": "rig::bedrock::bedrock::cassette::agent::completion_smoke",
+      "mapping_limits": [
+        "Sixteen recorded blocking workflows only; ignored live Copilot and other live cases remain separate.",
+        "Request/response fidelity and actual final-result obligations; no effect-golden equality, hook, streaming, raw usage, terminal-count or scheduling claim.",
+        "Bedrock arithmetic retains original real tools and assertion, but original does not require an explicit tool-execution counter.",
+        "Full feature/capability matrix, OS network barrier, remaining families, aggregate verification, publication and CI remain unfinished."
+      ],
+      "resolved_helper_chain": [
+        "bedrock::support::with_bedrock_cassette",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/bedrock/cassette/agent.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "bedrock::cassette::agent::completion_with_context_smoke",
+          "comparison": "Original prompt await.expect succeeds; native requires real Settled/RunResult, rejects actual Failed and transport errors; deadline is failure, never success.",
+          "ecs_symbol": "bedrock::cassette::ecs_completion::completion_with_context_smoke",
+          "id": "rig::bedrock::bedrock::cassette::agent::completion_with_context_smoke::successful-run"
+        },
+        {
+          "baseline_symbol": "support::assert_contains_any_case_insensitive",
+          "comparison": "Same assert_contains_any_case_insensitive: trim-nonempty plus case-insensitive contains ancient tool OR farm; no exact final-text equality claim.",
+          "ecs_symbol": "bedrock::cassette::ecs_completion::completion_with_context_smoke",
+          "id": "rig::bedrock::bedrock::cassette::agent::completion_with_context_smoke::response-assertion"
+        },
+        {
+          "baseline_symbol": "provider wrapper -> ProviderCassette start/finish_after_test -> ReplayServer::assert_consumed -> assert_replay_finished",
+          "comparison": "Same literal fixture path and unchanged provider wrapper. Original method/path/query/required-header/body matching and ordered consumption retained; unused interactions or replay misses fail after successful closure.",
+          "ecs_symbol": "bedrock::cassette::ecs_completion::completion_with_context_smoke",
+          "id": "rig::bedrock::bedrock::cassette::agent::completion_with_context_smoke::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "bedrock::cassette::agent::completion_with_context_smoke",
+          "comparison": "Exact model, prompt, preamble, context IDs/text/order, max_tokens, temperature, extra JSON, tools/order and builder budget preserved by native components; no run override.",
+          "ecs_symbol": "bedrock::cassette::ecs_completion::completion_with_context_smoke",
+          "id": "rig::bedrock::bedrock::cassette::agent::completion_with_context_smoke::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/agent.rs",
+          "symbol": "bedrock::cassette::agent::completion_with_context_smoke"
+        },
+        {
+          "path": "tests/providers/bedrock/support.rs",
+          "symbol": "bedrock::support::with_bedrock_cassette"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_any_case_insensitive"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "history": [],
+        "native_DefaultMaxTurns": null,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": false,
+        "original_effective_default_max_turns": 1,
+        "run_max_turns_override": null,
+        "scope": "Native None marks unset builder default; effective MaxTurns1 matches original AgentConfig::new max_turns1. No effect-header fingerprint equality claimed.",
+        "settings": "AMAZON_NOVA_LITE; ordinary or with_prompt_caching actual model as original; context static_doc_0/1/2 with exact CONTEXT_DOCS order and empty extra props; tool case Adder then Subtract, max_tokens1024, default budget2",
+        "streamed": false
+      },
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": {
+        "binary": "bedrock",
+        "execution_path": "Native BusPlugin/AgentPlugin App; actual provider CompletionAdapter and ToolAdapter through per-poll Tokio context bridge; no legacy agent runner, policy, or effect replayer.",
+        "source": "tests/providers/bedrock/cassette/ecs_completion.rs",
+        "test": "bedrock::cassette::ecs_completion::completion_with_context_smoke"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output-config-regression",
+        "provider-completions"
+      ],
+      "family_contract": "tests/ecs_parity/provider-completions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/agent/completion_with_context_smoke.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Manually traced original free functions, provider client constructors and completion_model, builder context/default budget, await.expect, unchanged neutral Adder/Subtract and parameter schema, ProviderCassette impl methods, ReplayServer::assert_consumed and teardown. No original stream collectors or hooks in these 16 cases.",
+        "copilot": "Its mod.rs changes only by native module registration; provider wrapper and client helper bodies are unchanged. Paired source index retains full module; separate reviewed exact insertion-removal comparison freezes its original body.",
+        "response": "Same assert_contains_any_case_insensitive: trim-nonempty plus case-insensitive contains ancient tool OR farm; no exact final-text equality claim."
+      },
+      "id": "rig::bedrock::bedrock::cassette::agent::completion_with_context_smoke",
+      "mapping_limits": [
+        "Sixteen recorded blocking workflows only; ignored live Copilot and other live cases remain separate.",
+        "Request/response fidelity and actual final-result obligations; no effect-golden equality, hook, streaming, raw usage, terminal-count or scheduling claim.",
+        "Bedrock arithmetic retains original real tools and assertion, but original does not require an explicit tool-execution counter.",
+        "Full feature/capability matrix, OS network barrier, remaining families, aggregate verification, publication and CI remain unfinished."
+      ],
+      "resolved_helper_chain": [
+        "bedrock::support::with_bedrock_cassette",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message",
+        "support::assert_contains_any_case_insensitive",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/bedrock/cassette/agent.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "bedrock::cassette::agent::prompt_caching_completion_smoke",
+          "comparison": "Original prompt await.expect succeeds; native requires real Settled/RunResult, rejects actual Failed and transport errors; deadline is failure, never success.",
+          "ecs_symbol": "bedrock::cassette::ecs_completion::prompt_caching_completion_smoke",
+          "id": "rig::bedrock::bedrock::cassette::agent::prompt_caching_completion_smoke::successful-run"
+        },
+        {
+          "baseline_symbol": "support::assert_nonempty_response",
+          "comparison": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails.",
+          "ecs_symbol": "bedrock::cassette::ecs_completion::prompt_caching_completion_smoke",
+          "id": "rig::bedrock::bedrock::cassette::agent::prompt_caching_completion_smoke::response-assertion"
+        },
+        {
+          "baseline_symbol": "provider wrapper -> ProviderCassette start/finish_after_test -> ReplayServer::assert_consumed -> assert_replay_finished",
+          "comparison": "Same literal fixture path and unchanged provider wrapper. Original method/path/query/required-header/body matching and ordered consumption retained; unused interactions or replay misses fail after successful closure.",
+          "ecs_symbol": "bedrock::cassette::ecs_completion::prompt_caching_completion_smoke",
+          "id": "rig::bedrock::bedrock::cassette::agent::prompt_caching_completion_smoke::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "bedrock::cassette::agent::prompt_caching_completion_smoke",
+          "comparison": "Exact model, prompt, preamble, context IDs/text/order, max_tokens, temperature, extra JSON, tools/order and builder budget preserved by native components; no run override.",
+          "ecs_symbol": "bedrock::cassette::ecs_completion::prompt_caching_completion_smoke",
+          "id": "rig::bedrock::bedrock::cassette::agent::prompt_caching_completion_smoke::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/agent.rs",
+          "symbol": "bedrock::cassette::agent::prompt_caching_completion_smoke"
+        },
+        {
+          "path": "tests/providers/bedrock/support.rs",
+          "symbol": "bedrock::support::with_bedrock_cassette"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "history": [],
+        "native_DefaultMaxTurns": null,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": false,
+        "original_effective_default_max_turns": 1,
+        "run_max_turns_override": null,
+        "scope": "Native None marks unset builder default; effective MaxTurns1 matches original AgentConfig::new max_turns1. No effect-header fingerprint equality claimed.",
+        "settings": "AMAZON_NOVA_LITE; ordinary or with_prompt_caching actual model as original; context static_doc_0/1/2 with exact CONTEXT_DOCS order and empty extra props; tool case Adder then Subtract, max_tokens1024, default budget2",
+        "streamed": false
+      },
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": {
+        "binary": "bedrock",
+        "execution_path": "Native BusPlugin/AgentPlugin App; actual provider CompletionAdapter and ToolAdapter through per-poll Tokio context bridge; no legacy agent runner, policy, or effect replayer.",
+        "source": "tests/providers/bedrock/cassette/ecs_completion.rs",
+        "test": "bedrock::cassette::ecs_completion::prompt_caching_completion_smoke"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output-config-regression",
+        "provider-completions"
+      ],
+      "family_contract": "tests/ecs_parity/provider-completions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/agent/prompt_caching_completion_smoke.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Manually traced original free functions, provider client constructors and completion_model, builder context/default budget, await.expect, unchanged neutral Adder/Subtract and parameter schema, ProviderCassette impl methods, ReplayServer::assert_consumed and teardown. No original stream collectors or hooks in these 16 cases.",
+        "copilot": "Its mod.rs changes only by native module registration; provider wrapper and client helper bodies are unchanged. Paired source index retains full module; separate reviewed exact insertion-removal comparison freezes its original body.",
+        "response": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails."
+      },
+      "id": "rig::bedrock::bedrock::cassette::agent::prompt_caching_completion_smoke",
+      "mapping_limits": [
+        "Sixteen recorded blocking workflows only; ignored live Copilot and other live cases remain separate.",
+        "Request/response fidelity and actual final-result obligations; no effect-golden equality, hook, streaming, raw usage, terminal-count or scheduling claim.",
+        "Bedrock arithmetic retains original real tools and assertion, but original does not require an explicit tool-execution counter.",
+        "Full feature/capability matrix, OS network barrier, remaining families, aggregate verification, publication and CI remain unfinished."
+      ],
+      "resolved_helper_chain": [
+        "bedrock::support::with_bedrock_cassette",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/bedrock/cassette/agent.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "bedrock::cassette::agent::tool_roundtrip_smoke",
+          "comparison": "Original prompt await.expect succeeds; native requires real Settled/RunResult, rejects actual Failed and transport errors; deadline is failure, never success.",
+          "ecs_symbol": "bedrock::cassette::ecs_completion::tool_roundtrip_smoke",
+          "id": "rig::bedrock::bedrock::cassette::agent::tool_roundtrip_smoke::successful-run"
+        },
+        {
+          "baseline_symbol": "support::assert_mentions_expected_number",
+          "comparison": "Same assert_mentions_expected_number(-3): trim-nonempty plus substring -3, minus 3 OR negative 3; not a numeric parser and not a tool-call counter assertion.",
+          "ecs_symbol": "bedrock::cassette::ecs_completion::tool_roundtrip_smoke",
+          "id": "rig::bedrock::bedrock::cassette::agent::tool_roundtrip_smoke::response-assertion"
+        },
+        {
+          "baseline_symbol": "provider wrapper -> ProviderCassette start/finish_after_test -> ReplayServer::assert_consumed -> assert_replay_finished",
+          "comparison": "Same literal fixture path and unchanged provider wrapper. Original method/path/query/required-header/body matching and ordered consumption retained; unused interactions or replay misses fail after successful closure.",
+          "ecs_symbol": "bedrock::cassette::ecs_completion::tool_roundtrip_smoke",
+          "id": "rig::bedrock::bedrock::cassette::agent::tool_roundtrip_smoke::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "bedrock::cassette::agent::tool_roundtrip_smoke",
+          "comparison": "Exact model, prompt, preamble, context IDs/text/order, max_tokens, temperature, extra JSON, tools/order and builder budget preserved by native components; no run override.",
+          "ecs_symbol": "bedrock::cassette::ecs_completion::tool_roundtrip_smoke",
+          "id": "rig::bedrock::bedrock::cassette::agent::tool_roundtrip_smoke::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/bedrock/cassette/agent.rs",
+          "symbol": "bedrock::cassette::agent::tool_roundtrip_smoke"
+        },
+        {
+          "path": "tests/providers/bedrock/support.rs",
+          "symbol": "bedrock::support::with_bedrock_cassette"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_mentions_expected_number"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "history": [],
+        "native_DefaultMaxTurns": 2,
+        "native_MaxTurns": 2,
+        "original_builder_budget_explicit": true,
+        "original_effective_default_max_turns": 2,
+        "run_max_turns_override": null,
+        "scope": "Explicit native DefaultMaxTurns(Some(2)) and MaxTurns(2) match original default_max_turns(2); no run override. No effect-header fingerprint equality claimed.",
+        "settings": "AMAZON_NOVA_LITE; ordinary or with_prompt_caching actual model as original; context static_doc_0/1/2 with exact CONTEXT_DOCS order and empty extra props; tool case Adder then Subtract, max_tokens1024, default budget2",
+        "streamed": false
+      },
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": {
+        "binary": "bedrock",
+        "execution_path": "Native BusPlugin/AgentPlugin App; actual provider CompletionAdapter and ToolAdapter through per-poll Tokio context bridge; no legacy agent runner, policy, or effect replayer.",
+        "source": "tests/providers/bedrock/cassette/ecs_completion.rs",
+        "test": "bedrock::cassette::ecs_completion::tool_roundtrip_smoke"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output-config-regression",
+        "provider-completions"
+      ],
+      "family_contract": "tests/ecs_parity/provider-completions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/bedrock/agent/tool_roundtrip_smoke.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Manually traced original free functions, provider client constructors and completion_model, builder context/default budget, await.expect, unchanged neutral Adder/Subtract and parameter schema, ProviderCassette impl methods, ReplayServer::assert_consumed and teardown. No original stream collectors or hooks in these 16 cases.",
+        "copilot": "Its mod.rs changes only by native module registration; provider wrapper and client helper bodies are unchanged. Paired source index retains full module; separate reviewed exact insertion-removal comparison freezes its original body.",
+        "response": "Same assert_mentions_expected_number(-3): trim-nonempty plus substring -3, minus 3 OR negative 3; not a numeric parser and not a tool-call counter assertion."
+      },
+      "id": "rig::bedrock::bedrock::cassette::agent::tool_roundtrip_smoke",
+      "mapping_limits": [
+        "Sixteen recorded blocking workflows only; ignored live Copilot and other live cases remain separate.",
+        "Request/response fidelity and actual final-result obligations; no effect-golden equality, hook, streaming, raw usage, terminal-count or scheduling claim.",
+        "Bedrock arithmetic retains original real tools and assertion, but original does not require an explicit tool-execution counter.",
+        "Full feature/capability matrix, OS network barrier, remaining families, aggregate verification, publication and CI remain unfinished."
+      ],
+      "resolved_helper_chain": [
+        "bedrock::support::with_bedrock_cassette",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message",
+        "support::assert_mentions_expected_number",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/bedrock/cassette/agent.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::document_ordering::documents_are_prepended_before_history",
+      "source": "tests/providers/bedrock/cassette/document_ordering.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::embeddings::embeddings_batch_smoke",
+      "source": "tests/providers/bedrock/cassette/embeddings.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::embeddings::embeddings_smoke",
+      "source": "tests/providers/bedrock/cassette/embeddings.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::model_ids::bare_profile_only_model_id_is_rejected",
+      "source": "tests/providers/bedrock/cassette/model_ids.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::model_ids::claude_profile_constant_completes",
+      "source": "tests/providers/bedrock/cassette/model_ids.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::model_ids::cross_region_profile_id_completes",
+      "source": "tests/providers/bedrock/cassette/model_ids.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::model_ids::retired_model_id_preserves_provider_error",
+      "source": "tests/providers/bedrock/cassette/model_ids.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]",
+        "# [ignore = \"unrecorded (no valid AWS credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::raw_capture_matrix::normalized_fields_equal_raw_renormalized",
+      "source": "tests/providers/bedrock/cassette/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]",
+        "# [ignore = \"unrecorded (no valid AWS credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::raw_capture_matrix::raw_exposes_latency_metrics",
+      "source": "tests/providers/bedrock/cassette/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]",
+        "# [ignore = \"unrecorded (no valid AWS credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::raw_capture_matrix::raw_round_trips_provider_type",
+      "source": "tests/providers/bedrock/cassette/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::raw_completion::raw_response_text_matches_normalized_choice_text",
+      "source": "tests/providers/bedrock/cassette/raw_completion.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::raw_provider_data::guardrail_trace_survives_into_raw_completion",
+      "source": "tests/providers/bedrock/cassette/raw_provider_data.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::raw_provider_data::request_id_survives_into_raw_completion",
+      "source": "tests/providers/bedrock/cassette/raw_provider_data.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]",
+        "# [ignore]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::raw_provider_data::request_id_survives_into_streamed_terminal",
+      "source": "tests/providers/bedrock/cassette/raw_provider_data.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]",
+        "# [ignore = \"unrecorded (no valid AWS credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::raw_stream_capture_matrix::stream_raw_exposes_bedrock_stop_reason",
+      "source": "tests/providers/bedrock/cassette/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]",
+        "# [ignore = \"unrecorded (no valid AWS credentials in this environment)\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::raw_stream_capture_matrix::stream_raw_terminal_round_trips_provider_type",
+      "source": "tests/providers/bedrock/cassette/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::raw_streaming::raw_stream_emits_required_zero_arg_tool_call",
+      "source": "tests/providers/bedrock/cassette/raw_streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::raw_streaming::raw_stream_emits_tool_call_before_text",
+      "source": "tests/providers/bedrock/cassette/raw_streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::raw_streaming::raw_stream_surfaces_two_distinct_tool_calls",
+      "source": "tests/providers/bedrock/cassette/raw_streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::raw_streaming::raw_stream_text_response_smoke",
+      "source": "tests/providers/bedrock/cassette/raw_streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::streaming::streaming_smoke",
+      "source": "tests/providers/bedrock/cassette/streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::streaming::streaming_tools_smoke",
+      "source": "tests/providers/bedrock/cassette/streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::tool_choice::none_nonstreaming_does_not_emit_tool_calls",
+      "source": "tests/providers/bedrock/cassette/tool_choice.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::tool_choice::none_streaming_does_not_emit_tool_calls",
+      "source": "tests/providers/bedrock/cassette/tool_choice.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::tool_choice::required_forces_function_call",
+      "source": "tests/providers/bedrock/cassette/tool_choice.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::tool_choice::specific_add_raw_nonstreaming_allows_only_add",
+      "source": "tests/providers/bedrock/cassette/tool_choice.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::cassette::tool_choice::specific_add_raw_streaming_allows_only_add",
+      "source": "tests/providers/bedrock/cassette/tool_choice.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "bare_terminal_after_only_unparseable_frames_fabricates_nothing"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "check_gated_outcome"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+          "symbol": "__streaming_conformance_scenario"
+        }
+      ],
+      "capability_requirements": [
+        "bare_terminal",
+        "malformed_frame"
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Typed ConverseStreamOutput fixtures drive rig::bedrock::streaming::stream_from_events and shared wire validators directly. No agent runner or provider HTTP cassette is used. Capability-gated synthetic cases may report ScenarioOutcome::Skipped.",
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::streaming_conformance::bare_terminal_after_only_unparseable_frames_fabricates_nothing",
+      "semantic_outcome": null,
+      "skip_obligation": "Capture ScenarioOutcome and any named skipped/xfail diagnostics; a Rust test pass is not proof this capability ran.",
+      "source": "tests/providers/bedrock/streaming_conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "defective_known_event_surfaces_err"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "check_gated_outcome"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+          "symbol": "__streaming_conformance_scenario"
+        }
+      ],
+      "capability_requirements": [
+        "defective_known_frame"
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Typed ConverseStreamOutput fixtures drive rig::bedrock::streaming::stream_from_events and shared wire validators directly. No agent runner or provider HTTP cassette is used. Capability-gated synthetic cases may report ScenarioOutcome::Skipped.",
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::streaming_conformance::defective_known_event_surfaces_err",
+      "semantic_outcome": null,
+      "skip_obligation": "Capture ScenarioOutcome and any named skipped/xfail diagnostics; a Rust test pass is not proof this capability ran.",
+      "source": "tests/providers/bedrock/streaming_conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "delta_less_choice_prelude_is_a_noop"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "check_gated_outcome"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+          "symbol": "__streaming_conformance_scenario"
+        }
+      ],
+      "capability_requirements": [
+        "delta_less_prelude"
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Typed ConverseStreamOutput fixtures drive rig::bedrock::streaming::stream_from_events and shared wire validators directly. No agent runner or provider HTTP cassette is used. Capability-gated synthetic cases may report ScenarioOutcome::Skipped.",
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::streaming_conformance::delta_less_choice_prelude_is_a_noop",
+      "semantic_outcome": null,
+      "skip_obligation": "Capture ScenarioOutcome and any named skipped/xfail diagnostics; a Rust test pass is not proof this capability ran.",
+      "source": "tests/providers/bedrock/streaming_conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+          "symbol": "streaming_conformance_suite::derived_capabilities_match_the_manifest"
+        }
+      ],
+      "capability_requirements": [],
+      "classification": "shared_provider",
+      "classification_reason": "Typed ConverseStreamOutput fixtures drive rig::bedrock::streaming::stream_from_events and shared wire validators directly. No agent runner or provider HTTP cassette is used. Capability-gated synthetic cases may report ScenarioOutcome::Skipped.",
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::streaming_conformance::derived_capabilities_match_the_manifest",
+      "semantic_outcome": null,
+      "skip_obligation": "Structural assertion test; not a provider behavior or migrated agent scenario.",
+      "source": "tests/providers/bedrock/streaming_conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "interleaved_constant_id_reasoning_preserves_order"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "check_gated_outcome"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+          "symbol": "__streaming_conformance_scenario"
+        }
+      ],
+      "capability_requirements": [
+        "interleaved_reasoning"
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Typed ConverseStreamOutput fixtures drive rig::bedrock::streaming::stream_from_events and shared wire validators directly. No agent runner or provider HTTP cassette is used. Capability-gated synthetic cases may report ScenarioOutcome::Skipped.",
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::streaming_conformance::interleaved_constant_id_reasoning_preserves_order",
+      "semantic_outcome": null,
+      "skip_obligation": "Capture ScenarioOutcome and any named skipped/xfail diagnostics; a Rust test pass is not proof this capability ran.",
+      "source": "tests/providers/bedrock/streaming_conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "malformed_frame_surfaces_err_and_terminal_still_completes"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "check_gated_outcome"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+          "symbol": "__streaming_conformance_scenario"
+        }
+      ],
+      "capability_requirements": [
+        "malformed_frame"
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Typed ConverseStreamOutput fixtures drive rig::bedrock::streaming::stream_from_events and shared wire validators directly. No agent runner or provider HTTP cassette is used. Capability-gated synthetic cases may report ScenarioOutcome::Skipped.",
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::streaming_conformance::malformed_frame_surfaces_err_and_terminal_still_completes",
+      "semantic_outcome": null,
+      "skip_obligation": "Capture ScenarioOutcome and any named skipped/xfail diagnostics; a Rust test pass is not proof this capability ran.",
+      "source": "tests/providers/bedrock/streaming_conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "refusal_frames_deliver_text_without_error"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "check_gated_outcome"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+          "symbol": "__streaming_conformance_scenario"
+        }
+      ],
+      "capability_requirements": [
+        "refusal"
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Typed ConverseStreamOutput fixtures drive rig::bedrock::streaming::stream_from_events and shared wire validators directly. No agent runner or provider HTTP cassette is used. Capability-gated synthetic cases may report ScenarioOutcome::Skipped.",
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::streaming_conformance::refusal_frames_deliver_text_without_error",
+      "semantic_outcome": null,
+      "skip_obligation": "Capture ScenarioOutcome and any named skipped/xfail diagnostics; a Rust test pass is not proof this capability ran.",
+      "source": "tests/providers/bedrock/streaming_conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::streaming_conformance::suite_families_are_registered_wire_families",
+      "source": "tests/providers/bedrock/streaming_conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+          "symbol": "streaming_conformance_suite::suite_is_complete"
+        }
+      ],
+      "capability_requirements": [],
+      "classification": "shared_provider",
+      "classification_reason": "Typed ConverseStreamOutput fixtures drive rig::bedrock::streaming::stream_from_events and shared wire validators directly. No agent runner or provider HTTP cassette is used. Capability-gated synthetic cases may report ScenarioOutcome::Skipped.",
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::streaming_conformance::suite_is_complete",
+      "semantic_outcome": null,
+      "skip_obligation": "Structural assertion test; not a provider behavior or migrated agent scenario.",
+      "source": "tests/providers/bedrock/streaming_conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "transport_error_after_tool_call_yields_err_then_end"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "check_ungated_outcome"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+          "symbol": "__streaming_conformance_scenario"
+        }
+      ],
+      "capability_requirements": [],
+      "classification": "shared_provider",
+      "classification_reason": "Typed ConverseStreamOutput fixtures drive rig::bedrock::streaming::stream_from_events and shared wire validators directly. No agent runner or provider HTTP cassette is used. Capability-gated synthetic cases may report ScenarioOutcome::Skipped.",
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::streaming_conformance::transport_error_after_tool_call_yields_err_then_end",
+      "semantic_outcome": null,
+      "skip_obligation": "Capture actual test execution; no execution is claimed by this source mapping.",
+      "source": "tests/providers/bedrock/streaming_conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "truncation_preserves_content_without_terminal"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "check_ungated_outcome"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+          "symbol": "__streaming_conformance_scenario"
+        }
+      ],
+      "capability_requirements": [],
+      "classification": "shared_provider",
+      "classification_reason": "Typed ConverseStreamOutput fixtures drive rig::bedrock::streaming::stream_from_events and shared wire validators directly. No agent runner or provider HTTP cassette is used. Capability-gated synthetic cases may report ScenarioOutcome::Skipped.",
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::streaming_conformance::truncation_preserves_content_without_terminal",
+      "semantic_outcome": null,
+      "skip_obligation": "Capture actual test execution; no execution is claimed by this source mapping.",
+      "source": "tests/providers/bedrock/streaming_conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "unknown_event_is_skipped"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "check_gated_outcome"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+          "symbol": "__streaming_conformance_scenario"
+        }
+      ],
+      "capability_requirements": [
+        "unknown_event_frame"
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Typed ConverseStreamOutput fixtures drive rig::bedrock::streaming::stream_from_events and shared wire validators directly. No agent runner or provider HTTP cassette is used. Capability-gated synthetic cases may report ScenarioOutcome::Skipped.",
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::streaming_conformance::unknown_event_is_skipped",
+      "semantic_outcome": null,
+      "skip_obligation": "Capture ScenarioOutcome and any named skipped/xfail diagnostics; a Rust test pass is not proof this capability ran.",
+      "source": "tests/providers/bedrock/streaming_conformance.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "usage_variants_are_reported_or_zero_sentinel"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance.rs",
+          "symbol": "check_ungated_outcome"
+        },
+        {
+          "path": "crates/rig-core/src/test_utils/streaming_conformance_suite.rs",
+          "symbol": "__streaming_conformance_scenario"
+        }
+      ],
+      "capability_requirements": [],
+      "classification": "shared_provider",
+      "classification_reason": "Typed ConverseStreamOutput fixtures drive rig::bedrock::streaming::stream_from_events and shared wire validators directly. No agent runner or provider HTTP cassette is used. Capability-gated synthetic cases may report ScenarioOutcome::Skipped.",
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"bedrock\")]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::bedrock::bedrock::streaming_conformance::usage_variants_are_reported_or_zero_sentinel",
+      "semantic_outcome": null,
+      "skip_obligation": "Capture actual test execution; no execution is claimed by this source mapping.",
+      "source": "tests/providers/bedrock/streaming_conformance.rs"
+    }
+  ],
+  "schema": 1
+}

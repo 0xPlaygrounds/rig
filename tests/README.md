@@ -402,10 +402,18 @@ Bedrock models.
 
 Native ECS tests execute real provider adapters against the same cassettes as
 rig-agent tests. Original and native golden comparisons retain their complete
-assertions. The [scenario catalog](ecs_parity/scenarios.json) records current
+assertions. The [scenario catalog](ecs_parity/scenarios/) records current
 correspondences, classifications, configuration and behavioral obligations;
 family contracts describe differences and limitations. It is not a passing
 result or proof of an exhaustive functional superset.
+
+The catalog is a directory of `schema: 1` files merged by the checker. Rows
+whose `source` is under `tests/providers/<provider>/` live in
+`<provider>.json`, every other row lives in `common.json`, and `shared.json`
+holds the configurations, the purpose statement and the shared-provider
+correspondences. The checker rejects a row filed in the wrong file, so work on
+one provider tree only ever edits that provider's catalog file. Files are
+pretty-printed JSON with two-space indentation and sorted keys.
 
 The catalog includes unmapped and unclassified cases. Further migration and
 broader capability comparisons remain follow-up work. Shared-provider tests do

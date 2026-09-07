@@ -3,7 +3,7 @@
 This family covers 16 original blocking agent scenarios across 11 providers:
 Bedrock (4), Cohere (1), Copilot (1), DeepSeek (1), Doubleword (1), llama.cpp (1),
 Ollama (2), OpenRouter (1), Perplexity (2), Venice (1), and xAI (1). Exact original
-and native executable IDs and fixture paths are in `scenarios.json`. Unrelated
+and native executable IDs and fixture paths are in the `scenarios/` catalog directory. Unrelated
 provider and ignored live tests are outside this family.
 
 ## Independent execution and settings

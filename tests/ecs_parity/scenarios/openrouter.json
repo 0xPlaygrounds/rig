@@ -1,0 +1,3740 @@
+{
+  "scenarios": [
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [cfg (feature = \"audio\")]",
+        "# [ignore = \"requires OPENROUTER_API_KEY\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::audio_generation::audio_generation_smoke",
+      "source": "tests/providers/openrouter/audio_generation.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "openrouter::cassette::agent::completion_smoke",
+          "comparison": "Original prompt await.expect succeeds; native requires real Settled/RunResult, rejects actual Failed and transport errors; deadline is failure, never success.",
+          "ecs_symbol": "openrouter::cassette::ecs_completion::completion_smoke",
+          "id": "rig::openrouter::openrouter::cassette::agent::completion_smoke::successful-run"
+        },
+        {
+          "baseline_symbol": "support::assert_nonempty_response",
+          "comparison": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails.",
+          "ecs_symbol": "openrouter::cassette::ecs_completion::completion_smoke",
+          "id": "rig::openrouter::openrouter::cassette::agent::completion_smoke::response-assertion"
+        },
+        {
+          "baseline_symbol": "provider wrapper -> ProviderCassette start/finish_after_test -> ReplayServer::assert_consumed -> assert_replay_finished",
+          "comparison": "Same literal fixture path and unchanged provider wrapper. Original method/path/query/required-header/body matching and ordered consumption retained; unused interactions or replay misses fail after successful closure.",
+          "ecs_symbol": "openrouter::cassette::ecs_completion::completion_smoke",
+          "id": "rig::openrouter::openrouter::cassette::agent::completion_smoke::request-and-exhaustion"
+        },
+        {
+          "baseline_symbol": "openrouter::cassette::agent::completion_smoke",
+          "comparison": "Exact model, prompt, preamble, context IDs/text/order, max_tokens, temperature, extra JSON, tools/order and builder budget preserved by native components; no run override.",
+          "ecs_symbol": "openrouter::cassette::ecs_completion::completion_smoke",
+          "id": "rig::openrouter::openrouter::cassette::agent::completion_smoke::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/openrouter/cassette/agent.rs",
+          "symbol": "openrouter::cassette::agent::completion_smoke"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::with_openrouter_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "configuration": "root-bedrock",
+      "configuration_mapping": {
+        "history": [],
+        "native_DefaultMaxTurns": null,
+        "native_MaxTurns": 1,
+        "original_builder_budget_explicit": false,
+        "original_effective_default_max_turns": 1,
+        "run_max_turns_override": null,
+        "scope": "Native None marks unset builder default; effective MaxTurns1 matches original AgentConfig::new max_turns1. No effect-header fingerprint equality claimed.",
+        "settings": "DEFAULT_MODEL from original parent module; BASIC_PREAMBLE/BASIC_PROMPT; native OpenRouter adapter",
+        "streamed": false
+      },
+      "declared_gates": [],
+      "ecs": {
+        "binary": "openrouter",
+        "execution_path": "Native BusPlugin/AgentPlugin App; actual provider CompletionAdapter and ToolAdapter through per-poll Tokio context bridge; no legacy agent runner, policy, or effect replayer.",
+        "source": "tests/providers/openrouter/cassette/ecs_completion.rs",
+        "test": "openrouter::cassette::ecs_completion::completion_smoke"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "output-config-regression",
+        "provider-completions"
+      ],
+      "family_contract": "tests/ecs_parity/provider-completions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/openrouter/agent/completion_smoke.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Manually traced original free functions, provider client constructors and completion_model, builder context/default budget, await.expect, unchanged neutral Adder/Subtract and parameter schema, ProviderCassette impl methods, ReplayServer::assert_consumed and teardown. No original stream collectors or hooks in these 16 cases.",
+        "copilot": "Its mod.rs changes only by native module registration; provider wrapper and client helper bodies are unchanged. Paired source index retains full module; separate reviewed exact insertion-removal comparison freezes its original body.",
+        "response": "Same assert_nonempty_response on actual native RunResult text; whitespace-only output fails."
+      },
+      "id": "rig::openrouter::openrouter::cassette::agent::completion_smoke",
+      "mapping_limits": [
+        "Sixteen recorded blocking workflows only; ignored live Copilot and other live cases remain separate.",
+        "Request/response fidelity and actual final-result obligations; no effect-golden equality, hook, streaming, raw usage, terminal-count or scheduling claim.",
+        "Bedrock arithmetic retains original real tools and assertion, but original does not require an explicit tool-execution counter.",
+        "Full feature/capability matrix, OS network barrier, remaining families, aggregate verification, publication and CI remain unfinished."
+      ],
+      "resolved_helper_chain": [
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message",
+        "openrouter::support::with_openrouter_cassette",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/openrouter/cassette/agent.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+          "comparison": "Exact original provider test and all request construction/normalization/metadata/stream collector assertions execute unchanged in both revisions; no migration count.",
+          "ecs_symbol": "openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+          "symbol": "openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::with_openrouter_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::openrouter_cassette"
+        }
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Independently reviewed direct completion_model request/stream/raw completion plus normalization only. Tool objects supply definitions; no legacy agent runtime through helpers.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/openrouter/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::long_history_replay_with_tool_result_continuation",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "openrouter::support::openrouter_cassette",
+        "openrouter::support::with_openrouter_cassette_result",
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/openrouter/cassette/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "openrouter::cassette::agent_tool_sessions::nested_structured_output_schema_roundtrip",
+          "comparison": "Original assertion expressions and shared validators remain on actual native observations: tool invocation arguments/count/order, caller history calls/results/ordering, streaming tool/text/result phases, typed schema fields, or image response nonempty as applicable.",
+          "ecs_symbol": "openrouter::cassette::ecs_tool_sessions::nested_structured_output_schema_roundtrip",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::nested_structured_output_schema_roundtrip::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "openrouter::cassette::ecs_tool_sessions::nested_structured_output_schema_roundtrip",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::nested_structured_output_schema_roundtrip::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "openrouter::cassette::agent_tool_sessions::nested_structured_output_schema_roundtrip",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "openrouter::cassette::ecs_tool_sessions::nested_structured_output_schema_roundtrip",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::nested_structured_output_schema_roundtrip::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+          "symbol": "openrouter::cassette::agent_tool_sessions::nested_structured_output_schema_roundtrip"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::with_openrouter_cassette_result"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::openrouter_cassette"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original invokes legacy chat/stream/prompt_typed or multimodal prompt orchestration; native counterpart required.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "openrouter",
+        "execution_path": "Native ECS components/graph, real provider and tool adapters, actual stream schedule observers and ordered Utterance history; no legacy runtime/policy.",
+        "source": "tests/providers/openrouter/cassette/ecs_tool_sessions.rs",
+        "test": "openrouter::cassette::ecs_tool_sessions::nested_structured_output_schema_roundtrip"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/openrouter/agent_tool_sessions/nested_structured_output_schema_roundtrip.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::nested_structured_output_schema_roundtrip",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "openrouter::support::openrouter_cassette",
+        "openrouter::support::with_openrouter_cassette_result"
+      ],
+      "source": "tests/providers/openrouter/cassette/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+          "comparison": "Original assertion expressions and shared validators remain on actual native observations: tool invocation arguments/count/order, caller history calls/results/ordering, streaming tool/text/result phases, typed schema fields, or image response nonempty as applicable.",
+          "ecs_symbol": "openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+          "symbol": "openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::with_openrouter_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+          "symbol": "openrouter::cassette::agent_tool_sessions::history_tool_calls"
+        },
+        {
+          "path": "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+          "symbol": "openrouter::cassette::agent_tool_sessions::history_tool_results"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::openrouter_cassette"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original invokes legacy chat/stream/prompt_typed or multimodal prompt orchestration; native counterpart required.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "openrouter",
+        "execution_path": "Native ECS components/graph, real provider and tool adapters, actual stream schedule observers and ordered Utterance history; no legacy runtime/policy.",
+        "source": "tests/providers/openrouter/cassette/ecs_tool_sessions.rs",
+        "test": "openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_nonstreaming"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/openrouter/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_nonstreaming",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "openrouter::cassette::agent_tool_sessions::history_tool_calls",
+        "openrouter::cassette::agent_tool_sessions::history_tool_results",
+        "openrouter::support::openrouter_cassette",
+        "openrouter::support::with_openrouter_cassette_result",
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/openrouter/cassette/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_streaming",
+          "comparison": "Original assertion expressions and shared validators remain on actual native observations: tool invocation arguments/count/order, caller history calls/results/ordering, streaming tool/text/result phases, typed schema fields, or image response nonempty as applicable.",
+          "ecs_symbol": "openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_streaming::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_streaming::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_streaming",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_streaming::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+          "symbol": "openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_streaming"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::with_openrouter_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::collect_stream_observation"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_two_tool_roundtrip_contract"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::first_event_index"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::event_count_before"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::first_unique_tool_calls"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::openrouter_cassette"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original invokes legacy chat/stream/prompt_typed or multimodal prompt orchestration; native counterpart required.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "openrouter",
+        "execution_path": "Native ECS components/graph, real provider and tool adapters, actual stream schedule observers and ordered Utterance history; no legacy runtime/policy.",
+        "source": "tests/providers/openrouter/cassette/ecs_tool_sessions.rs",
+        "test": "openrouter::cassette::ecs_tool_sessions::parallel_tool_calls_single_turn_streaming"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/openrouter/agent_tool_sessions/parallel_tool_calls_single_turn_streaming.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::parallel_tool_calls_single_turn_streaming",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "openrouter::support::openrouter_cassette",
+        "openrouter::support::with_openrouter_cassette_result",
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response",
+        "support::assert_two_tool_roundtrip_contract",
+        "support::collect_stream_observation",
+        "support::event_count_before",
+        "support::first_event_index",
+        "support::first_unique_tool_calls"
+      ],
+      "source": "tests/providers/openrouter/cassette/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+          "comparison": "Exact original provider test and all request construction/normalization/metadata/stream collector assertions execute unchanged in both revisions; no migration count.",
+          "ecs_symbol": "openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+          "symbol": "openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::with_openrouter_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::collect_raw_stream_observation"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_raw_stream_tool_call_arguments_are_objects"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::openrouter_cassette"
+        }
+      ],
+      "classification": "shared_provider",
+      "classification_reason": "Independently reviewed direct completion_model request/stream/raw completion plus normalization only. Tool objects supply definitions; no legacy agent runtime through helpers.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "evidence_scope": "shared_provider",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/openrouter/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::raw_stream_complex_tool_call_deltas_have_object_arguments",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "openrouter::support::openrouter_cassette",
+        "openrouter::support::with_openrouter_cassette_result",
+        "support::assert_raw_stream_tool_call_arguments_are_objects",
+        "support::collect_raw_stream_observation"
+      ],
+      "source": "tests/providers/openrouter/cassette/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+          "comparison": "Original assertion expressions and shared validators remain on actual native observations: tool invocation arguments/count/order, caller history calls/results/ordering, streaming tool/text/result phases, typed schema fields, or image response nonempty as applicable.",
+          "ecs_symbol": "openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+          "symbol": "openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::with_openrouter_cassette_result"
+        },
+        {
+          "path": "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+          "symbol": "openrouter::cassette::agent_tool_sessions::complex_tools"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+          "symbol": "openrouter::cassette::agent_tool_sessions::assert_complex_invocations"
+        },
+        {
+          "path": "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+          "symbol": "openrouter::cassette::agent_tool_sessions::assert_history_records_sequential_tool_roundtrips"
+        },
+        {
+          "path": "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+          "symbol": "openrouter::cassette::agent_tool_sessions::history_tool_calls"
+        },
+        {
+          "path": "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+          "symbol": "openrouter::cassette::agent_tool_sessions::history_tool_results"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::openrouter_cassette"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original invokes legacy chat/stream/prompt_typed or multimodal prompt orchestration; native counterpart required.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "openrouter",
+        "execution_path": "Native ECS components/graph, real provider and tool adapters, actual stream schedule observers and ordered Utterance history; no legacy runtime/policy.",
+        "source": "tests/providers/openrouter/cassette/ecs_tool_sessions.rs",
+        "test": "openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_nonstreaming"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/openrouter/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_nonstreaming",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "openrouter::cassette::agent_tool_sessions::assert_complex_invocations",
+        "openrouter::cassette::agent_tool_sessions::assert_history_records_sequential_tool_roundtrips",
+        "openrouter::cassette::agent_tool_sessions::complex_tools",
+        "openrouter::cassette::agent_tool_sessions::history_tool_calls",
+        "openrouter::cassette::agent_tool_sessions::history_tool_results",
+        "openrouter::support::openrouter_cassette",
+        "openrouter::support::with_openrouter_cassette_result",
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/openrouter/cassette/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_streaming",
+          "comparison": "Original assertion expressions and shared validators remain on actual native observations: tool invocation arguments/count/order, caller history calls/results/ordering, streaming tool/text/result phases, typed schema fields, or image response nonempty as applicable.",
+          "ecs_symbol": "openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_streaming::original-obligations"
+        },
+        {
+          "baseline_symbol": "provider result wrapper -> finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Original ? and required event/field/lock/serialization success boundaries retained. Strict ordered replay requires every interaction and no miss. Native errors never become success; streams close before EffectOutcome and settlement.",
+          "ecs_symbol": "openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_streaming::success-and-teardown"
+        },
+        {
+          "baseline_symbol": "openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_streaming",
+          "comparison": "Preserve exact models, prompts, preamble, additional parameters, tool order/schemas, schema mode and builder defaults versus run overrides. See per-surface table in contract.",
+          "ecs_symbol": "openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_streaming",
+          "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_streaming::configuration"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+          "symbol": "openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_streaming"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::with_openrouter_cassette_result"
+        },
+        {
+          "path": "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+          "symbol": "openrouter::cassette::agent_tool_sessions::complex_tools"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::collect_stream_observation"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_contains_all_case_insensitive"
+        },
+        {
+          "path": "tests/providers/openrouter/cassette/agent_tool_sessions.rs",
+          "symbol": "openrouter::cassette::agent_tool_sessions::assert_complex_invocations"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::openrouter_cassette"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original invokes legacy chat/stream/prompt_typed or multimodal prompt orchestration; native counterpart required.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "openrouter",
+        "execution_path": "Native ECS components/graph, real provider and tool adapters, actual stream schedule observers and ordered Utterance history; no legacy runtime/policy.",
+        "source": "tests/providers/openrouter/cassette/ecs_tool_sessions.rs",
+        "test": "openrouter::cassette::ecs_tool_sessions::sequential_complex_tool_calls_streaming"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "tool-sessions"
+      ],
+      "family_contract": "tests/ecs_parity/tool-sessions-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/openrouter/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "free_function_anchors": "Unambiguous source-discovered free-call closure retained; this is not a claim of arbitrary alias or macro expansion.",
+        "manual_closure": "Independent review traced real Tool impl call/description/parameters and invocation logging/serialization, original collector EOF and errors, provider result-wrapper teardown, raw normalization and metadata helpers; native stream observers expose actual slots/outcomes/text and settlement. Typed decoder fallback and run configuration corrected. Image helper reads the original JPEG, preserving text-image-text order."
+      },
+      "id": "rig::openrouter::openrouter::cassette::agent_tool_sessions::sequential_complex_tool_calls_streaming",
+      "mapping_limits": [
+        "Fourteen migrated agent cases, thirteen retained provider-only cases; no shared-provider count inflation.",
+        "Recorded constraints establish observable ordering, not universal scheduler equivalence.",
+        "No fixture asserts an unconsumed raw field that native observers leave empty.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "openrouter::cassette::agent_tool_sessions::assert_complex_invocations",
+        "openrouter::cassette::agent_tool_sessions::complex_tools",
+        "openrouter::support::openrouter_cassette",
+        "openrouter::support::with_openrouter_cassette_result",
+        "support::assert_contains_all_case_insensitive",
+        "support::assert_nonempty_response",
+        "support::collect_stream_observation"
+      ],
+      "source": "tests/providers/openrouter/cassette/agent_tool_sessions.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::document_file_data::document_file_data_roundtrip_live",
+      "source": "tests/providers/openrouter/cassette/document_file_data.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::document_file_data::streaming_document_file_data_roundtrip_live",
+      "source": "tests/providers/openrouter/cassette/document_file_data.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::document_ordering::chat_completions_keeps_documents_after_system_before_history",
+      "source": "tests/providers/openrouter/cassette/document_ordering.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::embedding_matrix::error_preserves_provider_body",
+      "source": "tests/providers/openrouter/cassette/embedding_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::embedding_matrix::normalized_response_is_complete",
+      "source": "tests/providers/openrouter/cassette/embedding_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::embedding_matrix::raw_round_trips",
+      "source": "tests/providers/openrouter/cassette/embedding_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::embedding_matrix::raw_route_parity",
+      "source": "tests/providers/openrouter/cassette/embedding_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::embedding_matrix::single_text_convenience",
+      "source": "tests/providers/openrouter/cassette/embedding_matrix.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "openrouter::cassette::extractor::extractor_smoke",
+          "comparison": "Original extract await.expect requires success. Native helper requires actual settled run/submit call, deserialization and Usage; no expected data drives execution.",
+          "ecs_symbol": "openrouter::cassette::ecs_extractor::extractor_smoke",
+          "id": "rig::openrouter::openrouter::cassette::extractor::extractor_smoke::success"
+        },
+        {
+          "baseline_symbol": "openrouter::cassette::extractor::extractor_smoke",
+          "comparison": "All three original Option fields required through expect; trim-nonempty checks retained. Positive total_tokens retained where original requires it (DeepSeek has no usage assertion).",
+          "ecs_symbol": "openrouter::cassette::ecs_extractor::extractor_smoke",
+          "id": "rig::openrouter::openrouter::cassette::extractor::extractor_smoke::fields-and-usage"
+        },
+        {
+          "baseline_symbol": "provider wrapper -> ProviderCassette finish_after_test -> ReplayServer::assert_consumed",
+          "comparison": "Same strict ordered fixture and wrapper; exact model, prompt, extractor preamble/schema/submit description/required tool choice/no augmentation/one turn; Gemini typed parameters serialize through original expect. Full cassette consumption and original teardown preserved.",
+          "ecs_symbol": "openrouter::cassette::ecs_extractor::extractor_smoke",
+          "id": "rig::openrouter::openrouter::cassette::extractor::extractor_smoke::request-and-teardown"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/openrouter/cassette/extractor.rs",
+          "symbol": "openrouter::cassette::extractor::extractor_smoke"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::with_openrouter_cassette"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support::assert_nonempty_response"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original typed extractor builds and executes rig-agent orchestration, then validates actual extracted fields and where required reported usage.",
+      "configuration": "root-bedrock",
+      "configuration_sources": [
+        {
+          "path": "crates/rig-agent/src/test_utils/model_conformance.rs"
+        },
+        {
+          "path": "crates/rig-core/src/completion/request.rs"
+        }
+      ],
+      "declared_gates": [],
+      "ecs": {
+        "binary": "openrouter",
+        "execution_path": "Unchanged EcsExtractor with actual native AgentPlugin/BusPlugin and real provider adapter; no legacy extraction runtime.",
+        "source": "tests/providers/openrouter/cassette/ecs_extractor.rs",
+        "test": "openrouter::cassette::ecs_extractor::extractor_smoke"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-smoke-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/openrouter/extractor/extractor_smoke.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "configuration": "Existing native helper reviewed in extractor-usage contract; zero-retry, one-turn, unaugmented submit mode. Gemini serde_json conversion expect preserved. Shared SmokePerson unchanged; additional Gemini Person widens visibility only.",
+        "option_and_nonempty_semantics": "All three original Option fields required through expect; trim-nonempty checks retained. Positive total_tokens retained where original requires it (DeepSeek has no usage assertion).",
+        "portable_validator": false,
+        "portable_validator_semantics": "Pure validation only, no agent runtime calls. Its if-return-Err condition and ScenarioError conversion are obligations despite no assert macro. Usage::has_values means any nondefault field, not specifically positive total.",
+        "portable_validator_source": "crates/rig-agent/src/test_utils/model_conformance.rs::validate_extraction_fields"
+      },
+      "id": "rig::openrouter::openrouter::cassette::extractor::extractor_smoke",
+      "mapping_limits": [
+        "Ten recorded one-call zero-retry scenarios; no stream, retry, effect-golden or policy timing equality claim.",
+        "Shared rig-agent test_utils import is a pure validator, not legacy orchestration.",
+        "Full programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "openrouter::support::with_openrouter_cassette",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message",
+        "support::assert_nonempty_response"
+      ],
+      "source": "tests/providers/openrouter/cassette/extractor.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "openrouter::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "openrouter::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+          "id": "rig::openrouter::openrouter::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::openrouter::openrouter::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_openrouter_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "openrouter::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data",
+          "id": "rig::openrouter::openrouter::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/openrouter/cassette/extractor_usage.rs",
+          "symbol": "openrouter::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data"
+        },
+        {
+          "path": "tests/providers/openrouter/cassette/extractor_usage.rs",
+          "symbol": "openrouter::cassette::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::with_openrouter_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "openrouter",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/openrouter/cassette/ecs_extractor_usage.rs",
+        "test": "openrouter::cassette::ecs_extractor_usage::extract_and_extract_with_usage_return_same_data"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/openrouter/extractor_usage/extract_and_extract_with_usage_return_same_data.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::openrouter::openrouter::cassette::extractor_usage::extract_and_extract_with_usage_return_same_data",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "openrouter::cassette::extractor_usage::assert_compatible_professions",
+        "openrouter::support::with_openrouter_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/openrouter/cassette/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "openrouter::cassette::extractor_usage::extract_backward_compatibility",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "openrouter::cassette::ecs_extractor_usage::extract_backward_compatibility",
+          "id": "rig::openrouter::openrouter::cassette::extractor_usage::extract_backward_compatibility::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::openrouter::openrouter::cassette::extractor_usage::extract_backward_compatibility::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_openrouter_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "openrouter::cassette::ecs_extractor_usage::extract_backward_compatibility",
+          "id": "rig::openrouter::openrouter::cassette::extractor_usage::extract_backward_compatibility::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/openrouter/cassette/extractor_usage.rs",
+          "symbol": "openrouter::cassette::extractor_usage::extract_backward_compatibility"
+        },
+        {
+          "path": "tests/providers/openrouter/cassette/extractor_usage.rs",
+          "symbol": "openrouter::cassette::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::with_openrouter_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "openrouter",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/openrouter/cassette/ecs_extractor_usage.rs",
+        "test": "openrouter::cassette::ecs_extractor_usage::extract_backward_compatibility"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/openrouter/extractor_usage/extract_backward_compatibility.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::openrouter::openrouter::cassette::extractor_usage::extract_backward_compatibility",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "openrouter::cassette::extractor_usage::assert_compatible_professions",
+        "openrouter::support::with_openrouter_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/openrouter/cassette/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "openrouter::cassette::extractor_usage::extract_with_chat_history_with_usage_works",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "openrouter::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+          "id": "rig::openrouter::openrouter::cassette::extractor_usage::extract_with_chat_history_with_usage_works::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::openrouter::openrouter::cassette::extractor_usage::extract_with_chat_history_with_usage_works::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_openrouter_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "openrouter::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works",
+          "id": "rig::openrouter::openrouter::cassette::extractor_usage::extract_with_chat_history_with_usage_works::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/openrouter/cassette/extractor_usage.rs",
+          "symbol": "openrouter::cassette::extractor_usage::extract_with_chat_history_with_usage_works"
+        },
+        {
+          "path": "tests/providers/openrouter/cassette/extractor_usage.rs",
+          "symbol": "openrouter::cassette::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::with_openrouter_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "openrouter",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/openrouter/cassette/ecs_extractor_usage.rs",
+        "test": "openrouter::cassette::ecs_extractor_usage::extract_with_chat_history_with_usage_works"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/openrouter/extractor_usage/extract_with_chat_history_with_usage_works.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::openrouter::openrouter::cassette::extractor_usage::extract_with_chat_history_with_usage_works",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "openrouter::cassette::extractor_usage::assert_compatible_professions",
+        "openrouter::support::with_openrouter_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/openrouter/cassette/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "openrouter::cassette::extractor_usage::extract_with_usage_returns_data_and_usage",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "openrouter::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+          "id": "rig::openrouter::openrouter::cassette::extractor_usage::extract_with_usage_returns_data_and_usage::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::openrouter::openrouter::cassette::extractor_usage::extract_with_usage_returns_data_and_usage::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_openrouter_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "openrouter::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage",
+          "id": "rig::openrouter::openrouter::cassette::extractor_usage::extract_with_usage_returns_data_and_usage::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/openrouter/cassette/extractor_usage.rs",
+          "symbol": "openrouter::cassette::extractor_usage::extract_with_usage_returns_data_and_usage"
+        },
+        {
+          "path": "tests/providers/openrouter/cassette/extractor_usage.rs",
+          "symbol": "openrouter::cassette::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::with_openrouter_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "openrouter",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/openrouter/cassette/ecs_extractor_usage.rs",
+        "test": "openrouter::cassette::ecs_extractor_usage::extract_with_usage_returns_data_and_usage"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/openrouter/extractor_usage/extract_with_usage_returns_data_and_usage.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::openrouter::openrouter::cassette::extractor_usage::extract_with_usage_returns_data_and_usage",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "openrouter::cassette::extractor_usage::assert_compatible_professions",
+        "openrouter::support::with_openrouter_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/openrouter/cassette/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "openrouter::cassette::extractor_usage::usage_tracking_works_for_different_schemas",
+          "comparison": "Every original ensure expression and profession-helper invocation remains on actual native deserialized output and per-run Usage. Shared schemas, original prompts/history/model/options preserved.",
+          "ecs_symbol": "openrouter::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+          "id": "rig::openrouter::openrouter::cassette::extractor_usage::usage_tracking_works_for_different_schemas::typed-data-and-usage"
+        },
+        {
+          "baseline_symbol": "Extractor::extract -> TypedRun::send -> recover_output",
+          "comparison": "Original await? succeeds; native requires actual settlement, submit call, actual RunResult deserialization and Usage. Separate run for every call, no implicit conversation or cumulative usage. No uniqueness assertion added.",
+          "ecs_symbol": "EcsExtractor::extract",
+          "id": "rig::openrouter::openrouter::cassette::extractor_usage::usage_tracking_works_for_different_schemas::success-and-submission"
+        },
+        {
+          "baseline_symbol": "with_openrouter_cassette_result -> ProviderCassette finish_after_test_result -> ReplayServer::assert_consumed",
+          "comparison": "Same literal fixture and result wrapper preserves propagated errors, strict ordered request matching and complete interaction consumption.",
+          "ecs_symbol": "openrouter::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas",
+          "id": "rig::openrouter::openrouter::cassette::extractor_usage::usage_tracking_works_for_different_schemas::replay-boundary"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/openrouter/cassette/extractor_usage.rs",
+          "symbol": "openrouter::cassette::extractor_usage::usage_tracking_works_for_different_schemas"
+        },
+        {
+          "path": "tests/providers/openrouter/cassette/extractor_usage.rs",
+          "symbol": "openrouter::cassette::extractor_usage::assert_compatible_professions"
+        },
+        {
+          "path": "tests/providers/openrouter/support.rs",
+          "symbol": "openrouter::support::with_openrouter_cassette_result"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::assert_replay_finished"
+        },
+        {
+          "path": "tests/common/cassettes.rs",
+          "symbol": "cassettes::replay_completion_failure_message"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Original extractor builds and executes rig-agent typed orchestration, requiring actual submit output, deserialization and per-call usage.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "openrouter",
+        "execution_path": "EcsExtractor -> native spawn_run/AgentPlugin/BusPlugin with actual provider adapter; no legacy runtime.",
+        "source": "tests/providers/openrouter/cassette/ecs_extractor_usage.rs",
+        "test": "openrouter::cassette::ecs_extractor_usage::usage_tracking_works_for_different_schemas"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "extractor-usage",
+        "output-config-regression"
+      ],
+      "family_contract": "tests/ecs_parity/extractor-usage-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine provider recording",
+          "path": "tests/cassettes/openrouter/extractor_usage/usage_tracking_works_for_different_schemas.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "closure": "Independently reviewed shared schemas/compatible-profession validators, typed output-tool success/deserialization, usage, and original result wrappers through cassette teardown. Source anchors record direct/helper assertions; impl-method semantics are manually traced in contract/review."
+      },
+      "id": "rig::openrouter::openrouter::cassette::extractor_usage::usage_tracking_works_for_different_schemas",
+      "mapping_limits": [
+        "Thirty zero-retry recorded cases; not retry, stream or hook coverage.",
+        "Scoped verification only; full inventory/capability/feature/aggregate/publication programme remains incomplete."
+      ],
+      "resolved_helper_chain": [
+        "openrouter::cassette::extractor_usage::assert_compatible_professions",
+        "openrouter::support::with_openrouter_cassette_result",
+        "cassettes::assert_replay_finished",
+        "cassettes::replay_completion_failure_message"
+      ],
+      "source": "tests/providers/openrouter/cassette/extractor_usage.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4_1_mini_normalized_parallel_tool",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4_1_mini_normalized_single_tool",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4_1_mini_normalized_text",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4_1_mini_raw_parallel_tool",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4_1_mini_raw_single_tool",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4_1_mini_raw_text",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4o_mini_normalized_parallel_tool",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4o_mini_normalized_single_tool",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4o_mini_normalized_text",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4o_mini_raw_parallel_tool",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4o_mini_raw_single_tool",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::blocking_gpt_4o_mini_raw_text",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4_1_mini_normalized_parallel_tool",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4_1_mini_normalized_single_tool",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4_1_mini_normalized_text",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4_1_mini_raw_parallel_tool",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4_1_mini_raw_single_tool",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4_1_mini_raw_text",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4o_mini_normalized_parallel_tool",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4o_mini_normalized_single_tool",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4o_mini_normalized_text",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4o_mini_raw_parallel_tool",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4o_mini_raw_single_tool",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::history_roundtrip_matrix::streaming_gpt_4o_mini_raw_text",
+      "source": "tests/providers/openrouter/cassette/history_roundtrip_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::models::list_models_is_public_and_ignores_a_rejected_key",
+      "source": "tests/providers/openrouter/cassette/models.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::models::list_models_preserves_context_and_output_limits",
+      "source": "tests/providers/openrouter/cassette/models.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::models::list_models_smoke",
+      "source": "tests/providers/openrouter/cassette/models.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::multi_extract::batch_multi_extract_chain",
+      "source": "tests/providers/openrouter/cassette/multi_extract.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::multimodal::audio_analysis_prompt",
+      "source": "tests/providers/openrouter/cassette/multimodal.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::multimodal::image_analysis_prompt",
+      "source": "tests/providers/openrouter/cassette/multimodal.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::multimodal::mixed_multimodal_prompt",
+      "source": "tests/providers/openrouter/cassette/multimodal.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::multimodal::pdf_analysis_prompt",
+      "source": "tests/providers/openrouter/cassette/multimodal.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::multimodal::video_analysis_prompt",
+      "source": "tests/providers/openrouter/cassette/multimodal.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::openai_responses_compat::openai_responses_agent_prompt_against_openrouter_completes",
+      "source": "tests/providers/openrouter/cassette/openai_responses_compat.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::openai_responses_compat::openai_responses_raw_response_accepts_service_tier_metadata",
+      "source": "tests/providers/openrouter/cassette/openai_responses_compat.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::openai_responses_compat::openai_responses_stream_against_openrouter_completes",
+      "source": "tests/providers/openrouter/cassette/openai_responses_compat.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::permission_control::permission_control_prompt_example",
+      "source": "tests/providers/openrouter/cassette/permission_control.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::permission_control::permission_control_streaming_example",
+      "source": "tests/providers/openrouter/cassette/permission_control.rs"
+    },
+    {
+      "assertion_mappings": [
+        {
+          "baseline_symbol": "assert_agent_growth_still_hits plus original post-wrapper assertions",
+          "comparison": "Same full neutral cache-ratio growth predicates on actual native ordered completion usages; same prefix and provider-specific breakpoint assertions",
+          "ecs_symbol": "openrouter::cassette::ecs_prompt_caching::agent_loop_keeps_hitting_across_tool_turns",
+          "id": "rig::openrouter::openrouter::cassette::prompt_caching::agent_loop_keeps_hitting_across_tool_turns::cache-growth"
+        }
+      ],
+      "assertion_sources": [
+        {
+          "path": "tests/providers/openrouter/cassette/prompt_caching.rs",
+          "symbol": "openrouter::cassette::prompt_caching::agent_loop_keeps_hitting_across_tool_turns"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::assert_agent_growth_still_hits"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::assert_prefix_stable"
+        }
+      ],
+      "classification": "agent",
+      "classification_reason": "Reviewed explicit agent builder/prompt execution with CacheProbeLookupTool, six-turn budget and real completion-call usage observations.",
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": {
+        "binary": "openrouter",
+        "execution_path": "Native ECS systems/provider bus and actual ordered completion outcomes",
+        "source": "tests/providers/openrouter/cassette/ecs_prompt_caching.rs",
+        "test": "openrouter::cassette::ecs_prompt_caching::agent_loop_keeps_hitting_across_tool_turns"
+      },
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "agent-cache-growth"
+      ],
+      "family_contract": "tests/ecs_parity/agent-cache-growth-contract.md",
+      "fixtures": [
+        {
+          "origin": "unchanged original provider cassette",
+          "path": "tests/cassettes/openrouter/prompt_caching/agent_loop.yaml"
+        }
+      ],
+      "helper_obligations": {
+        "chain": "Original provider wrapper, original probe preamble and CacheProbeLookupTool, AGENT_CACHE_PROMPT, assert_agent_growth_still_hits and post-wrapper prefix/breakpoint validators",
+        "limits": "Recorded cache-growth workloads only; no live cache economics claim"
+      },
+      "id": "rig::openrouter::openrouter::cassette::prompt_caching::agent_loop_keeps_hitting_across_tool_turns",
+      "source": "tests/providers/openrouter/cassette/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::prompt_caching::blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows",
+      "source": "tests/providers/openrouter/cassette/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [
+        "# [ignore = \"requires OPENROUTER_API_KEY and spends real tokens\"]"
+      ],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::prompt_caching::live_cache_economics",
+      "source": "tests/providers/openrouter/cassette/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::prompt_caching::streaming_probe_survives_the_streaming_accumulator",
+      "source": "tests/providers/openrouter/cassette/prompt_caching.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::provider_selection::provider_selection_scenarios",
+      "source": "tests/providers/openrouter/cassette/provider_selection.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::raw_capture_matrix::normalized_fields_match_raw_renormalized",
+      "source": "tests/providers/openrouter/cassette/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::raw_capture_matrix::raw_exposes_routed_provider",
+      "source": "tests/providers/openrouter/cassette/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::raw_capture_matrix::raw_round_trips_openrouter_type",
+      "source": "tests/providers/openrouter/cassette/raw_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::raw_completion_parity_matrix::plain_raw_completion_matches_completion_without_id",
+      "source": "tests/providers/openrouter/cassette/raw_completion_parity_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::raw_completion_parity_matrix::raw_with_request_id_reproduces_completion",
+      "source": "tests/providers/openrouter/cassette/raw_completion_parity_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::raw_stream_capture_matrix::stream_raw_exposes_terminal_cost_and_provider",
+      "source": "tests/providers/openrouter/cassette/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::raw_stream_capture_matrix::stream_raw_round_trips_terminal_type",
+      "source": "tests/providers/openrouter/cassette/raw_stream_capture_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_roundtrip::nonstreaming",
+      "source": "tests/providers/openrouter/cassette/reasoning_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_roundtrip::reasoning_delta_hook_streaming",
+      "source": "tests/providers/openrouter/cassette/reasoning_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_roundtrip::streaming",
+      "source": "tests/providers/openrouter/cassette/reasoning_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_tool_order_matrix::blocking_parallel",
+      "source": "tests/providers/openrouter/cassette/reasoning_tool_order_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_tool_order_matrix::blocking_signed_agent_roundtrip",
+      "source": "tests/providers/openrouter/cassette/reasoning_tool_order_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_tool_order_matrix::blocking_single",
+      "source": "tests/providers/openrouter/cassette/reasoning_tool_order_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_tool_order_matrix::streaming_parallel",
+      "source": "tests/providers/openrouter/cassette/reasoning_tool_order_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_tool_order_matrix::streaming_signed_agent_roundtrip",
+      "source": "tests/providers/openrouter/cassette/reasoning_tool_order_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_tool_order_matrix::streaming_single",
+      "source": "tests/providers/openrouter/cassette/reasoning_tool_order_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_tool_roundtrip::nonstreaming",
+      "source": "tests/providers/openrouter/cassette/reasoning_tool_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_tool_roundtrip::streaming",
+      "source": "tests/providers/openrouter/cassette/reasoning_tool_roundtrip.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::blocking_agent_reports_reasoning_tokens",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::blocking_anthropic_routed_reports_reasoning_tokens",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::blocking_cost_and_cache_details_still_map",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::blocking_excluded_reasoning_still_counts_tokens",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::blocking_gpt_5_reports_reasoning_tokens",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::blocking_high_effort_reports_reasoning_tokens",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::blocking_open_weight_route_reports_reasoning_tokens",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::blocking_raw_usage_and_normalized_usage_agree",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::blocking_reasoning_tokens_reach_normalized_usage",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::blocking_reasoning_tokens_stay_within_completion_tokens",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::blocking_reasoning_tokens_with_tools_in_request",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::control_non_reasoning_model_reports_zero_blocking",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::control_non_reasoning_model_reports_zero_streaming",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::streaming_agent_reports_reasoning_tokens",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::streaming_anthropic_routed_reports_reasoning_tokens",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::streaming_gpt_5_reports_reasoning_tokens",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::streaming_reasoning_tokens_reach_the_terminal_record",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::reasoning_usage_matrix::transports_agree_on_reasoning_tokens",
+      "source": "tests/providers/openrouter/cassette/reasoning_usage_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::blocking_agent_prompt_surfaces_refusal",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::blocking_azure_routed_refusal",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::blocking_gpt_4_1_refusal",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::blocking_raw_and_normalized_agree",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::blocking_raw_model_surfaces_refusal",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::blocking_refusal_finishes_with_stop",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::blocking_refusal_survives_into_history",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::blocking_refusal_under_a_tight_cap",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::blocking_refusal_with_preamble",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::blocking_refusal_with_tools_in_request",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::blocking_usage_survives_the_refusal",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::control_answerable_prompt_is_unchanged_blocking",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::control_answerable_prompt_is_unchanged_streaming",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::control_mini_answers_inside_schema",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::control_no_schema_refusal_is_plain_content",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::control_tool_call_turn_is_unchanged",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::streaming_agent_surfaces_refusal",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::streaming_azure_routed_refusal",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::streaming_raw_model_surfaces_refusal",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::streaming_refusal_emits_no_tool_calls",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::streaming_terminal_carries_usage_and_reason",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::refusal_matrix::transports_agree_on_the_refusal_text",
+      "source": "tests/providers/openrouter/cassette/refusal_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::request_hook::request_hook_records_prompt_and_response",
+      "source": "tests/providers/openrouter/cassette/request_hook.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::response_identity_edge::blocking_contract_and_gateway_both_report_none",
+      "source": "tests/providers/openrouter/cassette/response_identity_edge.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::response_identity_edge::routed_failure_error_shape",
+      "source": "tests/providers/openrouter/cassette/response_identity_edge.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::response_identity_edge::streaming_contract_and_gateway_both_report_none",
+      "source": "tests/providers/openrouter/cassette/response_identity_edge.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming::example_streaming_prompt",
+      "source": "tests/providers/openrouter/cassette/streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming::streaming_smoke",
+      "source": "tests/providers/openrouter/cassette/streaming.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4_1_mini_length_top_absent",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4_1_mini_length_top_two",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4_1_mini_length_top_zero",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4_1_mini_stop_top_absent",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4_1_mini_stop_top_two",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4_1_mini_stop_top_zero",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4o_mini_length_top_absent",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4o_mini_length_top_two",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4o_mini_length_top_zero",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4o_mini_stop_top_absent",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4o_mini_stop_top_two",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::blocking_gpt_4o_mini_stop_top_zero",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4_1_mini_length_top_absent",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4_1_mini_length_top_two",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4_1_mini_length_top_zero",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4_1_mini_stop_top_absent",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4_1_mini_stop_top_two",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4_1_mini_stop_top_zero",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4o_mini_length_top_absent",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4o_mini_length_top_two",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4o_mini_length_top_zero",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4o_mini_stop_top_absent",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4o_mini_stop_top_two",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_logprobs_matrix::streaming_gpt_4o_mini_stop_top_zero",
+      "source": "tests/providers/openrouter/cassette/streaming_logprobs_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_tools::raw_followup_uses_tool_result_without_new_tool_calls",
+      "source": "tests/providers/openrouter/cassette/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_tools::raw_stream_surfaces_two_distinct_tool_calls_before_text",
+      "source": "tests/providers/openrouter/cassette/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_tools::stream_encrypted_reasoning_reaches_the_choice",
+      "source": "tests/providers/openrouter/cassette/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_tools::stream_encrypted_reasoning_survives_into_the_next_turn",
+      "source": "tests/providers/openrouter/cassette/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::streaming_tools::streaming_tools_smoke",
+      "source": "tests/providers/openrouter/cassette/streaming_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4_1_mini_roomy_plain_one",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4_1_mini_roomy_plain_two",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4_1_mini_roomy_tool",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4_1_mini_tiny_plain_one",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4_1_mini_tiny_plain_two",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4_1_mini_tiny_tool",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4o_mini_roomy_plain_one",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4o_mini_roomy_plain_two",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4o_mini_roomy_tool",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4o_mini_tiny_plain_one",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4o_mini_tiny_plain_two",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::blocking_gpt_4o_mini_tiny_tool",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4_1_mini_roomy_plain_one",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4_1_mini_roomy_plain_two",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4_1_mini_roomy_tool",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4_1_mini_tiny_plain_one",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4_1_mini_tiny_plain_two",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4_1_mini_tiny_tool",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4o_mini_roomy_plain_one",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4o_mini_roomy_plain_two",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4o_mini_roomy_tool",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4o_mini_tiny_plain_one",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4o_mini_tiny_plain_two",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::terminal_metadata_matrix::streaming_gpt_4o_mini_tiny_tool",
+      "source": "tests/providers/openrouter/cassette/terminal_metadata_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt41_nested_agent",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt41_nested_model",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt41_parallel_agent",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt41_parallel_model",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt41_zero_agent",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt41_zero_model",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt4o_nested_agent",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt4o_nested_model",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt4o_parallel_agent",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt4o_parallel_model",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt4o_zero_agent",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::blocking_gpt4o_zero_model",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt41_nested_agent",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt41_nested_model",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt41_parallel_agent",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt41_parallel_model",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt41_zero_agent",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt41_zero_model",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt4o_nested_agent",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt4o_nested_model",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt4o_parallel_agent",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt4o_parallel_model",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt4o_zero_agent",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_lifecycle_matrix::streaming_gpt4o_zero_model",
+      "source": "tests/providers/openrouter/cassette/tool_lifecycle_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt41_complete_agent",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt41_complete_model",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt41_low_agent",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt41_low_model",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt41_mid_agent",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt41_mid_model",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt4o_complete_agent",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt4o_complete_model",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt4o_low_agent",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt4o_low_model",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt4o_mid_agent",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::blocking_gpt4o_mid_model",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt41_complete_agent",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt41_complete_model",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt41_low_agent",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt41_low_model",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt41_mid_agent",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt41_mid_model",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt4o_complete_agent",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt4o_complete_model",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt4o_low_agent",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt4o_low_model",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt4o_mid_agent",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::tool_truncation_contract_matrix::streaming_gpt4o_mid_model",
+      "source": "tests/providers/openrouter/cassette/tool_truncation_contract_matrix.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::transcription::transcription_smoke",
+      "source": "tests/providers/openrouter/cassette/transcription.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::cassette::typed_prompt_tools::prompt_typed_with_tool_call_roundtrip",
+      "source": "tests/providers/openrouter/cassette/typed_prompt_tools.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::document_file_data::document_file_data_wire_assertions_cover_pdf_prompt",
+      "source": "tests/providers/openrouter/document_file_data.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::file_id::generic_document_file_id_fails_openrouter_message_conversion",
+      "source": "tests/providers/openrouter/file_id.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::file_id::openai_file_data_converts_to_openrouter_file_data",
+      "source": "tests/providers/openrouter/file_id.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "classification": "unclassified",
+      "classification_reason": null,
+      "configuration": "root-bedrock",
+      "declared_gates": [],
+      "ecs": null,
+      "fixtures": [],
+      "id": "rig::openrouter::openrouter::file_id::openai_file_id_only_fails_openrouter_user_content_conversion",
+      "source": "tests/providers/openrouter/file_id.rs"
+    }
+  ],
+  "schema": 1
+}
