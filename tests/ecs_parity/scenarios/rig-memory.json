@@ -1,0 +1,1655 @@
+{
+  "scenarios": [
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::arc_memory_policy_preserves_demoted_metadata"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::arc_memory_policy_preserves_demoted_metadata",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::arc_token_counter_can_drive_token_window"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::arc_token_counter_can_drive_token_window",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::boxed_memory_policy_preserves_demoted_metadata"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::boxed_memory_policy_preserves_demoted_metadata",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::boxed_token_counter_forwards_count"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::boxed_token_counter_forwards_count",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_arc_compactor_works"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_arc_compactor_works",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_clear_drops_summary"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_clear_drops_summary",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_clear_drops_summary_carry_over"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_clear_drops_summary_carry_over",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_composes_with_token_window"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_composes_with_token_window",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_concurrent_with_clear_does_not_resurrect_state"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_concurrent_with_clear_does_not_resurrect_state",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_dropped_load_releases_in_flight_gate"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_dropped_load_releases_in_flight_gate",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_failure_does_not_advance_watermark"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_failure_does_not_advance_watermark",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_forget_drops_summary"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_forget_drops_summary",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_idempotent_within_process"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_idempotent_within_process",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_into_inner_returns_components"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_into_inner_returns_components",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_invokes_compactor_only_on_new_demotions"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_invokes_compactor_only_on_new_demotions",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_isolates_conversations"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_isolates_conversations",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_no_demotion_does_not_invoke_compactor"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_no_demotion_does_not_invoke_compactor",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_no_demotion_returns_kept_only"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_no_demotion_returns_kept_only",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_rolls_summary_forward"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_rolls_summary_forward",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_serialises_concurrent_loads"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_serialises_concurrent_loads",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_splices_summary_when_demoted"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_splices_summary_when_demoted",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_stale_cancelled_load_does_not_clear_new_reservation"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_stale_cancelled_load_does_not_clear_new_reservation",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::compacting_summary_stays_bounded_across_rolls"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::compacting_summary_stays_bounded_across_rolls",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::demoting_policy_memory_clear_resets_watermark"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::demoting_policy_memory_clear_resets_watermark",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::demoting_policy_memory_does_not_advance_watermark_on_hook_failure"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::demoting_policy_memory_does_not_advance_watermark_on_hook_failure",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::demoting_policy_memory_does_not_replay_demotions"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::demoting_policy_memory_does_not_replay_demotions",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::demoting_policy_memory_dropped_load_releases_in_flight_gate"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::demoting_policy_memory_dropped_load_releases_in_flight_gate",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::demoting_policy_memory_invokes_hook_on_truncation"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::demoting_policy_memory_invokes_hook_on_truncation",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::demoting_policy_memory_only_reports_newly_demoted_messages"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::demoting_policy_memory_only_reports_newly_demoted_messages",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::demoting_policy_memory_serialises_concurrent_loads"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::demoting_policy_memory_serialises_concurrent_loads",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::demoting_policy_memory_skips_hook_when_nothing_evicted"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::demoting_policy_memory_skips_hook_when_nothing_evicted",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::demoting_policy_memory_with_noop_hook_behaves_like_policy_memory"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::demoting_policy_memory_with_noop_hook_behaves_like_policy_memory",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::demoting_stale_cancelled_load_does_not_clear_new_reservation"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::demoting_stale_cancelled_load_does_not_clear_new_reservation",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::demoting_stale_successful_load_does_not_clear_new_reservation"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::demoting_stale_successful_load_does_not_clear_new_reservation",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::forget_drops_in_process_watermark"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::forget_drops_in_process_watermark",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::heuristic_counter_charges_overhead_per_message"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::heuristic_counter_charges_overhead_per_message",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::heuristic_counter_clamps_invalid_bytes_per_token"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::heuristic_counter_clamps_invalid_bytes_per_token",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::heuristic_counter_drives_token_window"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::heuristic_counter_drives_token_window",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::heuristic_counter_handles_system_messages"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::heuristic_counter_handles_system_messages",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::heuristic_counter_handles_tool_calls"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::heuristic_counter_handles_tool_calls",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::heuristic_counter_is_monotonic_in_text_length"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::heuristic_counter_is_monotonic_in_text_length",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::into_filter_returns_input_on_policy_error"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::into_filter_returns_input_on_policy_error",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::noop_policy_demotes_nothing"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::noop_policy_demotes_nothing",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::noop_policy_is_identity"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::noop_policy_is_identity",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::policy_memory_append_and_clear_delegate_to_inner"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::policy_memory_append_and_clear_delegate_to_inner",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::policy_memory_propagates_policy_errors"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::policy_memory_propagates_policy_errors",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::policy_memory_truncates_loaded_history"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::policy_memory_truncates_loaded_history",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::sliding_window_demotes_orphan_tool_result_with_prefix"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::sliding_window_demotes_orphan_tool_result_with_prefix",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::sliding_window_drops_leading_orphan_tool_result"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::sliding_window_drops_leading_orphan_tool_result",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::sliding_window_passthrough_when_under_limit"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::sliding_window_passthrough_when_under_limit",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::sliding_window_reports_demoted_prefix"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::sliding_window_reports_demoted_prefix",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::sliding_window_truncates_via_filter"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::sliding_window_truncates_via_filter",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::template_compactor_artifact_into_message"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::template_compactor_artifact_into_message",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::template_compactor_caps_summary_at_max_bytes"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::template_compactor_caps_summary_at_max_bytes",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::template_compactor_caps_summary_with_multiline_header"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::template_compactor_caps_summary_with_multiline_header",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::template_compactor_carry_over_threaded"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::template_compactor_carry_over_threaded",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::template_compactor_renders_system_messages"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::template_compactor_renders_system_messages",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::template_compactor_renders_tool_call_marker"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::template_compactor_renders_tool_call_marker",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::template_compactor_separates_parts_asymmetrically_around_empty_text"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::template_compactor_separates_parts_asymmetrically_around_empty_text",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::template_compactor_unbounded_by_default"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::template_compactor_unbounded_by_default",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::template_compactor_with_max_bytes_zero_is_unbounded"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::template_compactor_with_max_bytes_zero_is_unbounded",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::token_window_drops_leading_orphan_tool_result"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::token_window_drops_leading_orphan_tool_result",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::token_window_keeps_within_budget"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::token_window_keeps_within_budget",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::token_window_passes_through_when_under_budget"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::token_window_passes_through_when_under_budget",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::token_window_reports_demoted_prefix"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::token_window_reports_demoted_prefix",
+      "source": "crates/rig-memory/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-memory/src/tests.rs",
+          "symbol": "tests::token_window_skips_message_larger_than_budget"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule memory-policies (tests/ecs_parity/inventory/companions.md): rig-memory policies, token counters and compactors (SlidingWindowMemory, TokenWindowMemory, PolicyMemory, HeuristicCounter, TemplateCompactor) applied to in-memory message vectors and InMemoryConversationMemory; no agent or provider.",
+      "configuration": "rig-memory",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "memory-policies"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-memory::rig_memory::tests::token_window_skips_message_larger_than_budget",
+      "source": "crates/rig-memory/src/tests.rs"
+    }
+  ],
+  "schema": 1
+}

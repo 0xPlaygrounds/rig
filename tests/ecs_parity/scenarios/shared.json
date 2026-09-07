@@ -1,5 +1,54 @@
 {
   "configurations": {
+    "rig-agent-default": {
+      "features": [],
+      "listing_command": "cargo nextest list --locked -p rig-agent --message-format json",
+      "package": "rig-agent"
+    },
+    "rig-agent-loom": {
+      "features": [],
+      "listing_command": "RUSTFLAGS=\"--cfg rig_loom\" cargo nextest list --locked -p rig-agent --lib --release --message-format json",
+      "package": "rig-agent",
+      "rustflags": "--cfg rig_loom"
+    },
+    "rig-agent-wasm": {
+      "features": [],
+      "listing_command": "CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test --locked -p rig-agent --test bus_wasm --target wasm32-unknown-unknown -- --list",
+      "package": "rig-agent",
+      "target": "wasm32-unknown-unknown"
+    },
+    "rig-ecs-all-features": {
+      "features": [
+        "replay",
+        "reflect",
+        "assets"
+      ],
+      "listing_command": "cargo nextest list --locked -p rig-ecs --all-features --message-format json",
+      "package": "rig-ecs"
+    },
+    "rig-ecs-wasm": {
+      "features": [
+        "replay"
+      ],
+      "listing_command": "CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test --locked -p rig-ecs --target wasm32-unknown-unknown --test bus_wasm --test run_wasm -- --list",
+      "package": "rig-ecs",
+      "target": "wasm32-unknown-unknown"
+    },
+    "rig-effect-log": {
+      "features": [],
+      "listing_command": "cargo nextest list --locked -p rig-effect-log --message-format json",
+      "package": "rig-effect-log"
+    },
+    "rig-memory": {
+      "features": [],
+      "listing_command": "cargo nextest list --locked -p rig-memory --message-format json",
+      "package": "rig-memory"
+    },
+    "rig-verify": {
+      "features": [],
+      "listing_command": "cargo nextest list --locked -p rig-verify --message-format json",
+      "package": "rig-verify"
+    },
     "root-bedrock": {
       "features": [
         "bedrock"

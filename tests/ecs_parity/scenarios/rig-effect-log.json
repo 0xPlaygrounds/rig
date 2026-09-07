@@ -1,0 +1,455 @@
+{
+  "scenarios": [
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/log/stable_hash_tests.rs",
+          "symbol": "log::stable_hash_tests::a_struct_hashes_as_its_canonical_object"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::log::stable_hash_tests::a_struct_hashes_as_its_canonical_object",
+      "source": "crates/rig-effect-log/src/log/stable_hash_tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/log/stable_hash_tests.rs",
+          "symbol": "log::stable_hash_tests::the_hash_is_independent_of_key_order"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::log::stable_hash_tests::the_hash_is_independent_of_key_order",
+      "source": "crates/rig-effect-log/src/log/stable_hash_tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/tests.rs",
+          "symbol": "tests::a_checkpoint_names_the_position_the_next_id_and_the_state"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::tests::a_checkpoint_names_the_position_the_next_id_and_the_state",
+      "source": "crates/rig-effect-log/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/tests.rs",
+          "symbol": "tests::a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::tests::a_continuation_that_does_not_follow_its_checkpoint_is_refused_by_name",
+      "source": "crates/rig-effect-log/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/tests.rs",
+          "symbol": "tests::a_key_the_handler_table_names_is_described_without_records_or_a_row_entry"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::tests::a_key_the_handler_table_names_is_described_without_records_or_a_row_entry",
+      "source": "crates/rig-effect-log/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/tests.rs",
+          "symbol": "tests::discarded_records_do_not_retain_earlier_or_later_delivery_history"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::tests::discarded_records_do_not_retain_earlier_or_later_delivery_history",
+      "source": "crates/rig-effect-log/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/tests.rs",
+          "symbol": "tests::effect_record_and_log_round_trip"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::tests::effect_record_and_log_round_trip",
+      "source": "crates/rig-effect-log/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/tests.rs",
+          "symbol": "tests::hash_mode_refuses_by_the_hash_pair_and_payload_mode_by_the_pointer"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::tests::hash_mode_refuses_by_the_hash_pair_and_payload_mode_by_the_pointer",
+      "source": "crates/rig-effect-log/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/tests.rs",
+          "symbol": "tests::headers_have_no_format_and_unknown_legacy_versions_do_not_gate_replay"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::tests::headers_have_no_format_and_unknown_legacy_versions_do_not_gate_replay",
+      "source": "crates/rig-effect-log/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/tests.rs",
+          "symbol": "tests::missing_published_output_is_unknown_not_explicitly_absent"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::tests::missing_published_output_is_unknown_not_explicitly_absent",
+      "source": "crates/rig-effect-log/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/tests.rs",
+          "symbol": "tests::positional_replay_preserves_recorded_order_when_ids_were_reserved_earlier"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::tests::positional_replay_preserves_recorded_order_when_ids_were_reserved_earlier",
+      "source": "crates/rig-effect-log/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/tests.rs",
+          "symbol": "tests::program_identity_is_per_scope_and_absent_by_default"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::tests::program_identity_is_per_scope_and_absent_by_default",
+      "source": "crates/rig-effect-log/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/tests.rs",
+          "symbol": "tests::replay_keeps_recorded_model_semantics_even_when_it_has_records"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::tests::replay_keeps_recorded_model_semantics_even_when_it_has_records",
+      "source": "crates/rig-effect-log/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/tests.rs",
+          "symbol": "tests::replay_registers_all_scope_requirements_and_rejects_conflicts"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::tests::replay_registers_all_scope_requirements_and_rejects_conflicts",
+      "source": "crates/rig-effect-log/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/tests.rs",
+          "symbol": "tests::stream_error_metadata_is_validated_and_released_with_its_records"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::tests::stream_error_metadata_is_validated_and_released_with_its_records",
+      "source": "crates/rig-effect-log/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/tests.rs",
+          "symbol": "tests::taking_resolved_records_releases_delivery_history_but_keeps_in_flight_batches"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::tests::taking_resolved_records_releases_delivery_history_but_keeps_in_flight_batches",
+      "source": "crates/rig-effect-log/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/tests.rs",
+          "symbol": "tests::the_recorder_finds_the_newest_slot_first"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::tests::the_recorder_finds_the_newest_slot_first",
+      "source": "crates/rig-effect-log/src/tests.rs"
+    },
+    {
+      "assertion_mappings": [],
+      "assertion_sources": [
+        {
+          "path": "crates/rig-effect-log/src/tests.rs",
+          "symbol": "tests::typed_tool_namespaces_survive_log_roundtrip_and_replay"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "infrastructure",
+      "classification_reason": "Rule effect-log (tests/ecs_parity/inventory/companions.md): EffectLog/LogHeader/Recorder/EffectLogReplayer/Checkpoint/stable_hash exercised on in-memory records built from rig-core test-utils values; no bus, agent or provider.",
+      "configuration": "rig-effect-log",
+      "declared_gates": [
+        "#[cfg(test)]"
+      ],
+      "ecs": null,
+      "evidence_scope": "supplemental_synthetic",
+      "families": [
+        "effect-log"
+      ],
+      "fixture_disposition": "Synthetic: scripted in-process mock model or handlers; no committed provider recording is consumed.",
+      "fixtures": [],
+      "id": "rig-effect-log::rig_effect_log::tests::typed_tool_namespaces_survive_log_roundtrip_and_replay",
+      "source": "crates/rig-effect-log/src/tests.rs"
+    }
+  ],
+  "schema": 1
+}
