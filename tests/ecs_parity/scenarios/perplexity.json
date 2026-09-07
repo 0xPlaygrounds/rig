@@ -14,15 +14,23 @@
       ],
       "baseline_ignored": true,
       "classification": "agent",
-      "classification_reason": "Reviewed test constructs a rig-agent builder and executes prompt orchestration; includes golden/memory or live-model variants where present.",
+      "classification_reason": "OC-A7 live agent completion smoke (tests/ecs_parity/openai-compatible-classification-contract.md): `perplexity::Client::from_env().agent(SONAR).preamble(..).temperature(0.5).additional_params(return_related_questions, return_images).build().prompt(..)`; `assert_nonempty_response`. `#[ignore]` live; PERPLEXITY_API_KEY is configured, capture scheduled for phase 2.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires PERPLEXITY_API_KEY\"]"
       ],
       "ecs": null,
       "evidence_scope": "supplemental_live",
+      "families": [
+        "provider-completions"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixture_disposition": "live only; no recording at the base",
       "fixtures": [],
       "id": "rig::perplexity::perplexity::agent::completion_smoke",
+      "mapping_limits": [
+        "Ignored live row: discovered, never executed; counted as supplemental_live, not ported. A phase-2 isolated capture is planned only where a credential is configured (groq, perplexity)."
+      ],
       "source": "tests/providers/perplexity/agent.rs"
     },
     {
@@ -233,156 +241,563 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/perplexity/cassette/chat.rs",
+          "symbol": "perplexity::cassette::chat::chat_history_smoke"
+        },
+        {
+          "path": "tests/providers/perplexity/support.rs",
+          "symbol": "perplexity::support::with_perplexity_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A1 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(perplexity::SONAR).preamble(..).max_tokens(48).additional_params(search_context_size low).build()`; two `agent.chat(.., &mut history)` turns over one cassette; asserts the code word survives into the second answer.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "chat-history"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/perplexity/chat/chat_history_smoke.yaml"
+        }
+      ],
       "id": "rig::perplexity::perplexity::cassette::chat::chat_history_smoke",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/perplexity/cassette/chat.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/perplexity/cassette/context.rs",
+          "symbol": "perplexity::cassette::context::context_smoke"
+        },
+        {
+          "path": "tests/providers/perplexity/support.rs",
+          "symbol": "perplexity::support::with_perplexity_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A1 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `CONTEXT_DOCS.iter().fold(client.agent(perplexity::SONAR), |b, d| b.context(d)).preamble(..).build().prompt(CONTEXT_PROMPT)`; `assert_contains_any_case_insensitive`. Cassette `context/context_smoke`.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "context"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/perplexity/context/context_smoke.yaml"
+        }
+      ],
       "id": "rig::perplexity::perplexity::cassette::context::context_smoke",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/perplexity/cassette/context.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/perplexity/cassette/migration_pain_points.rs",
+          "symbol": "perplexity::cassette::migration_pain_points::output_schema_is_dropped_instead_of_sent_as_response_format"
+        },
+        {
+          "path": "tests/providers/perplexity/support.rs",
+          "symbol": "perplexity::support::with_perplexity_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(perplexity::SONAR).completion_request(..)` with `output_schema(schema_for!(SmokeStructuredOutput))`, `.send()`; asserts the assistant text. No AgentBuilder, tools never executed.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "migration-pain-points"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/perplexity/migration_pain_points/output_schema_is_dropped_instead_of_sent_as_response_format.yaml"
+        }
+      ],
       "id": "rig::perplexity::perplexity::cassette::migration_pain_points::output_schema_is_dropped_instead_of_sent_as_response_format",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/perplexity/cassette/migration_pain_points.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/perplexity/cassette/migration_pain_points.rs",
+          "symbol": "perplexity::cassette::migration_pain_points::text_only_content_parts_are_flattened"
+        },
+        {
+          "path": "tests/providers/perplexity/support.rs",
+          "symbol": "perplexity::support::with_perplexity_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(perplexity::SONAR).completion_request(..)` with a two-part text user message, `.send()`; asserts the assistant text. No AgentBuilder, tools never executed.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "migration-pain-points"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/perplexity/migration_pain_points/text_only_content_parts_are_flattened.yaml"
+        }
+      ],
       "id": "rig::perplexity::perplexity::cassette::migration_pain_points::text_only_content_parts_are_flattened",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/perplexity/cassette/migration_pain_points.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/perplexity/cassette/migration_pain_points.rs",
+          "symbol": "perplexity::cassette::migration_pain_points::tool_exchange_history_is_stripped_and_remerged"
+        },
+        {
+          "path": "tests/providers/perplexity/support.rs",
+          "symbol": "perplexity::support::with_perplexity_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(perplexity::SONAR).completion_request(..)` with a hand-built tool call/result history, `.send()`; asserts the assistant text. No AgentBuilder, tools never executed.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "migration-pain-points"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/perplexity/migration_pain_points/tool_exchange_history_is_stripped_and_remerged.yaml"
+        }
+      ],
       "id": "rig::perplexity::perplexity::cassette::migration_pain_points::tool_exchange_history_is_stripped_and_remerged",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/perplexity/cassette/migration_pain_points.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/perplexity/cassette/migration_pain_points.rs",
+          "symbol": "perplexity::cassette::migration_pain_points::unsupported_tools_and_multi_name_tool_choice_are_dropped"
+        },
+        {
+          "path": "tests/providers/perplexity/support.rs",
+          "symbol": "perplexity::support::with_perplexity_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(perplexity::SONAR).completion_request(..)` with two tool definitions + multi-name `ToolChoice::Specific`, `.send()`; asserts the assistant text. No AgentBuilder, tools never executed.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "migration-pain-points"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/perplexity/migration_pain_points/unsupported_tools_and_multi_name_tool_choice_are_dropped.yaml"
+        }
+      ],
       "id": "rig::perplexity::perplexity::cassette::migration_pain_points::unsupported_tools_and_multi_name_tool_choice_are_dropped",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/perplexity/cassette/migration_pain_points.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/perplexity/cassette/prompt_caching.rs",
+          "symbol": "perplexity::cassette::prompt_caching::blocking_probe_observes_no_meaningful_prefix_cache"
+        },
+        {
+          "path": "tests/providers/perplexity/support.rs",
+          "symbol": "perplexity::support::with_perplexity_prompt_caching_cassette"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::run_cache_probe"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M3 cache probe (tests/ecs_parity/openai-compatible-classification-contract.md): `run_cache_probe(&client.completion_model(SONAR), ..)`: three `model.completion(..)` turns; `assert_no_meaningful_prefix_cache` + `assert_prefix_stable`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/perplexity/prompt_caching/blocking_probe.yaml"
+        }
+      ],
       "id": "rig::perplexity::perplexity::cassette::prompt_caching::blocking_probe_observes_no_meaningful_prefix_cache",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/perplexity/cassette/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/perplexity/cassette/prompt_caching.rs",
+          "symbol": "perplexity::cassette::prompt_caching::streaming_probe_observes_no_meaningful_prefix_cache"
+        },
+        {
+          "path": "tests/providers/perplexity/support.rs",
+          "symbol": "perplexity::support::with_perplexity_prompt_caching_cassette"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::run_cache_probe"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M3 cache probe (tests/ecs_parity/openai-compatible-classification-contract.md): `run_cache_probe_streaming(&client.completion_model(SONAR), ..)`: three `model.stream(..)` turns; same assertions. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/perplexity/prompt_caching/streaming_probe.yaml"
+        }
+      ],
       "id": "rig::perplexity::perplexity::cassette::prompt_caching::streaming_probe_observes_no_meaningful_prefix_cache",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/perplexity/cassette/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/perplexity/cassette/raw_capture_matrix.rs",
+          "symbol": "perplexity::cassette::raw_capture_matrix::normalized_fields_match_raw_renormalized"
+        },
+        {
+          "path": "tests/providers/perplexity/support.rs",
+          "symbol": "perplexity::support::with_perplexity_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(SONAR)` + `model.completion(completion_request(PROMPT).max_tokens(16).build())`; `normalized_fields_match_raw_renormalized` inspects `response.raw` against `openai::CompletionResponse` and the recorded body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/perplexity/raw_capture_matrix/normalized_fields_match_raw_renormalized.yaml"
+        }
+      ],
       "id": "rig::perplexity::perplexity::cassette::raw_capture_matrix::normalized_fields_match_raw_renormalized",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/perplexity/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/perplexity/cassette/raw_capture_matrix.rs",
+          "symbol": "perplexity::cassette::raw_capture_matrix::raw_exposes_object_not_citations"
+        },
+        {
+          "path": "tests/providers/perplexity/support.rs",
+          "symbol": "perplexity::support::with_perplexity_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(SONAR)` + `model.completion(completion_request(PROMPT).max_tokens(16).build())`; `raw_exposes_object_not_citations` inspects `response.raw` against `openai::CompletionResponse` and the recorded body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/perplexity/raw_capture_matrix/raw_exposes_object_not_citations.yaml"
+        }
+      ],
       "id": "rig::perplexity::perplexity::cassette::raw_capture_matrix::raw_exposes_object_not_citations",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/perplexity/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/perplexity/cassette/raw_capture_matrix.rs",
+          "symbol": "perplexity::cassette::raw_capture_matrix::raw_round_trips_openai_type"
+        },
+        {
+          "path": "tests/providers/perplexity/support.rs",
+          "symbol": "perplexity::support::with_perplexity_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(SONAR)` + `model.completion(completion_request(PROMPT).max_tokens(16).build())`; `raw_round_trips_openai_type` inspects `response.raw` against `openai::CompletionResponse` and the recorded body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/perplexity/raw_capture_matrix/raw_round_trips_openai_type.yaml"
+        }
+      ],
       "id": "rig::perplexity::perplexity::cassette::raw_capture_matrix::raw_round_trips_openai_type",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/perplexity/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/perplexity/cassette/raw_stream_capture_matrix.rs",
+          "symbol": "perplexity::cassette::raw_stream_capture_matrix::stream_raw_exposes_terminal_usage_and_object"
+        },
+        {
+          "path": "tests/providers/perplexity/support.rs",
+          "symbol": "perplexity::support::with_perplexity_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(SONAR)` + `model.stream(request)` drained by `collect_text_and_terminal`; `stream_raw_exposes_terminal_usage_and_object` checks `terminal.raw` against the recorded last frame. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-stream-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/perplexity/raw_stream_capture_matrix/stream_raw_exposes_terminal_usage_and_object.yaml"
+        }
+      ],
       "id": "rig::perplexity::perplexity::cassette::raw_stream_capture_matrix::stream_raw_exposes_terminal_usage_and_object",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/perplexity/cassette/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/perplexity/cassette/raw_stream_capture_matrix.rs",
+          "symbol": "perplexity::cassette::raw_stream_capture_matrix::stream_raw_round_trips_terminal_type"
+        },
+        {
+          "path": "tests/providers/perplexity/support.rs",
+          "symbol": "perplexity::support::with_perplexity_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(SONAR)` + `model.stream(request)` drained by `collect_text_and_terminal`; `stream_raw_round_trips_terminal_type` checks `terminal.raw` against the recorded last frame. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-stream-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/perplexity/raw_stream_capture_matrix/stream_raw_round_trips_terminal_type.yaml"
+        }
+      ],
       "id": "rig::perplexity::perplexity::cassette::raw_stream_capture_matrix::stream_raw_round_trips_terminal_type",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/perplexity/cassette/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/perplexity/cassette/streaming.rs",
+          "symbol": "perplexity::cassette::streaming::streaming_smoke"
+        },
+        {
+          "path": "tests/providers/perplexity/support.rs",
+          "symbol": "perplexity::support::with_perplexity_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A2 agent streaming run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(perplexity::SONAR).preamble(STREAMING_PREAMBLE).max_tokens(16).build().stream_prompt(STREAMING_PROMPT).stream()` drained by `collect_stream_final_response`; asserts non-empty final text.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "streaming-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/perplexity/streaming/streaming_smoke.yaml"
+        }
+      ],
       "id": "rig::perplexity::perplexity::cassette::streaming::streaming_smoke",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/perplexity/cassette/streaming.rs"
     }
   ],
