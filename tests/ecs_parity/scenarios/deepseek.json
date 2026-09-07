@@ -1100,12 +1100,21 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(DEEPSEEK_V4_FLASH).completion_request(PROMPT).message(..).document(..).send(); request order read from the fixture afterwards; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-document-ordering"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/document_ordering/chat_completions_keeps_documents_after_system_before_history.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::document_ordering::chat_completions_keeps_documents_after_system_before_history",
       "source": "tests/providers/deepseek/document_ordering.rs"
     },
@@ -1609,751 +1618,1372 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: model.completion, model.stream through collect_raw_stream_outcome, or raw_completion(..).normalize; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-followup-hunt-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/followup_hunt_matrix/blocking_stop_sequence_reaches_the_wire_and_stops_generation.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::followup_hunt_matrix::blocking_stop_sequence_reaches_the_wire_and_stops_generation",
       "source": "tests/providers/deepseek/followup_hunt_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: model.completion, model.stream through collect_raw_stream_outcome, or raw_completion(..).normalize; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-followup-hunt-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/followup_hunt_matrix/low_reasoning_effort_produces_a_reasoning_turn.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::followup_hunt_matrix::low_reasoning_effort_produces_a_reasoning_turn",
       "source": "tests/providers/deepseek/followup_hunt_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: model.completion, model.stream through collect_raw_stream_outcome, or raw_completion(..).normalize; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-followup-hunt-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/followup_hunt_matrix/policy_sensitive_response_content_shape_is_recorded.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::followup_hunt_matrix::policy_sensitive_response_content_shape_is_recorded",
       "source": "tests/providers/deepseek/followup_hunt_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: model.completion, model.stream through collect_raw_stream_outcome, or raw_completion(..).normalize; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-followup-hunt-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/followup_hunt_matrix/streaming_stop_sequence_reaches_the_wire_and_stops_generation.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::followup_hunt_matrix::streaming_stop_sequence_reaches_the_wire_and_stops_generation",
       "source": "tests/providers/deepseek/followup_hunt_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R4 non-completion capability: client.list_models() (real or bogus key); see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-models"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/models/list_models_rejected_key_reports_api_error_with_context.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::models::list_models_rejected_key_reports_api_error_with_context",
       "source": "tests/providers/deepseek/models.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R4 non-completion capability: client.list_models() (real or bogus key); see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-models"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/models/list_models_smoke.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::models::list_models_smoke",
       "source": "tests/providers/deepseek/models.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "agent",
+      "classification_reason": "R2 extractor: three client.extractor::<T>(DEEPSEEK_V4_FLASH).retries(2).build() joined per input via try_join under an unordered cassette spec; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "deepseek-multi-extract"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/multi_extract/batch_multi_extract_chain.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::multi_extract::batch_multi_extract_chain",
       "source": "tests/providers/deepseek/multi_extract.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "agent",
+      "classification_reason": "R1 agent-builder: client.agent(DEEPSEEK_V4_FLASH) with ReadFileHead/ReadFileTail, PermissionHook via .add_hook, prompt(..).max_turns(5) or stream_prompt(..).max_turns(5) plus stream_to_stdout; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "deepseek-permission-control"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/permission_control/permission_control_prompt_example.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::permission_control::permission_control_prompt_example",
       "source": "tests/providers/deepseek/permission_control.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "agent",
+      "classification_reason": "R1 agent-builder: client.agent(DEEPSEEK_V4_FLASH) with ReadFileHead/ReadFileTail, PermissionHook via .add_hook, prompt(..).max_turns(5) or stream_prompt(..).max_turns(5) plus stream_to_stdout; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "deepseek-permission-control"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/permission_control/permission_control_streaming_example.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::permission_control::permission_control_streaming_example",
       "source": "tests/providers/deepseek/permission_control.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: cache_conformance::run_cache_probe/run_cache_probe_streaming(&completion_model(CACHE_MODEL), ..) call model.completion/model.stream; assert_prefix_stable reads the fixture; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/prompt_caching/blocking_probe.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::prompt_caching::blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows",
       "source": "tests/providers/deepseek/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "baseline_ignored": true,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cache_probe(&completion_model(CACHE_MODEL), ..) against the real API; ignored live; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [
         "# [ignore = \"requires DEEPSEEK_API_KEY and spends real tokens\"]"
       ],
       "ecs": null,
+      "families": [
+        "deepseek-prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
       "fixtures": [],
       "id": "rig::deepseek::deepseek::prompt_caching::live_cache_economics",
       "source": "tests/providers/deepseek/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: cache_conformance::run_cache_probe/run_cache_probe_streaming(&completion_model(CACHE_MODEL), ..) call model.completion/model.stream; assert_prefix_stable reads the fixture; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/prompt_caching/streaming_probe.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::prompt_caching::streaming_probe_survives_the_streaming_accumulator",
       "source": "tests/providers/deepseek/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(MODEL).completion(request/reasoning_request) with post-wrapper fixture reads; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-raw-capture-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/raw_capture_matrix/normalized_fields_match_raw_renormalized.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::raw_capture_matrix::normalized_fields_match_raw_renormalized",
       "source": "tests/providers/deepseek/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(MODEL).completion(request/reasoning_request) with post-wrapper fixture reads; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-raw-capture-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/raw_capture_matrix/raw_exposes_prompt_cache_miss_tokens.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::raw_capture_matrix::raw_exposes_prompt_cache_miss_tokens",
       "source": "tests/providers/deepseek/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(MODEL).completion(request/reasoning_request) with post-wrapper fixture reads; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-raw-capture-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/raw_capture_matrix/raw_round_trips_deepseek_type.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::raw_capture_matrix::raw_round_trips_deepseek_type",
       "source": "tests/providers/deepseek/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(MODEL).completion(request/reasoning_request) with post-wrapper fixture reads; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-raw-capture-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/raw_capture_matrix/reasoning_raw_round_trips_and_exposes_reasoning_content.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::raw_capture_matrix::reasoning_raw_round_trips_and_exposes_reasoning_content",
       "source": "tests/providers/deepseek/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(MODEL).stream(request/reasoning_request) collected to the terminal record; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-raw-stream-capture-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/raw_stream_capture_matrix/stream_raw_exposes_terminal_cache_miss_tokens.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::raw_stream_capture_matrix::stream_raw_exposes_terminal_cache_miss_tokens",
       "source": "tests/providers/deepseek/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(MODEL).stream(request/reasoning_request) collected to the terminal record; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-raw-stream-capture-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/raw_stream_capture_matrix/stream_raw_round_trips_terminal_type.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::raw_stream_capture_matrix::stream_raw_round_trips_terminal_type",
       "source": "tests/providers/deepseek/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(MODEL).stream(request/reasoning_request) collected to the terminal record; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-raw-stream-capture-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/raw_stream_capture_matrix/stream_reasoning_raw_round_trips_terminal_type.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::raw_stream_capture_matrix::stream_reasoning_raw_round_trips_terminal_type",
       "source": "tests/providers/deepseek/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "agent",
+      "classification_reason": "R1 agent-builder: client.agent(MODEL).tool(WeatherTool).default_max_turns(3).build().chat(.., &mut history); see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "deepseek-reasoning-block-order"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/reasoning_block_order/agent_blocking_reasoner_roundtrip_keeps_reasoning_first_in_history.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::reasoning_block_order::agent_blocking_reasoner_roundtrip_keeps_reasoning_first_in_history",
       "source": "tests/providers/deepseek/reasoning_block_order.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "agent",
+      "classification_reason": "R1 agent-builder: client.agent(MODEL).tool(WeatherTool).build().stream_chat(..).max_turns(3) through collect_stream_observation; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "deepseek-reasoning-block-order"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/reasoning_block_order/agent_streaming_reasoner_roundtrip_streams_reasoning_first.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::reasoning_block_order::agent_streaming_reasoner_roundtrip_streams_reasoning_first",
       "source": "tests/providers/deepseek/reasoning_block_order.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: raw_completion(..).normalize or model.stream through collect_raw_stream_outcome; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-reasoning-block-order"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/reasoning_block_order/blocking_non_thinking_tool_turn_has_no_reasoning_block.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::reasoning_block_order::blocking_non_thinking_tool_turn_has_no_reasoning_block",
       "source": "tests/providers/deepseek/reasoning_block_order.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: raw_completion(..).normalize or model.stream through collect_raw_stream_outcome; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-reasoning-block-order"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/reasoning_block_order/blocking_reasoner_parallel_tool_turn_leads_with_reasoning.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::reasoning_block_order::blocking_reasoner_parallel_tool_turn_leads_with_reasoning",
       "source": "tests/providers/deepseek/reasoning_block_order.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: raw_completion(..).normalize or model.stream through collect_raw_stream_outcome; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-reasoning-block-order"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/reasoning_block_order/blocking_reasoner_text_turn_leads_with_reasoning.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::reasoning_block_order::blocking_reasoner_text_turn_leads_with_reasoning",
       "source": "tests/providers/deepseek/reasoning_block_order.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: raw_completion(..).normalize or model.stream through collect_raw_stream_outcome; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-reasoning-block-order"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/reasoning_block_order/blocking_reasoner_tool_turn_leads_with_reasoning.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::reasoning_block_order::blocking_reasoner_tool_turn_leads_with_reasoning",
       "source": "tests/providers/deepseek/reasoning_block_order.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: raw_completion(..).normalize or model.stream through collect_raw_stream_outcome; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-reasoning-block-order"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/reasoning_block_order/streaming_non_thinking_tool_turn_has_no_reasoning_block.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::reasoning_block_order::streaming_non_thinking_tool_turn_has_no_reasoning_block",
       "source": "tests/providers/deepseek/reasoning_block_order.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: raw_completion(..).normalize or model.stream through collect_raw_stream_outcome; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-reasoning-block-order"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/reasoning_block_order/streaming_reasoner_parallel_tool_turn_leads_with_reasoning.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::reasoning_block_order::streaming_reasoner_parallel_tool_turn_leads_with_reasoning",
       "source": "tests/providers/deepseek/reasoning_block_order.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: raw_completion(..).normalize or model.stream through collect_raw_stream_outcome; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-reasoning-block-order"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/reasoning_block_order/streaming_reasoner_text_turn_leads_with_reasoning.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::reasoning_block_order::streaming_reasoner_text_turn_leads_with_reasoning",
       "source": "tests/providers/deepseek/reasoning_block_order.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: raw_completion(..).normalize or model.stream through collect_raw_stream_outcome; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-reasoning-block-order"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/reasoning_block_order/streaming_reasoner_tool_turn_leads_with_reasoning.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::reasoning_block_order::streaming_reasoner_tool_turn_leads_with_reasoning",
       "source": "tests/providers/deepseek/reasoning_block_order.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: reasoning::run_reasoning_roundtrip_{streaming,nonstreaming}(ReasoningRoundtripAgent::new(completion_model(..), thinking)) hand-builds two CompletionRequests and calls agent.model.stream/.completion; no AgentBuilder; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-reasoning-roundtrip"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/reasoning_roundtrip/nonstreaming.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::reasoning_roundtrip::nonstreaming",
       "source": "tests/providers/deepseek/reasoning_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: reasoning::run_reasoning_roundtrip_{streaming,nonstreaming}(ReasoningRoundtripAgent::new(completion_model(..), thinking)) hand-builds two CompletionRequests and calls agent.model.stream/.completion; no AgentBuilder; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-reasoning-roundtrip"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/reasoning_roundtrip/streaming.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::reasoning_roundtrip::streaming",
       "source": "tests/providers/deepseek/reasoning_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "agent",
+      "classification_reason": "R1 agent-builder: client.agent(DEEPSEEK_V4_FLASH).tool(WeatherTool).build(), stream_chat(..).max_turns(3) through collect_stream_stats or chat with default_max_turns(2); see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "deepseek-reasoning-tool-roundtrip"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/reasoning_tool_roundtrip/nonstreaming.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::reasoning_tool_roundtrip::nonstreaming",
       "source": "tests/providers/deepseek/reasoning_tool_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "agent",
+      "classification_reason": "R1 agent-builder: client.agent(DEEPSEEK_V4_FLASH).tool(WeatherTool).build(), stream_chat(..).max_turns(3) through collect_stream_stats or chat with default_max_turns(2); see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "deepseek-reasoning-tool-roundtrip"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/reasoning_tool_roundtrip/streaming.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::reasoning_tool_roundtrip::streaming",
       "source": "tests/providers/deepseek/reasoning_tool_roundtrip.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "agent",
+      "classification_reason": "R1 agent-builder: client.agent(DEEPSEEK_V4_FLASH).build().prompt(..).add_hook(SessionIdHook); see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "deepseek-request-hook"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/request_hook/request_hook_records_prompt_and_response.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::request_hook::request_hook_records_prompt_and_response",
       "source": "tests/providers/deepseek/request_hook.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion_request(..).send(); see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-response-identity-edge"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/response_identity_edge/blocking_contract_captures_none.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::response_identity_edge::blocking_contract_captures_none",
       "source": "tests/providers/deepseek/response_identity_edge.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "agent",
+      "classification_reason": "R1 agent-builder: client.agent(DEEPSEEK_V4_FLASH).build().stream_prompt(..) through collect_stream_final_response; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "deepseek-streaming"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming/streaming_prompt_smoke.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming::streaming_prompt_smoke",
       "source": "tests/providers/deepseek/streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/blocking_disabled_length_top_absent.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_disabled_length_top_absent",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/blocking_disabled_length_top_two.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_disabled_length_top_two",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/blocking_disabled_length_top_zero.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_disabled_length_top_zero",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/blocking_disabled_stop_top_absent.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_disabled_stop_top_absent",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/blocking_disabled_stop_top_two.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_disabled_stop_top_two",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/blocking_disabled_stop_top_zero.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_disabled_stop_top_zero",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/blocking_low_length_top_absent.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_low_length_top_absent",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/blocking_low_length_top_two.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_low_length_top_two",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/blocking_low_length_top_zero.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_low_length_top_zero",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/blocking_low_stop_top_absent.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_low_stop_top_absent",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/blocking_low_stop_top_two.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_low_stop_top_two",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/blocking_low_stop_top_zero.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::blocking_low_stop_top_zero",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/streaming_disabled_length_top_absent.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_disabled_length_top_absent",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/streaming_disabled_length_top_two.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_disabled_length_top_two",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/streaming_disabled_length_top_zero.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_disabled_length_top_zero",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/streaming_disabled_stop_top_absent.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_disabled_stop_top_absent",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/streaming_disabled_stop_top_two.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_disabled_stop_top_two",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/streaming_disabled_stop_top_zero.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_disabled_stop_top_zero",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/streaming_low_length_top_absent.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_low_length_top_absent",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/streaming_low_length_top_two.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_low_length_top_two",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/streaming_low_length_top_zero.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_low_length_top_zero",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/streaming_low_stop_top_absent.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_low_stop_top_absent",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/streaming_low_stop_top_two.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_low_stop_top_two",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: run_cell calls model.raw_completion or model.stream and reads the terminal raw; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-logprobs-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_logprobs_matrix/streaming_low_stop_top_zero.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_logprobs_matrix::streaming_low_stop_top_zero",
       "source": "tests/providers/deepseek/streaming_logprobs_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: two completion_model(..).stream(..) calls, the second on a hand-built tool-result history; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_tools::raw_followup_uses_tool_result_without_new_tool_calls",
       "source": "tests/providers/deepseek/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).stream(request) with tool_definition schemas; collectors are the shared raw-stream helpers; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_tools/raw_stream_emits_required_zero_arg_tool_call.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_tools::raw_stream_emits_required_zero_arg_tool_call",
       "source": "tests/providers/deepseek/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).stream(request) with tool_definition schemas; collectors are the shared raw-stream helpers; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_tools::raw_stream_surfaces_two_distinct_tool_calls_before_text",
       "source": "tests/providers/deepseek/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).stream(request) with tool_definition schemas; collectors are the shared raw-stream helpers; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_tools/raw_stream_tool_call_arguments_are_objects.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_tools::raw_stream_tool_call_arguments_are_objects",
       "source": "tests/providers/deepseek/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "agent",
+      "classification_reason": "R1 agent-builder: client.agent(..) with AlphaSignal, stream_chat(..).max_turns(5) through collect_stream_observation; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "deepseek-streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_tools/streaming_chat_emits_tool_call_before_later_text.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_tools::streaming_chat_emits_tool_call_before_later_text",
       "source": "tests/providers/deepseek/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "agent",
+      "classification_reason": "R1 agent-builder: client.agent(..) with AlphaSignal/BetaSignal, stream_chat(..).max_turns(8) through collect_stream_observation; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "deepseek-streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_tools/streaming_chat_surfaces_two_distinct_tool_calls_before_final_answer.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_tools::streaming_chat_surfaces_two_distinct_tool_calls_before_final_answer",
       "source": "tests/providers/deepseek/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "agent",
+      "classification_reason": "R1 agent-builder: client.agent(..) with Adder/Subtract and default_max_turns(2), stream_chat through collect_stream_final_response; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "deepseek-streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/streaming_tools/streaming_chat_with_tools.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::streaming_tools::streaming_chat_with_tools",
       "source": "tests/providers/deepseek/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "agent",
+      "classification_reason": "R1 agent-builder: client.agent(DEEPSEEK_V4_FLASH) with Adder/Subtract and default_max_turns(2), agent.prompt(TOOLS_PROMPT); see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "deepseek-tools"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/tools/tools_smoke.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::tools::tools_smoke",
       "source": "tests/providers/deepseek/tools.rs"
     },
@@ -2773,188 +3403,341 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion, .stream or raw_completion with hand-built content parts, history or params; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/blocking_all_text_parts_still_flatten_to_a_string.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_all_text_parts_still_flatten_to_a_string",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion, .stream or raw_completion with hand-built content parts, history or params; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/blocking_assistant_and_tool_history_still_flattens.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_assistant_and_tool_history_still_flattens",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion, .stream or raw_completion with hand-built content parts, history or params; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/blocking_audio_part_reaches_the_wire.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_audio_part_reaches_the_wire",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion, .stream or raw_completion with hand-built content parts, history or params; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/blocking_image_base64_part_reaches_the_wire.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_image_base64_part_reaches_the_wire",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion, .stream or raw_completion with hand-built content parts, history or params; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/blocking_image_only_message_reaches_the_wire.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_image_only_message_reaches_the_wire",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion, .stream or raw_completion with hand-built content parts, history or params; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/blocking_image_url_part_reaches_the_wire.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_image_url_part_reaches_the_wire",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion, .stream or raw_completion with hand-built content parts, history or params; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/blocking_pdf_document_part_reaches_the_wire.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_pdf_document_part_reaches_the_wire",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion, .stream or raw_completion with hand-built content parts, history or params; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/blocking_repeated_prompt_reports_the_cache_split.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_repeated_prompt_reports_the_cache_split",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion, .stream or raw_completion with hand-built content parts, history or params; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/blocking_text_document_still_flattens_to_a_string.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_text_document_still_flattens_to_a_string",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion, .stream or raw_completion with hand-built content parts, history or params; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/blocking_video_part_reaches_the_wire.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::blocking_video_part_reaches_the_wire",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion, .stream or raw_completion with hand-built content parts, history or params; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/chat_completion_rejects_a_bogus_key_with_the_provider_body.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::chat_completion_rejects_a_bogus_key_with_the_provider_body",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion, .stream or raw_completion with hand-built content parts, history or params; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/chat_completion_rejects_an_unknown_model_with_the_provider_body.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::chat_completion_rejects_an_unknown_model_with_the_provider_body",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R5 raw-http: reqwest::Client::new().post(<cassette base>/chat/completions) with two hand-built bodies; rig provider code bypassed; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/forced_tool_choice_under_thinking_is_rejected_upstream.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::forced_tool_choice_under_thinking_is_rejected_upstream",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion, .stream or raw_completion with hand-built content parts, history or params; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/rig_keeps_a_forced_tool_choice_when_thinking_is_disabled.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::rig_keeps_a_forced_tool_choice_when_thinking_is_disabled",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion, .stream or raw_completion with hand-built content parts, history or params; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/rig_suppresses_a_forced_tool_choice_while_thinking_is_on.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::rig_suppresses_a_forced_tool_choice_while_thinking_is_on",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion, .stream or raw_completion with hand-built content parts, history or params; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/streaming_image_part_reaches_the_wire.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::streaming_image_part_reaches_the_wire",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "classification": "shared_provider",
+      "classification_reason": "R3 direct-model: completion_model(..).completion, .stream or raw_completion with hand-built content parts, history or params; see tests/ecs_parity/mistral-classification-contract.md.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "families": [
+        "deepseek-wire-shape-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/mistral-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/deepseek/wire_shape_matrix/streaming_repeated_prompt_reports_the_cache_split.yaml"
+        }
+      ],
       "id": "rig::deepseek::deepseek::wire_shape_matrix::streaming_repeated_prompt_reports_the_cache_split",
       "source": "tests/providers/deepseek/wire_shape_matrix.rs"
     }
