@@ -19,11 +19,48 @@
 //! or `.http_client(ReqwestClient::default()).build()`.
 
 use rig_core::client::{Client, ClientBuilder, Provider, ProviderClientError};
-use rig_core::http_client::BoxedHttpClient;
+use rig_core::http_client::{self, BoxedHttpClient};
 use rig_core::markers::Missing;
 
-fn bundled() -> BoxedHttpClient {
-    BoxedHttpClient::from(crate::ReqwestClient::default())
+/// The bundled transport, built fallibly. `reqwest::Client::new()` (and so
+/// `ReqwestClient::default()`) panics when the client cannot be built — on a
+/// host with no CA store, for one — while every constructor below promises
+/// a `Result`. Build through the builder and hand the failure back as the
+/// `Http` variant the rest of the client-construction path already uses.
+fn bundled() -> Result<BoxedHttpClient, ProviderClientError> {
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|error| http_client::Error::Instance(Box::new(TransportBuildError(error))))?;
+    Ok(BoxedHttpClient::from(crate::ReqwestClient::new(client)))
+}
+
+/// The bundled reqwest transport could not be built. `reqwest::Error`
+/// displays as just "builder error" and keeps the reason (no CA store, a
+/// bad proxy, ..) in its source chain, so this flattens the chain into the
+/// message a caller prints, while `source()` still exposes the original.
+#[derive(Debug)]
+struct TransportBuildError(reqwest::Error);
+
+impl std::fmt::Display for TransportBuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "could not build the bundled reqwest transport: {}",
+            self.0
+        )?;
+        let mut source = std::error::Error::source(&self.0);
+        while let Some(cause) = source {
+            write!(f, ": {cause}")?;
+            source = cause.source();
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for TransportBuildError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
 }
 
 /// One-argument construction of a provider client over the erased default
@@ -59,15 +96,15 @@ where
     type Input = P::EnvInput;
 
     fn new(api_key: impl Into<Self::ApiKey>) -> Result<Self, ProviderClientError> {
-        Client::new_with(api_key, bundled())
+        Client::new_with(api_key, bundled()?)
     }
 
     fn from_env() -> Result<Self, ProviderClientError> {
-        P::from_env(bundled())
+        P::from_env(bundled()?)
     }
 
     fn from_val(input: Self::Input) -> Result<Self, ProviderClientError> {
-        P::from_val(input, bundled())
+        P::from_val(input, bundled()?)
     }
 }
 
@@ -93,7 +130,7 @@ where
     type Client = Client<P, BoxedHttpClient>;
 
     fn build(self) -> Result<Self::Client, ProviderClientError> {
-        self.http_client(bundled()).build()
+        self.http_client(bundled()?).build()
     }
 }
 
