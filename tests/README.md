@@ -15,6 +15,13 @@ Rig's root crate uses integration test targets under `tests/`.
 
 Most provider tests are ignored live tests unless they have been migrated to cassettes.
 
+Cassette suites require a checkout of this repository: their shared engine is
+the unpublished `rig-cassette` workspace crate, and their fixtures are excluded
+from the published `rig` archive. Cargo omits the path-only engine dev-dependency
+when packaging `rig`, so the archive's remaining cassette test sources are not
+standalone test targets. Run these suites from the workspace. The engine is not
+a normal dependency of the published facade.
+
 ## Testing Doctrine
 
 **Recorded provider traffic is the default evidence; provider APIs are the

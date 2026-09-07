@@ -12,7 +12,13 @@ use crate::support::{MathError, OperationArgs};
 const COHERE_BASE_URL: &str = "https://api.cohere.ai";
 
 async fn cohere_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, cohere::Client) {
-    let cassette = ProviderCassette::start("cohere", spec, COHERE_BASE_URL).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "cohere",
+        spec,
+        COHERE_BASE_URL,
+    )
+    .await;
     let client = cohere::Client::builder()
         .api_key(cassette.api_key("COHERE_API_KEY"))
         .base_url(cassette.base_url())

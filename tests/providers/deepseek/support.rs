@@ -9,7 +9,13 @@ use rig::providers::deepseek;
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
 async fn deepseek_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, deepseek::Client) {
-    let cassette = ProviderCassette::start("deepseek", spec, "https://api.deepseek.com").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "deepseek",
+        spec,
+        "https://api.deepseek.com",
+    )
+    .await;
     let client = deepseek::Client::builder()
         .api_key(cassette.api_key("DEEPSEEK_API_KEY"))
         .base_url(cassette.base_url())
@@ -70,7 +76,13 @@ where
     F: FnOnce(deepseek::Client) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    let cassette = ProviderCassette::start("deepseek", spec, "https://api.deepseek.com").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "deepseek",
+        spec,
+        "https://api.deepseek.com",
+    )
+    .await;
     let client = deepseek::Client::builder()
         .api_key("sk-invalid-edge-matrix-key")
         .base_url(cassette.base_url())

@@ -11,7 +11,13 @@ const DOUBLEWORD_BASE_URL: &str = "https://api.doubleword.ai/v1";
 async fn doubleword_cassette(
     spec: impl Into<CassetteSpec>,
 ) -> (ProviderCassette, doubleword::Client) {
-    let cassette = ProviderCassette::start("doubleword", spec, DOUBLEWORD_BASE_URL).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "doubleword",
+        spec,
+        DOUBLEWORD_BASE_URL,
+    )
+    .await;
     let client = doubleword::Client::builder()
         .api_key(cassette.api_key("DOUBLEWORD_API_KEY"))
         .base_url(cassette.base_url())
@@ -38,7 +44,13 @@ pub(super) async fn with_doubleword_bogus_key_cassette<F, Fut>(
     F: FnOnce(doubleword::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start("doubleword", spec, DOUBLEWORD_BASE_URL).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "doubleword",
+        spec,
+        DOUBLEWORD_BASE_URL,
+    )
+    .await;
     let client = doubleword::Client::builder()
         .api_key("rig-deliberately-invalid-doubleword-key")
         .base_url(cassette.base_url())

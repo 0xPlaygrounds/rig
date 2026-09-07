@@ -9,7 +9,13 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 async fn perplexity_cassette(
     spec: impl Into<CassetteSpec>,
 ) -> (ProviderCassette, perplexity::Client) {
-    let cassette = ProviderCassette::start("perplexity", spec, "https://api.perplexity.ai").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "perplexity",
+        spec,
+        "https://api.perplexity.ai",
+    )
+    .await;
     let client = perplexity::Client::builder()
         .api_key(cassette.api_key("PERPLEXITY_API_KEY"))
         .base_url(cassette.base_url())

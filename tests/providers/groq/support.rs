@@ -8,7 +8,13 @@ use rig::providers::groq;
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
 async fn groq_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, groq::Client) {
-    let cassette = ProviderCassette::start("groq", spec, "https://api.groq.com/openai/v1").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "groq",
+        spec,
+        "https://api.groq.com/openai/v1",
+    )
+    .await;
     let client = groq::Client::builder()
         .api_key(cassette.api_key("GROQ_API_KEY"))
         .base_url(cassette.base_url())
@@ -40,7 +46,13 @@ where
     F: FnOnce(groq::Client) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    let cassette = ProviderCassette::start("groq", spec, "https://api.groq.com/openai/v1").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "groq",
+        spec,
+        "https://api.groq.com/openai/v1",
+    )
+    .await;
     let client = groq::Client::builder()
         .api_key("gsk-invalid-edge-matrix-key")
         .base_url(cassette.base_url())

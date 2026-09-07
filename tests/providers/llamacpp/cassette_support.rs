@@ -88,7 +88,13 @@ async fn llamacpp_cassette_on(
     spec: impl Into<CassetteSpec>,
     upstream: &str,
 ) -> (ProviderCassette, llamacpp::Client) {
-    let cassette = ProviderCassette::start("llamacpp", spec, upstream).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "llamacpp",
+        spec,
+        upstream,
+    )
+    .await;
     // No credential: `llama-server` needs none unless started with
     // `--api-key`, and the provider's default is a genuinely absent header
     // rather than a placeholder one. The `--api-key` half is pinned by
@@ -274,6 +280,7 @@ pub(super) async fn with_llamacpp_api_key_cassette<F, Fut>(
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
         "llamacpp",
         spec,
         &upstream("LLAMACPP_API_KEY_UPSTREAM", 8089),
@@ -385,7 +392,13 @@ pub(super) async fn with_llamacpp_raw_http_cassette<F, Fut>(
     F: FnOnce(String) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start("llamacpp", spec, &record_upstream()).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "llamacpp",
+        spec,
+        &record_upstream(),
+    )
+    .await;
     let base_url = cassette.base_url();
     let result = AssertUnwindSafe(test_body(base_url)).catch_unwind().await;
     cassette.finish_after_test(result).await;
@@ -406,7 +419,13 @@ pub(super) async fn with_llamacpp_bare_openai_cassette<F, Fut>(
     F: FnOnce(openai::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start("llamacpp", spec, &record_upstream()).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "llamacpp",
+        spec,
+        &record_upstream(),
+    )
+    .await;
     let client = openai::Client::builder()
         .api_key("llamacpp-local")
         // Note the `/v1`: a bare `openai::Client` composes paths straight onto

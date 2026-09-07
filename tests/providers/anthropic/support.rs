@@ -16,7 +16,13 @@ pub(super) struct AnthropicFilesCassette {
 async fn anthropic_cassette(
     spec: impl Into<CassetteSpec>,
 ) -> (ProviderCassette, anthropic::Client) {
-    let cassette = ProviderCassette::start("anthropic", spec, "https://api.anthropic.com").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "anthropic",
+        spec,
+        "https://api.anthropic.com",
+    )
+    .await;
     let client = anthropic::Client::builder()
         .api_key(cassette.api_key("ANTHROPIC_API_KEY"))
         .base_url(cassette.base_url())
@@ -37,7 +43,13 @@ pub(super) async fn with_anthropic_boxed_cassette<F, Fut>(
     F: FnOnce(anthropic::Client<BoxedHttpClient>) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start("anthropic", spec, "https://api.anthropic.com").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "anthropic",
+        spec,
+        "https://api.anthropic.com",
+    )
+    .await;
     let client = anthropic::Client::builder()
         .api_key(cassette.api_key("ANTHROPIC_API_KEY"))
         .base_url(cassette.base_url())
@@ -62,7 +74,13 @@ pub(super) async fn with_anthropic_lifecycle_cassette<M, F, Fut>(
     F: FnOnce(anthropic::Client<BoxedHttpClient>) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start("anthropic", spec, "https://api.anthropic.com").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "anthropic",
+        spec,
+        "https://api.anthropic.com",
+    )
+    .await;
     let client = anthropic::Client::builder()
         .api_key(cassette.api_key("ANTHROPIC_API_KEY"))
         .base_url(cassette.base_url())
@@ -116,7 +134,13 @@ pub(super) async fn with_anthropic_gateway_cassette<F, Fut>(
     F: FnOnce(anthropic::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start("anthropic", spec, OPENROUTER_MESSAGES_BASE_URL).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "anthropic",
+        spec,
+        OPENROUTER_MESSAGES_BASE_URL,
+    )
+    .await;
     let client = anthropic::Client::builder()
         .api_key(cassette.api_key("OPENROUTER_API_KEY"))
         .base_url(cassette.base_url())
@@ -152,7 +176,13 @@ pub(super) async fn with_anthropic_files_cassette<F, Fut>(
     F: FnOnce(AnthropicFilesCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start("anthropic", spec, "https://api.anthropic.com").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "anthropic",
+        spec,
+        "https://api.anthropic.com",
+    )
+    .await;
     let base_url = normalize_anthropic_base_url(&cassette.base_url());
     let api_key = cassette.api_key("ANTHROPIC_API_KEY");
     let client = anthropic::Client::builder()
@@ -274,7 +304,13 @@ pub(super) async fn with_anthropic_cassette_bogus_key<F, Fut>(
     F: FnOnce(anthropic::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start("anthropic", spec, "https://api.anthropic.com").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "anthropic",
+        spec,
+        "https://api.anthropic.com",
+    )
+    .await;
     let client = anthropic::Client::builder()
         .api_key("sk-invalid-edge-matrix-key")
         .base_url(cassette.base_url())

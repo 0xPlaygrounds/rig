@@ -1,0 +1,33 @@
+[package]
+name = "rig-cassette"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+publish = false
+description = "Reusable provider cassette recording, replay, scrubbing and safety checks."
+
+[lints]
+workspace = true
+
+[features]
+default = []
+bedrock = ["dep:aws-smithy-eventstream", "dep:aws-smithy-types"]
+
+[dependencies]
+rig-core = { path = "../rig-core", default-features = false }
+rig-reqwest = { path = "../rig-reqwest", default-features = false, features = ["rustls"] }
+aws-smithy-eventstream = { workspace = true, optional = true }
+aws-smithy-types = { workspace = true, optional = true }
+axum = { workspace = true }
+base64 = { workspace = true }
+futures = { workspace = true }
+httpmock = { workspace = true, features = ["record", "proxy"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["float_roundtrip", "preserve_order"] }
+serde_yaml = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "fs"] }
+url = { workspace = true }
+
+[dev-dependencies]
+assert_fs = { workspace = true }
+reqwest = { workspace = true, features = ["json", "stream"] }
