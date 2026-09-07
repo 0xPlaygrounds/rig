@@ -18,10 +18,11 @@ header and tool dispatch name order assertions remain.
 
 Native command_capacity is a per-host-tick dispatch intake bound, leaving other effects
 pending without blocking the world; legacy command_capacity bounds its command
-queue. Stream capacity bounds rig-agent's consumer queue; native ECS instead
-polls one owned stream item per Collect invocation. The capacity-one cell retains
+queue. Stream capacity bounds each driver's delivery queue. ECS uses a private
+worker queue with at least one shared slot plus one sender-reserved slot, and
+bounded collection independent of that capacity. The capacity-one cell retains
 the shared policy metadata and recorded behavior without claiming identical
-backpressure, queue occupancy or memory bounds. The original cells assert dispatch
+queue occupancy or total memory bounds. The original cells assert dispatch
 order and completion; they do not independently establish two-tool overlap or
 reverse completion. Prior concurrency-family gates provide separate overlap
 coverage. No performance or arbitrary scheduling claim follows from these goldens.

@@ -6,7 +6,8 @@ use std::{
 };
 
 use bevy_ecs::prelude::*;
-use bevy_tasks::IoTaskPool;
+
+use rig_core::serve::Reply;
 use rig_core::{
     effect::{EffectId, HandlerKey},
     error::{ErrorKind, ErrorReport},
@@ -164,8 +165,15 @@ pub fn dispatch(
                     recording: recording.as_ref().map(|r| (**r).clone()),
                     observed,
                 }));
-                let task =
-                    IoTaskPool::get().spawn(async move { handler.handle(kind, dispatch).await });
+                let streaming = effect.is_stream();
+
+                let task = bevy_tasks::IoTaskPool::get().spawn(async move {
+                    let reply = handler.handle(kind, dispatch).await;
+                    if !streaming {
+                        return Reply::Outcome(reply.into_outcome().await);
+                    }
+                    reply
+                });
                 executions.tasks.insert(entity, task);
                 entity_commands.insert(Serving);
                 if effect.is_stream() {

@@ -614,6 +614,33 @@ fn snapshot(streams: Query<&Streamed, Changed<Streamed>>, mut snapshots: ResMut<
     }
 }
 
+// Derive the policy-visible text from the durable delivery boundaries. Worker
+// readiness may split a released group, but replay must expose exactly this trace.
+fn recorded_text_snapshots(log: &EffectLog) -> Vec<String> {
+    let events = log.records[0].events.as_ref().unwrap();
+    let mut position = 0;
+    let mut text = String::new();
+    let mut snapshots = Vec::new();
+    for delivery in log.header.deliveries.as_ref().unwrap() {
+        if let rig_core::effect::DeliveryKind::Stream { items } = delivery.kind {
+            for event in &events[position..position + items] {
+                if let rig_core::streaming::StreamEvent::BlockDelta {
+                    delta: rig_core::streaming::Delta::Text { text: delta },
+                    ..
+                } = event
+                {
+                    text.push_str(delta);
+                }
+            }
+            position += items;
+            if !text.is_empty() {
+                snapshots.push(text.clone());
+            }
+        }
+    }
+    snapshots
+}
+
 fn observing_app() -> bevy_app::App {
     let mut app = bus_support::app();
     app.init_resource::<Snapshots>();
@@ -650,8 +677,7 @@ fn live_stream(groups: Vec<Vec<&'static str>>, keep: bool) -> (EffectLog, Vec<St
     app.update();
     for (index, (sender, group)) in senders.into_iter().zip(groups).enumerate() {
         sender.send(group).unwrap();
-        // Writer work advances only when the host polls its returned stream.
-        // Each released group can now span several Collect invocations.
+        // The owned worker drives each released group independently of Collect.
         let start = Instant::now();
         while produced.load(Ordering::SeqCst) <= index {
             assert!(
@@ -685,19 +711,9 @@ fn kept_streams_replay_single_and_multi_event_policy_batches() {
                 Some(text.clone())
             })
             .collect();
-        let mut expected: Vec<_> = groups
-            .iter()
-            .flatten()
-            .scan(String::new(), |text, piece| {
-                text.push_str(piece);
-                Some(text.clone())
-            })
-            .collect();
-        // BlockEnd and Final now each have their own policy-visible pass.
-        let final_text = expected.last().unwrap().clone();
-        expected.extend([final_text.clone(), final_text]);
         let (log, live) = live_stream(groups.clone(), true);
-        assert_eq!(live, expected);
+        assert_eq!(live.last().map(String::as_str), Some("abc"));
+        assert_eq!(live, recorded_text_snapshots(&log));
         let mut app = observing_app();
         Handlers::with(app.world_mut(), |handlers| {
             Replay::policy_visible().register(handlers, &log)
@@ -751,7 +767,7 @@ fn kept_streams_replay_single_and_multi_event_policy_batches() {
 #[test]
 fn folded_stream_refuses_policy_mode_but_replays_a_final_answer() {
     let (log, live) = live_stream(vec![vec!["a"], vec!["b"], vec!["c"]], false);
-    assert_eq!(live, ["a", "ab", "abc", "abc", "abc"]);
+    assert_eq!(live.last().map(String::as_str), Some("abc"));
     let mut app = observing_app();
     let error = Handlers::with(app.world_mut(), |handlers| {
         Replay::policy_visible().register(handlers, &log)
@@ -1137,7 +1153,8 @@ fn policy_cancels_at_the_same_partial_stream_state() {
     }
     live.update();
     assert!(live.world().get_entity(effect).is_err());
-    assert_eq!(live.world().resource::<Snapshots>().0, ["a", "ab"]);
+    let snapshots = live.world().resource::<Snapshots>().0.clone();
+    assert_eq!(snapshots.last().map(String::as_str), Some("ab"));
     let log: EffectLog =
         serde_json::from_str(&serde_json::to_string(&recorder.log()).unwrap()).unwrap();
     let mut replay = observing_app();
@@ -1154,7 +1171,8 @@ fn policy_cancels_at_the_same_partial_stream_state() {
     bus_support::tick_until(&mut replay, "same partial cancel", |world| {
         world.get_entity(effect).is_err()
     });
-    assert_eq!(replay.world().resource::<Snapshots>().0, ["a", "ab"]);
+    assert_eq!(snapshots, recorded_text_snapshots(&log));
+    assert_eq!(replay.world().resource::<Snapshots>().0, snapshots);
     assert!(
         !replay
             .world()
@@ -1398,13 +1416,19 @@ fn errors_before_and_after_final_keep_their_positions_and_first_outcome() {
             let mut missing = log.clone();
             missing.header.stream_errors.clear();
             let deliveries = missing.header.deliveries.as_mut().unwrap();
-            let position = deliveries
-                .iter()
-                .position(|delivery| {
-                    matches!(delivery.kind, rig_core::effect::DeliveryKind::Stream { .. })
-                })
-                .unwrap();
-            deliveries.remove(position);
+            deliveries.retain(|delivery| {
+                !matches!(delivery.kind, rig_core::effect::DeliveryKind::Stream { .. })
+            });
+            deliveries.insert(
+                0,
+                rig_core::effect::Delivery {
+                    batch: 0,
+                    id: missing.records[0].id,
+                    kind: rig_core::effect::DeliveryKind::Stream {
+                        items: missing.records[0].events.as_ref().unwrap().len(),
+                    },
+                },
+            );
             let error = rig_ecs::bus::delivery::ReplayDelivery::new(&missing, true)
                 .err()
                 .expect("first outcome is not reconstructible");
@@ -1773,4 +1797,176 @@ fn a_streamed_verdict_resumes_only_when_the_host_collects_again() {
         world.get::<EffectOutcome>(effect).is_some()
     });
     assert!(app.world().get::<EffectOutcome>(effect).unwrap().0.is_ok());
+}
+
+#[cfg(not(target_family = "wasm"))]
+#[test]
+fn cancelled_record_is_immutable_when_an_active_worker_poll_returns() {
+    use std::sync::mpsc;
+
+    struct Release(Option<mpsc::Sender<()>>);
+    impl Drop for Release {
+        fn drop(&mut self) {
+            if let Some(sender) = self.0.take() {
+                let _ = sender.send(());
+            }
+        }
+    }
+    struct Dropped(mpsc::Sender<()>);
+    impl Drop for Dropped {
+        fn drop(&mut self) {
+            let _ = self.0.send(());
+        }
+    }
+    struct InPoll {
+        entered: mpsc::Sender<()>,
+        release: Mutex<Option<mpsc::Receiver<()>>>,
+        dropped: mpsc::Sender<()>,
+    }
+    impl Serve for InPoll {
+        type Family = rig_core::effect::family::Completion;
+        fn descriptor(&self) -> HandlerDescriptor {
+            HandlerDescriptor {
+                key: "active-poll".into(),
+                family: FamilyDescriptor::Completion {
+                    model: ModelRef::new("mock"),
+                    capabilities: ProviderCapabilities::default(),
+                },
+                layers: Vec::new(),
+            }
+        }
+        async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+            let entered = self.entered.clone();
+            let release = self.release.lock().unwrap().take().unwrap();
+            let dropped = Dropped(self.dropped.clone());
+            let mut returned = false;
+            Reply::Stream(Box::pin(futures::stream::poll_fn(move |_| {
+                let _owned = &dropped;
+                if returned {
+                    return std::task::Poll::Ready(None);
+                }
+                returned = true;
+                entered.send(()).unwrap();
+                release.recv_timeout(bus_support::GUARD).unwrap();
+                std::task::Poll::Ready(Some(Ok(rig_core::streaming::StreamEvent::Final(
+                    StreamFinal::new("mock", Usage::new()),
+                ))))
+            })))
+        }
+    }
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let release = Release(Some(release_tx));
+    let (drop_tx, drop_rx) = mpsc::channel();
+    let mut app = bus_support::app();
+    bus_support::register(
+        &mut app,
+        "active-poll",
+        InPoll {
+            entered: entered_tx,
+            release: Mutex::new(Some(release_rx)),
+            dropped: drop_tx,
+        },
+    );
+    let recorder = EffectLogRecorder::keeping_stream_events();
+    EffectLogResource::install(app.world_mut(), recorder.clone());
+    let effect = app
+        .world_mut()
+        .spawn(PendingEffect::new("active-poll", bus_support::streaming()))
+        .id();
+    bus_support::tick_until(&mut app, "worker entered its source poll", |_| {
+        entered_rx.try_recv().is_ok()
+    });
+    app.world_mut().despawn(effect);
+    let cancelled = serde_json::to_value(recorder.log()).unwrap();
+    drop(release);
+    drop_rx.recv_timeout(bus_support::GUARD).unwrap();
+    assert_eq!(
+        serde_json::to_value(recorder.log()).unwrap(),
+        cancelled,
+        "a poll returning after cancellation must not mutate the closed recording"
+    );
+    rig_effect_log::EffectLogReplayer::check_header(&recorder.log()).unwrap();
+}
+
+#[test]
+fn implicit_cancelled_prefix_rerecord_does_not_invent_an_error_item() {
+    use rig_core::{
+        effect::{Delivery, DeliveryKind, EffectId},
+        serve::{Origin, Recorder},
+    };
+    let original = EffectLogRecorder::keeping_stream_events();
+    let id = EffectId::from_raw(0);
+    let descriptor =
+        bus_support::MockModel::new(&Arc::new(bus_support::Counters::default())).descriptor();
+    original.handlers(vec![descriptor]);
+    original.begin_delivery_tracking();
+    original.begin(
+        id,
+        "model".into(),
+        bus_support::streaming(),
+        Origin::default(),
+    );
+    let prefix = futures::executor::block_on(async {
+        use futures::TryStreamExt;
+        Reply::written(|mut writer| async move {
+            writer.text("prefix").await.unwrap();
+        })
+        .into_stream()
+        .try_collect::<Vec<_>>()
+        .await
+        .unwrap()
+    });
+    for event in &prefix {
+        original.event(id, event);
+    }
+    original.delivery(Delivery {
+        batch: 1,
+        id,
+        kind: DeliveryKind::Stream {
+            items: prefix.len(),
+        },
+    });
+    original.resolve(id, Err(rig_core::serve::cancelled()));
+    let log = original.log();
+    let mut app = bus_support::app();
+    let rerecorder = EffectLogRecorder::keeping_stream_events();
+    EffectLogResource::install(app.world_mut(), rerecorder.clone());
+    Handlers::with(app.world_mut(), |handlers| {
+        Replay::policy_visible().register(handlers, &log)
+    })
+    .unwrap()
+    .unwrap();
+    let effect = Replay::load(app.world_mut(), &log)[0];
+    app.world_mut().resource_mut::<Schedules>().add_systems(
+        RigSchedule,
+        (|mut commands: Commands, streams: Query<(Entity, &Streamed)>| {
+            for (entity, stream) in &streams {
+                if stream.text == "prefix" {
+                    // Give the worker its prefetch opportunity before the policy
+                    // cancels in the required Judge pass, with no extra Collect.
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                    commands.entity(entity).despawn();
+                }
+            }
+        })
+        .in_set(BusSet::Judge),
+    );
+    bus_support::tick_until(&mut app, "policy cancelled prefix", |world| {
+        world.get_entity(effect).is_err()
+    });
+    assert!(
+        !app.world()
+            .contains_resource::<rig_ecs::bus::ReplayFailure>()
+    );
+    let rerecorded = rerecorder.log();
+    assert_eq!(
+        rerecorded.header.stream_errors, log.header.stream_errors,
+        "a cancellation fallback is not an original stream error"
+    );
+    assert_eq!(
+        serde_json::to_value(&rerecorded.records).unwrap(),
+        serde_json::to_value(&log.records).unwrap()
+    );
+    rig_ecs::bus::delivery::ReplayDelivery::new(&rerecorded, true).unwrap();
 }

@@ -412,20 +412,29 @@ external deduplication or reconciliation is the host's responsibility.
 
 ## Returned replies and collection cadence
 
-An initial `Serve` task returns an outcome or an owned stream. Live Collect
-polls each outer stream at most once per invocation using a no-op waker; Pending
-advances on subsequent host passes, including for self-waking streams. Hosts
-must keep ticking while work remains. Quiescence is not completion, and unrelated
-progress can cause multiple Collect invocations within a tick under the existing
-cap. Deltas alone do not count as quiescence progress.
+An initial `Serve` task prepares the reply and folds a unary stream to its first
+answer on the executor. A streaming reply gets one long-lived worker and a
+bounded private delivery queue. Native source polls, parsing, writer work and
+streamed verdicts run on pool threads. Browser `!Send` streams run on the local
+executor selected by the target-specific `bevy_platform/web` feature; synchronous
+source work still occupies the browser thread.
 
-Stream polling, provider parsing, writer work and awaited streamed verdicts run
-on the collecting thread without a CPU-time or payload-size guarantee. Native
-and browser streams are held in `Executions`, with immediate removal on leaving
-`InFlight`. Registry replacement does not replace in-flight work. Unary consumers
-fold a returned stream to its first outcome; streamed effects retain their serial
-slot through EOF, including post-final frames. Both converge through Collect,
-durable publication, `EffectOutcome` and `settle`.
+Live Collect performs at most 64 queue checks per effect per invocation, with
+4,096 shared across every quiescence pass in one host tick. Pending ends that
+effect's turn. The next pass resumes after the last served dispatch sequence,
+wrapping once, so a hot early effect cannot permanently exclude later ones.
+Direct host invocations of `RigSchedule` reset the allowance per invocation.
+Deltas do not count as quiescence progress. These are streaming delivery limits,
+not total CPU-time or payload-size guarantees. Hosts must keep ticking to expose
+ready items and settle replies; quiescence is not completion.
+
+`Executions` owns task handles, removed when an effect leaves `InFlight`.
+Task cancellation reaches pending setup, unary folding and full delivery queues.
+An active native poll cannot be interrupted synchronously; observation closes
+atomically with cancellation so a late result cannot mutate the closed record.
+Registry replacement does not replace in-flight work. Streamed effects retain
+their serial slot through EOF, including post-final frames. Both reply forms
+converge through Collect, durable publication, `EffectOutcome` and `settle`.
 
 The observer records the innermost request and original answer. Denial discards
 the exchange. An observed original answer survives cancellation during an outer
@@ -433,11 +442,19 @@ verdict or before collection; it does not claim successful consumer delivery.
 Cancelling an external deferred waiter closes its resolver and releases driver
 accounting even while the external host retains that resolver.
 
-Historical delivery records can contain several items at one visibility
-boundary. Replay preserves those boundaries; new live traces contain one item
-per effect per Collect. `bus_delivery` verifies both cadences and preserved error
-positions. `ServingPolicy::stream_capacity` still sizes rig-agent's real consumer
-queue; the world has no corresponding queue or pull batch setting.
+Install the replay plan before dispatching its effects. For an implicitly
+cancelled kept prefix, replay limits source polling as well as visible delivery:
+it parks before any synthesized cancellation error and retains the source until
+policy cancellation. Re-recording therefore preserves the original error items.
+
+Each live `DeliveryKind::Stream { items }` records the number of items exposed
+for that effect in one Collect pass. Replay preserves both historical single-item
+and multi-item boundaries, including error positions. `bus_delivery` compares
+live policy observations with replay of the actual recorded cadence.
+`ServingPolicy::stream_capacity` supplies shared queue slots in ECS, clamped to
+at least one, with one additional sender-reserved slot. Awaiting each send
+prevents another source poll while that sender is parked. This transport bound
+is independent of the collection allowance and any source-internal buffers.
 
 Cancellation after an original handler answer has been observed records a
 `DeliveryKind::Cancelled` boundary instead of an outcome delivery. This preserves

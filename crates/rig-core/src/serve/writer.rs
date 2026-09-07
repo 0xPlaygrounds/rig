@@ -106,8 +106,7 @@ impl StreamWriter {
     }
 
     async fn flush(&mut self) -> Result<(), SinkClosed> {
-        let items: Vec<_> = self.output.drain().collect();
-        for item in items {
+        for item in self.output.drain() {
             self.events
                 .send(item.map_err(|error| ErrorReport::from(&error)))
                 .await

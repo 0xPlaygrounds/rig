@@ -10,7 +10,7 @@ use rig_core::{
     streaming::{Delta, StreamEvent},
 };
 use rig_effect_log::EffectLog;
-use std::task::{Context, Poll, Waker};
+use std::task::Poll;
 
 use super::{
     effect::{
@@ -266,7 +266,13 @@ enum Buffered {
 }
 
 impl Buffered {
-    fn poll(&mut self, entity: Entity, executions: &mut Executions, remaining: Option<&mut usize>) {
+    fn poll(
+        &mut self,
+        entity: Entity,
+        executions: &mut Executions,
+        remaining: Option<&mut usize>,
+        capacity: usize,
+    ) {
         if let Self::Waiting { streamed } = self {
             let Some(task) = executions.tasks.get_mut(&entity) else {
                 return;
@@ -283,9 +289,14 @@ impl Buffered {
                     return;
                 }
                 rig_core::serve::Reply::Stream(stream) => {
-                    executions.streams.insert(entity, stream);
+                    let stream = match remaining.as_deref() {
+                        Some(&items) => cancelled_prefix(stream, items),
+                        None => stream,
+                    };
+                    let (streaming, task) = Streaming::spawn(stream, capacity);
+                    executions.streams.insert(entity, task);
                     *self = Self::Stream {
-                        streaming: Streaming::default(),
+                        streaming,
                         items: VecDeque::new(),
                         closed: false,
                         unary: !*streamed,
@@ -303,12 +314,11 @@ impl Buffered {
             if *closed || remaining.as_deref() == Some(&0) {
                 return;
             }
-            let Some(stream) = executions.streams.get_mut(&entity) else {
-                return;
+            let polled = match streaming.events.try_recv() {
+                Ok(item) => Poll::Ready(Some(item)),
+                Err(futures::channel::mpsc::TryRecvError::Empty) => Poll::Pending,
+                Err(futures::channel::mpsc::TryRecvError::Closed) => Poll::Ready(None),
             };
-            let polled = stream
-                .as_mut()
-                .poll_next(&mut Context::from_waker(Waker::noop()));
             if matches!(polled, Poll::Ready(Some(_)))
                 && let Some(remaining) = remaining
             {
@@ -340,6 +350,25 @@ impl Buffered {
     }
 }
 
+// The observer sits inside this stream. Stop source polling, not just receiver
+// reads, before a replayer's synthetic cancellation fallback can be observed.
+// Retain ownership at the prefix boundary until the recorded policy cancels it.
+fn cancelled_prefix(
+    mut stream: rig_core::streaming::StreamEvents,
+    mut remaining: usize,
+) -> rig_core::streaming::StreamEvents {
+    Box::pin(futures::stream::poll_fn(move |cx| {
+        if remaining == 0 {
+            return Poll::Pending;
+        }
+        let item = stream.as_mut().poll_next(cx);
+        if matches!(item, Poll::Ready(Some(_))) {
+            remaining -= 1;
+        }
+        item
+    }))
+}
+
 /// Buffer ready replay data, then expose one complete recorded batch. Every
 /// policy system gets a pass between distinct batches, even if all handler
 /// futures completed together. Live handlers keep their ordinary collector.
@@ -369,7 +398,8 @@ pub fn collect_replayed(world: &mut World) {
                 });
             }
             if let Some(mut buffered) = world.entity_mut(*entity).take::<Buffered>() {
-                buffered.poll(*entity, &mut world.non_send_mut::<Executions>(), replay.cancelled_items.get_mut(id));
+                let capacity = world.resource::<super::plugin::Policy>().0.stream_capacity;
+                buffered.poll(*entity, &mut world.non_send_mut::<Executions>(), replay.cancelled_items.get_mut(id), capacity);
                 world.entity_mut(*entity).insert(buffered);
             }
         }
@@ -684,3 +714,6 @@ fn deliver_outcome(world: &mut World, entity: Entity) {
         .insert(super::collect::CollectedOutcome)
         .insert(EffectOutcome(outcome));
 }
+
+#[cfg(test)]
+mod tests;

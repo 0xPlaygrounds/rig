@@ -185,6 +185,24 @@ pub trait Observe: Send + Sync {
     fn event(&mut self, event: &StreamEvent);
     /// An error item in a kept stream, including errors after `Final`.
     fn stream_error(&mut self, _error: &ErrorReport) {}
+    /// Observe one stream item together with its first folded outcome, if any.
+    /// Drivers that snapshot recording concurrently with cancellation can override
+    /// this operation to make the item and its answer one observation boundary.
+    fn stream_item(
+        &mut self,
+        item: &Result<StreamEvent, ErrorReport>,
+        outcome: Option<&Result<Outcome, ErrorReport>>,
+    ) {
+        if self.keep_events() {
+            match item {
+                Ok(event) => self.event(event),
+                Err(error) => self.stream_error(error),
+            }
+        }
+        if let Some(outcome) = outcome {
+            self.outcome(outcome);
+        }
+    }
     /// The dispatch was decided before any handler served it: the record
     /// it opened is forgotten.
     fn discard(&mut self);
@@ -422,19 +440,23 @@ impl Reply {
                 Poll::Ready(item) => item,
             };
             if let Some(item) = &item {
-                if streaming && let Some(seen) = &mut seen {
-                    seen.item(item);
-                }
-                if !finished && let Some(outcome) = fold.observe(item) {
-                    finished = true;
-                    if let Some(seen) = &mut seen {
-                        let recorded = if matches!(item, Ok(StreamEvent::Final(_))) {
-                            original.as_ref().unwrap_or(&outcome)
+                let outcome = if finished { None } else { fold.observe(item) };
+                if let Some(seen) = &mut seen {
+                    let recorded = outcome.as_ref().map(|outcome| {
+                        if matches!(item, Ok(StreamEvent::Final(_))) {
+                            original.as_ref().unwrap_or(outcome)
                         } else {
-                            &outcome
-                        };
+                            outcome
+                        }
+                    });
+                    if streaming {
+                        seen.item(item, recorded);
+                    } else if let Some(recorded) = recorded {
                         seen.outcome(recorded);
                     }
+                }
+                if let Some(outcome) = outcome {
+                    finished = true;
                     if let Some(folded) = &folded {
                         *lock(folded) = Some(outcome);
                     }
@@ -565,13 +587,14 @@ impl Observed {
         }
     }
 
-    fn item(&mut self, item: &Result<StreamEvent, ErrorReport>) {
-        if self.observer.keep_events() {
-            match item {
-                Ok(event) => self.observer.event(event),
-                Err(report) => self.observer.stream_error(report),
-            }
-        }
+    fn item(
+        &mut self,
+        item: &Result<StreamEvent, ErrorReport>,
+        outcome: Option<&Result<Outcome, ErrorReport>>,
+    ) {
+        let outcome = outcome.filter(|_| !self.told);
+        self.told |= outcome.is_some();
+        self.observer.stream_item(item, outcome);
     }
 }
 

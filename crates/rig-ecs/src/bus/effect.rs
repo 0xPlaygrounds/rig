@@ -191,12 +191,37 @@ pub struct InFlight {
 #[derive(Component)]
 pub struct Serving;
 
-/// Fold state for a stream owned by the world's execution table.
-/// Collect polls that stream once per invocation, including on browser wasm.
-#[derive(Component, Default)]
+/// Delivery receiver and fold for a stream driven by an effect-owned worker.
+#[derive(Component)]
 pub struct Streaming {
+    /// Bounded worker delivery, exclusively consumed by Collect.
+    pub events: futures::channel::mpsc::Receiver<
+        Result<rig_core::streaming::StreamEvent, rig_core::error::ErrorReport>,
+    >,
     /// The shared core fold of delivered events.
     pub fold: rig_core::serve::StreamTap,
+}
+
+impl Streaming {
+    /// Drive one owned stream on the pool with bounded delivery to Collect.
+    pub fn spawn(mut stream: StreamEvents, capacity: usize) -> (Self, Task<()>) {
+        use futures::{SinkExt, StreamExt};
+        let (mut sender, events) = futures::channel::mpsc::channel(capacity.max(1));
+        let task = bevy_tasks::IoTaskPool::get().spawn(async move {
+            while let Some(item) = stream.next().await {
+                if sender.send(item).await.is_err() {
+                    return;
+                }
+            }
+        });
+        (
+            Self {
+                events,
+                fold: rig_core::serve::StreamTap::new(),
+            },
+            task,
+        )
+    }
 }
 
 /// Effect-owned execution on native and browser wasm. Keeping both here
@@ -205,8 +230,8 @@ pub struct Streaming {
 pub struct Executions {
     /// Initial tasks, indexed by their in-flight effect entity.
     pub tasks: std::collections::HashMap<Entity, Task<rig_core::serve::Reply>>,
-    /// Returned streams, removed when the effect leaves flight.
-    pub streams: std::collections::HashMap<Entity, StreamEvents>,
+    /// Stream workers, cancelled when the effect leaves flight.
+    pub streams: std::collections::HashMap<Entity, Task<()>>,
 }
 
 /// Remove owned execution immediately when an effect leaves flight.
@@ -222,8 +247,8 @@ pub fn drop_execution(removed: On<Remove, InFlight>, mut executions: NonSendMut<
 /// when the stream reaches EOF, so a serial key stays busy until the
 /// handler is done, as it does on rig-agent's bus.
 ///
-/// Live collection delivers at most one item per effect per invocation. With
-/// the `replay` feature,
+/// Live collection checks at most 64 queue entries per effect per invocation,
+/// sharing 4,096 checks across a host tick. With the `replay` feature,
 /// `Replay::policy_visible()` preserves recorded delivery batches when the
 /// recorder kept event bytes. Keeping bytes alone in a driver without batch
 /// tracking promises event order only; folded recordings supply a final

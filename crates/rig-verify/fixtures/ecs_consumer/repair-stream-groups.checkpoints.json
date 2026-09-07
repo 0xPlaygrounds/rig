@@ -6961,22 +6961,6 @@
           "boundary": "collect.stream",
           "effect": 0,
           "data": {
-            "events": 1,
-            "text": ""
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 0,
-          "data": {
-            "events": 2,
-            "text": "Inspecting the project. "
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 0,
-          "data": {
             "events": 3,
             "text": "Inspecting the project. "
           }
@@ -6985,31 +6969,7 @@
           "boundary": "collect.stream",
           "effect": 0,
           "data": {
-            "events": 4,
-            "text": "Inspecting the project. "
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 0,
-          "data": {
-            "events": 5,
-            "text": "Inspecting the project. "
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 0,
-          "data": {
             "events": 6,
-            "text": "Inspecting the project. "
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 0,
-          "data": {
-            "events": 7,
             "text": "Inspecting the project. "
           }
         },
@@ -7200,22 +7160,6 @@
           "boundary": "collect.stream",
           "effect": 3,
           "data": {
-            "events": 1,
-            "text": ""
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 3,
-          "data": {
-            "events": 2,
-            "text": "Inspecting the project. "
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 3,
-          "data": {
             "events": 3,
             "text": "Inspecting the project. "
           }
@@ -7224,39 +7168,7 @@
           "boundary": "collect.stream",
           "effect": 3,
           "data": {
-            "events": 4,
-            "text": "Inspecting the project. "
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 3,
-          "data": {
-            "events": 5,
-            "text": "Inspecting the project. "
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 3,
-          "data": {
             "events": 6,
-            "text": "Inspecting the project. "
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 3,
-          "data": {
-            "events": 7,
-            "text": "Inspecting the project. "
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 3,
-          "data": {
-            "events": 8,
             "text": "Inspecting the project. "
           }
         },
@@ -7432,39 +7344,7 @@
           "boundary": "collect.stream",
           "effect": 7,
           "data": {
-            "events": 1,
-            "text": ""
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 7,
-          "data": {
-            "events": 2,
-            "text": "The observed out-of-range slice comes from using the unchecked offset as the lower bound. The contract requires empty pages beyond the end."
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 7,
-          "data": {
             "events": 3,
-            "text": "The observed out-of-range slice comes from using the unchecked offset as the lower bound. The contract requires empty pages beyond the end."
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 7,
-          "data": {
-            "events": 4,
-            "text": "The observed out-of-range slice comes from using the unchecked offset as the lower bound. The contract requires empty pages beyond the end."
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 7,
-          "data": {
-            "events": 5,
             "text": "The observed out-of-range slice comes from using the unchecked offset as the lower bound. The contract requires empty pages beyond the end."
           }
         },
@@ -7583,22 +7463,6 @@
           "boundary": "collect.stream",
           "effect": 9,
           "data": {
-            "events": 1,
-            "text": ""
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 9,
-          "data": {
-            "events": 2,
-            "text": ""
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 9,
-          "data": {
             "events": 3,
             "text": ""
           }
@@ -7705,22 +7569,6 @@
             "applied": true,
             "before": "3e00f18898784dd6a6aff31ad86b3c0702b52dff7b2b523f90e7630bad0204a9",
             "after": "003e4bfb42f5dca1068a25e58824d603efc5e86ff68c5d48db5a1f47b7cc6f89"
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 11,
-          "data": {
-            "events": 1,
-            "text": ""
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 11,
-          "data": {
-            "events": 2,
-            "text": ""
           }
         },
         {
@@ -7863,22 +7711,6 @@
           "boundary": "collect.stream",
           "effect": 13,
           "data": {
-            "events": 1,
-            "text": ""
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 13,
-          "data": {
-            "events": 2,
-            "text": ""
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 13,
-          "data": {
             "events": 3,
             "text": ""
           }
@@ -7980,22 +7812,6 @@
                 }
               }
             }
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 15,
-          "data": {
-            "events": 1,
-            "text": ""
-          }
-        },
-        {
-          "boundary": "collect.stream",
-          "effect": 15,
-          "data": {
-            "events": 2,
-            "text": ""
           }
         },
         {

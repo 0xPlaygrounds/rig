@@ -267,3 +267,102 @@ fn writer_execution_outlives_its_final_until_the_owned_future_finishes() {
     ));
     assert!(completed.load(std::sync::atomic::Ordering::SeqCst));
 }
+
+#[test]
+fn terminal_items_carry_the_original_answer_in_one_observer_call() {
+    use crate::message::{AssistantContent, DocumentSourceKind, Image};
+    type Observation = (
+        Result<StreamEvent, ErrorReport>,
+        Option<Result<Outcome, ErrorReport>>,
+    );
+    struct AtomicObserver(Arc<Mutex<Vec<Observation>>>);
+    impl Observe for AtomicObserver {
+        fn outcome(&mut self, _: &Result<Outcome, ErrorReport>) {
+            panic!("a terminal item must carry its answer in stream_item");
+        }
+        fn keep_events(&self) -> bool {
+            true
+        }
+        fn event(&mut self, _: &StreamEvent) {
+            panic!("separate event callback");
+        }
+        fn stream_error(&mut self, _: &ErrorReport) {
+            panic!("separate error callback");
+        }
+        fn stream_item(
+            &mut self,
+            item: &Result<StreamEvent, ErrorReport>,
+            outcome: Option<&Result<Outcome, ErrorReport>>,
+        ) {
+            self.0
+                .lock()
+                .expect("observations")
+                .push((item.clone(), outcome.cloned()));
+        }
+        fn discard(&mut self) {}
+        fn patch(&mut self, _: &EffectKind) {}
+    }
+    let response = CompletionResponse::new(
+        vec![AssistantContent::Image(Image {
+            data: DocumentSourceKind::base64("aW1hZ2U="),
+            ..Image::default()
+        })],
+        Default::default(),
+        "image-provider",
+    );
+    let original = Ok(Outcome::Completion(response));
+    let error = ErrorReport::new(ErrorKind::Response, "first error");
+    let final_event = Ok(StreamEvent::Final(StreamFinal::new(
+        "test",
+        Default::default(),
+    )));
+    let after = Ok(StreamEvent::Unknown(crate::streaming::UnknownPayload::new(
+        serde_json::json!({"after": true}),
+    )));
+    let terminal_answer = StreamTap::new()
+        .observe(&final_event)
+        .expect("terminal folds");
+    let cases = [
+        (Reply::Outcome(original.clone()), original),
+        (
+            Reply::Stream(Box::pin(futures::stream::iter(vec![
+                final_event.clone(),
+                after.clone(),
+                Err(error.clone()),
+            ]))),
+            terminal_answer,
+        ),
+        (
+            Reply::Stream(Box::pin(futures::stream::iter(vec![
+                Err(error.clone()),
+                final_event,
+                after,
+            ]))),
+            Err(error),
+        ),
+    ];
+    for (reply, expected) in cases {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let reply = reply.observed(
+            true,
+            Some(Observed {
+                observer: Box::new(AtomicObserver(calls.clone())),
+                told: false,
+            }),
+            None,
+        );
+        let delivered = block_on(reply.into_stream().collect::<Vec<_>>());
+        let calls = calls.lock().expect("observations");
+        assert_eq!(calls.len(), delivered.len());
+        let answers: Vec<_> = calls
+            .iter()
+            .filter_map(|(item, answer)| answer.as_ref().map(|answer| (item, answer)))
+            .collect();
+        assert_eq!(answers.len(), 1);
+        assert!(matches!(answers[0].0, Ok(StreamEvent::Final(_)) | Err(_)));
+        assert_eq!(
+            serde_json::to_value(answers[0].1).expect("answer"),
+            serde_json::to_value(expected).expect("expected")
+        );
+    }
+}

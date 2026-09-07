@@ -1,7 +1,7 @@
 //! Controlled adapter delivery for canonical runs. Provider HTTP chunks are
 //! drained independently; a host release gates complete groups of StreamEvents
-//! for direct collection, one item per Collect. Empty scheduling passes are not
-//! observable inputs. The consumer still makes every decision after Collect.
+//! before collection. Empty scheduling passes are not observable inputs. The
+//! consumer still makes every decision after Collect.
 
 use bevy_ecs::prelude::*;
 use futures::{StreamExt, channel::oneshot};
@@ -10,7 +10,7 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
     serve::{Dispatch, Reply, Serve},
 };
-use rig_ecs::bus::{Issued, Serving};
+use rig_ecs::bus::{InFlight, Issued, Serving, Streaming};
 use std::{
     collections::BTreeMap,
     sync::{
@@ -26,6 +26,7 @@ struct Slot {
     release: Option<oneshot::Sender<()>>,
     consumed: Option<oneshot::Sender<()>>,
     queued: Arc<AtomicBool>,
+    terminal: bool,
 }
 
 pub(super) struct Scheduled<S> {
@@ -39,6 +40,7 @@ impl DeliveryControl {
     fn insert(
         &self,
         id: u64,
+        terminal: bool,
     ) -> Option<(
         oneshot::Receiver<()>,
         oneshot::Receiver<()>,
@@ -53,13 +55,14 @@ impl DeliveryControl {
                 release: Some(release),
                 consumed: Some(consumed),
                 queued: queued.clone(),
+                terminal,
             },
         );
         Some((go, ack, queued))
     }
 
     /// Release every currently buffered producer. A second call only polls
-    /// the same group; it cannot advance it until Collect has consumed it.
+    /// the same group; it cannot advance it until the host acknowledges a pass.
     pub fn release(&self) {
         if let Ok(mut slots) = self.0.lock() {
             for slot in slots.values_mut() {
@@ -71,18 +74,28 @@ impl DeliveryControl {
     }
 
     pub fn ready(&self, world: &mut World) -> bool {
-        let mut query = world.query::<(Entity, &Issued, Option<&Serving>)>();
+        let mut query = world.query_filtered::<
+            (Entity, &Issued, Option<&Serving>, Option<&Streaming>),
+            With<InFlight>,
+        >();
         let executions = world.non_send::<rig_ecs::bus::effect::Executions>();
         let states: BTreeMap<_, _> = query
             .iter(world)
-            .map(|(entity, issued, serving)| {
+            .map(|(entity, issued, serving, streaming)| {
                 (
                     issued.0.as_u64(),
-                    serving.is_none()
-                        || executions
-                            .tasks
-                            .get(&entity)
-                            .is_none_or(|task| task.is_finished()),
+                    (
+                        serving.is_none()
+                            || executions
+                                .tasks
+                                .get(&entity)
+                                .is_none_or(|task| task.is_finished()),
+                        streaming.is_some()
+                            && executions
+                                .streams
+                                .get(&entity)
+                                .is_some_and(|task| !task.is_finished()),
+                    ),
                 )
             })
             .collect();
@@ -91,9 +104,20 @@ impl DeliveryControl {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         slots.retain(|id, _| states.contains_key(id));
-        // Initial IO can finish between host passes. Returned stream work
-        // must be driven by those passes, including while awaiting a gate.
-        states.values().all(|ready| *ready)
+        // Worker scheduling must not split a fixture's release group across
+        // observable Collect passes. Wait through the gap between acknowledging
+        // one group and the worker registering the next, as well as its sends.
+        // For the terminal group, queued precedes worker EOF; wait for the task
+        // to finish so outcome delivery cannot race receiver closure.
+        states.iter().all(|(id, (setup_ready, active_stream))| {
+            *setup_ready
+                && (!active_stream
+                    || slots
+                        .get(id)
+                        .is_some_and(|slot| !slot.terminal && slot.queued.load(Ordering::SeqCst)))
+        }) && slots
+            .values()
+            .all(|slot| slot.queued.load(Ordering::SeqCst))
     }
 
     pub fn collected(&self) {
@@ -126,7 +150,7 @@ impl<S: Serve + 'static> Serve for Scheduled<S> {
         let reply = self.handler.serve(kind, dispatch).await;
         if !streaming {
             let outcome = reply.into_outcome().await;
-            let Some((go, _, queued)) = self.control.insert(id) else {
+            let Some((go, _, queued)) = self.control.insert(id, true) else {
                 return Reply::Outcome(Err(rig_core::serve::cancelled()));
             };
             if go.await.is_err() {
@@ -173,7 +197,7 @@ impl<S: Serve + 'static> Serve for Scheduled<S> {
             let count = groups.len();
             for (index, group) in groups.into_iter().enumerate() {
                 let terminal = index + 1 == count;
-                let Some((go, ack, queued)) = control.insert(id) else {
+                let Some((go, ack, queued)) = control.insert(id, terminal) else {
                     return;
                 };
                 if go.await.is_err() {

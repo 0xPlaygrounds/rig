@@ -128,20 +128,26 @@ delivery mode and scopes. Adapters retain their domain traits. `Reply::written`
 provides a writer whose future and bounded private receiver are polled together;
 `deferred()` provides an external resolver and the future a handler awaits.
 
-The initial handler task prepares the reply. Collect then polls each returned
-stream once per invocation with a no-op waker. Pending, including a self-wake,
-needs another host pass: keep ticking while effects remain in flight.
-Quiescence is not completion. Unrelated progress can cause several Collect
-invocations within a host tick, up to the existing quiescence cap; deltas alone
-do not keep that loop running.
+The initial task prepares the reply and folds unary requests on the executor.
+For streaming requests, one owned worker polls the stream into a bounded private
+queue. Native parsing, writer work and streamed verdicts run on pool threads;
+browser `!Send` work uses Bevy’s web executor and cannot preempt synchronous work
+on the browser thread. Keep ticking to collect ready delivery and settle effects.
 
-Provider parsing, writer work and streamed layer verdict futures run on the
-collecting thread. One poll bounds neither CPU time nor payload bytes. There is
-no per-item task, driver prefetch, batch size or wake-driven scheduler. Native
-`Send` streams and browser `!Send` streams share effect-owned non-send storage;
-removing `InFlight`, despawning or dropping the world drops that execution.
-Handler replacement leaves already-owned work intact. Streaming serial slots
-last through EOF and layer work, including frames after `Final`.
+Collect drains at most 64 items per effect per pass, sharing 4,096 queue checks
+across all quiescence passes in one host tick. It rotates through dispatch order
+when that allowance runs out. Deltas alone do not keep quiescence running. These
+limits bound streaming delivery work, not CPU time, payload bytes, or the cost
+of user systems. A direct `RigSchedule` invocation gets one fresh allowance.
+
+`stream_capacity` supplies the queue's shared slots, clamped to at least one;
+the single sender has one additional reserved slot. The worker awaits each send
+before polling again. The writer's own bridge is separate. Task handles remain
+in effect-owned storage. Removing `InFlight`, despawning or dropping the world
+cancels those tasks, including a worker parked on a full queue. An active native
+poll can finish before cancellation drops its future; closed recordings reject
+its late observations. Handler replacement leaves already-owned work intact.
+Streaming serial slots last through EOF and layer work after `Final`.
 
 Recording keeps the original handler answer and events through layer verdicts.
 A recorded answer can survive cancellation while a verdict waits; recording an
@@ -169,11 +175,11 @@ still publish tool output before reaching `EffectOutcome` and shared settlement.
 | the record | `Recording` (any `rig_core::serve::Recorder`); `EffectLogResource` under `replay`; for every task-served handler, `Dispatch` installs a recording observer (`WorldObserver`, its slots in `Observed`) so a layer's `discard` and `patch` reach the record and the record keeps the innermost handler's answer |
 | a scene | `Scene::{save, load, first_gap}` |
 | replay | `Replay::{register, load}`, by id |
-| the policy | `Policy(ServingPolicy)`: intake per tick and serial keys; `stream_capacity` bounds rig-agent consumer queues |
+| the policy | `Policy(ServingPolicy)`: intake per tick and serial keys; `stream_capacity` bounds driver delivery queues |
 
 ## The schedule
 
-`Bus::install` (or `install_bus`) adds `RigSchedule` with four sets in order to a `World`; the host runs it to quiescence by calling `run_to_quiescence` once per tick from the schedule or loop it owns (while a bus system marks `Progress`, at most `QUIESCENCE_CAP` passes). The crate depends on `bevy_ecs` and `bevy_tasks` only: no `App`, no `bevy_app`. Users add their systems to `RigSchedule`, ordered against the sets, never beside the runner.
+`Bus::install` (or `install_bus`) adds `RigSchedule` with four sets in order to a `World`; the host runs it to quiescence by calling `run_to_quiescence` once per tick from the schedule or loop it owns (while a bus system marks `Progress`, at most `QUIESCENCE_CAP` passes). The base bus uses `bevy_ecs`, `bevy_tasks` and a private `futures` delivery queue; it does not require an `App`. Users add their systems to `RigSchedule`, ordered against the sets, never beside the runner.
 
 | set | true before | written during |
 |---|---|---|

@@ -107,8 +107,14 @@ impl Recording {
 pub struct DeliveryBatch(pub u64);
 
 /// Begin the next pass's observation group.
-pub fn begin_delivery_pass(mut batch: ResMut<DeliveryBatch>) {
+pub fn begin_delivery_pass(
+    mut batch: ResMut<DeliveryBatch>,
+    mut budget: ResMut<super::collect::CollectionBudget>,
+) {
     batch.0 += 1;
+    if !budget.in_runner {
+        budget.remaining = super::collect::STREAM_WORK_PER_TICK;
+    }
 }
 
 /// Record visibility when the outcome is inserted, not later when a query
@@ -140,30 +146,39 @@ pub struct Observed(pub Arc<ObservedState>);
 /// The observer's slots.
 #[derive(Default)]
 pub struct ObservedState {
-    outcome: std::sync::Mutex<Option<Result<Outcome, ErrorReport>>>,
-    discarded: std::sync::atomic::AtomicBool,
+    state: std::sync::Mutex<Observation>,
+}
+
+#[derive(Default)]
+struct Observation {
+    outcome: Option<Result<Outcome, ErrorReport>>,
+    discarded: bool,
+    closed: bool,
 }
 
 impl ObservedState {
-    /// The handler's outcome, if the observer was told one.
-    pub fn take_outcome(&self) -> Option<Result<Outcome, ErrorReport>> {
-        self.outcome
+    fn lock(&self) -> std::sync::MutexGuard<'_, Observation> {
+        self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take()
+    }
+
+    /// Close observation and take the original answer. No later worker callback
+    /// can modify recording after this boundary, even if its poll was in progress.
+    pub fn take_outcome(&self) -> Option<Result<Outcome, ErrorReport>> {
+        let mut state = self.lock();
+        state.closed = true;
+        state.outcome.take()
     }
 
     /// Whether the original handler answer has been observed.
     pub fn has_outcome(&self) -> bool {
-        self.outcome
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .is_some()
+        self.lock().outcome.is_some()
     }
 
     /// Whether a layer discarded the dispatch.
     pub fn is_discarded(&self) -> bool {
-        self.discarded.load(std::sync::atomic::Ordering::SeqCst)
+        self.lock().discarded
     }
 }
 
@@ -183,8 +198,8 @@ pub struct WorldObserver {
     pub observed: Arc<ObservedState>,
 }
 
-impl rig_core::serve::Observe for WorldObserver {
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+impl WorldObserver {
+    fn record_answer(&self, state: &mut Observation, outcome: &Result<Outcome, ErrorReport>) {
         if let (Some(recording), Some(output)) = (
             &self.recording,
             self.published
@@ -193,43 +208,83 @@ impl rig_core::serve::Observe for WorldObserver {
         ) {
             recording.tool_output(self.id, output);
         }
-        *self
-            .observed
-            .outcome
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(outcome.clone());
+        state.outcome = Some(outcome.clone());
     }
 
-    // A stream's events are recorded from the innermost hop, as its
-    // outcome is: a layer's verdict may replace what the outer reply
-    // carries after them (its terminal record among it).
+    fn record_item(&self, item: &Result<StreamEvent, ErrorReport>) {
+        if let Some(recording) = &self.recording
+            && recording.keep_events()
+        {
+            match item {
+                Ok(event) => recording.event(self.id, event),
+                Err(error) => recording.stream_error(self.id, error),
+            }
+        }
+    }
+}
+
+impl rig_core::serve::Observe for WorldObserver {
+    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+        let mut state = self.observed.lock();
+        if !state.closed {
+            self.record_answer(&mut state, outcome);
+        }
+    }
+
     fn keep_events(&self) -> bool {
         self.recording.as_ref().is_some_and(Recording::keep_events)
     }
 
+    fn stream_item(
+        &mut self,
+        item: &Result<StreamEvent, ErrorReport>,
+        outcome: Option<&Result<Outcome, ErrorReport>>,
+    ) {
+        // Source polling and folding happen before this lock. Only observation
+        // is atomic with cancellation, so arbitrary handler work cannot hold it.
+        let mut state = self.observed.lock();
+        if state.closed {
+            return;
+        }
+        self.record_item(item);
+        if let Some(outcome) = outcome {
+            self.record_answer(&mut state, outcome);
+        }
+    }
+
     fn event(&mut self, event: &StreamEvent) {
-        if let Some(recording) = &self.recording {
+        let state = self.observed.lock();
+        if !state.closed
+            && let Some(recording) = &self.recording
+        {
             recording.event(self.id, event);
         }
     }
 
     fn stream_error(&mut self, error: &ErrorReport) {
-        if let Some(recording) = &self.recording {
+        let state = self.observed.lock();
+        if !state.closed
+            && let Some(recording) = &self.recording
+        {
             recording.stream_error(self.id, error);
         }
     }
 
     fn discard(&mut self) {
-        self.observed
-            .discarded
-            .store(true, std::sync::atomic::Ordering::SeqCst);
-        if let Some(recording) = &self.recording {
-            recording.discard(self.id);
+        let mut state = self.observed.lock();
+        if !state.closed {
+            state.discarded = true;
+            if let Some(recording) = &self.recording {
+                recording.discard(self.id);
+            }
         }
     }
 
     fn patch(&mut self, kind: &EffectKind) {
-        if let Some(recording) = &self.recording {
+        let state = self.observed.lock();
+        if !state.closed
+            && let Some(recording) = &self.recording
+        {
             recording.patch(self.id, kind.clone());
         }
     }
@@ -259,10 +314,10 @@ pub fn record_cancelled(
     if let Ok((Issued(id), None, publishing, outputs, observed)) =
         effects.get(removed.event().entity)
     {
+        let original = observed.and_then(|observed| observed.0.take_outcome());
         if observed.is_some_and(|observed| observed.0.is_discarded()) {
             return;
         }
-        let original = observed.and_then(|observed| observed.0.take_outcome());
         let output = publishing
             .and_then(|published| published.0.result_context())
             .or_else(|| outputs.map(|outputs| outputs.0.result_context()));
@@ -295,3 +350,6 @@ pub fn record_bound(
         recording.handlers(vec![bound.descriptor.clone()]);
     }
 }
+
+#[cfg(all(test, feature = "replay"))]
+mod tests;

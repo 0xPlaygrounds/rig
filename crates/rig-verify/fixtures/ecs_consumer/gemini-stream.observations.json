@@ -3,22 +3,6 @@
     "boundary": "collect.stream",
     "effect": 0,
     "data": {
-      "events": 1,
-      "text": ""
-    }
-  },
-  {
-    "boundary": "collect.stream",
-    "effect": 0,
-    "data": {
-      "events": 2,
-      "text": ""
-    }
-  },
-  {
-    "boundary": "collect.stream",
-    "effect": 0,
-    "data": {
       "events": 3,
       "text": ""
     }
@@ -114,22 +98,6 @@
         "path": "greeting.txt",
         "content": "Helo, Rig!\n"
       }
-    }
-  },
-  {
-    "boundary": "collect.stream",
-    "effect": 2,
-    "data": {
-      "events": 1,
-      "text": ""
-    }
-  },
-  {
-    "boundary": "collect.stream",
-    "effect": 2,
-    "data": {
-      "events": 2,
-      "text": ""
     }
   },
   {
@@ -232,22 +200,6 @@
     "boundary": "collect.stream",
     "effect": 4,
     "data": {
-      "events": 1,
-      "text": ""
-    }
-  },
-  {
-    "boundary": "collect.stream",
-    "effect": 4,
-    "data": {
-      "events": 2,
-      "text": ""
-    }
-  },
-  {
-    "boundary": "collect.stream",
-    "effect": 4,
-    "data": {
       "events": 3,
       "text": ""
     }
@@ -334,22 +286,6 @@
           }
         }
       }
-    }
-  },
-  {
-    "boundary": "collect.stream",
-    "effect": 6,
-    "data": {
-      "events": 1,
-      "text": ""
-    }
-  },
-  {
-    "boundary": "collect.stream",
-    "effect": 6,
-    "data": {
-      "events": 2,
-      "text": ""
     }
   },
   {
@@ -463,22 +399,6 @@
     "boundary": "collect.stream",
     "effect": 8,
     "data": {
-      "events": 1,
-      "text": ""
-    }
-  },
-  {
-    "boundary": "collect.stream",
-    "effect": 8,
-    "data": {
-      "events": 2,
-      "text": ""
-    }
-  },
-  {
-    "boundary": "collect.stream",
-    "effect": 8,
-    "data": {
       "events": 3,
       "text": ""
     }
@@ -563,30 +483,6 @@
           }
         }
       }
-    }
-  },
-  {
-    "boundary": "collect.stream",
-    "effect": 10,
-    "data": {
-      "events": 1,
-      "text": ""
-    }
-  },
-  {
-    "boundary": "collect.stream",
-    "effect": 10,
-    "data": {
-      "events": 2,
-      "text": "The typo in"
-    }
-  },
-  {
-    "boundary": "collect.stream",
-    "effect": 10,
-    "data": {
-      "events": 3,
-      "text": "The typo in greeting.txt was fixed. The file now says \"Hello, Rig!\"."
     }
   },
   {

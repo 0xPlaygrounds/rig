@@ -6,7 +6,7 @@ use rig_core::{
     serve::{Reply, stream_truncated},
     streaming::{Delta, StreamEvent},
 };
-use std::task::{Context, Poll, Waker};
+use std::task::Poll;
 
 use super::{
     effect::{
@@ -16,6 +16,30 @@ use super::{
     plugin::Progress,
     record::{DeliveryBatch, Observed, Recording},
 };
+
+/// Maximum live streaming queue checks across a host tick.
+pub const STREAM_WORK_PER_TICK: usize = 4096;
+const STREAM_ITEMS_PER_EFFECT: usize = 64;
+
+/// Streaming delivery allowance shared by all quiescence passes in one host tick.
+/// The sequence cursor rotates service when the allowance runs out.
+#[derive(Resource)]
+pub struct CollectionBudget {
+    /// Queue checks left in the current allowance.
+    pub remaining: usize,
+    /// Whether collection belongs to the shared quiescence loop.
+    pub in_runner: bool,
+    last: Option<super::Seq>,
+}
+impl Default for CollectionBudget {
+    fn default() -> Self {
+        Self {
+            remaining: STREAM_WORK_PER_TICK,
+            in_runner: false,
+            last: None,
+        }
+    }
+}
 
 /// Marker for a library collector's outcome insertion. Removed by settlement;
 /// direct in-flight insertions without it cannot establish policy replay.
@@ -51,6 +75,7 @@ pub fn collect_world(
 pub fn collect_tasks(
     mut commands: Commands,
     serving: Query<(Entity, &Serving, Option<&Publishing>), With<InFlight>>,
+    policy: Res<super::Policy>,
     mut executions: NonSendMut<Executions>,
     mut progress: ResMut<Progress>,
 ) {
@@ -78,16 +103,21 @@ pub fn collect_tasks(
                 progress.mark();
             }
             Reply::Stream(stream) => {
-                executions.streams.insert(entity, stream);
-                entity_commands.insert(Streaming::default());
+                let (streaming, task) = Streaming::spawn(stream, policy.0.stream_capacity);
+                executions.streams.insert(entity, task);
+                entity_commands.insert(streaming);
             }
         }
     }
 }
 
-/// Poll each owned stream once and fold the returned item. The first folded
+/// Drain bounded worker delivery and fold each item. The first folded
 /// outcome is retained; streaming effects settle at EOF, including post-final
 /// metadata and errors. Pending waits for the host's next Collect invocation.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one collection pass shares driver state and its work allowance"
+)]
 pub fn collect_streams(
     mut commands: Commands,
     mut streaming: Query<StreamingView, With<InFlight>>,
@@ -95,78 +125,105 @@ pub fn collect_streams(
     recording: Option<Res<Recording>>,
     batch: Res<DeliveryBatch>,
     mut progress: ResMut<Progress>,
+    mut budget: ResMut<CollectionBudget>,
+    mut order: Local<Vec<(super::Seq, Entity)>>,
 ) {
-    let mut cx = Context::from_waker(Waker::noop());
-    for (entity, Issued(id), mut streaming, mut streamed, publishing) in &mut streaming {
-        let Some(stream) = executions.streams.get_mut(&entity) else {
+    order.clear();
+    order.extend(streaming.iter().map(|(entity, seq, ..)| (*seq, entity)));
+    order.sort_unstable_by_key(|(seq, _)| *seq);
+    let start = budget
+        .last
+        .map_or(0, |last| order.partition_point(|(seq, _)| *seq <= last));
+    for &(seq, entity) in order.iter().cycle().skip(start).take(order.len()) {
+        if budget.remaining == 0 {
+            break;
+        }
+        budget.last = Some(seq);
+        let Ok((_, _, Issued(id), mut streaming, mut streamed, publishing)) =
+            streaming.get_mut(entity)
+        else {
             continue;
         };
-        // One call to the outer stream per Collect invocation. Pending relies
-        // on the host's next pass; this waker does not schedule the world.
-        let polled = stream.as_mut().poll_next(&mut cx);
-        let outcome = match polled {
-            Poll::Pending => continue,
-            Poll::Ready(Some(item)) => {
-                if let Some(streamed) = &mut streamed {
-                    if let Err(error) = &item {
-                        let position = streamed.events.len() + streamed.errors.len();
-                        streamed.errors.push((position, error.clone()));
-                    }
-                    if streamed.outcome.is_none()
-                        && let Some(outcome) = streaming.fold.observe(&item)
-                    {
-                        streamed.outcome = Some(outcome);
-                        progress.mark();
-                    }
-                    if let Ok(event) = item {
-                        if let StreamEvent::BlockDelta {
-                            delta: Delta::Text { text },
-                            ..
-                        } = &event
-                        {
-                            streamed.text.push_str(text);
+        let mut delivered = 0;
+        for _ in 0..STREAM_ITEMS_PER_EFFECT {
+            if budget.remaining == 0 {
+                break;
+            }
+            budget.remaining -= 1;
+            let polled = match streaming.events.try_recv() {
+                Ok(item) => Poll::Ready(Some(item)),
+                Err(futures::channel::mpsc::TryRecvError::Empty) => Poll::Pending,
+                Err(futures::channel::mpsc::TryRecvError::Closed) => Poll::Ready(None),
+            };
+            let outcome = match polled {
+                Poll::Pending => break,
+                Poll::Ready(Some(item)) => {
+                    if let Some(streamed) = &mut streamed {
+                        if let Err(error) = &item {
+                            let position = streamed.events.len() + streamed.errors.len();
+                            streamed.errors.push((position, error.clone()));
                         }
-                        streamed.events.push(event);
+                        if streamed.outcome.is_none()
+                            && let Some(outcome) = streaming.fold.observe(&item)
+                        {
+                            streamed.outcome = Some(outcome);
+                            progress.mark();
+                        }
+                        if let Ok(event) = item {
+                            if let StreamEvent::BlockDelta {
+                                delta: Delta::Text { text },
+                                ..
+                            } = &event
+                            {
+                                streamed.text.push_str(text);
+                            }
+                            streamed.events.push(event);
+                        }
+                        delivered += 1;
+                        continue;
                     }
-                    if let Some(recording) = &recording {
-                        recording.delivery(
-                            batch.0,
-                            *id,
-                            rig_core::effect::DeliveryKind::Stream { items: 1 },
-                        );
-                    }
-                    continue;
+                    // A unary request answered by a stream ends at the first fold.
+                    let Some(outcome) = streaming.fold.observe(&item) else {
+                        continue;
+                    };
+                    outcome
                 }
-                // A unary request answered by a stream ends at the first fold.
-                let Some(outcome) = streaming.fold.observe(&item) else {
-                    continue;
-                };
-                outcome
+                Poll::Ready(None) => streamed
+                    .as_ref()
+                    .and_then(|streamed| streamed.outcome.clone())
+                    .unwrap_or_else(|| Err(stream_truncated())),
+            };
+            executions.streams.remove(&entity);
+            let mut entity_commands = commands.entity(entity);
+            if let Some(Publishing(published)) = publishing {
+                entity_commands.remove::<Publishing>();
+                if let Some(context) = published.take() {
+                    entity_commands.insert(ToolOutputs(context));
+                }
             }
-            Poll::Ready(None) => streamed
-                .as_ref()
-                .and_then(|streamed| streamed.outcome.clone())
-                .unwrap_or_else(|| Err(stream_truncated())),
-        };
-        executions.streams.remove(&entity);
-        let mut entity_commands = commands.entity(entity);
-        if let Some(Publishing(published)) = publishing {
-            entity_commands.remove::<Publishing>();
-            if let Some(context) = published.take() {
-                entity_commands.insert(ToolOutputs(context));
-            }
+            entity_commands
+                .remove::<Streaming>()
+                .insert(CollectedOutcome)
+                .insert(EffectOutcome(outcome));
+            progress.mark();
+            break;
         }
-        entity_commands
-            .remove::<Streaming>()
-            .insert(CollectedOutcome)
-            .insert(EffectOutcome(outcome));
-        progress.mark();
+        if delivered != 0
+            && let Some(recording) = &recording
+        {
+            recording.delivery(
+                batch.0,
+                *id,
+                rig_core::effect::DeliveryKind::Stream { items: delivered },
+            );
+        }
     }
 }
 
 /// The effect's delivery fold and optional streamed consumer state.
 pub type StreamingView = (
     Entity,
+    &'static super::Seq,
     &'static Issued,
     &'static mut Streaming,
     Option<&'static mut Streamed>,
@@ -199,10 +256,10 @@ pub fn settle(
         // A layered handler: the record holds what the innermost handler
         // answered (the observer's), never a layer's verdict; a dispatch a
         // layer discarded is no record.
-        let discarded = observed.is_some_and(|observed| observed.0.is_discarded());
         let recorded = observed
             .and_then(|observed| observed.0.take_outcome())
             .unwrap_or_else(|| outcome.0.clone());
+        let discarded = observed.is_some_and(|observed| observed.0.is_discarded());
         if let (Some(recording), false) = (&recording, discarded) {
             // Layered dispatches captured output at the inner handler's
             // terminal, before an outer verdict could change it.

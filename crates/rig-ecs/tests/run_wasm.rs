@@ -60,8 +60,7 @@ fn app(log: &EffectLog) -> (App, Entity) {
 
 async fn tick(app: &mut App) {
     run_to_quiescence(app.world_mut());
-    bevy_tasks::futures_lite::future::yield_now().await;
-    bevy_tasks::tick_global_task_pools_on_main_thread();
+    rig_core::wasm_compat::sleep(std::time::Duration::from_millis(1)).await;
 }
 
 async fn settle(app: &mut App, run: Entity) -> String {

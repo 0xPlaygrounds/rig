@@ -130,18 +130,20 @@ fn rig_ecs_is_rig_core_and_bevy_only() {
         .filter(|dependency| dependency["kind"].is_null())
         .map(|dependency| dependency["name"].as_str().expect("dependency name"))
         .collect();
-    for forbidden in [
-        "tracing",
-        "schemars",
-        "futures",
-        "futures-channel",
-        "async-channel",
-    ] {
+    for forbidden in ["tracing", "schemars", "futures-channel", "async-channel"] {
         assert!(
             !direct.contains(&forbidden),
             "rig-ecs must not depend directly on {forbidden}"
         );
     }
+    assert!(
+        direct.contains(&"futures"),
+        "ECS owns a bounded private delivery queue"
+    );
+    assert!(
+        direct.contains(&"bevy_platform"),
+        "browser task driving selects the web runtime explicitly"
+    );
     assert!(
         direct.contains(&"bevy_tasks"),
         "rig-ecs directly owns handler tasks"

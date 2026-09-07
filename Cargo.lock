@@ -10571,6 +10571,7 @@ dependencies = [
  "bevy_app",
  "bevy_asset",
  "bevy_ecs",
+ "bevy_platform",
  "bevy_reflect",
  "bevy_tasks",
  "futures",
