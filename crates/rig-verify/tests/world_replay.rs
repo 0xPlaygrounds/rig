@@ -28,11 +28,11 @@
 
 use std::time::{Duration, Instant};
 
-use bevy_app::App;
+use bevy_app::{App, Update};
 use bevy_ecs::schedule::LogLevel;
 use rig_core::serve::ServingPolicy;
 use rig_ecs::bus::{
-    BusPlugin, EffectLogResource, EffectOutcome, Handlers, Issued, Replay, Streamed,
+    Bus, EffectLogResource, EffectOutcome, Handlers, Issued, Replay, Streamed, run_to_quiescence,
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder};
 
@@ -72,7 +72,10 @@ fn world(log: &EffectLog) -> App {
         command_capacity: 10_000,
         ..log.header.bus.unwrap_or_default()
     };
-    app.add_plugins(BusPlugin::with_policy(policy).ambiguity_detection(LogLevel::Error));
+    Bus::with_policy(policy)
+        .ambiguity_detection(LogLevel::Error)
+        .install(app.world_mut());
+    app.add_systems(Update, run_to_quiescence);
     app.finish();
     app.cleanup();
     app

@@ -42,7 +42,7 @@ use rig_core::{
     streaming::StreamFinal,
 };
 use rig_ecs::bus::{
-    BusPlugin, EffectOutcome, Handlers, InFlight, PendingEffect, Streamed, run_to_quiescence,
+    Bus, EffectOutcome, Handlers, InFlight, PendingEffect, Streamed, run_to_quiescence,
 };
 use wasm_bindgen_test::wasm_bindgen_test;
 
@@ -120,15 +120,15 @@ fn request() -> CompletionRequest {
 }
 
 fn app() -> App {
-    // The plugin initialises the IO pool it spawns on; the test ticks the
+    // The bus initialises the IO pool it spawns on; the test ticks the
     // pools the way `bevy_app`'s `TaskPoolPlugin` would, which needs the
     // other two initialised as well.
     bevy_tasks::ComputeTaskPool::get_or_init(bevy_tasks::TaskPool::default);
     bevy_tasks::AsyncComputeTaskPool::get_or_init(bevy_tasks::TaskPool::default);
     let mut app = App::new();
-    app.add_plugins(
-        BusPlugin::with_policy(ServingPolicy::default()).ambiguity_detection(LogLevel::Error),
-    );
+    Bus::with_policy(ServingPolicy::default())
+        .ambiguity_detection(LogLevel::Error)
+        .install(app.world_mut());
     app.finish();
     app.cleanup();
     app

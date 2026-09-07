@@ -91,31 +91,29 @@ fn rig_effect_log_depends_on_rig_core_only() {
 /// and rig-effect-log (the `replay` feature), never rig-agent — its driver
 /// is a system, not a client of rig-agent's bus, and the agent half is a
 /// rewrite held to rig-agent's bytes by the corpus alone — never the `bevy` facade, no
-/// runtime, no transport, no MCP. Reflection and assets are features:
+/// runtime, no transport, no MCP. On the Bevy side exactly `bevy_ecs` and
+/// `bevy_tasks`: the bus installs into a `World` and the host owns the
+/// loop, so `bevy_app` is absent by default and joins only with `assets`
+/// (`bevy_asset` is built on it). Reflection and assets are features:
 /// `bevy_reflect` and `bevy_asset` are absent by default and present with
 /// every feature on (programme stage 6), and nothing else joins either way.
 #[test]
 fn rig_ecs_is_rig_core_and_bevy_only() {
     let forbidden = ["rig-agent", "rig-rmcp", "rmcp", "bevy", "tokio", "reqwest"];
     assert_absent("rig-ecs", &[], &forbidden);
-    assert_absent("rig-ecs", &[], &["bevy_reflect", "bevy_asset"]);
+    assert_absent("rig-ecs", &[], &["bevy_app", "bevy_reflect", "bevy_asset"]);
     assert_absent("rig-ecs", &["--all-features"], &forbidden);
+    assert_absent("rig-ecs", &["--features", "reflect"], &["bevy_app"]);
     assert_absent("rig-ecs", &["--no-default-features"], &["rig-effect-log"]);
     let names = normal_dependency_names("rig-ecs", &[]);
-    for required in [
-        "rig-core",
-        "rig-effect-log",
-        "bevy_ecs",
-        "bevy_tasks",
-        "bevy_app",
-    ] {
+    for required in ["rig-core", "rig-effect-log", "bevy_ecs", "bevy_tasks"] {
         assert!(
             names.iter().any(|name| name == required),
             "`rig-ecs` must depend on `{required}`"
         );
     }
     let with_features = normal_dependency_names("rig-ecs", &["--all-features"]);
-    for feature_dependency in ["bevy_reflect", "bevy_asset"] {
+    for feature_dependency in ["bevy_reflect", "bevy_asset", "bevy_app"] {
         assert!(
             with_features.iter().any(|name| name == feature_dependency),
             "`rig-ecs` (--all-features) must depend on `{feature_dependency}`"

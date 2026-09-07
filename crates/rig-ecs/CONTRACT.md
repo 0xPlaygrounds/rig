@@ -310,7 +310,7 @@ and held requests can await another update or host input. A refusal installs
 through to ordinary collection and exposing unpaced successful answers.
 Hosts driving `RigSchedule` directly must reset `Progress` before each pass
 and call `bus::delivery::diagnose_idle_replay` after a complete pass reports no
-progress; the standard `Update` runner does this automatically.
+progress; `run_to_quiescence`, which the host calls once per tick, does this.
 
 Policy observers may use `On<Add, EffectOutcome>` or systems ordered after
 all of `BusSet::Collect`, preserving their relevant live/replay ordering.

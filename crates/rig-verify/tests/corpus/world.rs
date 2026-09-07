@@ -12,7 +12,7 @@
 
 use std::time::{Duration, Instant};
 
-use bevy_app::App;
+use bevy_app::{App, Update};
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{
     effect::{EffectFamily, HandlerKey},
@@ -26,9 +26,12 @@ use rig_ecs::{
         Owner, Preamble, Remembers, Retrievable, Retrieval, RetrievalKind, Retrieves, RunResult,
         Settled, Temperature, ToolChoiceSpec, ToolPolicy, Unhandled as WorldUnhandled, UsesModel,
     },
-    bus::{BusPlugin, EffectLogResource, EffectOutcome, Handlers, IdCounter, PendingEffect},
+    bus::{
+        Bus, EffectLogResource, EffectOutcome, Handlers, IdCounter, PendingEffect,
+        run_to_quiescence,
+    },
     replay::stamp_header,
-    systems::{AgentPlugin, spawn_run},
+    systems::{install_agent, spawn_run},
 };
 use rig_effect_log::{EffectLogRecorder, EffectLogReplayer, RequestCheck};
 
@@ -74,14 +77,14 @@ pub(super) fn open(
             .build()
     });
     let mut app = App::new();
-    app.add_plugins((
-        BusPlugin::with_policy(ServingPolicy {
-            command_capacity: 1_000,
-            ..policy
-        })
-        .ambiguity_detection(LogLevel::Error),
-        AgentPlugin::default(),
-    ));
+    Bus::with_policy(ServingPolicy {
+        command_capacity: 1_000,
+        ..policy
+    })
+    .ambiguity_detection(LogLevel::Error)
+    .install(app.world_mut());
+    install_agent(app.world_mut());
+    app.add_systems(Update, run_to_quiescence);
     app.finish();
     app.cleanup();
     let world = app.world_mut();

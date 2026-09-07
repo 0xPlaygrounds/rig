@@ -27,8 +27,10 @@ use bevy_ecs::prelude::*;
 use rig_core::message::AssistantContent;
 use rig_ecs::{
     agent::{Grant, Run},
-    assets::{Applied, AssetsPlugin, Prompt, PromptHandle, ToolDefinitions, ToolsHandle},
-    bus::Handlers,
+    assets::{
+        Applied, AssetsPlugin, AssetsSet, Prompt, PromptHandle, ToolDefinitions, ToolsHandle,
+    },
+    bus::{Handlers, run_to_quiescence},
     systems::spawn_run,
 };
 
@@ -57,6 +59,7 @@ fn main() {
     ))
     .add_systems(Startup, ask)
     .add_systems(Update, start_when_applied)
+    .configure_sets(Update, AssetsSet.before(run_to_quiescence))
     .add_observer(support::print_the_answer_and_exit)
     .run();
 }

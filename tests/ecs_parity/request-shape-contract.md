@@ -5,7 +5,7 @@ case stays in its original module and does not receive an agent mapping.
 
 ## Execution and configuration
 
-Each native case owns a fresh App using ordinary native BusPlugin/AgentPlugin,
+Each native case owns a fresh App using ordinary native `install_bus`/`install_agent`,
 CompletionAdapter and ToolAdapter. Existing provider wrappers perform request
 matching and exhaustion against the original fixtures. Original constants and
 reasoning/text helpers are imported, with visibility-only changes to the original

@@ -8,7 +8,7 @@ provider and ignored live tests are outside this family.
 
 ## Independent execution and settings
 
-Each native producer uses `EcsAgent` with ordinary `BusPlugin` and `AgentPlugin`
+Each native producer uses `EcsAgent` with ordinary `install_bus` and `install_agent`
 configuration. The real provider's `CompletionAdapter` is polled through the
 existing `RuntimeHandler`, which enters Tokio on every poll while ECS owns the
 future. Bedrock tools use real `ToolAdapter`s through the same bridge. No legacy

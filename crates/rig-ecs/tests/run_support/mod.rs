@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bevy_app::App;
+use bevy_app::{App, Update};
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{
     completion::{CompletionRequest, CompletionResponse, ModelRef, ProviderCapabilities, Usage},
@@ -22,8 +22,8 @@ use rig_ecs::{
         AdditionalParams, DefaultMaxTurns, InvalidCalls, MaxTokens, MaxTurns, Output, Owner,
         Preamble, Temperature, ToolChoiceSpec, UsesModel,
     },
-    bus::{BusPlugin, Handlers},
-    systems::AgentPlugin,
+    bus::{Bus, Handlers, run_to_quiescence},
+    systems::install_agent,
 };
 
 pub const GUARD: Duration = Duration::from_secs(10);
@@ -115,13 +115,15 @@ impl Serve for NeverCalled {
     }
 }
 
-/// An app with both plugins, ambiguity detection at error level.
+/// An app with the bus and the agent installed, ambiguity detection at
+/// error level, the runner in `Update`.
 pub fn app() -> App {
     let mut app = App::new();
-    app.add_plugins((
-        BusPlugin::with_policy(ServingPolicy::default()).ambiguity_detection(LogLevel::Error),
-        AgentPlugin::default(),
-    ));
+    Bus::with_policy(ServingPolicy::default())
+        .ambiguity_detection(LogLevel::Error)
+        .install(app.world_mut());
+    install_agent(app.world_mut());
+    app.add_systems(Update, run_to_quiescence);
     app.finish();
     app.cleanup();
     app

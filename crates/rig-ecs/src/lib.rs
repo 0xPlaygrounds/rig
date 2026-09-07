@@ -32,7 +32,7 @@
 //!
 //! [`prelude`] names the sets and the components a user's systems write
 //! and read, and nothing else. Behind features: `reflect` — every
-//! component derives `Reflect`, `reflect::ReflectPlugin` registers them,
+//! component derives `Reflect`, `reflect::install_reflect` registers them,
 //! `reflect::ReflectedScene` is the world as reflected data beside the
 //! serde scene.
 //!

@@ -5,9 +5,11 @@
 //! [`Preamble`] and its [`Grant`]s — to the bound handlers the definitions
 //! name, in file order — the tick the asset is loaded, once (the marker
 //! [`Applied`] says so — a later change to the asset is not re-applied).
-//! The systems run in `Update` before the bus's quiescence loop, so a run
-//! spawned the tick an asset loads folds with it. The host adds
-//! `bevy_asset::AssetPlugin` first, then [`AssetsPlugin`].
+//! The systems run in `Update` in [`AssetsSet`]; the host orders its
+//! `run_to_quiescence` after that set so a run spawned the tick an asset
+//! loads folds with it. This is the one module that needs `bevy_app`
+//! (`bevy_asset` is built on it): the host adds `bevy_asset::AssetPlugin`
+//! first, then [`AssetsPlugin`].
 
 use std::marker::PhantomData;
 
@@ -169,8 +171,13 @@ pub fn grant_tools(
     }
 }
 
+/// The set the applying systems run in, in `Update`: the host runs
+/// `run_to_quiescence` after it.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AssetsSet;
+
 /// Registers the two assets and their loaders, and the systems that apply
-/// them. After `bevy_asset::AssetPlugin`.
+/// them, in [`AssetsSet`]. After `bevy_asset::AssetPlugin`.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct AssetsPlugin;
 
@@ -180,9 +187,6 @@ impl Plugin for AssetsPlugin {
             .register_asset_loader(PromptLoader)
             .init_asset::<ToolDefinitions>()
             .register_asset_loader(ToolDefinitionsLoader)
-            .add_systems(
-                Update,
-                (apply_prompts, grant_tools).before(crate::bus::run_to_quiescence),
-            );
+            .add_systems(Update, (apply_prompts, grant_tools).in_set(AssetsSet));
     }
 }

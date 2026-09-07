@@ -11,7 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bevy_app::App;
+use bevy_app::{App, Update};
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{
     completion::{
@@ -23,7 +23,7 @@ use rig_core::{
     serve::{OutcomeSink, Serve, ServingPolicy},
     streaming::StreamFinal,
 };
-use rig_ecs::bus::{BusPlugin, Handlers};
+use rig_ecs::bus::{Bus, Handlers, run_to_quiescence};
 
 /// A hang is a failure, never a wait.
 pub const GUARD: Duration = Duration::from_secs(10);
@@ -210,11 +210,14 @@ pub fn streaming() -> EffectKind {
     }
 }
 
-/// An app with the plugin under `policy`, ambiguity detection at error
-/// level, plugins finished.
+/// An app with the bus installed under `policy`, ambiguity detection at
+/// error level, the runner in `Update`.
 pub fn app_with(policy: ServingPolicy) -> App {
     let mut app = App::new();
-    app.add_plugins(BusPlugin::with_policy(policy).ambiguity_detection(LogLevel::Error));
+    Bus::with_policy(policy)
+        .ambiguity_detection(LogLevel::Error)
+        .install(app.world_mut());
+    app.add_systems(Update, run_to_quiescence);
     app.finish();
     app.cleanup();
     app

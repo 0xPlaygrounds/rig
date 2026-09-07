@@ -2,7 +2,7 @@
 
 Scope: the seven corpus_layers scenarios on the native host.
 
-The native producer uses App, BusPlugin, AgentPlugin, native handler registration,
+The native producer uses App, `install_bus`, `install_agent`, native handler registration,
 Grant and real provider/ToolAdapter/MemoryAdapter handlers. Shared rig-core
 Intercept layers are host middleware, not the legacy agent runner or hooks.
 RuntimeHandler wraps each leaf before ErasedHandler layering; this preserves the

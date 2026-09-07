@@ -36,7 +36,7 @@ const ADD: &str = "t/tool:add#0";
 
 fn ran() -> bevy_app::App {
     let mut app = app();
-    rig_ecs::reflect::register(&mut app);
+    rig_ecs::reflect::install_reflect(app.world_mut());
     app.world_mut().resource_mut::<IdCounter>().0 = 1;
     let (model, _) = Scripted::new(
         MODEL,
@@ -77,7 +77,7 @@ fn a_world_and_its_loaded_scene_reflect_alike() {
     drop(first);
 
     let mut second = app();
-    rig_ecs::reflect::register(&mut second);
+    rig_ecs::reflect::install_reflect(second.world_mut());
     let (model, _) = Scripted::new(MODEL, Vec::new());
     register(&mut second, MODEL, model);
     register(&mut second, ADD, Adder::new(ADD));
@@ -127,7 +127,7 @@ struct OrderedNumbers(Vec<u64>);
 fn user_numeric_arrays_preserve_order_and_duplicates() {
     use bevy_reflect::TypePath;
     let mut app = app();
-    rig_ecs::reflect::register(&mut app);
+    rig_ecs::reflect::install_reflect(app.world_mut());
     app.register_type::<OrderedNumbers>();
     app.world_mut().spawn(OrderedNumbers(vec![3, 1, 2, 1]));
     let scene = json(&mut app);
