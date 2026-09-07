@@ -14,3 +14,4 @@ syn = { workspace = true, features = ["full"] }
 proc-macro2 = { workspace = true, features = ["span-locations"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+sha2 = { workspace = true }

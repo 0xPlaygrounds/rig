@@ -1,0 +1,8 @@
+# Preserve CI retries for ordinary tests while running drift tripwires once.
+# Do not pass --retries to the guards run: it overrides per-test settings.
+[profile.guards]
+retries = 2
+
+[[profile.guards.overrides]]
+filter = 'test(telemetry::) + test(span_safety_net::)'
+retries = 0

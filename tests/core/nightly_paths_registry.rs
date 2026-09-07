@@ -30,6 +30,9 @@ const REQUIRED_PATHS: &[&str] = &[
     // The suites' own sources.
     "tests/integrations/**",
     "tests/integrations.rs",
+    "test-support/**",
+    "xtask/**",
+    ".config/**",
     // Companion-crate dependency versions are `workspace = true` references
     // resolved in the root manifest and lockfile; without these, dependency
     // bumps merge with zero integration coverage.

@@ -10361,7 +10361,6 @@ name = "rig"
 version = "0.42.0"
 dependencies = [
  "anyhow",
- "arrow-array",
  "assert_fs",
  "async-stream",
  "aws-config",
@@ -10377,14 +10376,9 @@ dependencies = [
  "futures",
  "httpmock",
  "hyper-util",
- "lancedb",
- "mongodb",
- "neo4rs",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
- "qdrant-client",
- "redis",
  "reqwest 0.13.4",
  "reqwest-middleware",
  "reqwest-retry",
@@ -10415,20 +10409,15 @@ dependencies = [
  "rig-vectorize",
  "rig-vertexai",
  "rmcp",
- "rusqlite",
  "schemars 1.2.1",
  "serde",
  "serde_json",
  "serde_path_to_error",
  "serde_yaml",
  "sha2 0.10.9",
- "sqlite-vec",
- "sqlx",
  "syn 2.0.117",
- "testcontainers",
  "thiserror 2.0.18",
  "tokio",
- "tokio-rusqlite",
  "tokio-test",
  "tracing",
  "tracing-opentelemetry",
@@ -10850,6 +10839,29 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "rig-service-tests"
+version = "0.42.0"
+dependencies = [
+ "arrow-array",
+ "assert_fs",
+ "futures",
+ "httpmock",
+ "lancedb",
+ "mongodb",
+ "neo4rs",
+ "qdrant-client",
+ "rig",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sqlite-vec",
+ "sqlx",
+ "testcontainers",
+ "tokio",
+ "tokio-rusqlite",
 ]
 
 [[package]]
@@ -15027,6 +15039,7 @@ version = "0.42.0"
 dependencies = [
  "proc-macro2",
  "serde_json",
+ "sha2 0.10.9",
  "syn 2.0.117",
  "thiserror 2.0.18",
 ]

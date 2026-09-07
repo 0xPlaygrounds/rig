@@ -217,6 +217,21 @@ fn out_of_binary_families_name_a_live_ci_step() {
                 workflow.display(),
             )
         });
+        let run = if let Some(id) = run.trim().strip_prefix("cargo xtask verify --check ") {
+            let checks = verification_checks::all();
+            let check = checks
+                .iter()
+                .find(|check| check.id == id)
+                .expect("CI must name an existing authoritative verification check");
+            check
+                .steps
+                .iter()
+                .map(|step| format!("{} {}", step.program, step.args.join(" ")))
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            run
+        };
         if let Some(selector) = entry.ci_selector {
             // A `--features X` selector asserts an *outcome* — the feature is
             // enabled in that step — not a spelling: `--all-features` enables
@@ -242,3 +257,9 @@ fn out_of_binary_families_name_a_live_ci_step() {
         }
     }
 }
+
+// Compile the same definitions used by xtask; comments or stale command copies
+// cannot satisfy the live CI selector assertions above.
+#[allow(dead_code)]
+#[path = "../../xtask/src/verify/checks.rs"]
+mod verification_checks;
