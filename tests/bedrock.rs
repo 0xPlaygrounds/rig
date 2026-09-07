@@ -27,5 +27,6 @@ mod ecs_observation;
 #[path = "common/ecs_session.rs"]
 mod ecs_session;
 
+#[cfg(feature = "bedrock")]
 #[path = "providers/bedrock/mod.rs"]
 mod bedrock;
