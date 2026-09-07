@@ -105,508 +105,1773 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/conformance.rs",
+          "symbol": "doubleword::cassette::conformance::cancellation_and_max_turn_diagnostics"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::cancellation_and_max_turns(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/conformance/cancellation_and_max_turns.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::conformance::cancellation_and_max_turn_diagnostics",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/conformance.rs",
+          "symbol": "doubleword::cassette::conformance::hooks_rewrite_tool_flow"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::hook_rewrites_and_request_patch(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance",
+        "hooks"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/conformance/hook_rewrites_and_request_patch.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::conformance::hooks_rewrite_tool_flow",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/conformance.rs",
+          "symbol": "doubleword::cassette::conformance::invalid_tool_call_recovers"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::invalid_tool_recovery(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/conformance/invalid_tool_recovery.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::conformance::invalid_tool_call_recovers",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/conformance.rs",
+          "symbol": "doubleword::cassette::conformance::parallel_tool_calls_roundtrip"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::parallel_tools(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/conformance/parallel_tools.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::conformance::parallel_tool_calls_roundtrip",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/conformance.rs",
+          "symbol": "doubleword::cassette::conformance::streaming_structured_output_after_tool"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::streaming_structured_after_tool(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance",
+        "streaming-tools",
+        "structured-output"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/conformance/streaming_structured_after_tool.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::conformance::streaming_structured_output_after_tool",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/conformance.rs",
+          "symbol": "doubleword::cassette::conformance::streaming_tool_roundtrip"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::streaming_tool(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance",
+        "streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/conformance/streaming_tool.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::conformance::streaming_tool_roundtrip",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/conformance.rs",
+          "symbol": "doubleword::cassette::conformance::structured_extraction_roundtrip"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A4 rig-agent Extractor (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::structured_extraction(client.completion_model(DEFAULT_MODEL (QWEN3_5_9B)))`: the shared scenario builds `ExtractorBuilder::<ExtractedPerson>::new(model).max_tokens(384).retries(0).build().extract(..)` (rig-agent Extractor) and validates the fields; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance",
+        "extractor-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/conformance/structured_extraction.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::conformance::structured_extraction_roundtrip",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/conformance.rs",
+          "symbol": "doubleword::cassette::conformance::structured_output_after_tool"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::structured_after_tool(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance",
+        "structured-output"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/conformance/structured_after_tool.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::conformance::structured_output_after_tool",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/conformance.rs",
+          "symbol": "doubleword::cassette::conformance::tool_choice_modes_roundtrip"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M5 conformance tool_choice_modes (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::tool_choice_modes(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)))`: three direct `model.completion(completion_request(..).tools(..).tool_choice(None/Required/Specific).build())` calls with assertions on `choice`; no AgentBuilder in this scenario.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "conformance",
+        "tool-choice"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/conformance/tool_choice_modes.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::conformance::tool_choice_modes_roundtrip",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/conformance.rs",
+          "symbol": "doubleword::cassette::conformance::tool_output_types_roundtrip"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::tool_output_serialization(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/conformance/tool_output_serialization.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::conformance::tool_output_types_roundtrip",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/conformance.rs",
+          "symbol": "doubleword::cassette::conformance::zero_argument_tool_roundtrip"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::zero_argument_tool(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)` under `with_doubleword_cassette`: the shared scenario builds `AgentBuilder::new(model)...build()` and drives `agent.prompt`/`stream_prompt` with its own typed tools/hooks, then validates the `ScenarioReport`; the test `.expect`s success.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/conformance/zero_argument_tool.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::conformance::zero_argument_tool_roundtrip",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/conformance.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::an_unknown_model_still_puts_the_requested_width_on_the_wire"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`an_unknown_model_still_puts_the_requested_width_on_the_wire`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/an_unknown_model_still_puts_the_requested_width_on_the_wire.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::an_unknown_model_still_puts_the_requested_width_on_the_wire",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::builder_documents_at_a_requested_width"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`builder_documents_at_a_requested_width`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/builder_documents_at_a_requested_width.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::builder_documents_at_a_requested_width",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::builder_documents_at_the_default_width"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`builder_documents_at_the_default_width`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/builder_documents_at_the_default_width.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::builder_documents_at_the_default_width",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::empty_input_at_a_requested_width"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`empty_input_at_a_requested_width`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/empty_input_at_a_requested_width.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::empty_input_at_a_requested_width",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::long_input_at_a_requested_width"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`long_input_at_a_requested_width`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/long_input_at_a_requested_width.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::long_input_at_a_requested_width",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::repeated_input_at_a_requested_width"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`repeated_input_at_a_requested_width`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/repeated_input_at_a_requested_width.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::repeated_input_at_a_requested_width",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::two_widths_in_one_scenario_stay_independent"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`two_widths_in_one_scenario_stay_independent`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/two_widths_in_one_scenario_stay_independent.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::two_widths_in_one_scenario_stay_independent",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::unicode_input_at_a_requested_width"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`unicode_input_at_a_requested_width`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/unicode_input_at_a_requested_width.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::unicode_input_at_a_requested_width",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::usage_at_the_default_width"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`usage_at_the_default_width`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/usage_at_the_default_width.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::usage_at_the_default_width",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::usage_survives_a_requested_width"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`usage_survives_a_requested_width`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/usage_survives_a_requested_width.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::usage_survives_a_requested_width",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::width_1024_single"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_1024_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/width_1024_single.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_1024_single",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::width_128_batch"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_128_batch`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/width_128_batch.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_128_batch",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::width_128_single"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_128_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/width_128_single.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_128_single",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::width_2048_single"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_2048_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/width_2048_single.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_2048_single",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::width_256_single"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_256_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/width_256_single.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_256_single",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::width_32_batch"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_32_batch`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/width_32_batch.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_32_batch",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::width_32_single"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_32_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/width_32_single.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_32_single",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::width_4095_single"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_4095_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/width_4095_single.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_4095_single",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::width_4096_single_is_not_sent"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_4096_single_is_not_sent`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/width_4096_single_is_not_sent.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_4096_single_is_not_sent",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::width_512_batch"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_512_batch`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/width_512_batch.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_512_batch",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::width_512_single"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_512_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/width_512_single.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_512_single",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::width_64_single"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_64_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/width_64_single.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_64_single",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_dimensions.rs",
+          "symbol": "doubleword::cassette::embedding_dimensions::width_default_single"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_embedding_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_embedding_cassette` + `client.embedding_model[_with_ndims](QWEN3_EMBEDDING_8B, ..)` and `embed_texts`/`embed_texts_response`/`EmbeddingsBuilder` (`width_default_single`); the wrapper re-reads the recorded `/v1/embeddings` interactions and the cell asserts requested vs returned widths. Embeddings path, no completion runtime.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_dimensions/width_default_single.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_dimensions::width_default_single",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_dimensions.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_matrix.rs",
+          "symbol": "doubleword::cassette::embedding_matrix::error_preserves_provider_body"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `client.embedding_model(doubleword::QWEN3_EMBEDDING_8B)` (`error_preserves_provider_body`: `embed_texts_response`/`raw_embed_texts`/`embed_text*`, or a bogus model); asserts the embedding contract. Embeddings path.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_matrix/error_preserves_provider_body.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_matrix::error_preserves_provider_body",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_matrix.rs",
+          "symbol": "doubleword::cassette::embedding_matrix::normalized_response_is_complete"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `client.embedding_model(doubleword::QWEN3_EMBEDDING_8B)` (`normalized_response_is_complete`: `embed_texts_response`/`raw_embed_texts`/`embed_text*`, or a bogus model); asserts the embedding contract. Embeddings path.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_matrix/normalized_response_is_complete.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_matrix::normalized_response_is_complete",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_matrix.rs",
+          "symbol": "doubleword::cassette::embedding_matrix::raw_round_trips"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `client.embedding_model(doubleword::QWEN3_EMBEDDING_8B)` (`raw_round_trips`: `embed_texts_response`/`raw_embed_texts`/`embed_text*`, or a bogus model); asserts the embedding contract. Embeddings path.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_matrix/raw_round_trips.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_matrix::raw_round_trips",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_matrix.rs",
+          "symbol": "doubleword::cassette::embedding_matrix::raw_route_parity"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `client.embedding_model(doubleword::QWEN3_EMBEDDING_8B)` (`raw_route_parity`: `embed_texts_response`/`raw_embed_texts`/`embed_text*`, or a bogus model); asserts the embedding contract. Embeddings path.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_matrix/raw_route_parity.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_matrix::raw_route_parity",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embedding_matrix.rs",
+          "symbol": "doubleword::cassette::embedding_matrix::single_text_convenience"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `client.embedding_model(doubleword::QWEN3_EMBEDDING_8B)` (`single_text_convenience`: `embed_texts_response`/`raw_embed_texts`/`embed_text*`, or a bogus model); asserts the embedding contract. Embeddings path.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embedding_matrix/single_text_convenience.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embedding_matrix::single_text_convenience",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embedding_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/embeddings.rs",
+          "symbol": "doubleword::cassette::embeddings::embeddings_smoke"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-C1 embeddings (tests/ecs_parity/openai-compatible-classification-contract.md): `client.embedding_model(doubleword::QWEN3_EMBEDDING_8B).embed_texts(EMBEDDING_INPUTS)`; `assert_embeddings_nonempty_and_consistent`. Embeddings path.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "embeddings"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/embeddings/embeddings_smoke.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::embeddings::embeddings_smoke",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/embeddings.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/error_matrix.rs",
+          "symbol": "doubleword::cassette::error_matrix::invalid_key_blocking"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_bogus_key_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_bogus_key_cassette` + `client.completion_model(QWEN3_5_9B)` + `model.raw_completion(..).expect_err(..)`; asserts 403 + nested envelope. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "error-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/error_matrix/invalid_key_blocking.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::error_matrix::invalid_key_blocking",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/error_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/error_matrix.rs",
+          "symbol": "doubleword::cassette::error_matrix::invalid_key_streaming"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_bogus_key_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `with_doubleword_bogus_key_cassette` + `client.completion_model(QWEN3_5_9B)` + `model.stream(..)` in-band error; asserts 403 + nested envelope and recorded parity. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "error-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/error_matrix/invalid_key_streaming.yaml"
+        },
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/error_matrix/invalid_key_blocking.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::error_matrix::invalid_key_streaming",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/error_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/error_matrix.rs",
+          "symbol": "doubleword::cassette::error_matrix::invalid_temperature_blocking"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(QWEN3_5_9B)` + `model.raw_completion(request.additional_params(temperature 100)).expect_err(..)`; asserts 400 + flat envelope. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "error-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/error_matrix/invalid_temperature_blocking.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::error_matrix::invalid_temperature_blocking",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/error_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/error_matrix.rs",
+          "symbol": "doubleword::cassette::error_matrix::invalid_temperature_streaming"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(QWEN3_5_9B)` + `model.stream(request.additional_params(temperature 100))` in-band error; asserts 400 + flat envelope and recorded parity. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "error-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/error_matrix/invalid_temperature_streaming.yaml"
+        },
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/error_matrix/invalid_temperature_blocking.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::error_matrix::invalid_temperature_streaming",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/error_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/error_matrix.rs",
+          "symbol": "doubleword::cassette::error_matrix::unknown_model_blocking"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(UNKNOWN_MODEL)` + `model.raw_completion(..).expect_err(..)`; asserts 404 + nested envelope; re-reads the recorded error via `recorded_chat_calls`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "error-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/error_matrix/unknown_model_blocking.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::error_matrix::unknown_model_blocking",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/error_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/error_matrix.rs",
+          "symbol": "doubleword::cassette::error_matrix::unknown_model_streaming"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(UNKNOWN_MODEL)` + `model.stream(..)`; loops to the in-band `Err`; asserts 404 + nested envelope and blocking/streaming recorded parity. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "error-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/error_matrix/unknown_model_streaming.yaml"
+        },
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/error_matrix/unknown_model_blocking.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::error_matrix::unknown_model_streaming",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/error_matrix.rs"
     },
     {
@@ -699,464 +1964,1675 @@
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/finish_reason_matrix.rs",
+          "symbol": "doubleword::cassette::finish_reason_matrix::blocking_natural_stop"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `blocking_stop`: `client.completion_model(QWEN3_5_9B)` + `model.raw_completion(request reasoning_effort none).normalize(\"doubleword\")`; asserts `Stop`; recorded finish reason re-read. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "finish-reason"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/finish_reason_matrix/blocking_natural_stop.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::finish_reason_matrix::blocking_natural_stop",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/finish_reason_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/finish_reason_matrix.rs",
+          "symbol": "doubleword::cassette::finish_reason_matrix::blocking_token_limit"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `blocking_length`: `client.completion_model(QWEN3_5_9B)` + `model.raw_completion(request.max_tokens(1)).normalize(..)`; asserts `Length`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "finish-reason"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/finish_reason_matrix/blocking_token_limit.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::finish_reason_matrix::blocking_token_limit",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/finish_reason_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/finish_reason_matrix.rs",
+          "symbol": "doubleword::cassette::finish_reason_matrix::blocking_tool_calls"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `blocking_tool_calls_body`: `client.completion_model(QWEN3_5_397B_A17B)` + `model.raw_completion(request.tool(ping def).tool_choice(Required)).normalize(..)`; asserts `ToolCalls` and a tool call in `choice`. Tool never executed. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "finish-reason"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/finish_reason_matrix/blocking_tool_calls.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::finish_reason_matrix::blocking_tool_calls",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/finish_reason_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/finish_reason_matrix.rs",
+          "symbol": "doubleword::cassette::finish_reason_matrix::streaming_natural_stop"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `streaming_reason`: `client.completion_model(QWEN3_5_9B)` + `model.stream(..)` drained by `collect_text_and_terminal`; asserts terminal `Stop`; recorded finish reason re-read. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "finish-reason"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/finish_reason_matrix/streaming_natural_stop.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::finish_reason_matrix::streaming_natural_stop",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/finish_reason_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/finish_reason_matrix.rs",
+          "symbol": "doubleword::cassette::finish_reason_matrix::streaming_token_limit"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `streaming_reason`: `client.completion_model(QWEN3_5_9B)` + `model.stream(request.max_tokens(1))` drained by `collect_text_and_terminal`; asserts `Length`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "finish-reason"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/finish_reason_matrix/streaming_token_limit.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::finish_reason_matrix::streaming_token_limit",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/finish_reason_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/finish_reason_matrix.rs",
+          "symbol": "doubleword::cassette::finish_reason_matrix::streaming_tool_calls"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(QWEN3_5_397B_A17B)` + `model.stream(request.tool(ping def).tool_choice(Required))` drained by `collect_text_and_terminal`; asserts terminal `ToolCalls`. Tool never executed. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "finish-reason"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/finish_reason_matrix/streaming_tool_calls.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::finish_reason_matrix::streaming_tool_calls",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/finish_reason_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/model_family_matrix.rs",
+          "symbol": "doubleword::cassette::model_family_matrix::deepseek_family_blocking"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `exercise_blocking`: `client.completion_model(doubleword::DEEPSEEK_V4_FLASH)` + `model.raw_completion(completion_request(PROMPT).max_tokens(96).build())`; asserts id/model/choices/usage; `assert_recorded_model` re-reads the recording. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "model-family"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/model_family_matrix/deepseek_family_blocking.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::model_family_matrix::deepseek_family_blocking",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/model_family_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/model_family_matrix.rs",
+          "symbol": "doubleword::cassette::model_family_matrix::default_qwen_family_streaming"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(QWEN3_5_9B)` + `model.stream(..)` drained by `collect_text_and_terminal`; asserts terminal usage; recorded frames re-read. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "model-family"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/model_family_matrix/default_qwen_family_streaming.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::model_family_matrix::default_qwen_family_streaming",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/model_family_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/model_family_matrix.rs",
+          "symbol": "doubleword::cassette::model_family_matrix::glm_family_blocking"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `exercise_blocking`: `client.completion_model(doubleword::GLM_5_2)` + `model.raw_completion(completion_request(PROMPT).max_tokens(96).build())`; asserts id/model/choices/usage; `assert_recorded_model` re-reads the recording. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "model-family"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/model_family_matrix/glm_family_blocking.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::model_family_matrix::glm_family_blocking",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/model_family_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/model_family_matrix.rs",
+          "symbol": "doubleword::cassette::model_family_matrix::gpt_oss_family_blocking"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `exercise_blocking`: `client.completion_model(doubleword::GPT_OSS_20B)` + `model.raw_completion(completion_request(PROMPT).max_tokens(96).build())`; asserts id/model/choices/usage; `assert_recorded_model` re-reads the recording. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "model-family"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/model_family_matrix/gpt_oss_family_blocking.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::model_family_matrix::gpt_oss_family_blocking",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/model_family_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/model_family_matrix.rs",
+          "symbol": "doubleword::cassette::model_family_matrix::kimi_family_blocking"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `exercise_blocking`: `client.completion_model(doubleword::KIMI_K2_6)` + `model.raw_completion(completion_request(PROMPT).max_tokens(96).build())`; asserts id/model/choices/usage; `assert_recorded_model` re-reads the recording. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "model-family"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/model_family_matrix/kimi_family_blocking.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::model_family_matrix::kimi_family_blocking",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/model_family_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/model_family_matrix.rs",
+          "symbol": "doubleword::cassette::model_family_matrix::qwen_3_5_family_blocking"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `exercise_blocking`: `client.completion_model(doubleword::QWEN3_5_9B)` + `model.raw_completion(completion_request(PROMPT).max_tokens(96).build())`; asserts id/model/choices/usage; `assert_recorded_model` re-reads the recording. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "model-family"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/model_family_matrix/qwen_3_5_family_blocking.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::model_family_matrix::qwen_3_5_family_blocking",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/model_family_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/model_family_matrix.rs",
+          "symbol": "doubleword::cassette::model_family_matrix::qwen_3_6_family_blocking"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `exercise_blocking`: `client.completion_model(doubleword::QWEN3_6_35B_A3B)` + `model.raw_completion(completion_request(PROMPT).max_tokens(96).build())`; asserts id/model/choices/usage; `assert_recorded_model` re-reads the recording. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "model-family"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/model_family_matrix/qwen_3_6_family_blocking.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::model_family_matrix::qwen_3_6_family_blocking",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/model_family_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/prompt_caching.rs",
+          "symbol": "doubleword::cassette::prompt_caching::agent_loop_does_not_move_its_own_prefix"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_prompt_caching_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A1 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(QWEN3_5_9B).preamble(&probe().preamble).tool(CacheProbeLookupTool).temperature(0.0).build().prompt(AGENT_CACHE_PROMPT).max_turns(6)`; asserts >= 2 completion calls and `assert_prefix_stable` over the recorded requests. Same shape as the mapped openrouter/venice `agent_loop_keeps_hitting_across_tool_turns` cells.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "agent-cache-growth",
+        "prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/prompt_caching/agent_loop.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::prompt_caching::agent_loop_does_not_move_its_own_prefix",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/prompt_caching.rs",
+          "symbol": "doubleword::cassette::prompt_caching::blocking_probe_observes_no_meaningful_prefix_cache"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_prompt_caching_cassette"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::run_cache_probe"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M3 cache probe (tests/ecs_parity/openai-compatible-classification-contract.md): `run_cache_probe(&client.completion_model(QWEN3_5_9B), ..)`: three `model.completion(..)` turns; `assert_no_meaningful_prefix_cache` + `assert_prefix_stable`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/prompt_caching/blocking_probe.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::prompt_caching::blocking_probe_observes_no_meaningful_prefix_cache",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/prompt_caching.rs",
+          "symbol": "doubleword::cassette::prompt_caching::streaming_probe_observes_no_meaningful_prefix_cache"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_prompt_caching_cassette"
+        },
+        {
+          "path": "tests/common/cache_conformance.rs",
+          "symbol": "cache_conformance::run_cache_probe"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M3 cache probe (tests/ecs_parity/openai-compatible-classification-contract.md): `run_cache_probe_streaming(&client.completion_model(QWEN3_5_9B), ..)`: three `model.stream(..)` turns; same assertions. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "prompt-caching"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/prompt_caching/streaming_probe.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::prompt_caching::streaming_probe_observes_no_meaningful_prefix_cache",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/prompt_caching.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/raw_capture_matrix.rs",
+          "symbol": "doubleword::cassette::raw_capture_matrix::normalized_fields_match_raw_renormalized"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL)` + `model.completion(completion_request(PROMPT).max_tokens(256).build())`; `normalized_fields_match_raw_renormalized` inspects `response.raw` against `openai::CompletionResponse` and the recorded body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/raw_capture_matrix/normalized_fields_match_raw_renormalized.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::raw_capture_matrix::normalized_fields_match_raw_renormalized",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/raw_capture_matrix.rs",
+          "symbol": "doubleword::cassette::raw_capture_matrix::raw_exposes_object"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL)` + `model.completion(completion_request(PROMPT).max_tokens(256).build())`; `raw_exposes_object` inspects `response.raw` against `openai::CompletionResponse` and the recorded body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/raw_capture_matrix/raw_exposes_object.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::raw_capture_matrix::raw_exposes_object",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/raw_capture_matrix.rs",
+          "symbol": "doubleword::cassette::raw_capture_matrix::raw_round_trips_openai_type"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL)` + `model.completion(completion_request(PROMPT).max_tokens(256).build())`; `raw_round_trips_openai_type` inspects `response.raw` against `openai::CompletionResponse` and the recorded body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/raw_capture_matrix/raw_round_trips_openai_type.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::raw_capture_matrix::raw_round_trips_openai_type",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/raw_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/raw_stream_capture_matrix.rs",
+          "symbol": "doubleword::cassette::raw_stream_capture_matrix::stream_raw_exposes_terminal_usage_and_object"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL)` + `model.stream(request)` drained by `collect_text_and_terminal`; `stream_raw_exposes_terminal_usage_and_object` checks `terminal.raw` against the recorded terminal frame. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-stream-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/raw_stream_capture_matrix/stream_raw_exposes_terminal_usage_and_object.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::raw_stream_capture_matrix::stream_raw_exposes_terminal_usage_and_object",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/raw_stream_capture_matrix.rs",
+          "symbol": "doubleword::cassette::raw_stream_capture_matrix::stream_raw_round_trips_terminal_type"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL)` + `model.stream(request)` drained by `collect_text_and_terminal`; `stream_raw_round_trips_terminal_type` checks `terminal.raw` against the recorded terminal frame. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "raw-stream-capture"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/raw_stream_capture_matrix/stream_raw_round_trips_terminal_type.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::raw_stream_capture_matrix::stream_raw_round_trips_terminal_type",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/raw_stream_capture_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/reasoning_matrix.rs",
+          "symbol": "doubleword::cassette::reasoning_matrix::deepseek_reasoning_blocking"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `exercise_blocking`: `client.completion_model(doubleword::DEEPSEEK_V4_FLASH)` + `model.raw_completion(..)`; asserts wire `reasoning` and normalized `Reasoning` blocks; recorded body re-read. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "reasoning-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/reasoning_matrix/deepseek_reasoning_blocking.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::reasoning_matrix::deepseek_reasoning_blocking",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/reasoning_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/reasoning_matrix.rs",
+          "symbol": "doubleword::cassette::reasoning_matrix::deepseek_reasoning_streaming"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `exercise_streaming`: `client.completion_model(doubleword::DEEPSEEK_V4_FLASH)` + `model.stream(..)` drained by `collect_raw_stream_observation`; asserts reasoning events; recorded frames re-read. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "reasoning-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/reasoning_matrix/deepseek_reasoning_streaming.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::reasoning_matrix::deepseek_reasoning_streaming",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/reasoning_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/reasoning_matrix.rs",
+          "symbol": "doubleword::cassette::reasoning_matrix::gpt_oss_reasoning_blocking"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `exercise_blocking`: `client.completion_model(doubleword::GPT_OSS_20B)` + `model.raw_completion(..)`; asserts wire `reasoning` and normalized `Reasoning` blocks; recorded body re-read. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "reasoning-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/reasoning_matrix/gpt_oss_reasoning_blocking.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::reasoning_matrix::gpt_oss_reasoning_blocking",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/reasoning_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/reasoning_matrix.rs",
+          "symbol": "doubleword::cassette::reasoning_matrix::gpt_oss_reasoning_streaming"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `exercise_streaming`: `client.completion_model(doubleword::GPT_OSS_20B)` + `model.stream(..)` drained by `collect_raw_stream_observation`; asserts reasoning events; recorded frames re-read. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "reasoning-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/reasoning_matrix/gpt_oss_reasoning_streaming.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::reasoning_matrix::gpt_oss_reasoning_streaming",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/reasoning_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/reasoning_matrix.rs",
+          "symbol": "doubleword::cassette::reasoning_matrix::qwen_reasoning_blocking"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `exercise_blocking`: `client.completion_model(doubleword::QWEN3_5_9B)` + `model.raw_completion(..)`; asserts wire `reasoning` and normalized `Reasoning` blocks; recorded body re-read. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "reasoning-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/reasoning_matrix/qwen_reasoning_blocking.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::reasoning_matrix::qwen_reasoning_blocking",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/reasoning_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/reasoning_matrix.rs",
+          "symbol": "doubleword::cassette::reasoning_matrix::qwen_reasoning_streaming"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `exercise_streaming`: `client.completion_model(doubleword::QWEN3_5_9B)` + `model.stream(..)` drained by `collect_raw_stream_observation`; asserts reasoning events; recorded frames re-read. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "reasoning-matrix"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/reasoning_matrix/qwen_reasoning_streaming.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::reasoning_matrix::qwen_reasoning_streaming",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/reasoning_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/request_hook.rs",
+          "symbol": "doubleword::cassette::request_hook::request_hook_records_prompt_and_response"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A3 agent run with hooks (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(DEFAULT_MODEL).build().prompt(..).add_hook(ObservingHook)` (`AgentHook::on_completion_call` + `on_outcome`); asserts one prompt call, one response call and the captured prompt.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "hooks"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/request_hook/request_hook_records_prompt_and_response.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::request_hook::request_hook_records_prompt_and_response",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/request_hook.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/request_parameter_matrix.rs",
+          "symbol": "doubleword::cassette::request_parameter_matrix::json_object_response_format_from_additional_params"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(QWEN3_5_9B)` + `model.raw_completion(completion_request(..) with response_format)`; `assert_recorded_parameter` re-reads the recorded request body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "request-parameter"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/request_parameter_matrix/json_object_response_format_from_additional_params.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::request_parameter_matrix::json_object_response_format_from_additional_params",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/request_parameter_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/request_parameter_matrix.rs",
+          "symbol": "doubleword::cassette::request_parameter_matrix::max_tokens_from_the_typed_builder"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(QWEN3_5_9B)` + `model.raw_completion(completion_request(..) with max_tokens)`; `assert_recorded_parameter` re-reads the recorded request body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "request-parameter"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/request_parameter_matrix/max_tokens_from_the_typed_builder.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::request_parameter_matrix::max_tokens_from_the_typed_builder",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/request_parameter_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/request_parameter_matrix.rs",
+          "symbol": "doubleword::cassette::request_parameter_matrix::seed_from_additional_params"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(QWEN3_5_9B)` + `model.raw_completion(completion_request(..) with seed)`; `assert_recorded_parameter` re-reads the recorded request body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "request-parameter"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/request_parameter_matrix/seed_from_additional_params.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::request_parameter_matrix::seed_from_additional_params",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/request_parameter_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/request_parameter_matrix.rs",
+          "symbol": "doubleword::cassette::request_parameter_matrix::stop_sequence_from_additional_params"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(QWEN3_5_9B)` + `model.raw_completion(completion_request(..) with stop)`; `assert_recorded_parameter` re-reads the recorded request body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "request-parameter"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/request_parameter_matrix/stop_sequence_from_additional_params.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::request_parameter_matrix::stop_sequence_from_additional_params",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/request_parameter_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/request_parameter_matrix.rs",
+          "symbol": "doubleword::cassette::request_parameter_matrix::temperature_from_the_typed_builder"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(QWEN3_5_9B)` + `model.raw_completion(completion_request(..) with temperature)`; `assert_recorded_parameter` re-reads the recorded request body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "request-parameter"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/request_parameter_matrix/temperature_from_the_typed_builder.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::request_parameter_matrix::temperature_from_the_typed_builder",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/request_parameter_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/request_parameter_matrix.rs",
+          "symbol": "doubleword::cassette::request_parameter_matrix::top_p_from_additional_params"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(QWEN3_5_9B)` + `model.raw_completion(completion_request(..) with top_p)`; `assert_recorded_parameter` re-reads the recorded request body. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "request-parameter"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/request_parameter_matrix/top_p_from_additional_params.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::request_parameter_matrix::top_p_from_additional_params",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell.",
+        "Also re-reads its own cassette bytes for premise assertions; that is fixture inspection, not a runtime path."
+      ],
       "source": "tests/providers/doubleword/cassette/request_parameter_matrix.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/response_identity_edge.rs",
+          "symbol": "doubleword::cassette::response_identity_edge::blocking_identity_contract_vs_reality"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M1 direct model completion (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL).completion_request(..).max_tokens(128).send()`; asserts `provider_request_id == None`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "response-identity"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/response_identity_edge/blocking_identity_contract_vs_reality.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::response_identity_edge::blocking_identity_contract_vs_reality",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/response_identity_edge.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/response_identity_edge.rs",
+          "symbol": "doubleword::cassette::response_identity_edge::streaming_identity_contract_vs_reality"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "shared_provider",
+      "classification_reason": "OC-M2 direct model stream (tests/ecs_parity/openai-compatible-classification-contract.md): `client.completion_model(DEFAULT_MODEL).completion_request(..).stream()` drained manually to `StreamEvent::Final`; asserts terminal `provider_request_id == None`. No AgentBuilder.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "shared_provider",
+      "families": [
+        "response-identity"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/response_identity_edge/streaming_identity_contract_vs_reality.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::response_identity_edge::streaming_identity_contract_vs_reality",
+      "mapping_limits": [
+        "Shared-provider row: executes unchanged against rig-core provider code in both runtimes; never counted as an agent cell."
+      ],
       "source": "tests/providers/doubleword/cassette/response_identity_edge.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/streaming.rs",
+          "symbol": "doubleword::cassette::streaming::streaming_smoke"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A2 agent streaming run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(DEFAULT_MODEL).preamble(STREAMING_PREAMBLE).build().stream_prompt(STREAMING_PROMPT).stream()` drained by `collect_stream_final_response`; asserts non-empty final text.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "streaming-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/streaming/streaming_smoke.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::streaming::streaming_smoke",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/streaming.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/streaming_tools.rs",
+          "symbol": "doubleword::cassette::streaming_tools::streaming_tools_smoke"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A2 agent streaming run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(TOOL_MODEL).preamble(STREAMING_TOOLS_PREAMBLE).tool(Adder).tool(Subtract).default_max_turns(2).build().stream_prompt(..).stream()` drained by `collect_stream_final_response`; asserts -3.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "streaming-tools"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/streaming_tools/streaming_tools_smoke.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::streaming_tools::streaming_tools_smoke",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/streaming_tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/structured_output.rs",
+          "symbol": "doubleword::cassette::structured_output::structured_output_smoke"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A1 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(DEFAULT_MODEL).build().prompt_typed::<SmokeStructuredOutput>(STRUCTURED_OUTPUT_PROMPT)`; `assert_smoke_structured_output`.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "structured-output"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/structured_output/structured_output_smoke.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::structured_output::structured_output_smoke",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/structured_output.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/tools.rs",
+          "symbol": "doubleword::cassette::tools::tool_with_optional_argument"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::optional_argument(client.completion_model(DEFAULT_MODEL (QWEN3_5_9B)), |builder| builder)`: builds `AgentBuilder::new(model)...build()` and drives `agent.prompt(..)` with a typed optional-argument tool; `.expect`s the scenario report.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance",
+        "tools-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/tools/optional_argument.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::tools::tool_with_optional_argument",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/tools.rs",
+          "symbol": "doubleword::cassette::tools::two_tools_nonstreaming_chain"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A5 rig-agent conformance scenario (tests/ecs_parity/openai-compatible-classification-contract.md): `rig_agent::test_utils::sequential_tools(client.completion_model(TOOL_MODEL (QWEN3_5_397B_A17B)), |builder| builder)`: builds `AgentBuilder::new(model)...build()` and drives `agent.prompt(..)` through two sequential typed tools; `.expect`s the scenario report.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "conformance",
+        "tools-smoke"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/tools/two_tools_nonstreaming.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::tools::two_tools_nonstreaming_chain",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/tools.rs"
     },
     {
       "assertion_mappings": [],
-      "classification": "unclassified",
-      "classification_reason": null,
+      "assertion_sources": [
+        {
+          "path": "tests/providers/doubleword/cassette/typed_prompt_tools.rs",
+          "symbol": "doubleword::cassette::typed_prompt_tools::prompt_typed_with_tool_call_roundtrip"
+        },
+        {
+          "path": "tests/providers/doubleword/support.rs",
+          "symbol": "doubleword::support::with_doubleword_cassette_result"
+        },
+        {
+          "path": "tests/common/support.rs",
+          "symbol": "support"
+        }
+      ],
+      "baseline_ignored": false,
+      "classification": "agent",
+      "classification_reason": "OC-A1 agent blocking run (tests/ecs_parity/openai-compatible-classification-contract.md): `client.agent(TOOL_MODEL).preamble(..).tool(WeatherTool with call counter).default_max_turns(2).build().prompt_typed::<WeatherResponse>(..)`; asserts the tool ran and the typed output.",
       "configuration": "root-bedrock",
       "declared_gates": [],
       "ecs": null,
-      "fixtures": [],
+      "evidence_scope": "cassette_agent",
+      "families": [
+        "typed-prompt-tools"
+      ],
+      "family_contract": "tests/ecs_parity/openai-compatible-classification-contract.md",
+      "fixtures": [
+        {
+          "origin": "genuine_provider_recording",
+          "path": "tests/cassettes/doubleword/typed_prompt_tools/prompt_typed_with_tool_call_roundtrip.yaml"
+        }
+      ],
       "id": "rig::doubleword::doubleword::cassette::typed_prompt_tools::prompt_typed_with_tool_call_roundtrip",
+      "mapping_limits": [
+        "Classified only; no native counterpart yet (ecs null). Obligations to map in phase 2 are the ones named in the reason."
+      ],
       "source": "tests/providers/doubleword/cassette/typed_prompt_tools.rs"
     }
   ],
