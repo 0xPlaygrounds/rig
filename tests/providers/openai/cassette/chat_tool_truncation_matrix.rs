@@ -55,53 +55,53 @@ use serde_json::{Value, json};
 
 use super::super::support::with_openai_tool_truncation_cassette_result;
 
-const PREAMBLE: &str = "Call file_report exactly once. Copy the entire user incident verbatim into the required summary argument. Do not answer in prose.";
-const PROMPT: &str = "The cache warmer raced the artifact uploader, the retry storm saturated the queue, three regions were drained by hand, dashboards lagged nine minutes, and rollback took forty minutes.";
+pub(super) const PREAMBLE: &str = "Call file_report exactly once. Copy the entire user incident verbatim into the required summary argument. Do not answer in prose.";
+pub(super) const PROMPT: &str = "The cache warmer raced the artifact uploader, the retry storm saturated the queue, three regions were drained by hand, dashboards lagged nine minutes, and rollback took forty minutes.";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Transport {
+pub(super) enum Transport {
     Blocking,
     Streaming,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Model {
+pub(super) enum Model {
     Gpt4oMini,
     Gpt41Mini,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Budget {
+pub(super) enum Budget {
     Low,
     Mid,
     Complete,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Surface {
+pub(super) enum Surface {
     Model,
     Agent,
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Cell {
-    transport: Transport,
-    model: Model,
-    budget: Budget,
-    surface: Surface,
+pub(super) struct Cell {
+    pub(super) transport: Transport,
+    pub(super) model: Model,
+    pub(super) budget: Budget,
+    pub(super) surface: Surface,
 }
 
 #[derive(Debug, Default)]
-struct Observation {
-    finish_reason: Option<FinishReason>,
-    arguments: Vec<Value>,
-    errors: Vec<String>,
-    invocations: usize,
+pub(super) struct Observation {
+    pub(super) finish_reason: Option<FinishReason>,
+    pub(super) arguments: Vec<Value>,
+    pub(super) errors: Vec<String>,
+    pub(super) invocations: usize,
 }
 
 type SharedObservation = Arc<Mutex<Option<Observation>>>;
 
-fn cell(transport: Transport, model: Model, budget: Budget, surface: Surface) -> Cell {
+pub(super) fn cell(transport: Transport, model: Model, budget: Budget, surface: Surface) -> Cell {
     Cell {
         transport,
         model,
@@ -110,14 +110,14 @@ fn cell(transport: Transport, model: Model, budget: Budget, surface: Surface) ->
     }
 }
 
-fn model_name(model: Model) -> &'static str {
+pub(super) fn model_name(model: Model) -> &'static str {
     match model {
         Model::Gpt4oMini => "gpt-4o-mini",
         Model::Gpt41Mini => "gpt-4.1-mini",
     }
 }
 
-fn max_tokens(budget: Budget) -> u64 {
+pub(super) fn max_tokens(budget: Budget) -> u64 {
     match budget {
         Budget::Low => 16,
         Budget::Mid => 32,
@@ -158,18 +158,18 @@ fn calls(choice: &[AssistantContent]) -> Vec<Value> {
 }
 
 #[derive(Clone)]
-struct FileReport {
-    invocations: Arc<AtomicUsize>,
+pub(super) struct FileReport {
+    pub(super) invocations: Arc<AtomicUsize>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct FileReportArgs {
+pub(super) struct FileReportArgs {
     summary: String,
 }
 
 #[derive(Debug, thiserror::Error)]
 #[error("file report failed")]
-struct FileReportError;
+pub(super) struct FileReportError;
 
 impl Tool for FileReport {
     const NAME: &'static str = "file_report";
@@ -471,7 +471,7 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
     }
 }
 
-async fn execute(scenario: &'static str, cell: Cell, observed: SharedObservation) {
+pub(super) async fn execute(scenario: &'static str, cell: Cell, observed: SharedObservation) {
     assert_cell(scenario, cell, observed);
 }
 
