@@ -39,6 +39,7 @@ members = [
     "crates/*",
     "examples/*",
     "xtask",
+    "test-support/service-tests",
 ]
 # The root manifest is itself the `rig` facade package, so without an
 # explicit `default-members` a bare `cargo nextest run` resolved to the
@@ -68,6 +69,7 @@ default-members = [
     "crates/rig-candle",
     "crates/rig-gemini-grpc",
     "crates/rig-verify",
+    "test-support/service-tests",
 ]
 exclude = [
     "archived",
@@ -276,7 +278,6 @@ rig-fastembed = { path = "crates/rig-fastembed", version = "0.42.0", optional = 
 rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.42.0", optional = true, default-features = false }
 rig-helixdb = { path = "crates/rig-helixdb", version = "0.42.0", optional = true, default-features = false }
 rig-lancedb = { path = "crates/rig-lancedb", version = "0.42.0", optional = true, default-features = false }
-lancedb = { workspace = true, optional = true }
 rig-memory = { path = "crates/rig-memory", version = "0.42.0", optional = true, default-features = false }
 rig-derive = { path = "crates/rig-derive", version = "0.42.0", optional = true }
 rig-milvus = { path = "crates/rig-milvus", version = "0.42.0", optional = true, default-features = false }
@@ -313,7 +314,6 @@ rig-ecs = { path = "crates/rig-ecs" }
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 anyhow = { workspace = true }
-arrow-array = { workspace = true }
 assert_fs = { workspace = true }
 async-stream = { workspace = true }
 aws-config = { workspace = true }
@@ -330,15 +330,11 @@ rig-agent = { path = "crates/rig-agent", version = "0.42.0", default-features = 
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }
-redis = { workspace = true, features = ["tokio-comp", "aio", "vector-sets"] }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
 futures = { workspace = true }
 httpmock = { workspace = true, features = ["record", "proxy"] }
-mongodb = { workspace = true }
-neo4rs = { workspace = true }
-qdrant-client = { workspace = true }
 reqwest-retry = { workspace = true }
 reqwest = { workspace = true, features = ["json", "stream"] }
 reqwest-middleware = { workspace = true, features = [
@@ -354,15 +350,12 @@ sha2 = { workspace = true }
 # float_roundtrip keeps cassette scrubbing idempotent on float-heavy bodies
 # (e.g. embedding vectors): without it, parse→print can oscillate between two
 # representations of the same decimal and the recorded YAML never stabilizes.
-serde_json = { workspace = true, features = ["float_roundtrip"] }
+# Golden logs preserve JSON object insertion order. Declare that requirement
+# directly instead of inheriting it from a database driver's feature graph.
+serde_json = { workspace = true, features = ["float_roundtrip", "preserve_order"] }
 serde_yaml = { workspace = true }
 syn = { workspace = true, features = ["full", "visit"] }
-rusqlite = { workspace = true, features = ["bundled"] }
-sqlite-vec = { workspace = true }
-sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "json"] }
-testcontainers = { workspace = true }
 thiserror = { workspace = true }
-tokio-rusqlite = { workspace = true, features = ["bundled"] }
 hyper-util = { workspace = true, features = ["service", "server"] }
 rmcp = { workspace = true, features = [
   "client",
@@ -381,7 +374,6 @@ opentelemetry-otlp = { workspace = true }
 tracing = { workspace = true }
 tracing-opentelemetry = { workspace = true }
 url = { workspace = true }
-
 [features]
 default = ["rig-core/default", "reqwest", "agent", "derive", "rustls"]
 agent = ["dep:rig-agent"]
@@ -401,7 +393,7 @@ fastembed-hf-hub = ["dep:rig-fastembed", "rig-fastembed/hf-hub"]
 fastembed-ort-download-binaries = ["dep:rig-fastembed", "rig-fastembed/ort-download-binaries"]
 gemini-grpc = ["dep:rig-gemini-grpc"]
 helixdb = ["dep:rig-helixdb"]
-lancedb = ["dep:rig-lancedb", "dep:lancedb"]
+lancedb = ["dep:rig-lancedb"]
 memory = ["dep:rig-memory"]
 milvus = ["dep:rig-milvus"]
 mongodb = ["dep:rig-mongodb"]

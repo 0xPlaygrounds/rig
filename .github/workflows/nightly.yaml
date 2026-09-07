@@ -56,6 +56,9 @@ on:
       - "crates/rig-sqlite/**"
       - "crates/rig-vectorize/**"
       - "tests/integrations/**"
+      - "test-support/**"
+      - "xtask/**"
+      - ".config/**"
       - "tests/integrations.rs"
       # The facade feature-forwarding guard is the one test whose failure
       # class (a facade feature forgetting a sub-feature, invisible to any
@@ -162,7 +165,7 @@ jobs:
       # A plain `run:` rather than `actions-rs/cargo@v1`: that action was
       # archived in 2023 and pins Node 20.
       - name: Test with all features
-        run: cargo nextest run --locked --all-features --retries 2
+        run: cargo xtask verify --check full-tests
 
   # The declared dependency requirements are floors, not pins (`tokio = "1"`
   # is `^1`), and a downstream resolves anywhere inside them — usually to
@@ -192,4 +195,4 @@ jobs:
           protoc: "true"
 
       - name: Build against the declared dependency floors
-        run: python3 scripts/check-dependency-floors.py
+        run: cargo xtask verify --check dependency-floors
