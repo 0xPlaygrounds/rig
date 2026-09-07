@@ -15,7 +15,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 workspace = true
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
+rig-core = { path = "../rig-core", version = "0.43.0", default-features = false }
 reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
 reqwest-middleware = { workspace = true, optional = true, features = [
   "json",
@@ -39,7 +39,7 @@ url = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "time"] }
 
 [dev-dependencies]
-rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = ["test-utils"] }
+rig-core = { path = "../rig-core", version = "0.43.0", default-features = false, features = ["test-utils"] }
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-test = { workspace = true }
