@@ -22,6 +22,7 @@ mod support;
 #[allow(dead_code)]
 #[path = "common/ecs_observation.rs"]
 mod ecs_observation;
+#[cfg(feature = "bedrock")]
 #[allow(dead_code)]
 #[path = "common/ecs_session.rs"]
 mod ecs_session;
