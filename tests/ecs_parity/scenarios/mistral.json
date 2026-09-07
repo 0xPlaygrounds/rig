@@ -2840,7 +2840,7 @@
         },
         {
           "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
-          "comparison": "Original exact-once invocation order from the shared InvocationLog after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "comparison": "Original exact-once invocation order from the shared InvocationLog; natively both tool effects run as separate pool tasks, so the log is asserted as the exact multiset and presented to assert_cell in materialised ToolCallSlot (recorded) order, a reorder-only normalisation documented in the family contract.",
           "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
           "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent",
           "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent::invocations"
@@ -2919,7 +2919,8 @@
       "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_ministral_3b_parallel_agent",
       "mapping_limits": [
         "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
-        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim.",
+        "Parallel shape: log order normalised to slot order (concurrency asserts partial order and exact result set)."
       ],
       "resolved_helper_chain": [
         "mistral::tool_lifecycle_matrix::assert_cell",
@@ -3200,7 +3201,7 @@
         },
         {
           "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
-          "comparison": "Original exact-once invocation order from the shared InvocationLog after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "comparison": "Original exact-once invocation order from the shared InvocationLog; natively both tool effects run as separate pool tasks, so the log is asserted as the exact multiset and presented to assert_cell in materialised ToolCallSlot (recorded) order, a reorder-only normalisation documented in the family contract.",
           "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
           "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::blocking_mistral_small_parallel_agent",
           "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_parallel_agent::invocations"
@@ -3279,7 +3280,8 @@
       "id": "rig::mistral::mistral::tool_lifecycle_matrix::blocking_mistral_small_parallel_agent",
       "mapping_limits": [
         "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
-        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim.",
+        "Parallel shape: log order normalised to slot order (concurrency asserts partial order and exact result set)."
       ],
       "resolved_helper_chain": [
         "mistral::tool_lifecycle_matrix::assert_cell",
@@ -3560,7 +3562,7 @@
         },
         {
           "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
-          "comparison": "Original exact-once invocation order from the shared InvocationLog after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "comparison": "Original exact-once invocation order from the shared InvocationLog; natively both tool effects run as separate pool tasks, so the log is asserted as the exact multiset and presented to assert_cell in materialised ToolCallSlot (recorded) order, a reorder-only normalisation documented in the family contract.",
           "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
           "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent",
           "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent::invocations"
@@ -3639,7 +3641,8 @@
       "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_ministral_3b_parallel_agent",
       "mapping_limits": [
         "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
-        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim.",
+        "Parallel shape: log order normalised to slot order (concurrency asserts partial order and exact result set)."
       ],
       "resolved_helper_chain": [
         "mistral::tool_lifecycle_matrix::assert_cell",
@@ -3920,7 +3923,7 @@
         },
         {
           "baseline_symbol": "mistral::tool_lifecycle_matrix::assert_cell",
-          "comparison": "Original exact-once invocation order from the shared InvocationLog after real ToolAdapter dispatch; native additionally asserts materialised ToolCallSlot names in recorded order and one result per call.",
+          "comparison": "Original exact-once invocation order from the shared InvocationLog; natively both tool effects run as separate pool tasks, so the log is asserted as the exact multiset and presented to assert_cell in materialised ToolCallSlot (recorded) order, a reorder-only normalisation documented in the family contract.",
           "ecs_observation": "tool log/counter; ecs_observation tool_calls and tool_results",
           "ecs_symbol": "mistral::ecs_tool_lifecycle_matrix::streaming_mistral_small_parallel_agent",
           "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_parallel_agent::invocations"
@@ -3999,7 +4002,8 @@
       "id": "rig::mistral::mistral::tool_lifecycle_matrix::streaming_mistral_small_parallel_agent",
       "mapping_limits": [
         "One recorded interaction per cell; the one-turn budget ending is Failed(MaxTurns) for cells with a complete call, not a settled answer.",
-        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim."
+        "Provider request/response, real tool dispatch and budget ending only; no effect-golden, hook, policy or retry claim.",
+        "Parallel shape: log order normalised to slot order (concurrency asserts partial order and exact result set)."
       ],
       "resolved_helper_chain": [
         "mistral::tool_lifecycle_matrix::assert_cell",

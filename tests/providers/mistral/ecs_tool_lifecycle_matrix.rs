@@ -110,7 +110,33 @@ async fn run_native(
     );
     assert_eq!(native.tool_results, expected.len(), "one result per call");
 
-    let invocations = invocations.lock().expect("invocation log poisoned").clone();
+    // Native dispatch spawns each tool effect as its own pool task, so the
+    // log's push order is a race the runtime does not promise. Concurrency
+    // asserts a partial order and an exact result set: every expected tool
+    // was invoked exactly once, and the model's call order is the slot order
+    // asserted above. The log is then presented to the original exact-order
+    // assertion in that slot order (a documented normalisation, see the
+    // family contract), never with entries added, dropped or deduplicated.
+    let mut log = invocations.lock().expect("invocation log poisoned").clone();
+    let mut expected_sorted = expected.to_vec();
+    expected_sorted.sort_unstable();
+    let mut log_sorted = log.iter().map(String::as_str).collect::<Vec<_>>();
+    log_sorted.sort_unstable();
+    assert_eq!(
+        log_sorted, expected_sorted,
+        "each tool invoked exactly once"
+    );
+    let invocations = native
+        .tool_calls
+        .iter()
+        .map(|name| {
+            let at = log
+                .iter()
+                .position(|logged| logged == name)
+                .expect("multiset equality guarantees a log entry per slot");
+            log.remove(at)
+        })
+        .collect::<Vec<_>>();
     *observed.lock().expect("observation mutex poisoned") = Some(Observation {
         errors,
         invocations,

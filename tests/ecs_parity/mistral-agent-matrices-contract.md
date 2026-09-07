@@ -34,7 +34,7 @@ real tool call cannot settle: `advance` refuses the second model turn before
 assembling a request and the run fails with `Failure::MaxTurns { limit: 1 }`.
 The native cells accept only `Ok` or that variant for lifecycle cells and
 truncation-complete cells; any `Provider`, `Cancelled`, `Tool`, `Unsupported`,
-`UnknownToolCall` or `Memory` failure fails the test. This is the original
+`UnknownToolCall`, `OutputToolCollision` or `Memory` failure fails the test. This is the original
 "no `ProviderResponseError` in the errors" obligation matched on the failure
 variant, and it is stricter: the original tolerated any other error string.
 Truncated (low/mid) cells carry no complete call and must settle
@@ -56,13 +56,16 @@ call (lifecycle, truncation-complete), and no materialised call at all
 
 ## Parallel shape
 
-The parallel cells assert the original invocation order `alpha` then `beta`
-from the tools' own log. Natively both calls are dispatched in one turn; the
-materialised slot order is the model's order and is asserted separately. The
-log order proved stable across the verification reruns, so the original
-exact-order assertion is retained unchanged. Should it ever diverge, the
-fidelity rule for concurrency applies: assert the slot order and the exact
-multiset, and record the normalisation here rather than weaken the original.
+The parallel cells' original assertion reads the order `alpha` then `beta`
+from the tools' own log. Natively both tool effects are spawned as separate
+pool tasks in one dispatch pass, so the log's push order is a race the
+runtime does not promise (it held across five reruns, which proves nothing).
+Concurrency therefore asserts a partial order and an exact result set: the
+materialised `ToolCallSlot` order equals the recorded call order, and the
+log is exactly the multiset of expected names (each tool invoked once). The
+log is then presented to the unchanged original `assert_cell` in slot order.
+This normalisation reorders only; it never adds, drops or deduplicates an
+entry, and it applies to every shape (a no-op for single-call shapes).
 
 ## Limits
 

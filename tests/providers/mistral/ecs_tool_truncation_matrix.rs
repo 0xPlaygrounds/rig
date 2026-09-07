@@ -66,6 +66,9 @@ async fn run_native(
         }
         Err(failure) => panic!("native truncation run must not fail with {failure:?}"),
     }
+    // The success path already rejects stream item errors; the budget path
+    // of the complete cells must fold them too, as the original drained to
+    // EOF and kept every item error.
     let world = ecs.app.world_mut();
     let mut streams = world.query::<&Streamed>();
     for stream in streams.iter(world) {
