@@ -2,7 +2,7 @@
 
 For a headless application that records genuine provider traffic, checks actual
 workspace edits, replays policy observations and resumes a supported checkpoint,
-see the [ECS consumer harness](../../tests/consumer/README.md). Its owning
+see the [ECS consumer harness in rigcoder](https://github.com/gold-silver-copper/rigcoder/blob/main/crates/rigcoder-verify/src/consumer/README.md). Its owning
 producer runs through this runtime; the existing cross-runtime corpus remains
 separate evidence with its own applicability limits.
 

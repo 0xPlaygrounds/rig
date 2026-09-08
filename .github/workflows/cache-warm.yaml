@@ -20,7 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - run: bash .github/scripts/setup-consumer-sandbox.sh
       - uses: ./.github/actions/rust-setup
         with:
           nextest: "true"

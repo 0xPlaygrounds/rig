@@ -1,5 +1,4 @@
 target/
-.ecs-consumer/
 .DS_Store
 .idea/
 .vscode/

@@ -185,7 +185,6 @@ pub(super) fn plan(
                 "test-support/",
                 "src/",
                 "tests/common/",
-                "tests/consumer/",
                 "tests/integrations/",
             ]
             .iter()

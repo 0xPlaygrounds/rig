@@ -1,9 +1,6 @@
 //! Rig repository paths for the reusable cassette engine.
 #![allow(dead_code, unused_imports)]
 
-#[path = "../consumer/registry.rs"]
-pub(crate) mod consumer_registry;
-
 pub(crate) use rig_cassette::*;
 use std::path::PathBuf;
 

@@ -2,7 +2,7 @@
 
 The bytes rig-ecs's agent modules are held to, extracted from the corpus (`crates/rig-verify/fixtures/*.effects.json`) and from `rig_agent::run`'s docs read as a specification. Every row cites the golden(s) that pin it by fixture name and JSON pointer; every `policy::text` constant has a test in `src/policy/tests.rs` that compares it to its golden. Nothing here is read off a function body of the frozen crate.
 
-The world interpreter in `crates/rig-verify/tests/corpus/world.rs` executes every program in the legacy corpus: completions, tools, steering, layers, memory, retrieval, nesting and scene continuation. Unsupported programs fail their tests; there is no completion-only filter or deferred memory subset. The separate ECS consumer corpus (`tests/consumer/README.md`) exercises actual tools, scoped policy identity, provider cassettes and application state; its policy observations are not claims about the legacy interpreters.
+The world interpreter in `crates/rig-verify/tests/corpus/world.rs` executes every program in the legacy corpus: completions, tools, steering, layers, memory, retrieval, nesting and scene continuation. Unsupported programs fail their tests; there is no completion-only filter or deferred memory subset. The separate [ECS consumer corpus in rigcoder](https://github.com/gold-silver-copper/rigcoder/blob/main/crates/rigcoder-verify/src/consumer/README.md) exercises actual tools, scoped policy identity, provider cassettes and application state; its policy observations are not claims about the legacy interpreters.
 
 ## 1. The request: a walk over the graph
 
