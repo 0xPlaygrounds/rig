@@ -580,6 +580,58 @@ impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
     }
 }
 
+/// The wire spelling of a serde enum (`SCREAMING_SNAKE_CASE`, or the raw
+/// string of an `Unknown` variant), for messages that quote the provider.
+mod erased_wire {
+    pub(super) trait Wire {
+        fn wire_name(&self) -> String;
+    }
+    impl<T: serde::Serialize> Wire for T {
+        fn wire_name(&self) -> String {
+            match serde_json::to_value(self) {
+                Ok(serde_json::Value::String(name)) => name,
+                Ok(other) => other.to_string(),
+                Err(_) => "<unserializable>".to_owned(),
+            }
+        }
+    }
+}
+
+/// A prompt Gemini refused to answer: `promptFeedback.blockReason` is set and
+/// no candidate is returned. Both wires (`generateContent` and
+/// `streamGenerateContent`) spell it the same way, so both surface the same
+/// error, naming the reason and the safety ratings that explain it, instead
+/// of a generic missing-candidate failure (unary) or a stream that ends
+/// before its terminal record (streaming).
+pub(crate) fn blocked_prompt_error(
+    feedback: &gemini_api_types::PromptFeedback,
+) -> Option<CompletionError> {
+    let reason = match feedback.block_reason.as_ref()? {
+        // Documented as unused: the zero value is never sent, and it names
+        // no block if it ever were.
+        gemini_api_types::BlockReason::BlockReasonUnspecified => return None,
+        reason => reason,
+    };
+    let wire = |value: &dyn erased_wire::Wire| value.wire_name();
+    let ratings = feedback
+        .safety_ratings
+        .as_ref()
+        .filter(|ratings| !ratings.is_empty())
+        .map(|ratings| {
+            ratings
+                .iter()
+                .map(|rating| format!("{}={}", wire(&rating.category), wire(&rating.probability)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .map(|ratings| format!(", safety_ratings=[{ratings}]"))
+        .unwrap_or_default();
+    Some(CompletionError::ProviderError(format!(
+        "Gemini blocked the prompt: block_reason={}{ratings}",
+        reason.as_wire_str()
+    )))
+}
+
 pub(crate) fn function_call_finish_reason_error(
     reason: &FinishReason,
     finish_message: Option<&str>,
@@ -752,6 +804,13 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
+        if let Some(blocked) = response
+            .prompt_feedback
+            .as_ref()
+            .and_then(blocked_prompt_error)
+        {
+            return Err(blocked);
+        }
         let candidate = response.candidates.first().ok_or_else(|| {
             CompletionError::ResponseError("No response candidates in response".into())
         })?;
@@ -1560,6 +1619,10 @@ pub mod gemini_api_types {
         Low,
         Medium,
         High,
+        /// A probability this crate does not know yet, carried verbatim so
+        /// a rating (and the chunk that carries it) stays deserializable.
+        #[serde(untagged)]
+        Unknown(String),
     }
 
     #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -1577,6 +1640,12 @@ pub mod gemini_api_types {
         HarmCategorySexuallyExplicit,
         HarmCategoryDangerousContent,
         HarmCategoryCivicIntegrity,
+        /// A category this crate does not know yet (Google adds them without
+        /// notice: `HARM_CATEGORY_JAILBREAK`, the `HARM_CATEGORY_IMAGE_*`
+        /// family), carried verbatim so a rating — and a blocked prompt's
+        /// only chunk, which carries the ratings — stays deserializable.
+        #[serde(untagged)]
+        Unknown(String),
     }
 
     #[derive(Debug, Deserialize, Clone, Default, Serialize)]
@@ -1699,6 +1768,21 @@ pub mod gemini_api_types {
         /// whole payload deserializable instead of failing on the new value.
         #[serde(untagged)]
         Unknown(String),
+    }
+
+    impl BlockReason {
+        /// The exact spelling Gemini uses for this reason on the wire (see
+        /// [`FinishReason::as_wire_str`] for why it is spelled out).
+        pub fn as_wire_str(&self) -> &str {
+            match self {
+                Self::BlockReasonUnspecified => "BLOCK_REASON_UNSPECIFIED",
+                Self::Safety => "SAFETY",
+                Self::Other => "OTHER",
+                Self::Blocklist => "BLOCKLIST",
+                Self::ProhibitedContent => "PROHIBITED_CONTENT",
+                Self::Unknown(raw) => raw.as_str(),
+            }
+        }
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]

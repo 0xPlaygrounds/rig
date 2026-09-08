@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
 
 use super::completion::gemini_api_types::{
-    ContentCandidate, FinishReason, Part, PartKind, UsageMetadata, map_finish_reason,
+    ContentCandidate, FinishReason, Part, PartKind, PromptFeedback, UsageMetadata,
+    map_finish_reason,
 };
 use super::completion::{
-    CompletionModel, PROVIDER_NAME, create_request_body, function_call_finish_reason_error,
-    resolve_request_model, streaming_endpoint,
+    CompletionModel, PROVIDER_NAME, blocked_prompt_error, create_request_body,
+    function_call_finish_reason_error, resolve_request_model, streaming_endpoint,
 };
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
@@ -81,6 +82,10 @@ pub struct StreamGenerateContentResponse {
     /// Candidate responses from the model.
     #[serde(default)]
     pub candidates: Vec<ContentCandidate>,
+    /// The prompt's content-filter verdict. A set `blockReason` means the
+    /// prompt was refused and no candidate follows: the chunk that carries
+    /// it is the whole answer.
+    pub prompt_feedback: Option<PromptFeedback>,
     pub model_version: Option<String>,
     pub usage_metadata: Option<PartialUsage>,
 }
@@ -116,9 +121,11 @@ fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<Comple
 }
 
 /// The recognizability markers of a `streamGenerateContent` chunk: every
-/// genuine frame carries `candidates` and/or `usageMetadata`. A frame with
-/// either must fully decode (else `Corrupt`); other JSON is `Unknown`.
-const RECOGNIZABLE_CHUNK_KEYS: &[&str] = &["candidates", "usageMetadata"];
+/// genuine frame carries `candidates`, `usageMetadata` and/or
+/// `promptFeedback` (a blocked prompt's only chunk may carry nothing but
+/// the feedback). A frame with any of them must fully decode (else
+/// `Corrupt`); other JSON is `Unknown`.
+const RECOGNIZABLE_CHUNK_KEYS: &[&str] = &["candidates", "usageMetadata", "promptFeedback"];
 
 /// The Gemini REST (`streamGenerateContent`) SSE wire as a [`WireAdapter`].
 ///
@@ -152,7 +159,7 @@ struct GeminiRestAdapter {
     /// and silently drop the model's whole answer while still reporting a
     /// successful `STOP`.
     saw_finish_reason: bool,
-    /// A tool-protocol finish reason ended the turn; later frames are dead —
+    /// A tool-protocol finish reason or a blocked prompt ended the turn; later frames are dead —
     /// the provider aborted, and interpreting more output (or a terminal)
     /// would dress the failure up as a completed turn.
     failed: bool,
@@ -201,6 +208,16 @@ impl WireAdapter for GeminiRestAdapter {
         if let Some(usage) = data.usage_metadata.as_ref() {
             span.record_token_usage(&crate::completion::Usage::from(usage));
             self.final_usage = Some(usage.clone());
+        }
+
+        if let Some(blocked) = data.prompt_feedback.as_ref().and_then(blocked_prompt_error) {
+            // The provider refused the prompt: this chunk is its whole
+            // answer and the stream closes after it. Without this the turn
+            // would end with no terminal record and be reported as a
+            // truncated stream, the block reason lost.
+            self.failed = true;
+            out.push(Err(blocked));
+            return;
         }
 
         let Some(choice) = data.candidates.into_iter().next() else {
@@ -278,8 +295,8 @@ impl WireAdapter for GeminiRestAdapter {
     }
 
     fn is_finished(&self) -> bool {
-        // A tool-protocol terminal failure is the wire's own in-band
-        // terminal: `interpret` already pushed the `Err` and gates itself on
+        // A tool-protocol terminal failure or a blocked prompt is the wire's
+        // own in-band terminal: `interpret` already pushed the `Err` and gates itself on
         // `failed`, so the driver must stop reading rather than drain the
         // rest of the transport (and pass through post-error unknown frames).
         self.failed
