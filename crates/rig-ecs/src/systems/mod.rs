@@ -1155,14 +1155,23 @@ pub fn resolve_invalid_defaults(
 }
 
 /// What `Fold` reads of a tool child of a turn: which call it is, whether
-/// it was issued, its outcome, whether it is held.
+/// it was issued, its outcome, whether the batch's own hold is on it.
 pub type ToolChildView = (
     Entity,
     &'static ToolCallSlot,
     Option<&'static Issued>,
     Option<&'static EffectOutcome>,
-    Has<Held>,
+    Has<BatchHeld>,
 );
+
+/// The runtime's own hold on a tool child beyond the run's concurrency,
+/// placed beside `Held` at spawn and lifted by `release_batch` in call
+/// order as earlier calls land. The marker says whose hold it is: a
+/// `Gate` policy's `Held` is not the runtime's to lift, so a call a policy
+/// holds stays held until that policy releases it, and a call the batch
+/// holds is released by the batch alone.
+#[derive(Component, Debug, Default, Clone, Copy)]
+pub struct BatchHeld;
 
 /// The tool children of `turn`, by call index.
 fn batch_children<'a>(
@@ -1193,10 +1202,13 @@ fn batch_children<'a>(
 }
 
 /// `RigSet::Release`: a turn's batch is let through up to the run's
-/// `ToolPolicy.concurrency` — every call beyond it was spawned `Held`, and
-/// is released in call order as earlier ones land. Once a landed outcome
-/// is one the run fails on, nothing more is released (fail-fast: in-flight
-/// calls drain, unstarted ones never start).
+/// `ToolPolicy.concurrency` — every call beyond it was spawned `Held` with
+/// the batch's own [`BatchHeld`], and is released in call order as earlier
+/// ones land. Only the batch's holds are lifted: a hold a `Gate` policy
+/// wrote is that policy's, and a call under one occupies its slot until the
+/// policy releases it. Once a landed outcome is one the run fails on,
+/// nothing more is released (fail-fast: in-flight calls drain, unstarted
+/// ones never start).
 pub fn release_batch(
     mut commands: Commands,
     turns: Query<(Entity, &ChildOf), With<Batch>>,
@@ -1219,18 +1231,19 @@ pub fn release_batch(
         }) {
             continue;
         }
-        // Released and not landed — taken by `Dispatch` or about to be.
+        // Let through by the batch and not landed — in flight, about to be,
+        // or waiting on a policy's own hold: a slot is a slot.
         let active = batch
             .iter()
-            .filter(|(_, _, _, outcome, held)| !*held && outcome.is_none())
+            .filter(|(_, _, _, outcome, batch_held)| !*batch_held && outcome.is_none())
             .count();
         let mut free = concurrency.saturating_sub(active);
-        for (entity, _, issued, _, held) in &batch {
+        for (entity, _, issued, _, batch_held) in &batch {
             if free == 0 {
                 break;
             }
-            if *held && !issued {
-                commands.entity(*entity).remove::<Held>();
+            if *batch_held && !issued {
+                commands.entity(*entity).remove::<(Held, BatchHeld)>();
                 free -= 1;
             }
         }
@@ -1817,7 +1830,7 @@ pub fn materialise(
                     ChildOf(turn),
                 ));
                 if index >= concurrency {
-                    effect.insert(Held);
+                    effect.insert((Held, BatchHeld));
                 }
             }
             commands.entity(turn).insert(Batch { calls: count });
