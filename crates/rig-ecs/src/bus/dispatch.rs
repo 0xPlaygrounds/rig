@@ -255,6 +255,7 @@ pub fn dispatch(
                     entity_commands.insert(Publishing(published));
                 }
                 let published = dispatch.scope::<rig_core::tool::PublishedContext>();
+                entity_commands.insert(super::record::ReplacedBy(dispatch.replaced_by()));
                 let dispatch = dispatch.with_observer(Box::new(super::record::WorldObserver {
                     published,
                     id,

@@ -154,11 +154,11 @@ impl super::super::Observe for Arc<Tapped> {
         self.events.lock().expect("events").push(event.clone());
     }
 
-    fn discard(&mut self) {
+    fn discard(&mut self, _: &str) {
         self.discarded.fetch_add(1, Ordering::SeqCst);
     }
 
-    fn patch(&mut self, kind: &EffectKind) {
+    fn patch(&mut self, _: &str, kind: &EffectKind) {
         self.patched.lock().expect("patched").push(kind.clone());
     }
 }

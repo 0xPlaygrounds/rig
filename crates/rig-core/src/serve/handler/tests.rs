@@ -26,8 +26,8 @@ impl Observe for Observer {
         self.0.lock().expect("seen").events += 1;
     }
 
-    fn discard(&mut self) {}
-    fn patch(&mut self, _: &EffectKind) {}
+    fn discard(&mut self, _: &str) {}
+    fn patch(&mut self, _: &str, _: &EffectKind) {}
 }
 
 #[test]
@@ -299,8 +299,8 @@ fn terminal_items_carry_the_original_answer_in_one_observer_call() {
                 .expect("observations")
                 .push((item.clone(), outcome.cloned()));
         }
-        fn discard(&mut self) {}
-        fn patch(&mut self, _: &EffectKind) {}
+        fn discard(&mut self, _: &str) {}
+        fn patch(&mut self, _: &str, _: &EffectKind) {}
     }
     let response = CompletionResponse::new(
         vec![AssistantContent::Image(Image {

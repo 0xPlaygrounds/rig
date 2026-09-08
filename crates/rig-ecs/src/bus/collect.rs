@@ -300,6 +300,7 @@ pub type LandedView = (
 pub fn settle(
     mut commands: Commands,
     landed: Query<LandedView, Landed>,
+    replaced: Query<&super::record::ReplacedBy>,
     recording: Option<Res<Recording>>,
     witness: Option<Res<Witnessing>>,
     subjects: Subjects,
@@ -313,6 +314,10 @@ pub fn settle(
             .and_then(|observed| observed.0.take_outcome())
             .unwrap_or_else(|| outcome.0.clone());
         let discarded = observed.is_some_and(|observed| observed.0.is_discarded());
+        let replaced_by = replaced
+            .get(entity)
+            .ok()
+            .and_then(super::record::ReplacedBy::layer);
         if let (Some(recording), false) = (&recording, discarded) {
             // Layered dispatches captured output at the inner handler's
             // terminal, before an outer verdict could change it.
@@ -344,11 +349,13 @@ pub fn settle(
                 );
                 if differs {
                     // A layer's verdict on the way out: the record keeps
-                    // the handler's answer, the world sees the layer's.
+                    // the handler's answer, the world sees the layer's. The
+                    // layer names itself when it replaced; a difference no
+                    // layer claimed keeps the explicit unknown.
                     witness.emit(
                         subject,
                         Stage::Handler,
-                        Emitter::unknown(),
+                        replaced_by.map_or_else(Emitter::unknown, Emitter::named),
                         Action::Replaced {
                             recorded: served,
                             consumed,
@@ -357,9 +364,12 @@ pub fn settle(
                 }
             }
         }
-        commands
-            .entity(entity)
-            .remove::<(InFlight, Observed, CollectedOutcome)>();
+        commands.entity(entity).remove::<(
+            InFlight,
+            Observed,
+            CollectedOutcome,
+            super::record::ReplacedBy,
+        )>();
         progress.mark();
     }
 }

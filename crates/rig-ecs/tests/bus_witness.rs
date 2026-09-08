@@ -293,6 +293,28 @@ impl Intercept for Warmer {
     }
 }
 
+/// A layer that withdraws every answer on its way out.
+struct Withdrawer;
+
+impl Intercept for Withdrawer {
+    fn name(&self) -> String {
+        "withdrawer".into()
+    }
+
+    async fn before(&self, _: EffectId, _: &EffectKind) -> Decision {
+        Decision::Proceed
+    }
+
+    async fn after(
+        &self,
+        _: EffectId,
+        _: &EffectKind,
+        _: &Result<Outcome, ErrorReport>,
+    ) -> Verdict {
+        Verdict::Replace(Err(ErrorReport::new(ErrorKind::Denied, "withdrawn")))
+    }
+}
+
 struct Bouncer;
 
 impl Intercept for Bouncer {
@@ -331,6 +353,11 @@ fn a_layer_patch_and_discard_are_witnessed_at_the_handler_side() {
         "bounced",
         ErasedHandler::new(MockModel::new(&counters)).layered(Bouncer),
     );
+    register(
+        &mut app,
+        "withdrawn",
+        ErasedHandler::new(MockModel::new(&counters)).layered(Withdrawer),
+    );
     let warm = app
         .world_mut()
         .spawn(PendingEffect::new("warm", completion()))
@@ -339,18 +366,29 @@ fn a_layer_patch_and_discard_are_witnessed_at_the_handler_side() {
         .world_mut()
         .spawn(PendingEffect::new("bounced", completion()))
         .id();
-    tick_until(&mut app, "both answered", |world| {
-        world.get::<EffectOutcome>(warm).is_some() && world.get::<EffectOutcome>(bounced).is_some()
+    let withdrawn = app
+        .world_mut()
+        .spawn(PendingEffect::new("withdrawn", completion()))
+        .id();
+    tick_until(&mut app, "all answered", |world| {
+        world.get::<EffectOutcome>(warm).is_some()
+            && world.get::<EffectOutcome>(bounced).is_some()
+            && world.get::<EffectOutcome>(withdrawn).is_some()
     });
     tick(&mut app, 2);
 
     let records = recorder.log();
     assert_eq!(
         records.records.len(),
-        1,
-        "the bounced dispatch is no record"
+        2,
+        "the bounced dispatch is no record; the withdrawn one keeps the handler's answer"
     );
-    let EffectKind::Completion { request, .. } = &records.records[0].kind else {
+    let warm_record = records
+        .records
+        .iter()
+        .find(|r| r.key.as_str() == "warm")
+        .expect("the warm record");
+    let EffectKind::Completion { request, .. } = &warm_record.kind else {
         panic!()
     };
     assert_eq!(
@@ -366,6 +404,10 @@ fn a_layer_patch_and_discard_are_witnessed_at_the_handler_side() {
         .find(|o| matches!(o.action, Action::Patched { .. }))
         .expect("the patch is observed");
     assert_eq!(patched.stage, Stage::Handler);
+    assert_eq!(
+        patched.emitter.name, "warmer",
+        "a layer's patch names the layer"
+    );
     let Action::Patched { before, after } = &patched.action else {
         panic!("matched above")
     };
@@ -380,8 +422,48 @@ fn a_layer_patch_and_discard_are_witnessed_at_the_handler_side() {
         .expect("the discard is observed");
     assert_eq!(denied.stage, Stage::Handler);
     assert_eq!(
+        denied.emitter.name, "bouncer",
+        "a layer's denial names the layer"
+    );
+    assert_eq!(
         denied.subject.key.as_ref().map(|k| k.as_str()),
         Some("bounced")
+    );
+    let replaced = trace
+        .observations
+        .iter()
+        .find(|o| {
+            matches!(o.action, Action::Replaced { .. })
+                && o.subject
+                    .key
+                    .as_ref()
+                    .is_some_and(|k| k.as_str() == "withdrawn")
+        })
+        .expect("the layer's replacement is observed");
+    assert_eq!(replaced.stage, Stage::Handler);
+    assert_eq!(
+        replaced.emitter.name, "withdrawer",
+        "a layer's replacement names the layer"
+    );
+    let Action::Replaced { recorded, consumed } = &replaced.action else {
+        panic!("matched above")
+    };
+    assert!(
+        matches!(recorded, OutcomeSummary::Ok { .. }),
+        "{recorded:?}"
+    );
+    assert!(
+        matches!(consumed, OutcomeSummary::Err { reason, .. } if reason.code == "denied"),
+        "{consumed:?}"
+    );
+    assert!(
+        recorder
+            .log()
+            .records
+            .iter()
+            .find(|r| r.key.as_str() == "withdrawn")
+            .is_some_and(|r| r.outcome.is_ok()),
+        "the record keeps the handler's answer"
     );
     assert!(
         !trace.observations.iter().any(|o| {

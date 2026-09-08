@@ -39,8 +39,8 @@ fn cancellation_and_terminal_observation_have_one_recording_boundary() {
         observer.event(final_item.as_ref().unwrap());
         observer.stream_error(&cancelled());
         observer.outcome(&answer);
-        observer.patch(&kind);
-        observer.discard();
+        observer.patch("layer", &kind);
+        observer.discard("layer");
         assert_eq!(serde_json::to_value(recorder.log()).unwrap(), closed);
         assert!(!observed.is_discarded());
     }

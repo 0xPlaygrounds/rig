@@ -250,8 +250,8 @@ parent, key), a `Stage` (`Gate`, `Dispatch`, `Handler`, `Collect`, `Judge`,
 | a `Gate` system writes `Held` / removes it | `Held` / `Released` (emitter unknown unless the policy emits) |
 | a `Gate` system answers an intent before dispatch | `Denied { reason }` |
 | `Dispatch` | `Issued`; `Deferred { intake_bound \| serial_key_busy }` once per intent (the first time it is left behind, whichever the reason); `Refused { handler_unavailable \| reentrant \| ids_exhausted }` |
-| a layer (`Intercept`) patches or denies | `Patched { before, after }`, `Denied { layer_discarded }` at `Handler` |
-| `Collect` | `StreamTruncated { delivered, tail, errors }`, `Landed { outcome }`, `Replaced` when a layer's verdict differed from the record, `Cancelled` for a despawn in flight |
+| a layer (`Intercept`) patches or denies | `Patched { before, after }`, `Denied { layer_discarded }` at `Handler`, the emitter named after the layer |
+| `Collect` | `StreamTruncated { delivered, tail, errors }`, `Landed { outcome }`, `Replaced` when a layer's verdict differed from the record (emitter named after the layer that said it replaced; unknown for a difference no layer claimed), `Cancelled` for a despawn in flight |
 | a `Judge` system overwrites a settled outcome (by insert; an in-place `Mut` rewrite must emit for itself) | `Replaced { recorded, consumed }`, whenever the whole value changed |
 | the agent runtime | `Ended { settled \| max_turns \| provider \| cancelled \| … }`, `CancelRequested`, `Retry`, `InvalidCall { name, resolution }` |
 | a host system | `Witnessing::emit(subject, Stage::Host, Emitter::versioned(..), HostAction::action(..))` |

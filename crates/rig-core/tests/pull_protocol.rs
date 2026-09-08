@@ -63,10 +63,10 @@ impl Observe for Observer {
             .events
             .push(serde_json::to_value(error).unwrap());
     }
-    fn discard(&mut self) {
+    fn discard(&mut self, _: &str) {
         self.0.lock().unwrap().discarded += 1;
     }
-    fn patch(&mut self, kind: &EffectKind) {
+    fn patch(&mut self, _: &str, kind: &EffectKind) {
         self.0
             .lock()
             .unwrap()

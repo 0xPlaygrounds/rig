@@ -73,11 +73,11 @@ impl<R: Recorder + Send + Sync> Observe for Recorded<R> {
         self.recorder.stream_error(self.id, error);
     }
 
-    fn discard(&mut self) {
+    fn discard(&mut self, _: &str) {
         self.recorder.discard(self.id);
     }
 
-    fn patch(&mut self, kind: &EffectKind) {
+    fn patch(&mut self, _: &str, kind: &EffectKind) {
         self.recorder.patch(self.id, kind.clone());
     }
 }

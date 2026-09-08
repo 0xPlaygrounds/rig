@@ -143,6 +143,22 @@ pub fn record_outcome(
 #[derive(Component, Clone, Default)]
 pub struct Observed(pub Arc<ObservedState>);
 
+/// The dispatch's replacement slot (`Dispatch::replaced_by`): the layer
+/// whose verdict the consumer's answer is from, once one said so. Runtime-
+/// only; removed with the in-flight markers at collection.
+#[derive(Component)]
+pub struct ReplacedBy(pub Arc<std::sync::Mutex<Option<String>>>);
+
+impl ReplacedBy {
+    /// The layer named, if any.
+    pub fn layer(&self) -> Option<String> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
 /// The observer's slots.
 #[derive(Default)]
 pub struct ObservedState {
@@ -277,7 +293,7 @@ impl rig_core::serve::Observe for WorldObserver {
         }
     }
 
-    fn discard(&mut self) {
+    fn discard(&mut self, layer: &str) {
         let mut state = self.observed.lock();
         if !state.closed {
             state.discarded = true;
@@ -290,7 +306,7 @@ impl rig_core::serve::Observe for WorldObserver {
                 witness.emit(
                     subject,
                     rig_core::observe::Stage::Handler,
-                    rig_core::observe::Emitter::unknown(),
+                    rig_core::observe::Emitter::named(layer),
                     rig_core::observe::Action::Denied {
                         reason: rig_core::observe::Reason::code("layer_discarded"),
                     },
@@ -299,7 +315,7 @@ impl rig_core::serve::Observe for WorldObserver {
         }
     }
 
-    fn patch(&mut self, kind: &EffectKind) {
+    fn patch(&mut self, layer: &str, kind: &EffectKind) {
         let state = self.observed.lock();
         if !state.closed {
             if let Some(recording) = &self.recording {
@@ -312,7 +328,7 @@ impl rig_core::serve::Observe for WorldObserver {
                     Ok(action) => witness.emit(
                         subject,
                         rig_core::observe::Stage::Handler,
-                        rig_core::observe::Emitter::unknown(),
+                        rig_core::observe::Emitter::named(layer),
                         action,
                     ),
                     Err(error) => log::warn!(
