@@ -44,6 +44,7 @@ use crate::{
 };
 
 mod stream_invalid;
+pub mod witness;
 pub use stream_invalid::discover_streamed_invalid_calls;
 
 /// The agent's sets, in order, around the bus module's.
@@ -172,6 +173,7 @@ pub fn install_agent(world: &mut World) {
     world.init_resource::<RunCounter>();
     world.add_observer(effect_cancelled);
     world.add_observer(run_cancelled);
+    witness::install(world);
     let mut schedules = world.resource_mut::<Schedules>();
     let Some(schedule) = schedules.get_mut(RigSchedule) else {
         return;

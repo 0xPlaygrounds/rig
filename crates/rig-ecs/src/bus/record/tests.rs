@@ -18,6 +18,7 @@ fn cancellation_and_terminal_observation_have_one_recording_boundary() {
             id,
             recording: Some(recording.clone()),
             published: None,
+            witness: None,
             observed: observed.clone(),
         };
         let final_item = Ok(StreamEvent::Final(rig_core::streaming::StreamFinal::new(

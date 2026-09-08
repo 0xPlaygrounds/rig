@@ -196,6 +196,13 @@ pub struct WorldObserver {
     pub recording: Option<Recording>,
     /// The shared slots.
     pub observed: Arc<ObservedState>,
+    /// The world's witness with the dispatch's subject and the kind that
+    /// began, so a layer's patch or discard is observed with its before.
+    pub witness: Option<(
+        super::witness::Witnessing,
+        rig_core::observe::Subject,
+        EffectKind,
+    )>,
 }
 
 impl WorldObserver {
@@ -277,15 +284,45 @@ impl rig_core::serve::Observe for WorldObserver {
             if let Some(recording) = &self.recording {
                 recording.discard(self.id);
             }
+            if let Some((witness, subject, _)) = &self.witness {
+                let mut subject = subject.clone();
+                subject.effect = Some(self.id);
+                witness.emit(
+                    subject,
+                    rig_core::observe::Stage::Handler,
+                    rig_core::observe::Emitter::unknown(),
+                    rig_core::observe::Action::Denied {
+                        reason: rig_core::observe::Reason::code("layer_discarded"),
+                    },
+                );
+            }
         }
     }
 
     fn patch(&mut self, kind: &EffectKind) {
         let state = self.observed.lock();
-        if !state.closed
-            && let Some(recording) = &self.recording
-        {
-            recording.patch(self.id, kind.clone());
+        if !state.closed {
+            if let Some(recording) = &self.recording {
+                recording.patch(self.id, kind.clone());
+            }
+            if let Some((witness, subject, before)) = &mut self.witness {
+                let mut subject = subject.clone();
+                subject.effect = Some(self.id);
+                match rig_core::observe::Action::patched(before, kind) {
+                    Ok(action) => witness.emit(
+                        subject,
+                        rig_core::observe::Stage::Handler,
+                        rig_core::observe::Emitter::unknown(),
+                        action,
+                    ),
+                    Err(error) => log::warn!(
+                        target: "rig_ecs::bus",
+                        "a patched effect kind did not serialize for the witness: {error}"
+                    ),
+                }
+                // A later patch is observed against what was just served.
+                *before = kind.clone();
+            }
         }
     }
 }
@@ -333,6 +370,34 @@ pub fn record_cancelled(
         }
         recording.resolve(*id, original.unwrap_or_else(|| Err(cancelled())));
     }
+}
+
+/// An in-flight effect losing `InFlight` without an outcome, seen by the
+/// witness: a cancelled dispatch, whether or not a record is kept.
+pub fn witness_cancelled(
+    removed: On<Remove, InFlight>,
+    effects: Query<(Has<EffectOutcome>, Option<&Observed>), With<Issued>>,
+    subjects: super::witness::Subjects,
+    witness: Option<Res<super::witness::Witnessing>>,
+) {
+    let Some(witness) = witness else {
+        return;
+    };
+    let entity = removed.event().entity;
+    let Ok((answered, observed)) = effects.get(entity) else {
+        return;
+    };
+    if answered || observed.is_some_and(|observed| observed.0.is_discarded()) {
+        return;
+    }
+    witness.emit(
+        subjects.of(entity),
+        rig_core::observe::Stage::Collect,
+        super::witness::bus_emitter(),
+        rig_core::observe::Action::Cancelled {
+            reason: rig_core::observe::Reason::from_report(&cancelled()),
+        },
+    );
 }
 
 /// A handler bound (or re-bound) while recording: described to the

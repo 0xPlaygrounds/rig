@@ -235,6 +235,32 @@ The Bevy host fixture's fourteen proofs and the eight unproven behaviours of `ri
 
 No hook trait, no history vector, no step enum, no run struct copied from anywhere, no batch machine (the batch is the turn's children and a query): steering is a system between sets. Program identity is data: `replay::stamp_run` writes the run's scope into `LogHeader::programs` and `replay::check_replayable` refuses a foreign log by policy or by row (`tests/run_identity.rs`). Memory is the graph and retrieval attaches (`tests/memory_graph.rs`); two runs on one agent are two `spawn_run`s; resume is a scene load (`agent::scene::{save_world, load_world}`, every resume and checkpoint row of the corpus as a world cell, CONTRACT §13). The `bus` module still has no agent-shaped item and its suite is agent-free (the guard checks). No streaming answers from a system yet (a later PR). `Scene` is the crate's own serde form and stores what this module owns; a host's other components are its own to save. No `Now`, no `Random`: nondeterminism is an effect a host registers, and the guard refuses a clock or a random draw in this crate.
 
+## The witness: decisions beside the record
+
+The effect log is the replay oracle: what a handler served and answered.
+A `Witnessing` resource (`rig_ecs::bus::Witnessing::install(world, sink)`,
+any `rig_core::observe::Witness`; `rig_core::observe::ObservationLog` is the
+bounded in-memory one) records what happened *around* those exchanges, as
+typed `Observation`s with a `Subject` (scope, dispatch order, effect id,
+parent, key), a `Stage` (`Gate`, `Dispatch`, `Handler`, `Collect`, `Judge`,
+`Runtime`, `Host`), an `Emitter` and an `Action`:
+
+| site | fact |
+|---|---|
+| a `Gate` system writes `Held` / removes it | `Held` / `Released` (emitter unknown unless the policy emits) |
+| a `Gate` system answers an intent before dispatch | `Denied { reason }` |
+| `Dispatch` | `Issued`; `Deferred { intake_bound \| serial_key_busy }` once per intent (the first time it is left behind, whichever the reason); `Refused { handler_unavailable \| reentrant \| ids_exhausted }` |
+| a layer (`Intercept`) patches or denies | `Patched { before, after }`, `Denied { layer_discarded }` at `Handler` |
+| `Collect` | `StreamTruncated { delivered, tail, errors }`, `Landed { outcome }`, `Replaced` when a layer's verdict differed from the record, `Cancelled` for a despawn in flight |
+| a `Judge` system overwrites a settled outcome (by insert; an in-place `Mut` rewrite must emit for itself) | `Replaced { recorded, consumed }`, whenever the whole value changed |
+| the agent runtime | `Ended { settled \| max_turns \| provider \| cancelled \| … }`, `CancelRequested`, `Retry`, `InvalidCall { name, resolution }` |
+| a host system | `Witnessing::emit(subject, Stage::Host, Emitter::versioned(..), HostAction::action(..))` |
+
+`rig_core::observe::compare` compares two traces on their semantic fields
+and ignores measurements (`Observation::at`, stamped from a host-owned
+`Clock`); an incomplete trace (a full sink) is incomparable, never equal.
+`crates/rig-ecs/tests/bus_witness.rs` and `run_witness.rs` are the proofs.
+
 ## Replay delivery and streaming
 
 Records remain in dispatch order. When `EffectLogResource::install` installs

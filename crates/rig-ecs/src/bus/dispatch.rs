@@ -22,7 +22,9 @@ use super::{
     handlers::{Bound, HandlerTable, Served},
     plugin::{Intake, Policy, Progress},
     record::Recording,
+    witness::{Deferred, DispatchWitness, Refused, bus_emitter},
 };
+use rig_core::observe::{Action, Reason, Stage};
 
 /// A pending effect `Dispatch` may take: not held, not answered, not yet
 /// issued.
@@ -76,12 +78,18 @@ pub fn dispatch(
     issued: Query<&Issued>,
     scopes: Query<&Scope>,
     recording: Option<Res<Recording>>,
+    witnessing: DispatchWitness,
     mut ids: ResMut<IdCounter>,
     mut intake: ResMut<Intake>,
     mut progress: ResMut<Progress>,
 ) {
     let mut candidates: Vec<_> = pending.iter().collect();
     candidates.sort_by_key(|(_, seq, _, _, _)| **seq);
+    let DispatchWitness {
+        witness,
+        subjects,
+        deferred,
+    } = witnessing;
 
     let policy = policy.0;
     let serial = policy.serial_per_handler;
@@ -94,17 +102,73 @@ pub fn dispatch(
         HashSet::new()
     };
 
-    for (entity, _, effect, reserved, inputs) in candidates {
+    let candidates_len = candidates.len();
+    for (index, (entity, _, effect, reserved, inputs)) in candidates.into_iter().enumerate() {
         if intake.0 >= policy.command_capacity {
+            // Observed once per pass, on the first intent left behind, with
+            // how many wait with it: a summary, not one fact per pass per
+            // intent.
+            if let Some(witness) = &witness
+                && deferred.get(entity).is_err()
+            {
+                let mut subject = subjects.of(entity);
+                subject.parent = nearest_issued(entity, &parents, &issued, &issued_now);
+                witness.emit(
+                    subject,
+                    Stage::Dispatch,
+                    bus_emitter(),
+                    Action::Deferred {
+                        reason: Reason::with_detail(
+                            "intake_bound",
+                            format!(
+                                "{} of {} intents wait for the next tick (intake {})",
+                                candidates_len - index,
+                                candidates_len,
+                                policy.command_capacity
+                            ),
+                        ),
+                    },
+                );
+                commands.entity(entity).insert(Deferred);
+            }
             return;
         }
         let key = &effect.key;
         if serial && busy.contains(key) {
             if ancestor_in_flight_on(entity, key, &parents, &in_flight) {
+                if let Some(witness) = &witness {
+                    let mut subject = subjects.of(entity);
+                    subject.parent = nearest_issued(entity, &parents, &issued, &issued_now);
+                    witness.emit(
+                        subject,
+                        Stage::Dispatch,
+                        bus_emitter(),
+                        Action::Refused {
+                            reason: Reason::with_detail("reentrant", reentrant(key).message),
+                        },
+                    );
+                }
                 commands
                     .entity(entity)
-                    .insert(EffectOutcome(Err(reentrant(key))));
+                    .insert((Refused, EffectOutcome(Err(reentrant(key)))));
                 progress.mark();
+            } else if let Some(witness) = &witness
+                && deferred.get(entity).is_err()
+            {
+                let mut subject = subjects.of(entity);
+                subject.parent = nearest_issued(entity, &parents, &issued, &issued_now);
+                witness.emit(
+                    subject,
+                    Stage::Dispatch,
+                    bus_emitter(),
+                    Action::Deferred {
+                        reason: Reason::with_detail(
+                            "serial_key_busy",
+                            format!("`{key}` is served one at a time and is in flight"),
+                        ),
+                    },
+                );
+                commands.entity(entity).insert(Deferred);
             }
             continue;
         }
@@ -113,21 +177,46 @@ pub fn dispatch(
             .find(|(_, bound)| &bound.key == key)
             .and_then(|(handler, _)| table.served(handler));
         let Some(served) = served else {
+            if let Some(witness) = &witness {
+                let mut subject = subjects.of(entity);
+                subject.parent = nearest_issued(entity, &parents, &issued, &issued_now);
+                witness.emit(
+                    subject,
+                    Stage::Dispatch,
+                    bus_emitter(),
+                    Action::Refused {
+                        reason: Reason::with_detail(
+                            "handler_unavailable",
+                            handler_unavailable(key).message,
+                        ),
+                    },
+                );
+            }
             commands
                 .entity(entity)
-                .insert(EffectOutcome(Err(handler_unavailable(key))));
+                .insert((Refused, EffectOutcome(Err(handler_unavailable(key)))));
             progress.mark();
             continue;
         };
 
         let raw_id = reserved.map_or(ids.0, |Reserved(id)| id.as_u64());
         let Some(next_id) = raw_id.checked_add(1) else {
+            let report = ErrorReport::new(ErrorKind::Request, "effect ID allocator exhausted");
+            if let Some(witness) = &witness {
+                let mut subject = subjects.of(entity);
+                subject.parent = nearest_issued(entity, &parents, &issued, &issued_now);
+                witness.emit(
+                    subject,
+                    Stage::Dispatch,
+                    bus_emitter(),
+                    Action::Refused {
+                        reason: Reason::with_detail("ids_exhausted", report.message.clone()),
+                    },
+                );
+            }
             commands
                 .entity(entity)
-                .insert(EffectOutcome(Err(ErrorReport::new(
-                    ErrorKind::Request,
-                    "effect ID allocator exhausted",
-                ))));
+                .insert((Refused, EffectOutcome(Err(report))));
             progress.mark();
             continue;
         };
@@ -139,7 +228,14 @@ pub fn dispatch(
                 .map(|scope| std::sync::Arc::from(scope.as_str())),
         };
 
+        if let Some(witness) = &witness {
+            let mut subject = subjects.of(entity);
+            subject.effect = Some(id);
+            subject.parent = origin.parent;
+            witness.emit(subject, Stage::Dispatch, bus_emitter(), Action::Issued);
+        }
         let mut entity_commands = commands.entity(entity);
+        entity_commands.remove::<Deferred>();
         match served {
             Served::Task(handler) => {
                 if let Some(recording) = &recording {
@@ -164,6 +260,13 @@ pub fn dispatch(
                     id,
                     recording: recording.as_ref().map(|r| (**r).clone()),
                     observed,
+                    witness: witness.as_ref().map(|witness| {
+                        (
+                            (**witness).clone(),
+                            subjects.of(entity),
+                            effect.kind.clone(),
+                        )
+                    }),
                 }));
                 let streaming = effect.is_stream();
 

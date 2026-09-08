@@ -4,8 +4,9 @@
 //! whole, serialized through its serde form (`ReflectSerialize` /
 //! `ReflectDeserialize`), which is the wire form the log already has. The
 //! runtime-only components (`Serving`, `Streaming`, `Publishing`, `Asked`,
-//! `Answer`, `WorldOutcome`, `CollectedOutcome`, `Typed`) reflect nothing:
-//! tasks and answer inboxes are transient.
+//! `Answer`, `WorldOutcome`, `CollectedOutcome`, `Typed`, and the witness's
+//! `Refused`, `Deferred`, `SeenOutcome`) reflect nothing: tasks, answer
+//! inboxes and observation bookkeeping are transient.
 
 use bevy_reflect::{ReflectDeserialize, ReflectSerialize, prelude::ReflectDefault, reflect_remote};
 use rig_core::{
