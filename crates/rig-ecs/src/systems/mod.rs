@@ -37,8 +37,8 @@ use crate::{
         ToolContextSpec, ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
     },
     bus::{
-        Bound, BusSet, EffectOutcome, Held, Issued, PendingEffect, Progress, RigSchedule, Scope,
-        Streamed as BusStreamed, ToolInputs,
+        Bound, BusSet, EffectOutcome, Held, Issued, PendingEffect, PolicyHeld, Progress,
+        RigSchedule, Scope, Streamed as BusStreamed, ToolInputs,
     },
     policy::{self, RequestGraph},
 };
@@ -1157,13 +1157,34 @@ pub fn resolve_invalid_defaults(
 }
 
 /// What `Fold` reads of a tool child of a turn: which call it is, whether
-/// it was issued, its outcome, whether it is held.
+/// it was issued, its outcome, whether the batch's own hold is on it.
 pub type ToolChildView = (
     Entity,
     &'static ToolCallSlot,
     Option<&'static Issued>,
     Option<&'static EffectOutcome>,
-    Has<Held>,
+    Has<BatchHeld>,
+    Has<PolicyHeld>,
+);
+
+/// The runtime's own hold on a tool child beyond the run's concurrency,
+/// placed beside `Held` at spawn and lifted by `release_batch` in call
+/// order as earlier calls land. The marker says whose hold it is: a
+/// `Gate` policy's `Held` is not the runtime's to lift, so a call a policy
+/// holds stays held until that policy releases it, and a call the batch
+/// holds is released by the batch alone.
+#[derive(Component, Debug, Default, Clone, Copy)]
+pub struct BatchHeld;
+
+/// One tool child of a batch: the entity, the slot, whether issued, the
+/// outcome, whether the batch holds it, whether a policy does.
+type BatchChild<'a> = (
+    Entity,
+    &'a ToolCallSlot,
+    bool,
+    Option<&'a EffectOutcome>,
+    bool,
+    bool,
 );
 
 /// The tool children of `turn`, by call index.
@@ -1171,34 +1192,38 @@ fn batch_children<'a>(
     turn: Entity,
     children: &Query<&Children>,
     tools: &'a Query<ToolChildView>,
-) -> Vec<(
-    Entity,
-    &'a ToolCallSlot,
-    bool,
-    Option<&'a EffectOutcome>,
-    bool,
-)> {
+) -> Vec<BatchChild<'a>> {
     let mut found: Vec<_> = children
         .get(turn)
         .map(|children| {
             children
                 .iter()
                 .filter_map(|child| tools.get(child).ok())
-                .map(|(entity, slot, issued, outcome, held)| {
-                    (entity, slot, issued.is_some(), outcome, held)
+                .map(|(entity, slot, issued, outcome, batch_held, policy_held)| {
+                    (
+                        entity,
+                        slot,
+                        issued.is_some(),
+                        outcome,
+                        batch_held,
+                        policy_held,
+                    )
                 })
                 .collect()
         })
         .unwrap_or_default();
-    found.sort_by_key(|(_, slot, _, _, _)| slot.index);
+    found.sort_by_key(|(_, slot, _, _, _, _)| slot.index);
     found
 }
 
 /// `RigSet::Release`: a turn's batch is let through up to the run's
-/// `ToolPolicy.concurrency` — every call beyond it was spawned `Held`, and
-/// is released in call order as earlier ones land. Once a landed outcome
-/// is one the run fails on, nothing more is released (fail-fast: in-flight
-/// calls drain, unstarted ones never start).
+/// `ToolPolicy.concurrency` — every call beyond it was spawned `Held` with
+/// the batch's own [`BatchHeld`], and is released in call order as earlier
+/// ones land. Only the batch's holds are lifted: a hold a `Gate` policy
+/// wrote is that policy's, and a call under one occupies its slot until the
+/// policy releases it. Once a landed outcome is one the run fails on,
+/// nothing more is released (fail-fast: in-flight calls drain, unstarted
+/// ones never start).
 pub fn release_batch(
     mut commands: Commands,
     turns: Query<(Entity, &ChildOf), With<Batch>>,
@@ -1216,23 +1241,31 @@ pub fn release_batch(
             .map_or(1, |policy| policy.concurrency)
             .max(1);
         let batch = batch_children(turn, &children, &tools);
-        if batch.iter().any(|(_, _, _, outcome, _)| {
+        if batch.iter().any(|(_, _, _, outcome, _, _)| {
             outcome.is_some_and(|o| policy::tool_failure(&o.0).is_some())
         }) {
             continue;
         }
-        // Released and not landed — taken by `Dispatch` or about to be.
+        // Let through by the batch and not landed — in flight, about to be,
+        // or waiting on a policy's own hold: a slot is a slot.
         let active = batch
             .iter()
-            .filter(|(_, _, _, outcome, held)| !*held && outcome.is_none())
+            .filter(|(_, _, _, outcome, batch_held, _)| !*batch_held && outcome.is_none())
             .count();
         let mut free = concurrency.saturating_sub(active);
-        for (entity, _, issued, _, held) in &batch {
+        for (entity, _, issued, _, batch_held, policy_held) in &batch {
             if free == 0 {
                 break;
             }
-            if *held && !issued {
-                commands.entity(*entity).remove::<Held>();
+            if *batch_held && !issued {
+                // The batch's hold is lifted; `Held` itself only when no
+                // policy holds the call too (`PolicyHeld`), else it stands
+                // until that policy removes both.
+                if *policy_held {
+                    commands.entity(*entity).remove::<BatchHeld>();
+                } else {
+                    commands.entity(*entity).remove::<(Held, BatchHeld)>();
+                }
                 free -= 1;
             }
         }
@@ -1269,10 +1302,10 @@ pub fn land_batch(
         let calls = batch_children(turn, &children, &tools);
         let failure = calls
             .iter()
-            .find_map(|(_, _, _, outcome, _)| outcome.and_then(|o| policy::tool_failure(&o.0)));
+            .find_map(|(_, _, _, outcome, _, _)| outcome.and_then(|o| policy::tool_failure(&o.0)));
         let started_landed = calls
             .iter()
-            .all(|(_, _, issued, outcome, _)| !*issued || outcome.is_some());
+            .all(|(_, _, issued, outcome, _, _)| !*issued || outcome.is_some());
         if let Some(failure) = failure {
             if !started_landed {
                 continue;
@@ -1284,7 +1317,7 @@ pub fn land_batch(
                 .entity(run)
                 .remove::<ResolvingTools>()
                 .insert(Failed(failure));
-            for (entity, _, issued, outcome, _) in &calls {
+            for (entity, _, issued, outcome, _, _) in &calls {
                 if !*issued && outcome.is_none() {
                     commands.entity(*entity).despawn();
                 }
@@ -1292,13 +1325,16 @@ pub fn land_batch(
             progress.mark();
             continue;
         }
-        if calls.len() < batch.calls || calls.iter().any(|(_, _, _, outcome, _)| outcome.is_none())
+        if calls.len() < batch.calls
+            || calls
+                .iter()
+                .any(|(_, _, _, outcome, _, _)| outcome.is_none())
         {
             continue;
         }
         let mut parts = Vec::with_capacity(calls.len());
         let mut failed = None;
-        for (_, slot, _, outcome, _) in &calls {
+        for (_, slot, _, outcome, _, _) in &calls {
             let Some(EffectOutcome(outcome)) = outcome else {
                 continue;
             };
@@ -1819,7 +1855,7 @@ pub fn materialise(
                     ChildOf(turn),
                 ));
                 if index >= concurrency {
-                    effect.insert(Held);
+                    effect.insert((Held, BatchHeld));
                 }
             }
             commands.entity(turn).insert(Batch { calls: count });

@@ -74,7 +74,7 @@ The agent's sets, around the bus's:
 | `RigSet::Select` | a run may lack a model of its own | the agent's `UsesModel`, copied — a routing system before it gives the run another |
 | `RigSet::Assemble` | a fresh turn's graph is complete | the fold spawns the effect; the run is `AwaitingModel` |
 | `RigSet::Patch` | the folded effect is a `PendingEffect` | the second steering slot: a user system rewrites the folded request |
-| `RigSet::Release` | a turn's tool batch is out | `release_batch` un-holds the next calls up to the concurrency, in call order |
+| `RigSet::Release` | a turn's tool batch is out | `release_batch` un-holds the next calls up to the concurrency, in call order — its own `BatchHeld` holds only; a `Held` a `Gate` system wrote is that system's to lift (on a call the batch also holds, the system writes `PolicyHeld` beside `Held`) |
 | *`BusSet::Gate` … `BusSet::Judge`* | | |
 | `RigSet::Fold` | the effect may have streamed or landed | `Outputs` on the turn |
 | `RigSet::Judge` | the turn's outputs are complete | a user system may rewrite them, or a tool child's `EffectOutcome` |

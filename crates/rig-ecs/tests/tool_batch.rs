@@ -7,6 +7,8 @@
 //! | `ToolPolicy { concurrency }` on the agent lets two calls fly at once; the default holds the second until the first lands | `tool_policy_sets_how_many_calls_are_in_flight` |
 //! | a `Judge` system replaces a tool child's outcome: history holds the replacement, the record the answer | `a_judge_system_replaces_a_tool_result_and_the_record_keeps_the_answer` |
 //! | a `Gate` denial is a skipped result the model sees, and no record | `a_gate_denial_is_a_skipped_result_and_no_record` |
+//! | a `Gate` hold is the policy's: the batch release never lifts it, and the held call keeps its concurrency slot | `a_gate_hold_is_not_lifted_by_the_batch_release` |
+//! | a `Gate` hold on a call the batch also holds (`PolicyHeld`) survives the batch's own release | `a_gate_hold_on_a_call_the_batch_also_holds_survives_the_batch_release` |
 //! | a tool child despawned fails the run `Cancelled` | `despawning_a_tool_child_fails_the_run_cancelled` |
 //! | `Resolution::Repair` written by a system renames the call and dispatches it | `a_system_repairs_an_invalid_call_to_a_granted_tool` |
 //! | `Resolution::Retry` retries the turn with feedback and the invalid-peer notice | `a_system_retries_an_invalid_call_with_feedback` |
@@ -448,6 +450,181 @@ fn deny_tool_calls(
                     "not today",
                 ))));
         }
+    }
+}
+
+/// A policy that holds the first call of every batch, once, and releases
+/// it when told.
+#[derive(Resource)]
+struct HoldFirst(bool);
+
+fn hold_first_call(
+    fresh: Query<(Entity, &rig_ecs::agent::ToolCallSlot), Added<PendingEffect>>,
+    mut commands: Commands,
+) {
+    for (entity, slot) in &fresh {
+        if slot.index == 0 {
+            commands.entity(entity).insert(rig_ecs::bus::Held);
+        }
+    }
+}
+
+/// A policy that holds the *second* call of every batch — one the batch may
+/// be holding too — and says so with `PolicyHeld`.
+fn hold_second_call(
+    fresh: Query<(Entity, &rig_ecs::agent::ToolCallSlot), Added<PendingEffect>>,
+    mut commands: Commands,
+) {
+    for (entity, slot) in &fresh {
+        if slot.index == 1 {
+            commands
+                .entity(entity)
+                .insert((rig_ecs::bus::Held, rig_ecs::bus::PolicyHeld));
+        }
+    }
+}
+
+fn release_second_call(
+    held: Query<(Entity, &rig_ecs::agent::ToolCallSlot), With<rig_ecs::bus::PolicyHeld>>,
+    hold: Res<HoldFirst>,
+    mut commands: Commands,
+) {
+    if hold.0 {
+        return;
+    }
+    for (entity, slot) in &held {
+        if slot.index == 1 {
+            commands
+                .entity(entity)
+                .remove::<(rig_ecs::bus::Held, rig_ecs::bus::PolicyHeld)>();
+        }
+    }
+}
+
+/// The overlap: under concurrency 1 the second call is the batch's to hold
+/// and a policy's. When the first lands the batch lifts its own hold and
+/// `Held` stands until the policy releases it.
+#[test]
+fn a_gate_hold_on_a_call_the_batch_also_holds_survives_the_batch_release() {
+    let (mut app, agent, adder, requests) = tooling(two_calls_then_text());
+    app.insert_resource(HoldFirst(true));
+    add_system(
+        &mut app,
+        (hold_second_call, release_second_call)
+            .chain()
+            .in_set(BusSet::Gate),
+    );
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(ToolPolicy { concurrency: 1 });
+    let run = spawn_run(app.world_mut(), agent, &[], "add twice", false, None);
+    tick_until(&mut app, "the first call landed", |world| {
+        tool_children(world)
+            .first()
+            .is_some_and(|(_, _, landed, _)| *landed)
+    });
+    for _ in 0..8 {
+        app.update();
+    }
+    let calls = tool_children(app.world_mut());
+    assert_eq!(calls[0], (0, true, true, false), "{calls:?}");
+    assert_eq!(
+        calls[1],
+        (1, false, false, true),
+        "the batch's hold is gone, the policy's stands: {calls:?}"
+    );
+    assert!(
+        app.world_mut()
+            .query_filtered::<(), With<rig_ecs::systems::BatchHeld>>()
+            .iter(app.world())
+            .next()
+            .is_none(),
+        "the batch lifted its own hold"
+    );
+    assert_eq!(adder.peak.load(Ordering::SeqCst), 1);
+    assert!(app.world().get::<Settled>(run).is_none());
+    app.insert_resource(HoldFirst(false));
+    ended(&mut app, run, "answered");
+    assert!(app.world().get::<Settled>(run).is_some());
+    let requests = requests.lock().unwrap();
+    assert_eq!(
+        tool_results(&requests[1]),
+        [("c1".into(), "3".into()), ("c2".into(), "7".into())]
+    );
+}
+
+fn release_first_call(
+    held: Query<(Entity, &rig_ecs::agent::ToolCallSlot), With<rig_ecs::bus::Held>>,
+    hold: Res<HoldFirst>,
+    mut commands: Commands,
+) {
+    if hold.0 {
+        return;
+    }
+    for (entity, slot) in &held {
+        if slot.index == 0 {
+            commands.entity(entity).remove::<rig_ecs::bus::Held>();
+        }
+    }
+}
+
+fn tool_children(world: &mut World) -> Vec<(usize, bool, bool, bool)> {
+    let mut calls: Vec<_> = world
+        .query::<(
+            &rig_ecs::agent::ToolCallSlot,
+            Has<Issued>,
+            Has<EffectOutcome>,
+            Has<rig_ecs::bus::Held>,
+        )>()
+        .iter(world)
+        .map(|(slot, issued, landed, held)| (slot.index, issued, landed, held))
+        .collect();
+    calls.sort_unstable();
+    calls
+}
+
+#[test]
+fn a_gate_hold_is_not_lifted_by_the_batch_release() {
+    for concurrency in [1, 2] {
+        let (mut app, agent, adder, requests) = tooling(two_calls_then_text());
+        app.insert_resource(HoldFirst(true));
+        add_system(
+            &mut app,
+            (hold_first_call, release_first_call)
+                .chain()
+                .in_set(BusSet::Gate),
+        );
+        app.world_mut()
+            .entity_mut(agent)
+            .insert(ToolPolicy { concurrency });
+        let run = spawn_run(app.world_mut(), agent, &[], "add twice", false, None);
+        tick_until(&mut app, "the batch is out", |world| {
+            tool_children(world).len() == 2
+        });
+        // Many passes later the policy's hold still stands: the runtime lifts
+        // only the holds it placed. The held call occupies a slot, so under
+        // concurrency 1 its peer waits behind it; under 2 the peer lands.
+        for _ in 0..8 {
+            app.update();
+        }
+        let calls = tool_children(app.world_mut());
+        assert_eq!(calls[0], (0, false, false, true), "{calls:?}");
+        if concurrency == 1 {
+            assert_eq!(calls[1], (1, false, false, true), "{calls:?}");
+            assert_eq!(adder.peak.load(Ordering::SeqCst), 0);
+        } else {
+            assert_eq!(calls[1], (1, true, true, false), "{calls:?}");
+        }
+        assert!(app.world().get::<Settled>(run).is_none());
+        app.insert_resource(HoldFirst(false));
+        ended(&mut app, run, "answered");
+        assert!(app.world().get::<Settled>(run).is_some());
+        let requests = requests.lock().unwrap();
+        assert_eq!(
+            tool_results(&requests[1]),
+            [("c1".into(), "3".into()), ("c2".into(), "7".into())]
+        );
+        assert_eq!(adder.peak.load(Ordering::SeqCst), 1);
     }
 }
 
