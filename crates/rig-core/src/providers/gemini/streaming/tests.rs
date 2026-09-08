@@ -790,3 +790,136 @@ mod terminal_emission {
         assert_eq!(terminal.response_id.as_deref(), Some("resp-1"));
     }
 }
+
+/// Open a `streamGenerateContent` stream over the given SSE frames and
+/// collect every item the consumer sees.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+async fn collect_stream(
+    frames: &[&str],
+) -> (
+    Vec<Result<crate::streaming::StreamEvent, crate::error::ErrorReport>>,
+    bool,
+) {
+    use crate::client::CompletionClient;
+    use crate::completion::CompletionModel as _;
+    use crate::providers::gemini::Client;
+    use crate::test_utils::MockStreamingClient;
+    use futures::StreamExt;
+
+    let sse_bytes = bytes::Bytes::from(
+        frames
+            .iter()
+            .map(|frame| format!("data: {frame}\n\n"))
+            .collect::<String>(),
+    );
+    let client = Client::builder()
+        .api_key("test-key")
+        .http_client(MockStreamingClient { sse_bytes })
+        .build()
+        .expect("build client");
+    let model = client.completion_model("gemini-2.5-flash");
+    let request = model.completion_request("hello").build();
+    let mut stream = crate::completion::CompletionModel::stream(&model, request)
+        .await
+        .expect("stream should open");
+    let mut items = Vec::new();
+    while let Some(item) = stream.next().await {
+        items.push(item);
+    }
+    let finished = stream.response.is_some();
+    (items, finished)
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[tokio::test]
+async fn blocked_prompt_is_a_provider_error_naming_the_block_reason() {
+    // Gemini answers a blocked prompt on the streaming wire with one chunk
+    // that carries `promptFeedback.blockReason` and no candidates, then
+    // closes the stream. That is the provider's definitive verdict, not a
+    // truncation: the consumer must get an error naming the reason (and the
+    // safety ratings that explain it), never a stream that simply ends
+    // before its terminal record.
+    let frames = [
+        r#"{"promptFeedback":{"blockReason":"PROHIBITED_CONTENT","safetyRatings":[{"category":"HARM_CATEGORY_DANGEROUS_CONTENT","probability":"HIGH"}]},"usageMetadata":{"promptTokenCount":12,"totalTokenCount":12},"modelVersion":"gemini-2.5-flash","responseId":"abc123"}"#,
+    ];
+    let (items, finished) = collect_stream(&frames).await;
+    assert_eq!(items.len(), 1, "exactly the refusal: {items:?}");
+    let Err(report) = &items[0] else {
+        panic!("expected a provider error, got {:?}", items[0]);
+    };
+    assert_eq!(report.kind, crate::error::ErrorKind::Provider, "{report:?}");
+    assert!(!report.retryable, "a refusal is not retryable: {report:?}");
+    let message = &report.message;
+    assert!(message.contains("blocked the prompt"), "{message}");
+    assert!(message.contains("PROHIBITED_CONTENT"), "{message}");
+    assert!(
+        message.contains("HARM_CATEGORY_DANGEROUS_CONTENT"),
+        "{message}"
+    );
+    assert!(message.contains("HIGH"), "{message}");
+    assert!(!finished, "a blocked prompt has no terminal record");
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[tokio::test]
+async fn blocked_prompt_without_usage_is_still_recognised_and_ends_the_stream() {
+    // The block chunk may carry no `usageMetadata` at all (proto3 JSON omits
+    // default-valued fields). It must still decode as the wire's chunk shape
+    // rather than pass through as an unknown frame, and it ends the turn:
+    // nothing after it is interpreted.
+    let frames = [
+        r#"{"promptFeedback":{"blockReason":"SAFETY"}}"#,
+        r#"{"candidates":[{"content":{"parts":[{"text":"dead"}],"role":"model"},"finishReason":"STOP","index":0}]}"#,
+    ];
+    let (items, finished) = collect_stream(&frames).await;
+    assert_eq!(items.len(), 1, "exactly the refusal: {items:?}");
+    assert!(
+        matches!(&items[0], Err(report) if report.kind == crate::error::ErrorKind::Provider && report.message.contains("SAFETY")),
+        "{:?}",
+        items[0]
+    );
+    assert!(!finished);
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[tokio::test]
+async fn prompt_feedback_without_a_block_reason_is_not_an_error() {
+    // Gemini also attaches `promptFeedback` (safety ratings only, no
+    // `blockReason`) to ordinary answers. Only a set `blockReason` is a
+    // refusal; the ratings alone must not fail a completed turn.
+    let frames = [
+        r#"{"promptFeedback":{"safetyRatings":[{"category":"HARM_CATEGORY_HARASSMENT","probability":"NEGLIGIBLE"}]},"candidates":[{"content":{"parts":[{"text":"hi"}],"role":"model"},"index":0}]}"#,
+        r#"{"candidates":[{"content":{"parts":[],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"totalTokenCount":2}}"#,
+    ];
+    let (items, finished) = collect_stream(&frames).await;
+    assert!(items.iter().all(Result::is_ok), "{items:?}");
+    assert!(finished, "the turn completed normally");
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[tokio::test]
+async fn blocked_prompt_with_an_unrecognised_safety_category_still_names_the_block() {
+    // Google adds harm categories without notice. The block chunk carries
+    // the ratings, so an unknown category must not turn the provider's
+    // verdict into a corrupt-frame decode error.
+    let frames = [
+        r#"{"promptFeedback":{"blockReason":"OTHER","safetyRatings":[{"category":"HARM_CATEGORY_JAILBREAK","probability":"SOMEDAY"}]}}"#,
+    ];
+    let (items, finished) = collect_stream(&frames).await;
+    assert_eq!(items.len(), 1, "{items:?}");
+    let Err(report) = &items[0] else {
+        panic!("{:?}", items[0]);
+    };
+    assert_eq!(report.kind, crate::error::ErrorKind::Provider, "{report:?}");
+    assert!(
+        report.message.contains("block_reason=OTHER"),
+        "{}",
+        report.message
+    );
+    assert!(
+        report.message.contains("HARM_CATEGORY_JAILBREAK=SOMEDAY"),
+        "{}",
+        report.message
+    );
+    assert!(!finished);
+}

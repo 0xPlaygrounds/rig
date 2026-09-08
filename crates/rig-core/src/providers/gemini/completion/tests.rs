@@ -34,6 +34,69 @@ fn test_generate_content_response_deserializes_without_candidates_or_response_id
     assert!(response.response_id.is_empty());
     assert!(response.candidates.is_empty());
 
+    // A set `blockReason` is the provider's verdict on the prompt: the
+    // error names it instead of reporting a generic missing-candidate parse
+    // failure.
+    let error = completion::CompletionResponse::try_from(response)
+        .expect_err("a blocked prompt is an error");
+    assert!(
+        matches!(&error, CompletionError::ProviderError(message) if message.contains("blocked the prompt") && message.contains("SAFETY")),
+        "{error}"
+    );
+}
+
+#[test]
+fn test_blocked_prompt_error_carries_the_safety_ratings() {
+    let response: GenerateContentResponse = serde_json::from_value(json!({
+        "promptFeedback": {
+            "blockReason": "PROHIBITED_CONTENT",
+            "safetyRatings": [
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "probability": "HIGH"}
+            ]
+        },
+        "usageMetadata": {"promptTokenCount": 12, "totalTokenCount": 12}
+    }))
+    .expect("blocked prompt response should deserialize");
+    let error = completion::CompletionResponse::try_from(response).expect_err("blocked");
+    let message = error.to_string();
+    assert!(message.contains("PROHIBITED_CONTENT"), "{message}");
+    assert!(
+        message.contains("HARM_CATEGORY_DANGEROUS_CONTENT"),
+        "{message}"
+    );
+    assert!(message.contains("HIGH"), "{message}");
+}
+
+#[test]
+fn test_unknown_block_reason_reaches_the_error_verbatim() {
+    let response: GenerateContentResponse = serde_json::from_value(json!({
+        "promptFeedback": {"blockReason": "SOMETHING_NEW"}
+    }))
+    .unwrap();
+    let error = completion::CompletionResponse::try_from(response).expect_err("blocked");
+    assert!(
+        error.to_string().contains("block_reason=SOMETHING_NEW"),
+        "{error}"
+    );
+}
+
+#[test]
+fn test_unspecified_block_reason_is_not_a_block() {
+    let response: GenerateContentResponse = serde_json::from_value(json!({
+        "promptFeedback": {"blockReason": "BLOCK_REASON_UNSPECIFIED"}
+    }))
+    .unwrap();
+    let error = completion::CompletionResponse::try_from(response).expect_err("no candidates");
+    assert!(
+        error.to_string().contains("No response candidates"),
+        "{error}"
+    );
+}
+
+#[test]
+fn test_no_candidates_without_prompt_feedback_is_still_a_response_error() {
+    let response: GenerateContentResponse =
+        serde_json::from_value(json!({})).expect("empty response should deserialize");
     let error = completion::CompletionResponse::try_from(response)
         .expect_err("empty candidates should become a response error");
     assert!(error.to_string().contains("No response candidates"));
