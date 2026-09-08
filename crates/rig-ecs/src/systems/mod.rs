@@ -37,8 +37,8 @@ use crate::{
         ToolContextSpec, ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
     },
     bus::{
-        Bound, BusSet, EffectOutcome, Held, Issued, PendingEffect, Progress, RigSchedule, Scope,
-        Streamed as BusStreamed, ToolInputs,
+        Bound, BusSet, EffectOutcome, Held, Issued, PendingEffect, PolicyHeld, Progress,
+        RigSchedule, Scope, Streamed as BusStreamed, ToolInputs,
     },
     policy::{self, RequestGraph},
 };
@@ -1162,6 +1162,7 @@ pub type ToolChildView = (
     Option<&'static Issued>,
     Option<&'static EffectOutcome>,
     Has<BatchHeld>,
+    Has<PolicyHeld>,
 );
 
 /// The runtime's own hold on a tool child beyond the run's concurrency,
@@ -1173,31 +1174,43 @@ pub type ToolChildView = (
 #[derive(Component, Debug, Default, Clone, Copy)]
 pub struct BatchHeld;
 
-/// The tool children of `turn`, by call index.
-fn batch_children<'a>(
-    turn: Entity,
-    children: &Query<&Children>,
-    tools: &'a Query<ToolChildView>,
-) -> Vec<(
+/// One tool child of a batch: the entity, the slot, whether issued, the
+/// outcome, whether the batch holds it, whether a policy does.
+type BatchChild<'a> = (
     Entity,
     &'a ToolCallSlot,
     bool,
     Option<&'a EffectOutcome>,
     bool,
-)> {
+    bool,
+);
+
+/// The tool children of `turn`, by call index.
+fn batch_children<'a>(
+    turn: Entity,
+    children: &Query<&Children>,
+    tools: &'a Query<ToolChildView>,
+) -> Vec<BatchChild<'a>> {
     let mut found: Vec<_> = children
         .get(turn)
         .map(|children| {
             children
                 .iter()
                 .filter_map(|child| tools.get(child).ok())
-                .map(|(entity, slot, issued, outcome, held)| {
-                    (entity, slot, issued.is_some(), outcome, held)
+                .map(|(entity, slot, issued, outcome, batch_held, policy_held)| {
+                    (
+                        entity,
+                        slot,
+                        issued.is_some(),
+                        outcome,
+                        batch_held,
+                        policy_held,
+                    )
                 })
                 .collect()
         })
         .unwrap_or_default();
-    found.sort_by_key(|(_, slot, _, _, _)| slot.index);
+    found.sort_by_key(|(_, slot, _, _, _, _)| slot.index);
     found
 }
 
@@ -1226,7 +1239,7 @@ pub fn release_batch(
             .map_or(1, |policy| policy.concurrency)
             .max(1);
         let batch = batch_children(turn, &children, &tools);
-        if batch.iter().any(|(_, _, _, outcome, _)| {
+        if batch.iter().any(|(_, _, _, outcome, _, _)| {
             outcome.is_some_and(|o| policy::tool_failure(&o.0).is_some())
         }) {
             continue;
@@ -1235,15 +1248,22 @@ pub fn release_batch(
         // or waiting on a policy's own hold: a slot is a slot.
         let active = batch
             .iter()
-            .filter(|(_, _, _, outcome, batch_held)| !*batch_held && outcome.is_none())
+            .filter(|(_, _, _, outcome, batch_held, _)| !*batch_held && outcome.is_none())
             .count();
         let mut free = concurrency.saturating_sub(active);
-        for (entity, _, issued, _, batch_held) in &batch {
+        for (entity, _, issued, _, batch_held, policy_held) in &batch {
             if free == 0 {
                 break;
             }
             if *batch_held && !issued {
-                commands.entity(*entity).remove::<(Held, BatchHeld)>();
+                // The batch's hold is lifted; `Held` itself only when no
+                // policy holds the call too (`PolicyHeld`), else it stands
+                // until that policy removes both.
+                if *policy_held {
+                    commands.entity(*entity).remove::<BatchHeld>();
+                } else {
+                    commands.entity(*entity).remove::<(Held, BatchHeld)>();
+                }
                 free -= 1;
             }
         }
@@ -1280,10 +1300,10 @@ pub fn land_batch(
         let calls = batch_children(turn, &children, &tools);
         let failure = calls
             .iter()
-            .find_map(|(_, _, _, outcome, _)| outcome.and_then(|o| policy::tool_failure(&o.0)));
+            .find_map(|(_, _, _, outcome, _, _)| outcome.and_then(|o| policy::tool_failure(&o.0)));
         let started_landed = calls
             .iter()
-            .all(|(_, _, issued, outcome, _)| !*issued || outcome.is_some());
+            .all(|(_, _, issued, outcome, _, _)| !*issued || outcome.is_some());
         if let Some(failure) = failure {
             if !started_landed {
                 continue;
@@ -1295,7 +1315,7 @@ pub fn land_batch(
                 .entity(run)
                 .remove::<ResolvingTools>()
                 .insert(Failed(failure));
-            for (entity, _, issued, outcome, _) in &calls {
+            for (entity, _, issued, outcome, _, _) in &calls {
                 if !*issued && outcome.is_none() {
                     commands.entity(*entity).despawn();
                 }
@@ -1303,13 +1323,16 @@ pub fn land_batch(
             progress.mark();
             continue;
         }
-        if calls.len() < batch.calls || calls.iter().any(|(_, _, _, outcome, _)| outcome.is_none())
+        if calls.len() < batch.calls
+            || calls
+                .iter()
+                .any(|(_, _, _, outcome, _, _)| outcome.is_none())
         {
             continue;
         }
         let mut parts = Vec::with_capacity(calls.len());
         let mut failed = None;
-        for (_, slot, _, outcome, _) in &calls {
+        for (_, slot, _, outcome, _, _) in &calls {
             let Some(EffectOutcome(outcome)) = outcome else {
                 continue;
             };

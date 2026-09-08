@@ -103,9 +103,9 @@ pub mod replay;
 pub use collect::{Landed, StreamingView, collect_streams, collect_tasks, settle};
 pub use dispatch::{Candidate, CandidateView, dispatch, handler_unavailable, reentrant};
 pub use effect::{
-    Answer, Asked, EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing,
-    Reserved, Scope, Seq, SeqCounter, Serving, Streamed, Streaming, ToolInputs, ToolOutputs, Typed,
-    WorldEffect, WorldOutcome,
+    Answer, Asked, EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, PolicyHeld,
+    Publishing, Reserved, Scope, Seq, SeqCounter, Serving, Streamed, Streaming, ToolInputs,
+    ToolOutputs, Typed, WorldEffect, WorldOutcome,
 };
 pub use handlers::{
     Bound, HandlerTable, Handlers, Served, WorldHandler, WorldServe, answered, unbound,
