@@ -88,6 +88,13 @@ pub struct StreamGenerateContentResponse {
     pub prompt_feedback: Option<PromptFeedback>,
     pub model_version: Option<String>,
     pub usage_metadata: Option<PartialUsage>,
+    /// Gemini's error envelope, sent as a frame of its own when the
+    /// service aborts a stream in-band (`{"error":{"code":500,"message":
+    /// …,"status":"INTERNAL"}}`). The provider's verdict, not an unknown
+    /// frame to skip: the stream closes after it, and without this the
+    /// turn ended as a truncation with the error lost. Kept raw so every
+    /// field (code, status, message, details) survives into the report.
+    pub error: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -123,9 +130,11 @@ fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<Comple
 /// The recognizability markers of a `streamGenerateContent` chunk: every
 /// genuine frame carries `candidates`, `usageMetadata` and/or
 /// `promptFeedback` (a blocked prompt's only chunk may carry nothing but
-/// the feedback). A frame with any of them must fully decode (else
-/// `Corrupt`); other JSON is `Unknown`.
-const RECOGNIZABLE_CHUNK_KEYS: &[&str] = &["candidates", "usageMetadata", "promptFeedback"];
+/// the feedback), and the service's in-band abort carries only `error`. A
+/// frame with any of them must fully decode (else `Corrupt`); other JSON
+/// is `Unknown`.
+const RECOGNIZABLE_CHUNK_KEYS: &[&str] =
+    &["candidates", "usageMetadata", "promptFeedback", "error"];
 
 /// The Gemini REST (`streamGenerateContent`) SSE wire as a [`WireAdapter`].
 ///
@@ -208,6 +217,20 @@ impl WireAdapter for GeminiRestAdapter {
         if let Some(usage) = data.usage_metadata.as_ref() {
             span.record_token_usage(&crate::completion::Usage::from(usage));
             self.final_usage = Some(usage.clone());
+        }
+
+        if let Some(error) = data.error {
+            // The service aborted the turn in-band: the envelope is the
+            // whole answer and the stream closes after it. Surface it as
+            // the provider error it is, with the envelope as the body (as
+            // the unary wire and the other families' streams do), rather
+            // than skipping an unknown frame and reporting a truncation.
+            self.failed = true;
+            let body = serde_json::json!({ "error": error }).to_string();
+            out.push(Err(crate::provider_response::completion_error_from_body(
+                body,
+            )));
+            return;
         }
 
         if let Some(blocked) = data.prompt_feedback.as_ref().and_then(blocked_prompt_error) {
