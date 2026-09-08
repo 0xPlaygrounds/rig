@@ -58,7 +58,7 @@ pub fn ending_of(failure: &Failure) -> Reason {
         Failure::UnknownToolCall { name } => Reason::with_detail("unknown_tool_call", name.clone()),
         Failure::Provider(report) => Reason::with_detail(
             "provider",
-            format!("{:?}: {}", report.kind, report.message).to_ascii_lowercase(),
+            format!("{}: {}", report.kind.code(), report.message),
         ),
         Failure::Cancelled(report) => Reason::with_detail("cancelled", report.message.clone()),
         Failure::Unsupported(what) => Reason::with_detail("unsupported", what.clone()),
@@ -67,11 +67,11 @@ pub fn ending_of(failure: &Failure) -> Reason {
         }
         Failure::Tool(report) => Reason::with_detail(
             "tool",
-            format!("{:?}: {}", report.kind, report.message).to_ascii_lowercase(),
+            format!("{}: {}", report.kind.code(), report.message),
         ),
         Failure::Memory(report) => Reason::with_detail(
             "memory",
-            format!("{:?}: {}", report.kind, report.message).to_ascii_lowercase(),
+            format!("{}: {}", report.kind.code(), report.message),
         ),
     }
 }
