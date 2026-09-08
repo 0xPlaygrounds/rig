@@ -22,7 +22,13 @@ async fn mistralrs_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette,
         std::env::var("MISTRALRS_BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
     let api_key =
         std::env::var("MISTRALRS_API_KEY").unwrap_or_else(|_| DEFAULT_API_KEY.to_string());
-    let cassette = ProviderCassette::start("mistralrs", spec, &real_base_url).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "mistralrs",
+        spec,
+        &real_base_url,
+    )
+    .await;
     let client = openai::Client::builder()
         .api_key(api_key)
         .base_url(cassette.base_url())
@@ -35,7 +41,13 @@ async fn mistralrs_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette,
 async fn mistralrs_raw_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, String) {
     let real_base_url =
         std::env::var("MISTRALRS_BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
-    let cassette = ProviderCassette::start("mistralrs", spec, &real_base_url).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "mistralrs",
+        spec,
+        &real_base_url,
+    )
+    .await;
     let base_url = cassette.base_url();
     (cassette, base_url)
 }

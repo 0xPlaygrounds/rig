@@ -11,8 +11,13 @@ async fn chatgpt_cassette_with_default_instructions(
     spec: impl Into<CassetteSpec>,
     default_instructions: impl Into<String>,
 ) -> (ProviderCassette, chatgpt::Client) {
-    let cassette =
-        ProviderCassette::start("chatgpt", spec, "https://chatgpt.com/backend-api/codex").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "chatgpt",
+        spec,
+        "https://chatgpt.com/backend-api/codex",
+    )
+    .await;
     let client = chatgpt::Client::builder()
         .api_key(ChatGPTAuth::AccessToken {
             access_token: cassette.api_key("CHATGPT_ACCESS_TOKEN"),
@@ -33,8 +38,13 @@ async fn chatgpt_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, c
 async fn chatgpt_noninteractive_oauth_cassette(
     spec: impl Into<CassetteSpec>,
 ) -> (ProviderCassette, chatgpt::Client, TempDir) {
-    let cassette =
-        ProviderCassette::start("chatgpt", spec, "https://chatgpt.com/backend-api/codex").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "chatgpt",
+        spec,
+        "https://chatgpt.com/backend-api/codex",
+    )
+    .await;
     let temp = TempDir::new().expect("temp auth directory should be created");
     let auth_file = temp.path().join("auth.json");
     let record = serde_json::json!({

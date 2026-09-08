@@ -9,11 +9,19 @@ Rig's root crate uses integration test targets under `tests/`.
 - `tests/providers/<provider>/live/` contains provider tests that still require a real service.
 - `test-support/service-tests/integrations.rs` runs the vector-store suites from `tests/integrations/` as the unpublished `rig-service-tests` package. `tests/integrations.rs` retains the root Bedrock integrations.
 - `tests/core.rs` contains provider-agnostic core behavior tests.
-- `tests/ecs_consumer.rs` exercises the real headless ECS maintenance consumer;
-  its [recording, golden and repair workflow](consumer/README.md) is also runnable
-  through `cargo run -p rig --example ecs-consumer -- plan`.
+- The [ECS consumer harness](https://github.com/gold-silver-copper/rigcoder/tree/main/crates/rigcoder-verify)
+  is owned by rigcoder. Run `cargo run --locked -p rigcoder-verify -- verify`
+  there for its maintenance/repair cases, replay and supported resume checks.
+  Rig retains its runtime and provider conformance suites.
 
 Most provider tests are ignored live tests unless they have been migrated to cassettes.
+
+Cassette suites require a checkout of this repository: their shared engine is
+the unpublished `rig-cassette` workspace crate, and their fixtures are excluded
+from the published `rig` archive. Cargo omits the path-only engine dev-dependency
+when packaging `rig`, so the archive's remaining cassette test sources are not
+standalone test targets. Run these suites from the workspace. The engine is not
+a normal dependency of the published facade.
 
 ## Testing Doctrine
 

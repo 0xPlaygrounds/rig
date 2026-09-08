@@ -347,9 +347,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Prepare repository-repair process isolation
-        run: bash .github/scripts/setup-consumer-sandbox.sh
-
       # The raw database drivers live in the service-test runner, gated with
       # their suites. Neither graph below enables those features, so a
       # cold PR run avoids the Lance/Arrow/DataFusion graph and needs no

@@ -49,6 +49,19 @@ fn assert_absent(package: &str, args: &[&str], forbidden: &[&str]) {
     }
 }
 
+/// Shared cassette test support must remain usable outside either agent runtime.
+#[test]
+fn rig_cassette_does_not_depend_on_the_facade_or_agent_runtimes() {
+    let forbidden = ["rig", "rig-agent", "rig-ecs"];
+    assert_absent("rig-cassette", &[], &forbidden);
+    assert_absent("rig-cassette", &["--all-features"], &forbidden);
+    assert_absent(
+        "rig-cassette",
+        &["--no-default-features"],
+        &["aws-smithy-eventstream", "aws-smithy-types"],
+    );
+}
+
 #[test]
 fn rig_core_is_runtime_and_transport_free() {
     assert_absent("rig-core", &[], &["tokio", "reqwest"]);

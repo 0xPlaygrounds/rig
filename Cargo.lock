@@ -10385,6 +10385,7 @@ dependencies = [
  "rig-agent",
  "rig-bedrock",
  "rig-candle",
+ "rig-cassette",
  "rig-core",
  "rig-derive",
  "rig-ecs",
@@ -10495,6 +10496,27 @@ dependencies = [
  "tokenizers 0.22.2",
  "tokio",
  "web-time",
+]
+
+[[package]]
+name = "rig-cassette"
+version = "0.42.0"
+dependencies = [
+ "assert_fs",
+ "aws-smithy-eventstream",
+ "aws-smithy-types",
+ "axum 0.8.9",
+ "base64 0.22.1",
+ "futures",
+ "httpmock",
+ "reqwest 0.13.4",
+ "rig-core",
+ "rig-reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tokio",
+ "url",
 ]
 
 [[package]]

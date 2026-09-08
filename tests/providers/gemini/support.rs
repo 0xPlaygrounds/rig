@@ -286,8 +286,13 @@ pub(super) fn assert_recorded_stream_finishes_early(scenario: &str, expected: bo
 }
 
 async fn gemini_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, gemini::Client) {
-    let cassette =
-        ProviderCassette::start("gemini", spec, "https://generativelanguage.googleapis.com").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "gemini",
+        spec,
+        "https://generativelanguage.googleapis.com",
+    )
+    .await;
     let client = gemini::Client::builder()
         .api_key(cassette.api_key("GEMINI_API_KEY"))
         .base_url(cassette.base_url())
@@ -318,8 +323,13 @@ pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
     F: FnOnce(gemini::Client<rig::http_client::BoxedHttpClient>) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette =
-        ProviderCassette::start("gemini", spec, "https://generativelanguage.googleapis.com").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "gemini",
+        spec,
+        "https://generativelanguage.googleapis.com",
+    )
+    .await;
     let client = gemini::Client::builder()
         .api_key(cassette.api_key("GEMINI_API_KEY"))
         .base_url(cassette.base_url())
@@ -452,8 +462,13 @@ pub(super) async fn with_gemini_cassette_bogus_key<F, Fut>(
     F: FnOnce(gemini::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette =
-        ProviderCassette::start("gemini", spec, "https://generativelanguage.googleapis.com").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "gemini",
+        spec,
+        "https://generativelanguage.googleapis.com",
+    )
+    .await;
     let client = gemini::Client::builder()
         .api_key(cassette.bogus_api_key())
         .base_url(cassette.base_url())

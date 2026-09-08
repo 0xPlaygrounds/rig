@@ -66,7 +66,13 @@ where
     Fut: Future<Output = ()>,
 {
     let server = LocalReasoningContentServer::start().await;
-    let cassette = ProviderCassette::start("openai", scenario, &server.base_url()).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "openai",
+        scenario,
+        &server.base_url(),
+    )
+    .await;
     let client = openai::Client::builder()
         .api_key("dummy-openai-compatible-key")
         .base_url(cassette.base_url())

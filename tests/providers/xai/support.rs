@@ -7,7 +7,13 @@ use std::panic::AssertUnwindSafe;
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
 async fn xai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, xai::Client) {
-    let cassette = ProviderCassette::start("xai", spec, "https://api.x.ai").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "xai",
+        spec,
+        "https://api.x.ai",
+    )
+    .await;
     let client = xai::Client::builder()
         .api_key(cassette.api_key("XAI_API_KEY"))
         .base_url(cassette.base_url())
@@ -46,7 +52,13 @@ where
     F: FnOnce(xai::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start("xai", spec, "https://api.x.ai").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "xai",
+        spec,
+        "https://api.x.ai",
+    )
+    .await;
     let client = xai::Client::builder()
         .api_key("xai-invalid-edge-matrix-key")
         .base_url(cassette.base_url())

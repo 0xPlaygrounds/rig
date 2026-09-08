@@ -87,6 +87,61 @@ fn ready_delivery_is_bounded_and_deltas_do_not_spin_quiescence() {
 }
 
 #[test]
+#[cfg(feature = "replay")]
+fn empty_setup_polls_do_not_rotate_a_later_ready_delivery_batch() {
+    use rig_core::{effect::EffectKind, serve::Origin};
+    let mut world = world();
+    let recorder = rig_effect_log::EffectLogRecorder::keeping_stream_events();
+    Recording::install(&mut world, recorder.clone());
+    for id in 0..2 {
+        world.resource::<Recording>().begin(
+            EffectId::from_raw(id),
+            "test".into(),
+            EffectKind::Custom {
+                kind: "test".into(),
+                payload: serde_json::Value::Null,
+            },
+            Origin::default(),
+        );
+    }
+    let (mut first_sender, first_events) = futures::channel::mpsc::channel(4);
+    insert(
+        &mut world,
+        Streaming {
+            events: first_events,
+            fold: rig_core::serve::StreamTap::new(),
+        },
+        0,
+    );
+    let mut schedule = Schedule::default();
+    schedule.add_systems(collect_streams);
+    // Only the first worker has installed its empty stream. No delivery or
+    // work-budget exhaustion occurs before the second worker is installed.
+    schedule.run(&mut world);
+    assert!(recorder.header().deliveries.unwrap().is_empty());
+    let (mut second_sender, second_events) = futures::channel::mpsc::channel(4);
+    insert(
+        &mut world,
+        Streaming {
+            events: second_events,
+            fold: rig_core::serve::StreamTap::new(),
+        },
+        1,
+    );
+    first_sender.try_send(item()).unwrap();
+    second_sender.try_send(item()).unwrap();
+    schedule.run(&mut world);
+    let order: Vec<_> = recorder
+        .header()
+        .deliveries
+        .unwrap()
+        .iter()
+        .map(|delivery| delivery.id.as_u64())
+        .collect();
+    assert_eq!(order, [0, 1]);
+}
+
+#[test]
 fn whole_tick_allowance_rotates_service_across_hot_effects() {
     let mut world = world();
     let effects: Vec<_> = (0..80).map(|seq| ready(&mut world, seq, 1000)).collect();
@@ -115,6 +170,25 @@ fn whole_tick_allowance_rotates_service_across_hot_effects() {
             .all(|entity| !world.get::<Streamed>(*entity).unwrap().events.is_empty()),
         "the next tick must begin with effects skipped by the previous limit"
     );
+}
+
+#[test]
+fn partial_final_pass_rotates_fairly_across_ticks() {
+    let mut world = world();
+    let effects: Vec<_> = (0..40).map(|seq| ready(&mut world, seq, 1000)).collect();
+    world.resource_mut::<Schedules>().add_systems(
+        super::super::plugin::RigSchedule,
+        (|mut progress: ResMut<Progress>| progress.mark())
+            .after(super::super::plugin::BusSet::Collect),
+    );
+    for _ in 0..5 {
+        super::super::plugin::run_to_quiescence(&mut world);
+    }
+    let counts: Vec<_> = effects
+        .iter()
+        .map(|entity| world.get::<Streamed>(*entity).unwrap().events.len())
+        .collect();
+    assert_eq!(counts, vec![512; 40]);
 }
 
 #[test]

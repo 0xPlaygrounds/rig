@@ -11,7 +11,13 @@ const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
 async fn openrouter_cassette(
     spec: impl Into<CassetteSpec>,
 ) -> (ProviderCassette, openrouter::Client) {
-    let cassette = ProviderCassette::start("openrouter", spec, OPENROUTER_BASE_URL).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "openrouter",
+        spec,
+        OPENROUTER_BASE_URL,
+    )
+    .await;
     let client = openrouter::Client::builder()
         .api_key(cassette.api_key("OPENROUTER_API_KEY"))
         .base_url(cassette.base_url())
@@ -24,7 +30,13 @@ async fn openrouter_cassette(
 async fn openrouter_openai_cassette(
     spec: impl Into<CassetteSpec>,
 ) -> (ProviderCassette, openai::Client) {
-    let cassette = ProviderCassette::start("openrouter", spec, OPENROUTER_BASE_URL).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "openrouter",
+        spec,
+        OPENROUTER_BASE_URL,
+    )
+    .await;
     let client = openai::Client::builder()
         .api_key(cassette.api_key("OPENROUTER_API_KEY"))
         .base_url(cassette.base_url())
@@ -80,7 +92,13 @@ where
     F: FnOnce(openrouter::Client) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    let cassette = ProviderCassette::start("openrouter", spec, OPENROUTER_BASE_URL).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "openrouter",
+        spec,
+        OPENROUTER_BASE_URL,
+    )
+    .await;
     let client = openrouter::Client::builder()
         .api_key("sk-invalid-edge-matrix-key")
         .base_url(cassette.base_url())
