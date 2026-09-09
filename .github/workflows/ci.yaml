@@ -149,12 +149,12 @@ jobs:
         if: matrix.package == 'rig-core'
         run: cargo check --package rig-core --all-features --target wasm32-unknown-unknown
 
-  # `rig-rmcp` is native-only: rmcp's `ClientHandler` requires `Send + Sync`
-  # unconditionally, which rig's wasm tool registry cannot satisfy. Building it
-  # for wasm must fail with exactly one actionable sentence (the crate-root
-  # `compile_error!`) rather than a wall of trait errors, so assert both the
-  # message *and* the error count — an item that escapes the crate's
-  # `not(wasm)` gate would leak follow-on errors and is the regression this guards.
+  # `rig-rmcp` is native-only: rmcp ships no wasm-capable client transport (see
+  # the rationale in `crates/rig-rmcp/src/lib.rs`). Building it for wasm must
+  # fail with exactly one actionable sentence (the crate-root `compile_error!`)
+  # rather than a wall of trait errors, so assert both the message *and* the
+  # error count — an item that escapes the crate's `not(wasm)` gate would leak
+  # follow-on errors and is the regression this guards.
   check-rmcp-native-only:
     name: stable / rmcp rejected on wasm
     runs-on: ubuntu-latest

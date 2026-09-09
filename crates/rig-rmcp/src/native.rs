@@ -4,7 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rmcp::model::{
-    CallToolRequest, CallToolResult, ClientRequest, ContentBlock, ResourceContents, ServerResult,
+    CallToolRequest, CallToolResult, ClientRequest, ContentBlock, ResourceContents, ResultType,
+    ServerResult,
 };
 use rmcp::service::PeerRequestOptions;
 
@@ -12,9 +13,10 @@ use rig_core::message::{ImageMediaType, MimeType, ToolResultContent};
 use rig_core::tool::{PortableDynamicTool, ToolContext, ToolExecutionError, ToolOutput};
 use rig_core::wasm_compat::WasmBoxedFuture;
 
-/// Re-export of [`rmcp::model::Meta`]: place one in the per-call [`ToolContext`]
-/// to have MCP tools forward it as the request's `_meta`.
-pub use rmcp::model::Meta;
+/// Re-exports of MCP's two `_meta` shapes. Place a [`RequestMetaObject`] in the
+/// per-call [`ToolContext`] to have MCP tools forward it as the request's
+/// `_meta`; a response's `_meta` is preserved as a [`MetaObject`].
+pub use rmcp::model::{MetaObject, RequestMetaObject};
 
 /// Default per-call timeout applied to MCP tools (see issue #1914).
 ///
@@ -151,7 +153,23 @@ pub(crate) async fn call_mcp_tool(
     .await?;
 
     match response {
-        ServerResult::CallToolResult(result) => Ok(result),
+        // The `resultType` guard closes an untagged-union hole: `ServerResult`
+        // tries `CallToolResult` before SEP-2322's `InputRequiredResult`, and
+        // `CallToolResult`'s lenient deserializer captures any payload carrying
+        // `_meta` — so an input-required response can land in this variant as
+        // an empty result labelled `"input_required"`. Rig dispatches over the
+        // low-level request API rather than `RunningService::call_tool`'s
+        // retrying helper, so it cannot drive multi round-trip rounds; reject
+        // every non-complete outcome (input-required, task, unknown) instead of
+        // reporting a silent empty success.
+        ServerResult::CallToolResult(result)
+            if result
+                .result_type
+                .as_ref()
+                .is_none_or(ResultType::is_complete) =>
+        {
+            Ok(result)
+        }
         _ => Err(rmcp::ServiceError::UnexpectedResponse),
     }
 }
@@ -232,12 +250,12 @@ impl McpTool {
     /// `meta`, when present, is attached as the MCP request's `_meta`
     /// (SEP-1319) — the idiomatic channel for per-call metadata such as auth
     /// tokens, session ids, or A2A `context_id`/`task_id`. It is supplied by a
-    /// caller that places an [`rmcp::model::Meta`] into the per-call
-    /// [`ToolContext`]; otherwise the call behaves exactly as before.
+    /// caller that places an [`rmcp::model::RequestMetaObject`] into the
+    /// per-call [`ToolContext`]; otherwise the call behaves exactly as before.
     pub fn execute_mcp(
         &self,
         args: String,
-        meta: Option<rmcp::model::Meta>,
+        meta: Option<RequestMetaObject>,
     ) -> WasmBoxedFuture<'_, Result<CallToolResult, ToolExecutionError>> {
         let name = self.definition.name.clone();
 
@@ -435,7 +453,7 @@ pub fn tools_from_server(
 /// themselves). A tool that reports `is_error` becomes a failed call whose
 /// error carries the tool's output.
 /// Keep the MCP response's protocol data on the per-call [`ToolContext`] for
-/// result hooks: the `structuredContent` value, the response [`Meta`], and the
+/// result hooks: the `structuredContent` value, the response [`MetaObject`], and the
 /// untouched [`CallToolResult`]. Host-only; the model sees only the ordered
 /// presentation content.
 pub fn preserve_mcp_result(context: &mut ToolContext, result: CallToolResult) {
@@ -451,9 +469,10 @@ pub fn preserve_mcp_result(context: &mut ToolContext, result: CallToolResult) {
 /// An MCP tool as a context-aware rig-core dynamic tool, with a liveness probe
 /// bound to the MCP transport so registries can retire it on disconnect.
 ///
-/// Per call: an [`rmcp::model::Meta`] placed in the [`ToolContext`] (re-exported
-/// here as [`Meta`]) is forwarded as the request's `_meta` (SEP-1319), and the
-/// response's `structuredContent`, response `Meta`, and raw [`CallToolResult`]
+/// Per call: an [`rmcp::model::RequestMetaObject`] placed in the [`ToolContext`]
+/// (re-exported here as [`RequestMetaObject`]) is forwarded as the request's
+/// `_meta` (SEP-1319), and the response's `structuredContent`, response
+/// [`MetaObject`], and raw [`CallToolResult`]
 /// are published to the context's result map ([`preserve_mcp_result`]). A tool
 /// that reports `is_error` becomes a failed call whose error carries the tool's
 /// output.
@@ -475,7 +494,7 @@ impl From<McpTool> for PortableDynamicTool {
             parameters,
             move |context: &mut ToolContext, args: serde_json::Value| {
                 let tool = Arc::clone(&tool);
-                let meta = context.get::<rmcp::model::Meta>().cloned();
+                let meta = context.get::<RequestMetaObject>().cloned();
                 Box::pin(async move {
                     let result = tool.execute_mcp(args.to_string(), meta).await?;
                     let is_error = result.is_error == Some(true);
