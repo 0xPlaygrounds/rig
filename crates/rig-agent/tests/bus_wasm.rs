@@ -195,6 +195,7 @@ async fn a_stream_dropped_mid_flight_is_observed_by_the_handler() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
     let mut stream = dispatcher.dispatch_stream(
         &HandlerKey::from("echo"),

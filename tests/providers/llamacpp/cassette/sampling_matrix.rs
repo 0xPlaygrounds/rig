@@ -454,6 +454,7 @@ fn additional_params_wins_over_the_typed_field_it_collides_with() {
         additional_params: Some(json!({ "max_tokens": 99, "top_k": 3 })),
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let typed = rig::providers::llamacpp::Llamacpp

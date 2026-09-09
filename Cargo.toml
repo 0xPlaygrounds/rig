@@ -180,6 +180,7 @@ google-cloud-aiplatform-v1 = { version = "1.7", default-features = false, featur
     "prediction-service",
 ] }
 http = "1"
+httpdate = "1"
 # 0.8.2: `Recording::export_async` (cassette harness).
 httpmock = "0.8.2"
 # 0.1.2: the `service` feature.

@@ -51,6 +51,10 @@ struct Recorded<R> {
 }
 
 impl<R: Recorder + Send + Sync> Observe for Recorded<R> {
+    fn adapter_context(&self) -> Option<rig_core::observe::AdapterContext> {
+        self.recorder.adapter_context(self.id)
+    }
+
     fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
         if let Some(output) = self
             .published

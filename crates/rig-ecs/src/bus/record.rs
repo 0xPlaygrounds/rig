@@ -204,6 +204,8 @@ impl ObservedState {
 /// it is told are the innermost handler's — what the record holds,
 /// whatever verdict the outer reply carries to the world.
 pub struct WorldObserver {
+    /// Explicit host operation, already bound to this dispatch's subject.
+    pub adapter: Option<rig_core::observe::AdapterContext>,
     /// Tool output shared with the caller, read without consuming it.
     pub published: Option<Arc<rig_core::tool::PublishedContext>>,
     /// The dispatch.
@@ -247,6 +249,20 @@ impl WorldObserver {
 }
 
 impl rig_core::serve::Observe for WorldObserver {
+    fn adapter_context(&self) -> Option<rig_core::observe::AdapterContext> {
+        if let Some(context) = &self.adapter {
+            return Some(context.clone());
+        }
+        let (witness, subject, _) = self.witness.as_ref()?;
+        let mut subject = subject.clone();
+        subject.effect = Some(self.id);
+        Some(rig_core::observe::AdapterContext::new(
+            witness.sink().clone(),
+            subject,
+            format!("effect/{}", self.id),
+        ))
+    }
+
     fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
         let mut state = self.observed.lock();
         if !state.closed {
@@ -395,18 +411,23 @@ pub fn witness_cancelled(
     effects: Query<(Has<EffectOutcome>, Option<&Observed>), With<Issued>>,
     subjects: super::witness::Subjects,
     witness: Option<Res<super::witness::Witnessing>>,
+    mut timings: Query<&mut super::witness::HandlerTimer>,
 ) {
+    let entity = removed.event().entity;
+    let timing = timings
+        .get_mut(entity)
+        .ok()
+        .and_then(|mut timer| timer.finish(false));
     let Some(witness) = witness else {
         return;
     };
-    let entity = removed.event().entity;
     let Ok((answered, observed)) = effects.get(entity) else {
         return;
     };
     if answered || observed.is_some_and(|observed| observed.0.is_discarded()) {
         return;
     }
-    witness.emit(
+    let mut observation = rig_core::observe::Observation::new(
         subjects.of(entity),
         rig_core::observe::Stage::Collect,
         super::witness::bus_emitter(),
@@ -414,6 +435,8 @@ pub fn witness_cancelled(
             reason: rig_core::observe::Reason::from_report(&cancelled()),
         },
     );
+    observation.handler_timing = timing;
+    witness.observe(observation);
 }
 
 /// A handler bound (or re-bound) while recording: described to the

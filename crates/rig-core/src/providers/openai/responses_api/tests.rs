@@ -531,6 +531,7 @@ fn weather_tool_request() -> completion::CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     }
 }
 
@@ -702,6 +703,7 @@ fn request_with_preamble(preamble: &str) -> completion::CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     }
 }
 
@@ -717,6 +719,7 @@ fn system_only_request(system_text: &str) -> completion::CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     }
 }
 
@@ -1158,6 +1161,7 @@ fn responses_direct_request_keeps_mid_conversation_system_messages_in_input() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
@@ -2114,6 +2118,7 @@ fn mocked_second_turn_request_omits_unreplayable_reasoning() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let request = CompletionRequest::try_from(("Qwen/Qwen3-4B".to_string(), request))
@@ -2592,6 +2597,7 @@ fn url_pdf_in_full_completion_request_omits_filename() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let request = CompletionRequest::try_from(("gpt-4o".to_string(), core_request))

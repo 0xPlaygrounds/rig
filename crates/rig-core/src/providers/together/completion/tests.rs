@@ -61,6 +61,7 @@ fn together_request_conversion_errors_when_all_messages_are_filtered() {
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let result = OpenAICompletionRequest::try_from(OpenAIRequestParams {

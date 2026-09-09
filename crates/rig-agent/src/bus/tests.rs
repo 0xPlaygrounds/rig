@@ -63,6 +63,7 @@ fn completion_kind(stream: bool) -> EffectKind {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            observation: None,
         },
         stream,
     }
@@ -1913,19 +1914,58 @@ struct Counting {
     begun: Arc<AtomicUsize>,
     resolved: Arc<AtomicUsize>,
     discarded: Arc<AtomicUsize>,
+    observation: Option<rig_core::observe::AdapterContext>,
+    observation_sink: Option<Arc<rig_core::observe::ObservationLog>>,
+    contexts: Arc<
+        Mutex<
+            std::collections::BTreeMap<
+                rig_core::effect::EffectId,
+                rig_core::observe::AdapterContext,
+            >,
+        >,
+    >,
 }
 
 impl rig_core::serve::Recorder for Counting {
+    fn adapter_context(
+        &self,
+        id: rig_core::effect::EffectId,
+    ) -> Option<rig_core::observe::AdapterContext> {
+        self.contexts
+            .lock()
+            .unwrap()
+            .get(&id)
+            .cloned()
+            .or_else(|| self.observation.clone())
+    }
     fn tool_output(&self, _: rig_core::effect::EffectId, _: rig_core::tool::ToolResultContext) {}
     fn handlers(&self, _handlers: Vec<HandlerDescriptor>) {}
     fn begin(
         &self,
-        _id: rig_core::effect::EffectId,
-        _key: HandlerKey,
-        _kind: EffectKind,
-        _origin: rig_core::serve::Origin,
+        id: rig_core::effect::EffectId,
+        key: HandlerKey,
+        kind: EffectKind,
+        origin: rig_core::serve::Origin,
     ) {
         self.begun.fetch_add(1, Ordering::SeqCst);
+        if let Some(sink) = &self.observation_sink {
+            let subject = rig_core::observe::Subject {
+                scope: origin.scope.map(|scope| scope.to_string()),
+                effect: Some(id),
+                parent: origin.parent,
+                key: Some(key),
+                family: Some(kind.family()),
+                ..Default::default()
+            };
+            self.contexts.lock().unwrap().insert(
+                id,
+                rig_core::observe::AdapterContext::new(
+                    sink.clone(),
+                    subject,
+                    format!("dispatch/{id:?}"),
+                ),
+            );
+        }
     }
     fn discard(&self, _id: rig_core::effect::EffectId) {
         self.discarded.fetch_add(1, Ordering::SeqCst);
@@ -1991,6 +2031,146 @@ fn a_pending_dropped_before_the_driver_polls_never_reaches_its_handler() {
     assert_eq!(served.load(Ordering::SeqCst), 1);
     assert_eq!(recorder.begun.load(Ordering::SeqCst), 1);
     assert_eq!(recorder.resolved.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn concurrent_agent_wrappers_receive_distinct_recorder_contexts() {
+    for streamed in [false, true] {
+        let model = if streamed {
+            MockCompletionModel::from_stream_turns((0..2).map(|_| {
+                vec![
+                    MockStreamEvent::text("ok"),
+                    MockStreamEvent::final_response_with_total_tokens(1),
+                ]
+            }))
+        } else {
+            MockCompletionModel::from_turns((0..2).map(|_| MockTurn::text("ok")))
+        };
+        let (dispatcher, registrar, mut driver) = Bus::channel();
+        driver
+            .register("model", CompletionAdapter::new("mock", model.clone()))
+            .unwrap();
+        let recorder = Counting {
+            observation_sink: Some(Arc::new(rig_core::observe::ObservationLog::default())),
+            ..Counting::default()
+        };
+        driver.record_to(recorder.clone());
+        let task = tokio::spawn(driver);
+        let a = crate::agent::AgentBuilder::over_bus(
+            dispatcher.clone(),
+            registrar.clone(),
+            "a",
+            HandlerKey::from("model"),
+        )
+        .build();
+        let b = crate::agent::AgentBuilder::over_bus(
+            dispatcher,
+            registrar,
+            "b",
+            HandlerKey::from("model"),
+        )
+        .build();
+        let run = |agent: crate::agent::Agent| async move {
+            if streamed {
+                let mut stream = agent.runner("same prompt").stream().await;
+                let mut finished = false;
+                while let Some(event) = within(stream.next()).await {
+                    if let crate::agent::MultiTurnStreamItem::FinalResponse(response) =
+                        event.unwrap()
+                    {
+                        assert_eq!(response.output(), "ok");
+                        finished = true;
+                    }
+                }
+                assert!(finished);
+            } else {
+                assert_eq!(
+                    within(agent.runner("same prompt").run())
+                        .await
+                        .unwrap()
+                        .output,
+                    "ok"
+                );
+            }
+        };
+        tokio::join!(run(a), run(b));
+        let requests = model.requests();
+        assert_eq!(requests.len(), 2);
+        let actual: std::collections::BTreeSet<_> = requests
+            .iter()
+            .map(|request| request.observation.as_ref().unwrap().operation().to_owned())
+            .collect();
+        assert_eq!(
+            actual.len(),
+            2,
+            "identical concurrent calls remain distinct"
+        );
+        let contexts = recorder.contexts.lock().unwrap();
+        let expected: std::collections::BTreeSet<_> = contexts
+            .values()
+            .map(|context| context.operation().to_owned())
+            .collect();
+        assert_eq!(actual, expected);
+        task.abort();
+    }
+}
+
+#[tokio::test]
+async fn recorder_context_reaches_model_handles_without_overwriting_callers() {
+    use rig_core::observe::{AdapterContext, ObservationLog, Subject};
+    for streamed in [false, true] {
+        for explicit in [false, true] {
+            let model = if streamed {
+                MockCompletionModel::from_stream_turns([vec![
+                    MockStreamEvent::text("ok"),
+                    MockStreamEvent::final_response_with_total_tokens(1),
+                ]])
+            } else {
+                MockCompletionModel::text("ok")
+            };
+            let (dispatcher, _registrar, mut driver) = Bus::channel();
+            driver
+                .register("model", CompletionAdapter::new("mock", model.clone()))
+                .unwrap();
+            let sink = Arc::new(ObservationLog::default());
+            let recorder = Counting {
+                observation: Some(AdapterContext::new(
+                    sink.clone(),
+                    Subject::scoped("host"),
+                    "recorder",
+                )),
+                ..Counting::default()
+            };
+            driver.record_to(recorder.clone());
+            let task = tokio::spawn(driver);
+            let handle: ModelHandle = dispatcher.handle(&HandlerKey::from("model")).unwrap();
+            let mut request = completion_request_value();
+            if explicit {
+                request.observation = Some(AdapterContext::new(
+                    sink,
+                    Subject::scoped("caller"),
+                    "caller",
+                ));
+            }
+            if streamed {
+                let mut stream = handle.stream(request);
+                while let Some(event) = within(stream.next()).await {
+                    event.unwrap();
+                }
+            } else {
+                within(handle.complete(request)).await.unwrap();
+            }
+            let requests = model.requests();
+            assert_eq!(requests.len(), 1);
+            assert_eq!(
+                requests[0].observation.as_ref().unwrap().operation(),
+                if explicit { "caller" } else { "recorder" }
+            );
+            assert_eq!(recorder.begun.load(Ordering::SeqCst), 1);
+            assert_eq!(recorder.resolved.load(Ordering::SeqCst), 1);
+            task.abort();
+        }
+    }
 }
 
 #[test]

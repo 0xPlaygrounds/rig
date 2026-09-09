@@ -366,3 +366,72 @@ fn terminal_items_carry_the_original_answer_in_one_observer_call() {
         );
     }
 }
+
+struct ProviderObserver(crate::observe::AdapterContext);
+
+impl Observe for ProviderObserver {
+    fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
+        Some(self.0.clone())
+    }
+    fn outcome(&mut self, _: &Result<Outcome, ErrorReport>) {}
+    fn keep_events(&self) -> bool {
+        false
+    }
+    fn event(&mut self, _: &StreamEvent) {}
+    fn discard(&mut self, _: &str) {}
+    fn patch(&mut self, _: &str, _: &EffectKind) {}
+}
+
+#[tokio::test]
+async fn provider_context_survives_inner_dispatch_and_explicit_request_context_wins() {
+    use crate::{
+        client::CompletionClient,
+        completion::CompletionModel as _,
+        observe::{Action, AdapterContext, ObservationLog, Subject},
+        test_utils::RecordingHttpClient,
+    };
+    let body = r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#;
+    let client = crate::providers::gemini::Client::builder()
+        .api_key("key")
+        .http_client(RecordingHttpClient::new(body))
+        .build()
+        .unwrap();
+    let model = client.completion_model("gemini-test");
+    let handler = crate::serve::adapters::CompletionAdapter::new("gemini-test", model.clone());
+    let bus_log = Arc::new(ObservationLog::default());
+    let direct_log = Arc::new(ObservationLog::default());
+    let context = AdapterContext::new(bus_log.clone(), Subject::default(), "bus-operation");
+    for explicit in [false, true] {
+        let mut dispatch = Dispatch::new(EffectId::from_raw(1), false)
+            .with_observer(Box::new(ProviderObserver(context.clone())));
+        let inner = dispatch.inner(None);
+        let mut request = model.completion_request("hello").build();
+        if explicit {
+            request.observation = Some(AdapterContext::new(
+                direct_log.clone(),
+                Subject::default(),
+                "explicit-operation",
+            ));
+        }
+        let reply = Serve::serve(
+            &handler,
+            EffectKind::Completion {
+                request,
+                stream: false,
+            },
+            inner,
+        )
+        .await;
+        assert!(reply.into_outcome().await.is_ok());
+    }
+    for (log, operation) in [
+        (bus_log, "bus-operation"),
+        (direct_log, "explicit-operation"),
+    ] {
+        let trace = log.trace();
+        assert_eq!(trace.observations.len(), 4);
+        assert!(trace.observations.iter().all(|o| matches!(&o.action,
+            Action::Adapter { observation } if observation.operation == operation && observation.attempt == Some(1)
+        )));
+    }
+}

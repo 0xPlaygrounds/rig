@@ -32,6 +32,13 @@ pub struct Origin {
 /// shared between the driver and its owner, so every method takes `&self`;
 /// it rides in the dispatch observer and uses the platform compatibility bounds.
 pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
+    /// Optional provider-observation context for a dispatch after [`Self::begin`].
+    /// Keep this runtime-only; observations do not belong in the effect log.
+    /// Return the same logical context when asked again for the same dispatch.
+    /// An explicit context on a completion request takes precedence.
+    fn adapter_context(&self, _id: EffectId) -> Option<crate::observe::AdapterContext> {
+        None
+    }
     /// Declare that this runtime records consumer-visible delivery boundaries.
     /// Handler-only recorders may ignore this optional scheduling metadata.
     fn begin_delivery_tracking(&self) {}

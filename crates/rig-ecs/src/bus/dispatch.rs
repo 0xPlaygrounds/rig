@@ -43,6 +43,7 @@ pub type CandidateView = (
     &'static PendingEffect,
     Option<&'static Reserved>,
     Option<&'static ToolInputs>,
+    Option<&'static super::AdapterOperation>,
 );
 
 /// The dispatch system. In one pass, in ascending [`Seq`]:
@@ -84,7 +85,7 @@ pub fn dispatch(
     mut progress: ResMut<Progress>,
 ) {
     let mut candidates: Vec<_> = pending.iter().collect();
-    candidates.sort_by_key(|(_, seq, _, _, _)| **seq);
+    candidates.sort_by_key(|(_, seq, _, _, _, _)| **seq);
     let DispatchWitness {
         witness,
         subjects,
@@ -103,7 +104,9 @@ pub fn dispatch(
     };
 
     let candidates_len = candidates.len();
-    for (index, (entity, _, effect, reserved, inputs)) in candidates.into_iter().enumerate() {
+    for (index, (entity, _, effect, reserved, inputs, operation)) in
+        candidates.into_iter().enumerate()
+    {
         if intake.0 >= policy.command_capacity {
             // Observed once per pass, on the first intent left behind, with
             // how many wait with it: a summary, not one fact per pass per
@@ -227,7 +230,18 @@ pub fn dispatch(
             scope: nearest_scope(entity, &parents, &scopes)
                 .map(|scope| std::sync::Arc::from(scope.as_str())),
         };
+        let adapter = operation.map(|operation| {
+            let mut subject = subjects.of(entity);
+            subject.effect = Some(id);
+            subject.parent = origin.parent;
+            operation
+                .context
+                .for_host_attempt(subject, operation.host_attempt)
+        });
 
+        let timer = witness
+            .as_ref()
+            .and_then(|witness| super::witness::HandlerTimer::start(witness, effect.is_stream()));
         if let Some(witness) = &witness {
             let mut subject = subjects.of(entity);
             subject.effect = Some(id);
@@ -235,6 +249,9 @@ pub fn dispatch(
             witness.emit(subject, Stage::Dispatch, bus_emitter(), Action::Issued);
         }
         let mut entity_commands = commands.entity(entity);
+        if let Some(timer) = timer {
+            entity_commands.insert(timer);
+        }
         entity_commands.remove::<Deferred>();
         match served {
             Served::Task(handler) => {
@@ -257,6 +274,7 @@ pub fn dispatch(
                 let published = dispatch.scope::<rig_core::tool::PublishedContext>();
                 entity_commands.insert(super::record::ReplacedBy(dispatch.replaced_by()));
                 let dispatch = dispatch.with_observer(Box::new(super::record::WorldObserver {
+                    adapter,
                     published,
                     id,
                     recording: recording.as_ref().map(|r| (**r).clone()),

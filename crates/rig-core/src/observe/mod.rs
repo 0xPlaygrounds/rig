@@ -42,6 +42,15 @@ use crate::{
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
+mod adapter;
+pub(crate) use adapter::AdapterSlot;
+pub use adapter::{
+    AdapterAnalysis, AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterErrorEnvelope,
+    AdapterEvent, AdapterObservation, AdapterTiming, AdapterUsage, AdapterVerdict,
+    ResponseBodyObserver, diagnostic_url_secrets, scrub_diagnostic,
+};
+pub(crate) use adapter::{AdapterAttempt, PayloadObserver};
+
 #[cfg(test)]
 mod tests;
 
@@ -63,6 +72,45 @@ pub struct Observation {
     /// never a semantic field. `None` when the sink has no [`Clock`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub at: Option<Duration>,
+    /// Accepted submission to run ending, measured by the runtime's host clock.
+    /// Analysis only; absent without a clock or an observed submission.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_timing: Option<RunTiming>,
+    /// Dispatch-issued handler interval, separate from the semantic outcome.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handler_timing: Option<HandlerTiming>,
+}
+
+/// Which handler boundary an interval measures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HandlerInterval {
+    /// Issued to landed for a unary request.
+    Execution,
+    /// Issued to the first delivered item (including an error) for a stream.
+    TimeToFirstItem,
+}
+
+/// A handler interval sampled from its issuing witness's clock.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HandlerTiming {
+    /// The exact ending boundary, not an interchangeable latency measure.
+    pub interval: HandlerInterval,
+    /// Unknown when the boundary was not reached or the clock went backwards.
+    pub duration: Option<Duration>,
+    /// Whether the specified boundary was reached. An empty stream has no
+    /// first item; cancellation before unary landing is unfinished.
+    pub complete: bool,
+}
+
+/// A run interval, kept separate from the semantic ending reason.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunTiming {
+    /// Accepted submission to ending. Unknown for an unfinished interval or
+    /// a clock that cannot establish a nonnegative elapsed duration.
+    pub duration: Option<Duration>,
+    /// Whether the runtime observed an ending, rather than removal of a live run.
+    pub complete: bool,
 }
 
 impl Observation {
@@ -75,6 +123,8 @@ impl Observation {
             emitter,
             action,
             at: None,
+            run_timing: None,
+            handler_timing: None,
         }
     }
 }
@@ -267,6 +317,11 @@ impl OutcomeSummary {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum Action {
+    /// A fact emitted by the provider request boundary.
+    Adapter {
+        /// Correlation and typed boundary metadata.
+        observation: AdapterObservation,
+    },
     /// A pending intent was held before dispatch.
     Held {
         /// Why, when the holder said.
@@ -450,6 +505,12 @@ pub trait Clock: WasmCompatSend + WasmCompatSync {
 /// Where observations go: the seam a driver and a host emit through. A
 /// witness is shared, so it takes `&self`; it must never block the caller.
 pub trait Witness: WasmCompatSend + WasmCompatSync + 'static {
+    /// Sample the host-supplied monotonic clock, if installed. Boundaries use
+    /// this to measure intervals; an absent clock must not invent zero time.
+    fn elapsed(&self) -> Option<Duration> {
+        None
+    }
+
     /// One fact. The sink assigns its sequence.
     fn observe(&self, observation: Observation);
 }
@@ -577,6 +638,10 @@ impl ObservationLog {
 }
 
 impl Witness for ObservationLog {
+    fn elapsed(&self) -> Option<Duration> {
+        self.clock.as_ref().map(|clock| clock.elapsed())
+    }
+
     fn observe(&self, mut observation: Observation) {
         let at = self.clock.as_ref().map(|clock| clock.elapsed());
         let mut state = self.lock();
@@ -592,6 +657,10 @@ impl Witness for ObservationLog {
 }
 
 impl<W: Witness + ?Sized> Witness for Arc<W> {
+    fn elapsed(&self) -> Option<Duration> {
+        (**self).elapsed()
+    }
+
     fn observe(&self, observation: Observation) {
         (**self).observe(observation);
     }
@@ -625,7 +694,8 @@ pub enum Comparison {
 }
 
 /// Compare two traces on their semantic fields: subject, stage, emitter,
-/// action and sequence. Measurements ([`Observation::at`]) and the session
+/// action and sequence. Adapter analysis, measurements ([`Observation::at`] and
+/// [`Observation::run_timing`], [`Observation::handler_timing`]) and the session
 /// name are ignored. An incomplete trace (dropped facts) is incomparable,
 /// never equal: a missing fact is not evidence of agreement.
 pub fn compare(expected: &ObservationTrace, actual: &ObservationTrace) -> Comparison {
@@ -645,9 +715,15 @@ pub fn compare(expected: &ObservationTrace, actual: &ObservationTrace) -> Compar
             ),
         };
     }
-    let semantic = |observation: &Observation| Observation {
-        at: None,
-        ..observation.clone()
+    let semantic = |observation: &Observation| {
+        let mut observation = observation.clone();
+        observation.at = None;
+        observation.run_timing = None;
+        observation.handler_timing = None;
+        if let Action::Adapter { observation } = &mut observation.action {
+            observation.analysis = None;
+        }
+        observation
     };
     let longest = expected.observations.len().max(actual.observations.len());
     for index in 0..longest {

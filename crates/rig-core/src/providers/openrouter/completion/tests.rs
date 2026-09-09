@@ -60,6 +60,7 @@ fn test_openrouter_request_uses_request_model_override() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let openrouter_request = OpenrouterCompletionRequest::try_from(("openai/gpt-4o-mini", request))
@@ -86,6 +87,7 @@ fn openrouter_request_carries_caller_max_tokens() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let openrouter_request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
@@ -117,6 +119,7 @@ fn openrouter_params_include_direct_request_documents() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
@@ -146,6 +149,7 @@ fn test_openrouter_request_uses_default_model_when_override_unset() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let openrouter_request = OpenrouterCompletionRequest::try_from(("openai/gpt-4o-mini", request))
@@ -215,6 +219,7 @@ fn test_openrouter_request_maps_output_schema_to_response_format() {
         additional_params: None,
         output_schema: Some(schema),
         record_telemetry_content: false,
+        observation: None,
     };
 
     let openrouter_request = OpenrouterCompletionRequest::try_from(("openai/gpt-4o-mini", request))
@@ -269,6 +274,7 @@ fn test_openrouter_request_merges_output_schema_with_provider_preferences() {
         ),
         output_schema: Some(schema),
         record_telemetry_content: false,
+        observation: None,
     };
 
     let openrouter_request = OpenrouterCompletionRequest::try_from(("openai/gpt-4o-mini", request))
@@ -2767,6 +2773,7 @@ fn prompt_caching_completion_request() -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     }
 }
 

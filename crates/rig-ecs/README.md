@@ -1,5 +1,22 @@
 # rig-ecs
 
+With a clock-bearing witness installed, `spawn_run` samples accepted submission
+and the runtime attaches `RunTiming` to its existing `Ended` observation on
+settlement or failure (including cancellation). The interval uses the clock
+captured at submission and closes once. Despawning a live run emits
+`despawned_without_ending` with an unfinished interval; no duration is invented.
+Clockless runs omit timing. Timing state is runtime-only and is not restored
+from scenes; timing values are excluded from semantic observation comparison.
+
+Handler intervals start at dispatch issuance. Unary requests attach execution
+duration to `Landed`; streams sample time to first delivered item in collection,
+including error items, and carry that interval on landing or cancellation.
+Collection scheduling is therefore part of this boundary. Empty streams have
+no first-item duration. Cancellation before a unary landing or stream item
+marks the interval unfinished. A layer-discarded call has no handler landing
+interval. These measurements use the issuing witness's clock, stay outside the
+effect log, and do not alter semantic observation comparison.
+
 For a headless application that records genuine provider traffic, checks actual
 workspace edits, replays policy observations and resumes a supported checkpoint,
 see the [ECS consumer harness in rigcoder](https://github.com/gold-silver-copper/rigcoder/blob/main/crates/rigcoder-verify/src/consumer/README.md). Its owning
@@ -74,7 +91,7 @@ The agent's sets, around the bus's:
 | `RigSet::Select` | a run may lack a model of its own | the agent's `UsesModel`, copied — a routing system before it gives the run another |
 | `RigSet::Assemble` | a fresh turn's graph is complete | the fold spawns the effect; the run is `AwaitingModel` |
 | `RigSet::Patch` | the folded effect is a `PendingEffect` | the second steering slot: a user system rewrites the folded request |
-| `RigSet::Release` | a turn's tool batch is out | `release_batch` un-holds the next calls up to the concurrency, in call order — its own `BatchHeld` holds only; a `Held` a `Gate` system wrote is that system's to lift (on a call the batch also holds, the system writes `PolicyHeld` beside `Held`) |
+| `RigSet::Release` | a turn's tool batch is out | `release_batch` releases its `rig-ecs/batch` owner up to the concurrency, in call order. Policies use `bus::acquire_hold` and `bus::release_hold` with distinct stable emitter names; `Held` remains until every owner releases. A pre-existing bare `Held` is retained as an independent unknown owner. |
 | *`BusSet::Gate` … `BusSet::Judge`* | | |
 | `RigSet::Fold` | the effect may have streamed or landed | `Outputs` on the turn |
 | `RigSet::Judge` | the turn's outputs are complete | a user system may rewrite them, or a tool child's `EffectOutcome` |
@@ -254,11 +271,19 @@ parent, key), a `Stage` (`Gate`, `Dispatch`, `Handler`, `Collect`, `Judge`,
 | `Collect` | `StreamTruncated { delivered, tail, errors }`, `Landed { outcome }`, `Replaced` when a layer's verdict differed from the record (emitter named after the layer that said it replaced; unknown for a difference no layer claimed), `Cancelled` for a despawn in flight |
 | a `Judge` system overwrites a settled outcome (by insert; an in-place `Mut` rewrite must emit for itself) | `Replaced { recorded, consumed }`, whenever the whole value changed |
 | the agent runtime | `Ended { settled \| max_turns \| provider \| cancelled \| … }`, `CancelRequested`, `Retry`, `InvalidCall { name, resolution }` |
+| Gemini unary and SSE drivers | `Adapter` send/status, usage, provider verdict/error envelope, EOF and closure facts at `Handler`, with execution-local operation and send ordinal; explicit request context takes precedence over the bus context |
 | a host system | `Witnessing::emit(subject, Stage::Host, Emitter::versioned(..), HostAction::action(..))` |
+
+Attach `bus::AdapterOperation` to a pending completion before dispatch when
+the host owns retry correlation. The bus binds its current effect, scope and
+parent while retaining the supplied operation's witness and send counter.
+The component's nonzero host attempt ordinal stays separate from the HTTP
+send ordinal. Without it, the bus creates an operation for the individual
+effect. The component is runtime-only and is not scene/effect-log state.
 
 `rig_core::observe::compare` compares two traces on their semantic fields
 and ignores measurements (`Observation::at`, stamped from a host-owned
-`Clock`); an incomplete trace (a full sink) is incomparable, never equal.
+`Clock`) and adapter analysis metadata; an incomplete trace (a full sink) is incomparable, never equal.
 `crates/rig-ecs/tests/bus_witness.rs` and `run_witness.rs` are the proofs.
 
 ## Replay delivery and streaming

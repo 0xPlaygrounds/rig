@@ -18,7 +18,7 @@ use async_stream::stream;
 use futures::{Stream, StreamExt};
 use tracing_futures::Instrument;
 
-use super::adapter::{WireAdapter, WireFrame, run_wire_stream};
+use super::adapter::{WireAdapter, WireFrame, run_wire_stream_observed};
 use crate::completion::CompletionError;
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -96,6 +96,7 @@ where
     F: FnMut(String) -> FrameDisposition + WasmCompatSend + 'static,
 {
     stream! {
+        let observation = event_source.observation();
         let mut event_source = Box::pin(event_source);
         while let Some(event_result) = event_source.next().await {
             match event_result {
@@ -104,12 +105,17 @@ where
                     OpenLog::Trace => tracing::trace!("SSE connection opened"),
                     OpenLog::Debug => tracing::debug!("SSE connection opened"),
                 },
-                Ok(Event::Message(message)) => match triage(message.data) {
+                Ok(Event::Message(message)) => {
+                    if let Some(observation) = &observation {
+                        observation.payload(message.data.as_bytes());
+                    }
+                    match triage(message.data) {
                     FrameDisposition::Skip => {}
                     FrameDisposition::Frame(data) => yield Ok(WireFrame::Text(data)),
                     FrameDisposition::Fail(error) => {
                         yield Err(error);
                         break;
+                    }
                     }
                 },
                 Err(crate::http_client::Error::StreamEnded)
@@ -230,9 +236,10 @@ where
     // Transport layer: SSE events → `WireFrame`s. Byte splitting, framing,
     // and any in-band provider-error pre-filter carried by `triage` —
     // classification and policy live downstream.
+    let observation = event_source.observation();
     let transport = sse_frames(event_source, options, triage);
 
-    Box::pin(run_wire_stream(transport, adapter).instrument(span))
+    Box::pin(run_wire_stream_observed(transport, adapter, observation).instrument(span))
 }
 
 #[cfg(test)]

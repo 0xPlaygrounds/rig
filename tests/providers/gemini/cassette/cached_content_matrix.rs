@@ -987,6 +987,7 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
                     model: None,
                     output_schema: None,
                     record_telemetry_content: false,
+                    observation: None,
                 };
 
                 let mut stream = rig::completion::CompletionModel::stream(&model, request)

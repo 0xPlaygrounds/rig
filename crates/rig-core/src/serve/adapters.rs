@@ -75,7 +75,13 @@ where
         }
     }
 
-    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
+    async fn serve(&self, mut kind: EffectKind, dispatch: Dispatch) -> Reply {
+        if let EffectKind::Completion { request, .. } = &mut kind {
+            // Explicit caller context wins; bus mediation must not duplicate it.
+            if request.observation.is_none() {
+                request.observation = dispatch.adapter_context();
+            }
+        }
         match kind {
             EffectKind::Completion {
                 request,

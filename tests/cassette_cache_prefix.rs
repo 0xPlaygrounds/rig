@@ -624,6 +624,7 @@ fn determinism_probe_request() -> CompletionRequest {
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     }
 }
 

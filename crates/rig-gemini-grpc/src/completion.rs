@@ -184,6 +184,7 @@ pub(crate) fn create_grpc_request(
         additional_params: _,
         output_schema: _,
         record_telemetry_content: _,
+        observation: _,
     } = completion_request;
 
     let (history_system, mut chat_history) = split_system_messages_from_history(chat_history);

@@ -11,6 +11,7 @@ fn test_create_request_body_simple() {
 
     let request = CompletionRequest {
         record_telemetry_content: false,
+        observation: None,
         model: None,
         chat_history: vec![Message::system("Be precise."), prompt],
         documents: vec![],
@@ -90,6 +91,7 @@ fn tool_result_serializes_the_executed_name_not_an_identifier() {
 
     let request = CompletionRequest {
         record_telemetry_content: false,
+        observation: None,
         model: None,
         chat_history: vec![
             // A driver-built result carries the executed name (a repair
@@ -326,6 +328,7 @@ fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
     });
     let request = CompletionRequest {
         record_telemetry_content: false,
+        observation: None,
         model: None,
         chat_history: vec![Message::User {
             content: vec![tool_result],
@@ -1099,6 +1102,7 @@ fn a_tool_round_trip_is_top_level_steps() {
         "gemini-2.5-flash".to_owned(),
         CompletionRequest {
             record_telemetry_content: false,
+            observation: None,
             model: None,
             chat_history: vec![Message::user("Add 17 and 25."), assistant, result],
             documents: vec![],

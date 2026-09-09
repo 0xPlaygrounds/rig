@@ -170,17 +170,11 @@ pub struct Issued(
 /// leaves it alone until the marker is removed (approve), the effect is
 /// denied (`EffectOutcome(Err(..))` inserted) or the entity despawned. The
 /// world-side spelling of a layer that suspends in `before`.
+/// Policies with independent ownership use [`super::acquire_hold`] and
+/// [`super::release_hold`]; removing this marker directly bypasses all owners.
 #[derive(Component, Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Held;
-
-/// A `Gate` policy's own hold, written beside [`Held`] on a call the
-/// runtime's batch may also be holding (one beyond the run's concurrency,
-/// which carries the batch's own marker). `Held` is one marker whoever
-/// wrote it; this says a policy did, so the batch release lifts its own
-/// hold and leaves `Held` standing until the policy removes both.
-#[derive(Component, Debug, Default, Clone, Copy)]
-pub struct PolicyHeld;
 
 /// The effect was taken: a handler is serving it. Present from `Dispatch`
 /// until `settle` closes the record — for a stream, until the returned

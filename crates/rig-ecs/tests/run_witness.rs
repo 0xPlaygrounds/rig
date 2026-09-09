@@ -40,6 +40,96 @@ fn endings(log: &ObservationLog) -> Vec<(Option<String>, String)> {
         .collect()
 }
 
+#[derive(Default)]
+struct RunClock(std::sync::atomic::AtomicU64);
+
+impl rig_core::observe::Clock for RunClock {
+    fn elapsed(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.0.load(std::sync::atomic::Ordering::SeqCst))
+    }
+}
+
+#[test]
+fn run_intervals_cover_settlement_failure_cancellation_and_unfinished_removal() {
+    for ending in [
+        "settled",
+        "max_turns",
+        "cancelled",
+        "despawned_without_ending",
+    ] {
+        let mut baseline = None;
+        for timed in [false, true] {
+            let mut app = app();
+            let clock = Arc::new(RunClock(std::sync::atomic::AtomicU64::new(10)));
+            let log = Arc::new(if timed {
+                ObservationLog::default().with_clock(clock.clone())
+            } else {
+                ObservationLog::default()
+            });
+            Witnessing::install(app.world_mut(), log.clone());
+            let (model, _) = Capturing::new("m", "fine");
+            let model = register(&mut app, "m", model);
+            let agent = spawn_agent(app.world_mut(), "app", model);
+            let run = spawn_run(app.world_mut(), agent, &[], "hi", false, Some(1));
+            clock.0.store(60, std::sync::atomic::Ordering::SeqCst);
+            match ending {
+                "settled" => tick_until(&mut app, "settled", |world| {
+                    world.get::<Settled>(run).is_some()
+                }),
+                "max_turns" => {
+                    app.world_mut()
+                        .entity_mut(run)
+                        .insert(Failed(rig_ecs::agent::Failure::MaxTurns { limit: 1 }));
+                }
+                "cancelled" => {
+                    app.world_mut()
+                        .entity_mut(run)
+                        .insert(Cancelled("stop".into()));
+                    tick_until(&mut app, "cancelled", |world| {
+                        world.get::<Failed>(run).is_some()
+                    });
+                }
+                _ => {
+                    app.world_mut().despawn(run);
+                }
+            }
+            let trace = log.trace();
+            let ending_facts: Vec<_> = trace
+                .observations
+                .iter()
+                .filter(|o| matches!(o.action, Action::Ended { .. }))
+                .collect();
+            assert_eq!(ending_facts.len(), 1);
+            let fact = ending_facts[0];
+            assert!(
+                matches!(&fact.action, Action::Ended { ending: reason } if reason.code == ending)
+            );
+            if timed {
+                let timing = fact.run_timing.as_ref().unwrap();
+                assert_eq!(timing.complete, ending != "despawned_without_ending");
+                assert_eq!(
+                    timing.duration,
+                    timing
+                        .complete
+                        .then_some(std::time::Duration::from_millis(50))
+                );
+                assert_eq!(
+                    rig_core::observe::compare(baseline.as_ref().unwrap(), &trace),
+                    rig_core::observe::Comparison::Equal
+                );
+            } else {
+                assert!(fact.run_timing.is_none());
+                baseline = Some(trace.clone());
+            }
+            // Removing an already ended run cannot add a second closure.
+            if app.world().get_entity(run).is_ok() {
+                app.world_mut().despawn(run);
+            }
+            assert_eq!(endings(&log).len(), 1);
+        }
+    }
+}
+
 #[test]
 fn a_settled_run_ends_in_the_trace_under_its_scope() {
     let mut app = app();

@@ -4,6 +4,9 @@
 //! |---|---|
 //! | a gate denial is a fact with its reason and no exchange record | `a_gate_denial_is_witnessed_with_its_reason_and_leaves_no_record` |
 //! | hold/release and hold/deny stay distinct sequences | `hold_release_and_hold_deny_are_distinct_sequences` |
+//! | named owners release independently with observation enabled or disabled | `named_owners_release_independently_without_changing_dispatch` |
+//! | denial and despawn do not emit ordinary owner releases | `named_holds_do_not_emit_releases_for_denial_or_despawn` |
+//! | scene restore retains a barrier with explicitly unknown ownership | `restored_hold_is_unknown_until_the_host_reevaluates_it` |
 //! | a judge replacement exposes the recorded and the consumed answer | `a_judge_replacement_exposes_both_answers` |
 //! | a layer's patch keeps its before; a layer's denial is a serve-side fact | `a_layer_patch_and_discard_are_witnessed_at_the_handler_side` |
 //! | a stream that ends before its terminal keeps its tail | `a_stream_that_ends_before_its_terminal_keeps_its_tail` |
@@ -48,8 +51,308 @@ fn witnessed(app: &mut bevy_app::App) -> Arc<ObservationLog> {
     log
 }
 
+struct HandlerClock(std::sync::atomic::AtomicU64);
+
+impl rig_core::observe::Clock for HandlerClock {
+    fn elapsed(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.0.load(std::sync::atomic::Ordering::SeqCst))
+    }
+}
+
+#[test]
+fn handler_intervals_pin_landing_first_item_and_cancellation() {
+    use rig_core::observe::{HandlerInterval, HandlerTiming};
+    for (streamed, first, cancel) in [
+        (false, false, false),
+        (false, false, true),
+        (true, false, true),
+        (true, true, true),
+    ] {
+        let counters = Arc::new(Counters::default());
+        counters.hold.hold();
+        let mut app = app();
+        let clock = Arc::new(HandlerClock(std::sync::atomic::AtomicU64::new(10)));
+        let log = Arc::new(ObservationLog::default().with_clock(clock.clone()));
+        Witnessing::install(app.world_mut(), log.clone());
+        register(&mut app, "model", MockModel::endless(&counters));
+        let effect = app
+            .world_mut()
+            .spawn(PendingEffect::new(
+                "model",
+                if streamed { streaming() } else { completion() },
+            ))
+            .id();
+        tick_until(&mut app, "issued", |world| {
+            world.get::<InFlight>(effect).is_some()
+        });
+        if first {
+            clock.0.store(23, std::sync::atomic::Ordering::SeqCst);
+            counters.hold.release();
+            tick_until(&mut app, "first delivered item", |world| {
+                world
+                    .get::<rig_ecs::bus::Streamed>(effect)
+                    .is_some_and(|stream| !stream.events.is_empty())
+            });
+            counters.hold.hold();
+        }
+        clock.0.store(60, std::sync::atomic::Ordering::SeqCst);
+        if cancel {
+            app.world_mut().despawn(effect);
+        } else {
+            counters.hold.release();
+            tick_until(&mut app, "landed", |world| {
+                world.get::<EffectOutcome>(effect).is_some()
+            });
+        }
+        counters.hold.release();
+        let trace = log.trace();
+        let timings: Vec<_> = trace
+            .observations
+            .iter()
+            .filter_map(|o| o.handler_timing.as_ref())
+            .collect();
+        assert_eq!(timings.len(), 1);
+        assert_eq!(
+            *timings[0],
+            HandlerTiming {
+                interval: if streamed {
+                    HandlerInterval::TimeToFirstItem
+                } else {
+                    HandlerInterval::Execution
+                },
+                duration: if first {
+                    Some(std::time::Duration::from_millis(13))
+                } else if !cancel {
+                    Some(std::time::Duration::from_millis(50))
+                } else {
+                    None
+                },
+                complete: first || !cancel,
+            }
+        );
+        let mut untimed = trace.clone();
+        for observation in &mut untimed.observations {
+            observation.handler_timing = None;
+        }
+        assert_eq!(compare(&trace, &untimed), Comparison::Equal);
+    }
+}
+
+struct EmptyStream {
+    error: bool,
+}
+
+impl Serve for EmptyStream {
+    type Family = rig_core::effect::family::Completion;
+    fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+        Truncating.descriptor()
+    }
+    async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+        let error = self.error;
+        Reply::written(move |mut out| async move {
+            if error {
+                let _ = out
+                    .error(ErrorReport::new(
+                        ErrorKind::Response,
+                        "first item is an error",
+                    ))
+                    .await;
+            }
+        })
+    }
+}
+
+#[test]
+fn empty_and_error_first_streams_distinguish_no_item_from_zero_duration() {
+    for error in [false, true] {
+        let mut baseline = None;
+        for timed in [false, true] {
+            let mut app = app();
+            let log = Arc::new(if timed {
+                ObservationLog::default().with_clock(Arc::new(HandlerClock(
+                    std::sync::atomic::AtomicU64::new(10),
+                )))
+            } else {
+                ObservationLog::default()
+            });
+            Witnessing::install(app.world_mut(), log.clone());
+            register(&mut app, "cut", EmptyStream { error });
+            let effect = app
+                .world_mut()
+                .spawn(PendingEffect::new("cut", streaming()))
+                .id();
+            tick_until(&mut app, "empty stream closure", |world| {
+                world.get::<EffectOutcome>(effect).is_some()
+            });
+            let trace = log.trace();
+            let landed = trace
+                .observations
+                .iter()
+                .find(|o| matches!(o.action, Action::Landed { .. }))
+                .unwrap();
+            assert!(matches!(
+                landed.action,
+                Action::Landed {
+                    outcome: OutcomeSummary::Err { .. }
+                }
+            ));
+            if timed {
+                assert_eq!(
+                    landed.handler_timing,
+                    Some(rig_core::observe::HandlerTiming {
+                        interval: rig_core::observe::HandlerInterval::TimeToFirstItem,
+                        duration: error.then_some(std::time::Duration::ZERO),
+                        complete: error,
+                    })
+                );
+                assert_eq!(
+                    compare(baseline.as_ref().unwrap(), &trace),
+                    Comparison::Equal
+                );
+            } else {
+                assert!(landed.handler_timing.is_none());
+                baseline = Some(trace);
+            }
+        }
+    }
+}
+
+#[test]
+fn explicit_operations_keep_retry_identity_and_current_dispatch_subjects() {
+    use rig_core::{
+        client::CompletionClient,
+        completion::CompletionModel as _,
+        observe::{AdapterContext, AdapterEvent},
+        serve::adapters::CompletionAdapter,
+        test_utils::RecordingHttpClient,
+    };
+    let mut app = app();
+    let log = witnessed(&mut app);
+    let http = RecordingHttpClient::new(
+        r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#,
+    );
+    let client = rig_core::providers::gemini::Client::builder()
+        .api_key("test-key")
+        .http_client(http.clone())
+        .build()
+        .unwrap();
+    let model = client.completion_model("test-model");
+    let request = model.completion_request("identical call").build();
+    register(
+        &mut app,
+        "model",
+        CompletionAdapter::new("test-model", model),
+    );
+    let operation = AdapterContext::new(log.clone(), Subject::default(), "logical-call");
+    let mut entities = Vec::new();
+    for host in [1u64, 2] {
+        let entity = app
+            .world_mut()
+            .spawn((
+                PendingEffect::new(
+                    "model",
+                    EffectKind::Completion {
+                        request: request.clone(),
+                        stream: false,
+                    },
+                ),
+                Scope(format!("host/{host}")),
+                rig_ecs::bus::AdapterOperation {
+                    context: operation.clone(),
+                    host_attempt: host.try_into().unwrap(),
+                },
+            ))
+            .id();
+        entities.push(entity);
+        tick_until(&mut app, "provider attempt completed", |world| {
+            world.get::<EffectOutcome>(entity).is_some()
+        });
+    }
+    assert_eq!(http.requests().len(), 2);
+    assert_eq!(http.requests()[0], http.requests()[1]);
+    let trace = log.trace();
+    for (index, entity) in entities.into_iter().enumerate() {
+        let id = app.world().get::<Issued>(entity).unwrap().0;
+        let facts: Vec<_> = trace
+            .observations
+            .iter()
+            .filter_map(|o| {
+                let Action::Adapter { observation } = &o.action else {
+                    return None;
+                };
+                if o.subject.effect != Some(id) {
+                    return None;
+                }
+                assert_eq!(
+                    o.subject.scope.as_deref(),
+                    Some(format!("host/{}", index + 1).as_str())
+                );
+                assert_eq!(observation.operation, "logical-call");
+                assert_eq!(observation.attempt, Some((index + 1) as u64));
+                assert_eq!(
+                    observation.host_attempt.map(std::num::NonZeroU64::get),
+                    Some((index + 1) as u64)
+                );
+                Some(observation)
+            })
+            .collect();
+        assert_eq!(facts.len(), 4);
+        assert!(matches!(facts[0].event, AdapterEvent::Started { .. }));
+        assert!(matches!(facts[3].event, AdapterEvent::Finished { .. }));
+    }
+    let parallel: Vec<_> = ["duplicate/1", "duplicate/2"]
+        .into_iter()
+        .map(|name| {
+            let entity = app
+                .world_mut()
+                .spawn((
+                    PendingEffect::new(
+                        "model",
+                        EffectKind::Completion {
+                            request: request.clone(),
+                            stream: false,
+                        },
+                    ),
+                    Scope("parallel".into()),
+                    rig_ecs::bus::AdapterOperation {
+                        context: AdapterContext::new(log.clone(), Subject::default(), name),
+                        host_attempt: 1.try_into().unwrap(),
+                    },
+                ))
+                .id();
+            (entity, name)
+        })
+        .collect();
+    tick_until(&mut app, "parallel identical requests completed", |world| {
+        parallel
+            .iter()
+            .all(|(entity, _)| world.get::<EffectOutcome>(*entity).is_some())
+    });
+    assert_eq!(http.requests().len(), 4);
+    assert!(http.requests().iter().all(|r| r == &http.requests()[0]));
+    for (entity, name) in parallel {
+        let id = app.world().get::<Issued>(entity).unwrap().0;
+        let trace = log.trace();
+        let facts: Vec<_> = trace
+            .observations
+            .iter()
+            .filter_map(|o| {
+                let Action::Adapter { observation } = &o.action else {
+                    return None;
+                };
+                (o.subject.effect == Some(id)).then_some(observation)
+            })
+            .collect();
+        assert_eq!(facts.len(), 4);
+        assert!(facts.iter().all(|f| f.operation == name
+            && f.attempt == Some(1)
+            && f.host_attempt == Some(1.try_into().unwrap())));
+    }
+}
+
 fn name_of(action: &Action) -> &'static str {
     match action {
+        Action::Adapter { .. } => "adapter",
         Action::Held { .. } => "held",
         Action::Released => "released",
         Action::Denied { .. } => "denied",
@@ -192,6 +495,314 @@ fn hold_release_and_hold_deny_are_distinct_sequences() {
         ]
     );
     assert_eq!(of(denied), ["Gate:held", "Gate:denied"]);
+}
+
+#[test]
+fn hold_lifecycle_despawn_does_not_emit_uncorrelated_transitions() {
+    let mut app = app();
+    let log = witnessed(&mut app);
+    let entity = app
+        .world_mut()
+        .spawn(PendingEffect::new("model", completion()))
+        .id();
+    app.world_mut()
+        .add_observer(|event: On<Add, Held>, mut commands: Commands| {
+            commands.entity(event.entity).despawn();
+        });
+    assert!(rig_ecs::bus::acquire_hold(
+        app.world_mut(),
+        entity,
+        Emitter::named("policy/a")
+    ));
+    assert!(app.world().get_entity(entity).is_err());
+    assert!(
+        !log.trace()
+            .observations
+            .iter()
+            .any(|fact| matches!(fact.action, Action::Held { .. } | Action::Released))
+    );
+}
+
+#[test]
+fn ownership_component_observers_preserve_fact_order() {
+    use rig_ecs::bus::{HoldOwners, acquire_hold, release_hold};
+    let mut app = app();
+    let log = witnessed(&mut app);
+    let entity = app
+        .world_mut()
+        .spawn(PendingEffect::new("model", completion()))
+        .id();
+    app.world_mut()
+        .add_observer(|event: On<Add, HoldOwners>, mut commands: Commands| {
+            let entity = event.entity;
+            commands.queue(move |world: &mut World| {
+                release_hold(world, entity, "policy/a");
+            });
+        });
+    assert!(acquire_hold(
+        app.world_mut(),
+        entity,
+        Emitter::named("policy/a")
+    ));
+    assert!(app.world().get::<Held>(entity).is_none());
+    assert!(app.world().get::<HoldOwners>(entity).is_none());
+    let trace = log.trace();
+    let transitions: Vec<_> = trace
+        .observations
+        .iter()
+        .filter_map(|fact| match fact.action {
+            Action::Held { .. } => Some(true),
+            Action::Released => Some(false),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(transitions, [true, false]);
+}
+
+#[test]
+fn hold_lifecycle_observers_preserve_owners_and_fact_order() {
+    use rig_ecs::bus::{HoldOwners, acquire_hold, release_hold};
+    let mut app = app();
+    let log = witnessed(&mut app);
+    let entity = app
+        .world_mut()
+        .spawn(PendingEffect::new("model", completion()))
+        .id();
+    app.world_mut()
+        .add_observer(|event: On<Add, Held>, mut commands: Commands| {
+            let entity = event.entity;
+            commands.queue(move |world: &mut World| {
+                release_hold(world, entity, "policy/a");
+            });
+        });
+    app.world_mut()
+        .add_observer(|event: On<Remove, Held>, mut commands: Commands| {
+            let entity = event.entity;
+            commands.queue(move |world: &mut World| {
+                acquire_hold(world, entity, Emitter::named("policy/b"));
+            });
+        });
+    assert!(acquire_hold(
+        app.world_mut(),
+        entity,
+        Emitter::named("policy/a")
+    ));
+    assert!(app.world().get::<Held>(entity).is_some());
+    let owners = app.world().get::<HoldOwners>(entity).unwrap();
+    assert_eq!(
+        owners
+            .owners()
+            .map(|owner| owner.name.as_str())
+            .collect::<Vec<_>>(),
+        ["policy/b"]
+    );
+    let trace = log.trace();
+    let transitions: Vec<_> = trace
+        .observations
+        .iter()
+        .filter_map(|fact| match fact.action {
+            Action::Held { .. } => Some((fact.emitter.name.as_str(), true)),
+            Action::Released => Some((fact.emitter.name.as_str(), false)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        transitions,
+        [("policy/a", true), ("policy/a", false), ("policy/b", true)]
+    );
+    assert!(release_hold(app.world_mut(), entity, "policy/b"));
+    assert!(app.world().get::<Held>(entity).is_some());
+    assert_eq!(
+        app.world()
+            .get::<HoldOwners>(entity)
+            .unwrap()
+            .owners()
+            .count(),
+        1
+    );
+    let trace = log.trace();
+    let transitions: Vec<_> = trace
+        .observations
+        .iter()
+        .filter_map(|fact| match fact.action {
+            Action::Held { .. } => Some((fact.emitter.name.as_str(), true)),
+            Action::Released => Some((fact.emitter.name.as_str(), false)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        transitions,
+        [
+            ("policy/a", true),
+            ("policy/a", false),
+            ("policy/b", true),
+            ("policy/b", false),
+            ("policy/b", true),
+        ]
+    );
+}
+
+#[test]
+fn restored_hold_is_unknown_until_the_host_reevaluates_it() {
+    use rig_ecs::bus::{HoldOwners, acquire_hold, release_hold, scene::Scene};
+    let mut original = app();
+    let effect = original
+        .world_mut()
+        .spawn(PendingEffect::new("model", completion()))
+        .id();
+    acquire_hold(
+        original.world_mut(),
+        effect,
+        Emitter::named("policy/original"),
+    );
+    let scene = Scene::save(original.world_mut());
+    let mut restored = app();
+    let log = witnessed(&mut restored);
+    let counters = Arc::new(Counters::default());
+    register(&mut restored, "model", MockModel::new(&counters));
+    let effect = scene.load(restored.world_mut()).unwrap()[0];
+    tick(&mut restored, 2);
+    assert!(restored.world().get::<Held>(effect).is_some());
+    assert!(restored.world().get::<HoldOwners>(effect).is_none());
+    assert!(restored.world().get::<Issued>(effect).is_none());
+    assert!(!release_hold(
+        restored.world_mut(),
+        effect,
+        "policy/original"
+    ));
+    assert!(acquire_hold(
+        restored.world_mut(),
+        effect,
+        Emitter::named("policy/current")
+    ));
+    assert!(release_hold(
+        restored.world_mut(),
+        effect,
+        &Emitter::unknown().name
+    ));
+    tick(&mut restored, 2);
+    assert!(restored.world().get::<Held>(effect).is_some());
+    assert!(restored.world().get::<Issued>(effect).is_none());
+    assert!(release_hold(restored.world_mut(), effect, "policy/current"));
+    tick_until(&mut restored, "restored effect answered", |world| {
+        world.get::<EffectOutcome>(effect).is_some()
+    });
+    let trace = log.trace();
+    let owners: Vec<_> = trace
+        .observations
+        .iter()
+        .filter_map(|fact| {
+            matches!(fact.action, Action::Held { .. }).then_some(fact.emitter.name.as_str())
+        })
+        .collect();
+    assert_eq!(owners, [Emitter::unknown().name.as_str(), "policy/current"]);
+}
+
+#[test]
+fn named_owners_release_independently_without_changing_dispatch() {
+    use rig_ecs::bus::{HoldOwners, acquire_hold, release_hold};
+    for enabled in [false, true] {
+        for first in ["policy/a", "policy/b"] {
+            let counters = Arc::new(Counters::default());
+            let mut app = app();
+            let log = enabled.then(|| witnessed(&mut app));
+            register(&mut app, "model", MockModel::new(&counters));
+            let entity = app
+                .world_mut()
+                .spawn(PendingEffect::new("model", completion()))
+                .id();
+            for owner in ["policy/a", "policy/b"] {
+                assert!(acquire_hold(app.world_mut(), entity, Emitter::named(owner)));
+                assert!(!acquire_hold(
+                    app.world_mut(),
+                    entity,
+                    Emitter::named(owner)
+                ));
+            }
+            tick(&mut app, 2);
+            assert!(app.world().get::<Issued>(entity).is_none());
+            assert!(release_hold(app.world_mut(), entity, first));
+            assert!(!release_hold(app.world_mut(), entity, first));
+            tick(&mut app, 2);
+            assert!(app.world().get::<Held>(entity).is_some());
+            assert!(app.world().get::<Issued>(entity).is_none());
+            assert_eq!(
+                app.world()
+                    .get::<HoldOwners>(entity)
+                    .unwrap()
+                    .owners()
+                    .count(),
+                1
+            );
+            let last = if first == "policy/a" {
+                "policy/b"
+            } else {
+                "policy/a"
+            };
+            assert!(release_hold(app.world_mut(), entity, last));
+            assert!(app.world().get::<Held>(entity).is_none());
+            assert!(app.world().get::<HoldOwners>(entity).is_none());
+            tick_until(&mut app, "answered", |world| {
+                world.get::<EffectOutcome>(entity).is_some()
+            });
+            assert!(app.world().get::<EffectOutcome>(entity).unwrap().0.is_ok());
+            if let Some(log) = log {
+                let trace = log.trace();
+                let owners: Vec<_> = trace
+                    .observations
+                    .iter()
+                    .filter_map(|fact| match fact.action {
+                        Action::Held { .. } => Some((fact.emitter.name.as_str(), "held")),
+                        Action::Released => Some((fact.emitter.name.as_str(), "released")),
+                        _ => None,
+                    })
+                    .collect();
+                assert_eq!(
+                    owners,
+                    [
+                        ("policy/a", "held"),
+                        ("policy/b", "held"),
+                        (first, "released"),
+                        (last, "released")
+                    ]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn named_holds_do_not_emit_releases_for_denial_or_despawn() {
+    use rig_ecs::bus::{acquire_hold, release_hold};
+    let mut app = app();
+    let log = witnessed(&mut app);
+    for despawn in [false, true] {
+        let entity = app
+            .world_mut()
+            .spawn(PendingEffect::new("model", completion()))
+            .id();
+        for owner in ["policy/a", "policy/b"] {
+            acquire_hold(app.world_mut(), entity, Emitter::named(owner));
+        }
+        if despawn {
+            app.world_mut().despawn(entity);
+        } else {
+            app.world_mut()
+                .entity_mut(entity)
+                .insert(EffectOutcome(Err(ErrorReport::new(
+                    ErrorKind::Denied,
+                    "denied",
+                ))));
+            release_hold(app.world_mut(), entity, "policy/a");
+            release_hold(app.world_mut(), entity, "policy/b");
+        }
+    }
+    assert!(
+        !log.trace()
+            .observations
+            .iter()
+            .any(|fact| matches!(fact.action, Action::Released))
+    );
 }
 
 fn replace_answers(
@@ -342,7 +953,10 @@ fn a_layer_patch_and_discard_are_witnessed_at_the_handler_side() {
     let mut app = app();
     let recorder = EffectLogRecorder::new();
     EffectLogResource::install(app.world_mut(), recorder.clone());
-    let log = witnessed(&mut app);
+    let log = Arc::new(ObservationLog::default().with_clock(Arc::new(HandlerClock(
+        std::sync::atomic::AtomicU64::new(10),
+    ))));
+    Witnessing::install(app.world_mut(), log.clone());
     register(
         &mut app,
         "warm",
@@ -421,6 +1035,10 @@ fn a_layer_patch_and_discard_are_witnessed_at_the_handler_side() {
         )
         .expect("the discard is observed");
     assert_eq!(denied.stage, Stage::Handler);
+    assert!(
+        denied.handler_timing.is_none(),
+        "a layer-discarded call has no handler landing interval"
+    );
     assert_eq!(
         denied.emitter.name, "bouncer",
         "a layer's denial names the layer"

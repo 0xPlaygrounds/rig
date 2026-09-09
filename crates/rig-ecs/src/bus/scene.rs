@@ -63,6 +63,9 @@ pub struct SceneEffect {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
     /// Whether a `Gate` system was holding it.
+    /// Owner names are execution-local and are not saved. Loading restores a
+    /// bare unknown hold; the host must reevaluate its policies and explicitly
+    /// release that unknown owner through [`super::release_hold`] before dispatch.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub held: bool,
     /// The context a tool call runs with ([`ToolInputs`]), when it carried one.

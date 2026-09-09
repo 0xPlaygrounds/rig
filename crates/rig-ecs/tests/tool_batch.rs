@@ -8,7 +8,7 @@
 //! | a `Judge` system replaces a tool child's outcome: history holds the replacement, the record the answer | `a_judge_system_replaces_a_tool_result_and_the_record_keeps_the_answer` |
 //! | a `Gate` denial is a skipped result the model sees, and no record | `a_gate_denial_is_a_skipped_result_and_no_record` |
 //! | a `Gate` hold is the policy's: the batch release never lifts it, and the held call keeps its concurrency slot | `a_gate_hold_is_not_lifted_by_the_batch_release` |
-//! | a `Gate` hold on a call the batch also holds (`PolicyHeld`) survives the batch's own release | `a_gate_hold_on_a_call_the_batch_also_holds_survives_the_batch_release` |
+//! | two named policy holds survive the batch's release, and releasing one policy leaves the other blocking dispatch | `a_gate_hold_on_a_call_the_batch_also_holds_survives_the_batch_release` |
 //! | a tool child despawned fails the run `Cancelled` | `despawning_a_tool_child_fails_the_run_cancelled` |
 //! | `Resolution::Repair` written by a system renames the call and dispatches it | `a_system_repairs_an_invalid_call_to_a_granted_tool` |
 //! | `Resolution::Retry` retries the turn with feedback and the invalid-peer notice | `a_system_retries_an_invalid_call_with_feedback` |
@@ -469,23 +469,31 @@ fn hold_first_call(
     }
 }
 
-/// A policy that holds the *second* call of every batch — one the batch may
-/// be holding too — and says so with `PolicyHeld`.
+/// Two policies hold the second call while the batch may also hold it.
 fn hold_second_call(
     fresh: Query<(Entity, &rig_ecs::agent::ToolCallSlot), Added<PendingEffect>>,
     mut commands: Commands,
 ) {
     for (entity, slot) in &fresh {
         if slot.index == 1 {
-            commands
-                .entity(entity)
-                .insert((rig_ecs::bus::Held, rig_ecs::bus::PolicyHeld));
+            commands.queue(move |world: &mut World| {
+                rig_ecs::bus::acquire_hold(
+                    world,
+                    entity,
+                    rig_core::observe::Emitter::named("test/second"),
+                );
+                rig_ecs::bus::acquire_hold(
+                    world,
+                    entity,
+                    rig_core::observe::Emitter::named("test/another"),
+                );
+            });
         }
     }
 }
 
 fn release_second_call(
-    held: Query<(Entity, &rig_ecs::agent::ToolCallSlot), With<rig_ecs::bus::PolicyHeld>>,
+    held: Query<(Entity, &rig_ecs::agent::ToolCallSlot), With<rig_ecs::bus::HoldOwners>>,
     hold: Res<HoldFirst>,
     mut commands: Commands,
 ) {
@@ -494,16 +502,16 @@ fn release_second_call(
     }
     for (entity, slot) in &held {
         if slot.index == 1 {
-            commands
-                .entity(entity)
-                .remove::<(rig_ecs::bus::Held, rig_ecs::bus::PolicyHeld)>();
+            commands.queue(move |world: &mut World| {
+                rig_ecs::bus::release_hold(world, entity, "test/second");
+            });
         }
     }
 }
 
 /// The overlap: under concurrency 1 the second call is the batch's to hold
-/// and a policy's. When the first lands the batch lifts its own hold and
-/// `Held` stands until the policy releases it.
+/// and two policies'. The batch and first policy can release independently;
+/// dispatch waits for the remaining policy too.
 #[test]
 fn a_gate_hold_on_a_call_the_batch_also_holds_survives_the_batch_release() {
     let (mut app, agent, adder, requests) = tooling(two_calls_then_text());
@@ -543,7 +551,39 @@ fn a_gate_hold_on_a_call_the_batch_also_holds_survives_the_batch_release() {
     );
     assert_eq!(adder.peak.load(Ordering::SeqCst), 1);
     assert!(app.world().get::<Settled>(run).is_none());
+    let second = app
+        .world_mut()
+        .query::<(Entity, &rig_ecs::agent::ToolCallSlot)>()
+        .iter(app.world())
+        .find_map(|(entity, slot)| (slot.index == 1).then_some(entity))
+        .unwrap();
+    let owners = app.world().get::<rig_ecs::bus::HoldOwners>(second).unwrap();
+    assert_eq!(
+        owners
+            .owners()
+            .map(|owner| owner.name.as_str())
+            .collect::<Vec<_>>(),
+        ["test/another", "test/second"]
+    );
     app.insert_resource(HoldFirst(false));
+    for _ in 0..8 {
+        app.update();
+    }
+    assert!(app.world().get::<Issued>(second).is_none());
+    assert!(app.world().get::<rig_ecs::bus::Held>(second).is_some());
+    let owners = app.world().get::<rig_ecs::bus::HoldOwners>(second).unwrap();
+    assert_eq!(
+        owners
+            .owners()
+            .map(|owner| owner.name.as_str())
+            .collect::<Vec<_>>(),
+        ["test/another"]
+    );
+    assert!(rig_ecs::bus::release_hold(
+        app.world_mut(),
+        second,
+        "test/another"
+    ));
     ended(&mut app, run, "answered");
     assert!(app.world().get::<Settled>(run).is_some());
     let requests = requests.lock().unwrap();

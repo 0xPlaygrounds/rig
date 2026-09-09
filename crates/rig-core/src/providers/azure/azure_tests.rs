@@ -345,6 +345,7 @@ async fn completion_pins_deployment_url_under_model_override() {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            observation: None,
         })
         .await;
 
@@ -394,6 +395,7 @@ async fn completion_http_non_success_preserves_status_and_body() {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            observation: None,
         })
         .await
     else {

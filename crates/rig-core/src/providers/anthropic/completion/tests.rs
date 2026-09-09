@@ -491,6 +491,7 @@ fn completion_request_with_tools(
         additional_params,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     }
 }
 
@@ -513,6 +514,7 @@ fn completion_request_with_history(
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     }
 }
 

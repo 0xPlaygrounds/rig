@@ -130,6 +130,7 @@ pub fn collect_streams(
     recording: Option<Res<Recording>>,
     witness: Option<Res<Witnessing>>,
     subjects: Subjects,
+    mut timings: Query<&mut super::witness::HandlerTimer>,
     batch: Res<DeliveryBatch>,
     mut progress: ResMut<Progress>,
     mut budget: ResMut<CollectionBudget>,
@@ -165,6 +166,9 @@ pub fn collect_streams(
             let outcome = match polled {
                 Poll::Pending => break,
                 Poll::Ready(Some(item)) => {
+                    if let Ok(mut timing) = timings.get_mut(entity) {
+                        timing.first_item();
+                    }
                     if let Some(streamed) = &mut streamed {
                         if let Err(error) = &item {
                             let position = streamed.events.len() + streamed.errors.len();
@@ -291,6 +295,7 @@ pub type LandedView = (
     &'static EffectOutcome,
     Option<&'static Observed>,
     Option<&'static ToolOutputs>,
+    Option<&'static mut super::witness::HandlerTimer>,
 );
 
 /// An outcome landed on an in-flight effect: the record closes with it and
@@ -299,14 +304,14 @@ pub type LandedView = (
 /// is not re-recorded: decisions are program, never record.
 pub fn settle(
     mut commands: Commands,
-    landed: Query<LandedView, Landed>,
+    mut landed: Query<LandedView, Landed>,
     replaced: Query<&super::record::ReplacedBy>,
     recording: Option<Res<Recording>>,
     witness: Option<Res<Witnessing>>,
     subjects: Subjects,
     mut progress: ResMut<Progress>,
 ) {
-    for (entity, &Issued(id), outcome, observed, outputs) in &landed {
+    for (entity, &Issued(id), outcome, observed, outputs, timing) in &mut landed {
         // A layered handler: the record holds what the innermost handler
         // answered (the observer's), never a layer's verdict; a dispatch a
         // layer discarded is no record.
@@ -339,7 +344,7 @@ pub fn settle(
                 let consumed = seen.summary.clone();
                 let differs = seen.fingerprint != fingerprint(&recorded);
                 commands.entity(entity).insert(seen);
-                witness.emit(
+                let mut observation = rig_core::observe::Observation::new(
                     subject.clone(),
                     Stage::Collect,
                     bus_emitter(),
@@ -347,6 +352,8 @@ pub fn settle(
                         outcome: served.clone(),
                     },
                 );
+                observation.handler_timing = timing.and_then(|mut timer| timer.finish(true));
+                witness.observe(observation);
                 if differs {
                     // A layer's verdict on the way out: the record keeps
                     // the handler's answer, the world sees the layer's. The
@@ -369,6 +376,7 @@ pub fn settle(
             Observed,
             CollectedOutcome,
             super::record::ReplacedBy,
+            super::witness::HandlerTimer,
         )>();
         progress.mark();
     }

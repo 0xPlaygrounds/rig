@@ -730,6 +730,9 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
 /// Struct representing a general completion request that can be sent to a completion model provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompletionRequest {
+    /// Optional runtime-only provider witness and operation correlation.
+    #[serde(skip)]
+    pub observation: Option<crate::observe::AdapterContext>,
     /// Optional model override for this request.
     pub model: Option<String>,
     /// The chat history to be sent to the completion model provider.
@@ -1055,6 +1058,7 @@ pub struct CompletionRequestBuilder<M = Unbound> {
     additional_params: Option<serde_json::Value>,
     output_schema: Option<schemars::Schema>,
     record_telemetry_content: bool,
+    observation: Option<crate::observe::AdapterContext>,
 }
 
 /// The model slot of a request under assembly that has no model attached:
@@ -1087,7 +1091,14 @@ impl<M> CompletionRequestBuilder<M> {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            observation: None,
         }
+    }
+
+    /// Observe provider attempts with an execution-local operation context.
+    pub fn observation(mut self, context: crate::observe::AdapterContext) -> Self {
+        self.observation = Some(context);
+        self
     }
 
     /// Sets the preamble for the completion request. It becomes the leading
@@ -1313,6 +1324,7 @@ impl<M> CompletionRequestBuilder<M> {
             additional_params,
             output_schema: self.output_schema,
             record_telemetry_content: self.record_telemetry_content,
+            observation: self.observation,
         };
         (model, request)
     }

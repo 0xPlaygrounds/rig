@@ -193,6 +193,7 @@ fn test_resolve_request_model_uses_override() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let request_model = resolve_request_model("gemini-2.0-flash", &request);
@@ -220,6 +221,7 @@ fn test_resolve_request_model_uses_default_when_unset() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     assert_eq!(
@@ -1471,6 +1473,7 @@ fn ingested_nameless_results_resolve_their_name_at_request_assembly() {
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
         max_tokens: None,
         tool_choice: None,
         additional_params: None,
@@ -1631,6 +1634,7 @@ fn test_create_request_body_with_documents() {
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
         max_tokens: None,
         tool_choice: None,
         additional_params: None,
@@ -1650,6 +1654,7 @@ fn test_create_request_body_with_documents() {
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
         max_tokens: None,
         tool_choice: None,
         additional_params: None,
@@ -1720,6 +1725,7 @@ fn test_create_request_body_without_documents() {
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
         additional_params: None,
     };
 

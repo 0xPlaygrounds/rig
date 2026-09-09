@@ -152,6 +152,7 @@ fn streaming_request_keeps_documents_after_leading_system_messages() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)
@@ -203,6 +204,7 @@ fn streaming_body_is_blocking_body_plus_stream_flag_and_carries_output_schema() 
         additional_params: None,
         output_schema: Some(schema),
         record_telemetry_content: false,
+        observation: None,
     };
 
     let streaming_body = built_streaming_body(CLAUDE_OPUS_4_8, request.clone(), false)
@@ -264,6 +266,7 @@ fn streaming_body_keeps_explicit_tool_choice_auto_when_tools_present_but_unset()
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)
@@ -297,6 +300,7 @@ fn streaming_body_applies_strict_tool_opt_in() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let body = built_streaming_body(CLAUDE_OPUS_4_8, request, true)
@@ -330,6 +334,7 @@ fn streaming_body_drops_tool_choice_when_no_tools_are_advertised() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)

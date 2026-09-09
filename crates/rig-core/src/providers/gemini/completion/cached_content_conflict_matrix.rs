@@ -37,6 +37,7 @@ fn build(system: bool, tools: bool, tool_choice: bool) -> GenerateContentRequest
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     })
     .expect("request should build")
 }

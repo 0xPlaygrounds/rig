@@ -18,6 +18,7 @@ fn request(prompt: &str) -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     }
 }
 

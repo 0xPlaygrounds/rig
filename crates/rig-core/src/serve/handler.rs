@@ -174,6 +174,11 @@ impl Serve for ErasedHandler {
 }
 
 pub trait Observe: Send + Sync {
+    /// Provider witness associated with this dispatch, independently of recording.
+    fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
+        None
+    }
+
     /// The completed handler response, or the fold of a streaming handler's
     /// events. A resolved response retains content that has no stream block,
     /// such as images emitted as unknown events.
@@ -490,6 +495,7 @@ fn lock<T>(value: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// An effect's identity, requested delivery mode, and driver-provided scopes.
 /// Reply transport and cancellation remain owned by the driver.
 pub struct Dispatch {
+    adapter_context: Option<crate::observe::AdapterContext>,
     id: EffectId,
     streaming: bool,
     scopes: Vec<Arc<dyn std::any::Any + Send + Sync>>,
@@ -520,6 +526,7 @@ impl Dispatch {
         Self {
             id,
             streaming,
+            adapter_context: None,
             scopes: Vec::new(),
             observer: None,
             replaced_by: Arc::new(Mutex::new(None)),
@@ -566,11 +573,17 @@ impl Dispatch {
 
     /// Observe the original handler answer independently of layer verdicts.
     pub fn with_observer(mut self, observer: Box<dyn Observe>) -> Self {
+        self.adapter_context = observer.adapter_context();
         self.observer = Some(Arc::new(Mutex::new(Some(Observed {
             observer,
             told: false,
         }))));
         self
+    }
+
+    /// Provider observation context forwarded across handler layers.
+    pub fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
+        self.adapter_context.clone()
     }
 
     pub(crate) fn patched(&mut self, layer: &str, kind: &EffectKind) {
@@ -602,6 +615,7 @@ impl Dispatch {
         Self {
             id: self.id,
             streaming: self.streaming,
+            adapter_context: self.adapter_context.clone(),
             scopes: self.scopes.clone(),
             observer: observer.map(|seen| Arc::new(Mutex::new(Some(seen)))),
             replaced_by: self.replaced_by.clone(),

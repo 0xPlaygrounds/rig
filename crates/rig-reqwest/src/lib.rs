@@ -177,14 +177,66 @@ pub fn from_reqwest(err: reqwest::Error) -> Error {
 
 /// Read the status, headers and body off a failed `reqwest::Response` and
 /// build the headers-preserving non-success error (rig#2314).
+#[cfg(test)]
 async fn non_success_status_error(response: reqwest::Response) -> Error {
+    non_success_status_error_observed(response, None).await
+}
+
+async fn non_success_status_error_observed(
+    response: reqwest::Response,
+    observer: Option<rig_core::observe::ResponseBodyObserver>,
+) -> Error {
     let status = response.status();
     let headers = response.headers().clone();
-    let body = response
-        .text()
-        .await
-        .unwrap_or_else(|error| format!("failed to read error response body: {error}"));
+    let text = if let Some(observer) = observer {
+        match read_body(response, Some(observer)).await {
+            Ok(bytes) => {
+                #[cfg(not(target_family = "wasm"))]
+                {
+                    // Retain reqwest's charset/BOM handling for error messages.
+                    let mut buffered = http::Response::new(bytes);
+                    *buffered.status_mut() = status;
+                    *buffered.headers_mut() = headers.clone();
+                    reqwest::Response::from(buffered).text().await
+                }
+                #[cfg(target_family = "wasm")]
+                {
+                    // Fetch Response.text() always decodes UTF-8 and strips a BOM.
+                    let bytes = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&bytes);
+                    Ok(String::from_utf8_lossy(bytes).into_owned())
+                }
+            }
+            Err(error) => Err(error),
+        }
+    } else {
+        response.text().await
+    };
+    let body = text.unwrap_or_else(|error| format!("failed to read error response body: {error}"));
     Error::non_success_with_details(status, headers, body)
+}
+
+async fn read_body(
+    response: reqwest::Response,
+    observer: Option<rig_core::observe::ResponseBodyObserver>,
+) -> std::result::Result<Bytes, reqwest::Error> {
+    use futures::StreamExt;
+    let Some(observer) = observer else {
+        return response.bytes().await;
+    };
+    let mut bytes = bytes::BytesMut::new();
+    #[cfg(not(target_family = "wasm"))]
+    let url = response.url().clone();
+    let body = response.bytes_stream();
+    futures::pin_mut!(body);
+    while let Some(chunk) = body.next().await {
+        #[cfg(not(target_family = "wasm"))]
+        let chunk = chunk.map_err(|error| error.with_url(url.clone()))?;
+        #[cfg(target_family = "wasm")]
+        let chunk = chunk?;
+        observer.observe(&chunk);
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes.freeze())
 }
 
 /// When the body is read.
@@ -206,13 +258,14 @@ enum BodyTiming {
 async fn into_response<U>(
     response: reqwest::Response,
     timing: BodyTiming,
+    observer: Option<rig_core::observe::ResponseBodyObserver>,
 ) -> Result<Response<LazyBody<U>>>
 where
     U: From<Bytes>,
     U: WasmCompatSend + 'static,
 {
     if !response.status().is_success() {
-        return Err(non_success_status_error(response).await);
+        return Err(non_success_status_error_observed(response, observer).await);
     }
 
     let mut res = Response::builder().status(response.status());
@@ -221,12 +274,16 @@ where
     }
 
     let body: LazyBody<U> = match timing {
-        BodyTiming::Lazy => Box::pin(async {
-            let bytes = response.bytes().await.map_err(Error::instance)?;
+        BodyTiming::Lazy => Box::pin(async move {
+            let bytes = read_body(response, observer)
+                .await
+                .map_err(Error::instance)?;
             Ok(U::from(bytes))
         }),
         BodyTiming::Eager => {
-            let bytes = response.bytes().await.map_err(Error::instance)?;
+            let bytes = read_body(response, observer)
+                .await
+                .map_err(Error::instance)?;
             Box::pin(std::future::ready(Ok(U::from(bytes))))
         }
     };
@@ -264,18 +321,23 @@ fn streaming_head(response: &reqwest::Response) -> http::response::Builder {
 /// [`StreamingResponse`], rejecting non-success statuses with the
 /// headers-preserving error. The byte stream is reqwest's own, so this is
 /// only valid where the caller can poll reqwest futures.
-async fn into_streaming_response(response: reqwest::Response) -> Result<StreamingResponse> {
+async fn into_streaming_response(
+    response: reqwest::Response,
+    observer: Option<rig_core::observe::ResponseBodyObserver>,
+) -> Result<StreamingResponse> {
     if !response.status().is_success() {
-        return Err(non_success_status_error(response).await);
+        return Err(non_success_status_error_observed(response, observer).await);
     }
     let res = streaming_head(&response);
 
     use futures::StreamExt;
-    let mapped_stream: Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>> = Box::pin(
-        response
-            .bytes_stream()
-            .map(|chunk| chunk.map_err(Error::instance)),
-    );
+    let mapped_stream: Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>> =
+        Box::pin(response.bytes_stream().map(move |chunk| {
+            if let (Ok(bytes), Some(observer)) = (&chunk, &observer) {
+                observer.observe(bytes);
+            }
+            chunk.map_err(Error::instance)
+        }));
 
     res.body(mapped_stream).map_err(Error::Protocol)
 }
@@ -286,9 +348,10 @@ async fn into_streaming_response(response: reqwest::Response) -> Result<Streamin
 #[cfg(not(target_family = "wasm"))]
 async fn into_forwarded_streaming_response(
     response: reqwest::Response,
+    observer: Option<rig_core::observe::ResponseBodyObserver>,
 ) -> Result<StreamingResponse> {
     if !response.status().is_success() {
-        return Err(non_success_status_error(response).await);
+        return Err(non_success_status_error_observed(response, observer).await);
     }
     let res = streaming_head(&response);
 
@@ -297,6 +360,9 @@ async fn into_forwarded_streaming_response(
     runtime::spawn_off_runtime(async move {
         let mut body = response.bytes_stream();
         while let Some(chunk) = body.next().await {
+            if let (Ok(bytes), Some(observer)) = (&chunk, &observer) {
+                observer.observe(bytes);
+            }
             if tx.send(chunk.map_err(Error::instance)).await.is_err() {
                 // Receiver dropped: the consumer stopped reading.
                 break;
@@ -460,6 +526,11 @@ where
     U: From<Bytes> + WasmCompatSend + 'static,
 {
     let (parts, body) = req.into_parts();
+    let observer = parts
+        .extensions
+        .get::<rig_core::observe::ResponseBodyObserver>()
+        .cloned();
+    let off_runtime_observer = observer.clone();
     let req = client
         .request_builder(parts.method, parts.uri.to_string())
         .with_headers(parts.headers)
@@ -467,8 +538,8 @@ where
 
     drive(
         req,
-        |response| into_response::<U>(response, BodyTiming::Lazy),
-        |response| into_response::<U>(response, OFF_RUNTIME_TIMING),
+        move |response| into_response::<U>(response, BodyTiming::Lazy, observer),
+        move |response| into_response::<U>(response, OFF_RUNTIME_TIMING, off_runtime_observer),
     )
 }
 
@@ -495,8 +566,8 @@ where
     async move {
         drive(
             req?,
-            |response| into_response::<U>(response, BodyTiming::Lazy),
-            |response| into_response::<U>(response, OFF_RUNTIME_TIMING),
+            |response| into_response::<U>(response, BodyTiming::Lazy, None),
+            |response| into_response::<U>(response, OFF_RUNTIME_TIMING, None),
         )
         .await
     }
@@ -511,6 +582,11 @@ where
     T: Into<Bytes> + WasmCompatSend,
 {
     let (parts, body) = req.into_parts();
+    let observer = parts
+        .extensions
+        .get::<rig_core::observe::ResponseBodyObserver>()
+        .cloned();
+    let off_runtime_observer = observer.clone();
     let req = client
         .request_builder(parts.method, parts.uri.to_string())
         .with_headers(parts.headers)
@@ -520,7 +596,11 @@ where
     let off = into_forwarded_streaming_response;
     #[cfg(target_family = "wasm")]
     let off = into_streaming_response;
-    drive(req, into_streaming_response, off)
+    drive(
+        req,
+        move |response| into_streaming_response(response, observer),
+        move |response| off(response, off_runtime_observer),
+    )
 }
 
 macro_rules! impl_http_client_ext_via {

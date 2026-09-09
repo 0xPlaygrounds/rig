@@ -6,10 +6,10 @@
 //! library's own systems are.
 
 use bevy_ecs::{lifecycle::Insert, prelude::*};
-use rig_core::observe::{Action, Emitter, Reason, Stage};
+use rig_core::observe::{Action, Emitter, Observation, Reason, RunTiming, Stage};
 
 use crate::{
-    agent::{Cancelled, Failed, Failure, InvalidCall, Resolution, Retry, Settled},
+    agent::{Cancelled, Failed, Failure, InvalidCall, Resolution, Retry, Run, Settled},
     bus::{Subjects, Witnessing},
 };
 
@@ -28,17 +28,50 @@ pub fn install(world: &mut World) {
     world.add_observer(observe_cancel_requested);
     world.add_observer(observe_retry);
     world.add_observer(observe_resolution);
+    world.add_observer(observe_run_despawned);
+}
+
+/// Runtime-only interval state; a scene cannot resume an old clock interval.
+#[derive(Component)]
+pub(super) struct RunTimer {
+    interval: Option<(std::time::Duration, Witnessing)>,
+}
+
+impl RunTimer {
+    pub(super) fn start(world: &World) -> Option<Self> {
+        let witness = world.get_resource::<Witnessing>()?.clone();
+        let started = witness.sink().elapsed()?;
+        Some(Self {
+            interval: Some((started, witness)),
+        })
+    }
+
+    fn finish(&mut self, complete: bool) -> Option<RunTiming> {
+        let (start, witness) = self.interval.take()?;
+        Some(RunTiming {
+            duration: if complete {
+                witness
+                    .sink()
+                    .elapsed()
+                    .and_then(|end| end.checked_sub(start))
+            } else {
+                None
+            },
+            complete,
+        })
+    }
 }
 
 fn observe_settled(
     added: On<bevy_ecs::lifecycle::Add, Settled>,
     subjects: Subjects,
     witness: Option<Res<Witnessing>>,
+    mut timings: Query<&mut RunTimer>,
 ) {
     let Some(witness) = witness else {
         return;
     };
-    witness.emit(
+    let mut observation = Observation::new(
         subjects.of_scope(added.event().entity),
         Stage::Runtime,
         agent_emitter(),
@@ -46,6 +79,11 @@ fn observe_settled(
             ending: Reason::code("settled"),
         },
     );
+    observation.run_timing = timings
+        .get_mut(added.event().entity)
+        .ok()
+        .and_then(|mut timer| timer.finish(true));
+    witness.observe(observation);
 }
 
 /// The ending's code and detail, by the failure's variant.
@@ -81,6 +119,7 @@ fn observe_failed(
     failures: Query<&Failed>,
     subjects: Subjects,
     witness: Option<Res<Witnessing>>,
+    mut timings: Query<&mut RunTimer>,
 ) {
     let Some(witness) = witness else {
         return;
@@ -89,7 +128,7 @@ fn observe_failed(
     let Ok(Failed(failure)) = failures.get(entity) else {
         return;
     };
-    witness.emit(
+    let mut observation = Observation::new(
         subjects.of_scope(entity),
         Stage::Runtime,
         agent_emitter(),
@@ -97,6 +136,41 @@ fn observe_failed(
             ending: ending_of(failure),
         },
     );
+    observation.run_timing = timings
+        .get_mut(entity)
+        .ok()
+        .and_then(|mut timer| timer.finish(true));
+    witness.observe(observation);
+}
+
+fn observe_run_despawned(
+    removed: On<bevy_ecs::lifecycle::Despawn, Run>,
+    runs: Query<(Has<Settled>, Has<Failed>)>,
+    mut timings: Query<&mut RunTimer>,
+    subjects: Subjects,
+    witness: Option<Res<Witnessing>>,
+) {
+    let entity = removed.event().entity;
+    let Some(witness) = witness else { return };
+    let Ok((settled, failed)) = runs.get(entity) else {
+        return;
+    };
+    if settled || failed {
+        return;
+    }
+    let mut observation = Observation::new(
+        subjects.of_scope(entity),
+        Stage::Runtime,
+        agent_emitter(),
+        Action::Ended {
+            ending: Reason::code("despawned_without_ending"),
+        },
+    );
+    observation.run_timing = timings
+        .get_mut(entity)
+        .ok()
+        .and_then(|mut timer| timer.finish(false));
+    witness.observe(observation);
 }
 
 fn observe_cancel_requested(

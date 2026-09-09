@@ -281,6 +281,7 @@ impl CacheProbe {
             model: None,
             output_schema: None,
             record_telemetry_content: false,
+            observation: None,
         }
     }
 }

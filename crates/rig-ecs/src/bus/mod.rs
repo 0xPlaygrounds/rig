@@ -103,6 +103,7 @@ pub mod delivery;
 pub mod dispatch;
 pub mod effect;
 pub mod handlers;
+pub mod hold;
 pub mod plugin;
 pub mod record;
 #[cfg(feature = "reflect")]
@@ -116,13 +117,14 @@ pub mod replay;
 pub use collect::{Landed, StreamingView, collect_streams, collect_tasks, settle};
 pub use dispatch::{Candidate, CandidateView, dispatch, handler_unavailable, reentrant};
 pub use effect::{
-    Answer, Asked, EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, PolicyHeld,
-    Publishing, Reserved, Scope, Seq, SeqCounter, Serving, Streamed, Streaming, ToolInputs,
-    ToolOutputs, Typed, WorldEffect, WorldOutcome,
+    Answer, Asked, EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing,
+    Reserved, Scope, Seq, SeqCounter, Serving, Streamed, Streaming, ToolInputs, ToolOutputs, Typed,
+    WorldEffect, WorldOutcome,
 };
 pub use handlers::{
     Bound, HandlerTable, Handlers, Served, WorldHandler, WorldServe, answered, unbound,
 };
+pub use hold::{HoldOwners, acquire_hold, release_hold};
 pub use plugin::{
     Bus, BusSet, Intake, Policy, Progress, QUIESCENCE_CAP, RigSchedule, install_bus,
     run_to_quiescence,
@@ -131,7 +133,7 @@ pub use record::{
     Observed, ObservedState, Recording, WorldObserver, record_bound, record_cancelled,
 };
 pub use scene::{Scene, SceneEffect};
-pub use witness::{BUS_EMITTER, SubjectWalk, Subjects, Witnessing, bus_emitter};
+pub use witness::{AdapterOperation, BUS_EMITTER, SubjectWalk, Subjects, Witnessing, bus_emitter};
 
 #[cfg(feature = "replay")]
 pub use delivery::ReplayFailure;

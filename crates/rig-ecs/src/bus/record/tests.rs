@@ -15,6 +15,7 @@ fn cancellation_and_terminal_observation_have_one_recording_boundary() {
         recording.begin(id, "test".into(), kind.clone(), Origin::default());
         let observed = Arc::new(ObservedState::default());
         let mut observer = WorldObserver {
+            adapter: None,
             id,
             recording: Some(recording.clone()),
             published: None,

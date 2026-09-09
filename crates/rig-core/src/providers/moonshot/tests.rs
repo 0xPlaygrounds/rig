@@ -73,6 +73,7 @@ fn moonshot_preserves_reasoning_content_in_assistant_history() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let body = prepared_body(request, "kimi-k2-thinking");
@@ -106,6 +107,7 @@ fn moonshot_joins_multiple_reasoning_blocks_with_newline() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let body = prepared_body(request, "kimi-k2-thinking");
@@ -130,6 +132,7 @@ fn moonshot_specific_tool_choice_is_rejected() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
@@ -162,6 +165,7 @@ fn moonshot_required_tool_choice_is_coerced() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let body = prepared_body(request, "kimi-k2.5");

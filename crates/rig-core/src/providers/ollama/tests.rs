@@ -703,6 +703,7 @@ fn test_completion_request_with_think_param() {
         })),
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     // Convert to OllamaCompletionRequest
@@ -769,6 +770,7 @@ fn test_completion_request_with_level_low_think_param() {
         })),
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     // Convert to OllamaCompletionRequest
@@ -835,6 +837,7 @@ fn test_completion_request_with_level_medium_think_param() {
         })),
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     // Convert to OllamaCompletionRequest
@@ -901,6 +904,7 @@ fn test_completion_request_with_level_high_think_param() {
         })),
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     // Convert to OllamaCompletionRequest
@@ -967,6 +971,7 @@ fn test_completion_request_with_level_invalid_think_param() {
         })),
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     // Convert to OllamaCompletionRequest
@@ -999,6 +1004,7 @@ fn test_completion_request_with_think_omitted_by_default() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     // Convert to OllamaCompletionRequest
@@ -1052,6 +1058,7 @@ fn test_completion_request_num_predict_from_additional_params_wins() {
         additional_params: Some(json!({ "num_predict": 42 })),
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
@@ -1084,6 +1091,7 @@ fn test_completion_request_num_predict_without_additional_params() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
@@ -1120,6 +1128,7 @@ fn test_completion_request_options_omit_unset_parameters() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
@@ -1159,6 +1168,7 @@ fn test_completion_request_with_output_schema() {
         additional_params: None,
         output_schema: Some(schema),
         record_telemetry_content: false,
+        observation: None,
     };
 
     let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
@@ -1200,6 +1210,7 @@ fn test_completion_request_without_output_schema() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        observation: None,
     };
 
     let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))

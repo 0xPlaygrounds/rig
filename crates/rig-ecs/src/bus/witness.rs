@@ -56,6 +56,76 @@ const WALK_LIMIT: usize = 4096;
 #[derive(Resource, Clone)]
 pub struct Witnessing(Arc<dyn Witness + Send + Sync>);
 
+/// Runtime-only timing state for an issued effect, removed at settlement.
+#[derive(Component)]
+pub struct HandlerTimer {
+    pending: Option<(std::time::Duration, Witnessing)>,
+    interval: rig_core::observe::HandlerInterval,
+    first_item: Option<rig_core::observe::HandlerTiming>,
+}
+
+impl HandlerTimer {
+    /// Start an issued-effect interval when the witness supplies a clock.
+    pub fn start(witness: &Witnessing, streamed: bool) -> Option<Self> {
+        Some(Self {
+            pending: Some((witness.sink().elapsed()?, witness.clone())),
+            interval: if streamed {
+                rig_core::observe::HandlerInterval::TimeToFirstItem
+            } else {
+                rig_core::observe::HandlerInterval::Execution
+            },
+            first_item: None,
+        })
+    }
+
+    /// Sample the first stream item once; unary intervals are unaffected.
+    pub fn first_item(&mut self) {
+        if self.interval == rig_core::observe::HandlerInterval::TimeToFirstItem
+            && self.first_item.is_none()
+        {
+            self.first_item = self.sample(true);
+        }
+    }
+
+    fn sample(&mut self, complete: bool) -> Option<rig_core::observe::HandlerTiming> {
+        let (start, witness) = self.pending.take()?;
+        Some(rig_core::observe::HandlerTiming {
+            interval: self.interval,
+            duration: if complete {
+                witness
+                    .sink()
+                    .elapsed()
+                    .and_then(|end| end.checked_sub(start))
+            } else {
+                None
+            },
+            complete,
+        })
+    }
+
+    /// Finish at settlement, retaining any previously sampled first-item time.
+    pub fn finish(&mut self, landed: bool) -> Option<rig_core::observe::HandlerTiming> {
+        self.first_item.take().or_else(|| {
+            self.sample(landed && self.interval == rig_core::observe::HandlerInterval::Execution)
+        })
+    }
+}
+
+/// Host-owned logical provider operation for one pending effect.
+///
+/// Attach before dispatch. The bus binds the current effect/scope/parent
+/// subject while retaining this operation's witness and HTTP send counter.
+/// Reuse the context only for retries of the same logical call; unrelated
+/// calls (including identical concurrent requests) need distinct contexts.
+/// Runtime-only: scene/effect-log replay does not serialize this identity.
+#[derive(Component, Clone, Debug)]
+pub struct AdapterOperation {
+    /// Shared observation context for the logical call.
+    pub context: rig_core::observe::AdapterContext,
+    /// One-based host dispatch ordinal, independent of HTTP send ordinals.
+    pub host_attempt: std::num::NonZeroU64,
+}
+
 /// The observers were installed: a second `install` only replaces the sink.
 #[derive(Resource, Debug, Default)]
 struct WitnessObserversInstalled;
@@ -84,6 +154,7 @@ impl Witnessing {
         world.add_observer(observe_despawn);
         world.add_observer(observe_held);
         world.add_observer(observe_released);
+        world.add_observer(observe_hold_transition);
         world.add_observer(observe_preflight_outcome);
         world.add_observer(observe_outcome_replaced);
         world.add_observer(observe_pending_despawned);
@@ -283,7 +354,11 @@ fn observe_held(
     added: On<bevy_ecs::lifecycle::Add, Held>,
     subjects: Subjects,
     witness: Option<Res<Witnessing>>,
+    owned: Query<(), With<super::HoldOwners>>,
 ) {
+    if owned.contains(added.event().entity) {
+        return;
+    }
     let Some(witness) = witness else {
         return;
     };
@@ -306,13 +381,14 @@ fn observe_released(
     subjects: Subjects,
     mut despawning: ResMut<Despawning>,
     witness: Option<Res<Witnessing>>,
+    owned: Query<(), With<super::HoldOwners>>,
 ) {
     let entity = removed.event().entity;
     let despawned = despawning.0.remove(&entity);
     let Some(witness) = witness else {
         return;
     };
-    if outcomes.get(entity).is_ok() || despawned {
+    if outcomes.get(entity).is_ok() || despawned || owned.contains(entity) {
         return;
     }
     witness.emit(
@@ -321,6 +397,32 @@ fn observe_released(
         Emitter::unknown(),
         Action::Released,
     );
+}
+
+fn observe_hold_transition(
+    event: On<super::hold::HoldTransition>,
+    outcomes: Query<(), With<EffectOutcome>>,
+    subjects: Subjects,
+    witness: Option<Res<Witnessing>>,
+) {
+    let event = event.event();
+    if !event.acquired && outcomes.contains(event.entity) {
+        return;
+    }
+    if let Some(witness) = witness {
+        witness.emit(
+            subjects.of(event.entity),
+            Stage::Gate,
+            event.owner.clone(),
+            if event.acquired {
+                Action::Held {
+                    reason: Reason::unknown(),
+                }
+            } else {
+                Action::Released
+            },
+        );
+    }
 }
 
 /// What the pre-flight outcome observer reads: the outcome, whether the
