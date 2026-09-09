@@ -117,7 +117,6 @@ fn request_with_multi_block_tool_result() -> CoreCompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     }
 }
 
@@ -372,7 +371,6 @@ fn test_openai_request_uses_request_model_override() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -403,7 +401,6 @@ fn test_openai_request_uses_default_model_when_override_unset() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -489,7 +486,6 @@ fn openai_chat_direct_request_keeps_documents_after_system_messages() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -938,7 +934,6 @@ fn test_max_tokens_is_forwarded_to_request() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -971,7 +966,6 @@ fn capped_request(max_tokens: Option<u64>, additional_params: Option<Value>) -> 
             additional_params,
             output_schema: None,
             record_telemetry_content: false,
-            observation: None,
         },
         strict_tools: false,
         tool_result_array_content: false,
@@ -1127,7 +1121,6 @@ fn test_max_tokens_omitted_when_none() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -1181,7 +1174,6 @@ fn additional_params_function_tools_merge_and_native_tools_stay() {
         })),
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -1223,7 +1215,6 @@ fn request_conversion_errors_when_all_messages_are_filtered() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     };
 
     let result = CompletionRequest::try_from(OpenAIRequestParams {
@@ -1275,7 +1266,6 @@ fn request_conversion_omits_response_format_on_initial_tool_turn() {
             .expect("schema should deserialize"),
         ),
         record_telemetry_content: false,
-        observation: None,
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -1346,7 +1336,6 @@ fn request_conversion_restores_response_format_after_tool_result() {
             .expect("schema should deserialize"),
         ),
         record_telemetry_content: false,
-        observation: None,
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -2181,7 +2170,6 @@ fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     };
     let wire = CompletionRequest::try_from(OpenAIRequestParams {
         model: "test".into(),

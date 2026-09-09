@@ -25,18 +25,20 @@ impl<M> FirstToolDelta<M> {
 }
 
 impl<M: CompletionModel> CompletionModel for FirstToolDelta<M> {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         request: CompletionRequest,
+        context: Option<rig::observe::AdapterContext>,
     ) -> Result<CompletionResponse, CompletionError> {
-        self.0.completion(request).await
+        self.0.completion_with_context(request, context).await
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         request: CompletionRequest,
+        context: Option<rig::observe::AdapterContext>,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
-        let stream = self.0.stream(request).await?;
+        let stream = self.0.stream_with_context(request, context).await?;
         let provider = stream.provider().to_owned();
         let message_id = stream.message_id.clone();
         let mut gated = StreamingCompletionResponse::from_events(

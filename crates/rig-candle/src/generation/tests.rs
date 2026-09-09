@@ -18,7 +18,6 @@ fn parsed_missing_ids_keep_their_identity_and_provenance_through_stream_emission
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     };
     let raw = r#"<tool_call>{"name":"same","arguments":{"n":1}}</tool_call><tool_call>{"id":"tool-0","name":"same","arguments":{"n":2}}</tool_call><tool_call>{"name":"same","arguments":{"n":3}}</tool_call>"#;
     let parsed = crate::protocol::parse_assistant(raw, &request, ConversationProtocol::Qwen3)

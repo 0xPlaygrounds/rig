@@ -114,12 +114,10 @@ async fn unary_first_byte_precedes_buffering_for_success_and_failure() {
                         .unwrap();
                     let model = client.completion_model("gemini-test");
                     let log = Arc::new(ObservationLog::default().with_clock(clock));
-                    let mut request = model.completion_request("hello").build();
-                    if observed {
-                        request.observation =
-                            Some(AdapterContext::new(log.clone(), Subject::default(), "call"));
-                    }
-                    let result = model.completion(request).await;
+                    let request = model.completion_request("hello").build();
+                    let context = observed
+                        .then(|| AdapterContext::new(log.clone(), Subject::default(), "call"));
+                    let result = model.completion_with_context(request, context).await;
                     assert_eq!(result.is_ok(), status.is_success() && !fail_body);
                     let result = result
                         .map(|r| serde_json::to_value(r.choice).unwrap())
@@ -224,12 +222,10 @@ fn streamed_http_errors_keep_first_byte_on_native_and_fallback_runtimes() {
                         .build()
                         .unwrap();
                     let model = client.completion_model("gemini-test");
-                    let mut request = model.completion_request("hello").build();
-                    if observed {
-                        request.observation =
-                            Some(AdapterContext::new(log.clone(), Subject::default(), "call"));
-                    }
-                    match model.stream(request).await {
+                    let request = model.completion_request("hello").build();
+                    let context = observed
+                        .then(|| AdapterContext::new(log.clone(), Subject::default(), "call"));
+                    match model.stream_with_context(request, context).await {
                         Ok(mut stream) => match stream.next().await {
                             Some(Err(error)) => error,
                             _ => panic!("HTTP rejection must yield an error"),

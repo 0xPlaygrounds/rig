@@ -307,6 +307,7 @@ impl BusDriver {
             parent,
             scope,
             context,
+            adapter_context,
             published,
             reply,
             span,
@@ -339,6 +340,9 @@ impl BusDriver {
         );
         let mut dispatch = Dispatch::new(id, matches!(&reply, super::dispatcher::Reply::Stream(_)))
             .with_scope(Arc::new(scoped));
+        if let Some(context) = adapter_context {
+            dispatch = dispatch.with_adapter_context(context);
+        }
         // A tool call's context, beside the effect: the inbound values the
         // tool runs with, and where what it publishes comes back.
         if let Some(context) = context {

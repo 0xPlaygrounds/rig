@@ -56,7 +56,6 @@ fn ask(mut commands: Commands) {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     };
     commands.spawn(PendingEffect::new(
         "model",

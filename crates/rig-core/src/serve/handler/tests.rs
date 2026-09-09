@@ -369,6 +369,67 @@ fn terminal_items_carry_the_original_answer_in_one_observer_call() {
 
 struct ProviderObserver(crate::observe::AdapterContext);
 
+#[test]
+fn explicit_dispatch_context_wins_in_both_installation_orders_and_through_layers() {
+    use crate::observe::{AdapterContext, ObservationLog, Subject};
+
+    let sink = Arc::new(ObservationLog::default());
+    for explicit_first in [false, true] {
+        let explicit = AdapterContext::new(sink.clone(), Subject::default(), "explicit");
+        let observed = AdapterContext::new(sink.clone(), Subject::default(), "observer");
+        let dispatch = Dispatch::new(EffectId::from_raw(1), false);
+        let mut dispatch = if explicit_first {
+            dispatch
+                .with_adapter_context(explicit)
+                .with_observer(Box::new(ProviderObserver(observed)))
+        } else {
+            dispatch
+                .with_observer(Box::new(ProviderObserver(observed)))
+                .with_adapter_context(explicit)
+        };
+        assert_eq!(dispatch.adapter_context().unwrap().operation(), "explicit");
+        let inner = dispatch.inner(None);
+        assert_eq!(inner.adapter_context().unwrap().operation(), "explicit");
+        assert!(sink.trace().observations.is_empty());
+    }
+}
+
+#[test]
+fn replacing_observer_replaces_only_observer_derived_provider_context() {
+    use crate::observe::{AdapterContext, ObservationLog, Subject};
+    let sink = Arc::new(ObservationLog::default());
+    for explicit in [false, true] {
+        let mut dispatch = Dispatch::new(EffectId::from_raw(1), false);
+        if explicit {
+            dispatch = dispatch.with_adapter_context(AdapterContext::new(
+                sink.clone(),
+                Subject::default(),
+                "caller",
+            ));
+        }
+        for operation in ["first", "replacement"] {
+            dispatch = dispatch.with_observer(Box::new(ProviderObserver(AdapterContext::new(
+                sink.clone(),
+                Subject::default(),
+                operation,
+            ))));
+            assert_eq!(
+                dispatch.adapter_context().unwrap().operation(),
+                if explicit { "caller" } else { operation }
+            );
+        }
+        dispatch =
+            dispatch.with_observer(Box::new(Observer(Arc::new(Mutex::new(Seen::default())))));
+        assert_eq!(
+            dispatch
+                .adapter_context()
+                .as_ref()
+                .map(|context| context.operation()),
+            explicit.then_some("caller")
+        );
+    }
+}
+
 impl Observe for ProviderObserver {
     fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
         Some(self.0.clone())
@@ -383,7 +444,7 @@ impl Observe for ProviderObserver {
 }
 
 #[tokio::test]
-async fn provider_context_survives_inner_dispatch_and_explicit_request_context_wins() {
+async fn provider_context_survives_inner_dispatch_and_explicit_call_context_wins() {
     use crate::{
         client::CompletionClient,
         completion::CompletionModel as _,
@@ -404,10 +465,9 @@ async fn provider_context_survives_inner_dispatch_and_explicit_request_context_w
     for explicit in [false, true] {
         let mut dispatch = Dispatch::new(EffectId::from_raw(1), false)
             .with_observer(Box::new(ProviderObserver(context.clone())));
-        let inner = dispatch.inner(None);
-        let mut request = model.completion_request("hello").build();
+        let request = model.completion_request("hello").build();
         if explicit {
-            request.observation = Some(AdapterContext::new(
+            dispatch = dispatch.with_adapter_context(AdapterContext::new(
                 direct_log.clone(),
                 Subject::default(),
                 "explicit-operation",
@@ -419,7 +479,7 @@ async fn provider_context_survives_inner_dispatch_and_explicit_request_context_w
                 request,
                 stream: false,
             },
-            inner,
+            dispatch.inner(None),
         )
         .await;
         assert!(reply.into_outcome().await.is_ok());

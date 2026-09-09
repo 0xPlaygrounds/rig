@@ -40,9 +40,10 @@ fn response(
 struct FastResearchModel;
 
 impl CompletionModel for FastResearchModel {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         _request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<CompletionResponse, CompletionError> {
         Ok(response(
             "fast",
@@ -57,9 +58,10 @@ impl CompletionModel for FastResearchModel {
         ))
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         _request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         Ok(StreamingCompletionResponse::stream(
             "fast",
@@ -85,9 +87,10 @@ impl CompletionModel for FastResearchModel {
 struct StrongSynthesisModel;
 
 impl CompletionModel for StrongSynthesisModel {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<CompletionResponse, CompletionError> {
         let saw_tool_result = request.chat_history.iter().any(|message| {
             matches!(message, rig_core::message::Message::User { content }
@@ -101,9 +104,10 @@ impl CompletionModel for StrongSynthesisModel {
         Ok(response("strong", AssistantContent::text(answer), 5))
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         _request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         Ok(StreamingCompletionResponse::stream(
             "strong",

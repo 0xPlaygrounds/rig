@@ -2544,9 +2544,10 @@ where
             .with_native_output_tool_composition(Ext::SUPPORTS_RESPONSE_FORMAT)
     }
 
-    async fn completion(
+    async fn completion_with_context(
         &self,
         completion_request: CoreCompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
     ) -> Result<completion::CompletionResponse, CompletionError> {
         // Capture before `normalize` consumes the raw value.
         let (response, provider_request_id) = self
@@ -2559,9 +2560,10 @@ where
             .with_raw(captured))
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         request: CoreCompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         GenericCompletionModel::stream(self, request).await
     }

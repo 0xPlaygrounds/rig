@@ -77,7 +77,6 @@ fn xai_direct_request_keeps_documents_after_system_messages() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     };
 
     let serialized = request_value(request);

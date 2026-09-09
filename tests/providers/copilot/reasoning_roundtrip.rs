@@ -38,18 +38,20 @@ impl CapturingProviderFinals {
 }
 
 impl CompletionModel for CapturingProviderFinals {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         request: CompletionRequest,
+        context: Option<rig::observe::AdapterContext>,
     ) -> Result<CompletionResponse, CompletionError> {
-        self.inner.completion(request).await
+        self.inner.completion_with_context(request, context).await
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         request: CompletionRequest,
+        context: Option<rig::observe::AdapterContext>,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
-        let raw = self.inner.stream(request).await?;
+        let raw = self.inner.stream_with_context(request, context).await?;
         let finals = self.finals();
         let captured = raw.map(move |item| {
             if let Ok(StreamEvent::Final(response)) = &item {

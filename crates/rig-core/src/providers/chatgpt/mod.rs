@@ -554,9 +554,10 @@ where
     Client<H>: HttpClientExt + Clone + 'static,
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         completion_request: completion::CompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
     ) -> Result<completion::CompletionResponse, CompletionError> {
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.create_request(completion_request)?;
@@ -574,9 +575,10 @@ where
         .await
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         completion_request: completion::CompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         Self::stream(self, completion_request).await
     }

@@ -65,9 +65,10 @@ struct ScriptedModel {
 }
 
 impl CompletionModel for ScriptedModel {
-    fn completion(
+    fn completion_with_context(
         &self,
         request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend {
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
         let choice = if call == 0 {
@@ -93,9 +94,10 @@ impl CompletionModel for ScriptedModel {
         std::future::ready(Ok(CompletionResponse::new(choice, Usage::new(), "fixture")))
     }
 
-    fn stream(
+    fn stream_with_context(
         &self,
         _request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> impl Future<Output = Result<StreamingCompletionResponse, CompletionError>> + WasmCompatSend
     {
         std::future::ready(Err(CompletionError::ProviderError(

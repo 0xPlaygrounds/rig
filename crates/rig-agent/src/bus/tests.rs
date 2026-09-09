@@ -63,7 +63,6 @@ fn completion_kind(stream: bool) -> EffectKind {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            observation: None,
         },
         stream,
     }
@@ -1658,6 +1657,7 @@ fn a_command_offered_after_the_close_is_refused_under_the_queue_lock() {
             parent: None,
             scope: None,
             context: None,
+            adapter_context: None,
             published: None,
             reply: super::dispatcher::Reply::Unary(reply),
             span: tracing::Span::none(),
@@ -2096,9 +2096,10 @@ async fn concurrent_agent_wrappers_receive_distinct_recorder_contexts() {
         tokio::join!(run(a), run(b));
         let requests = model.requests();
         assert_eq!(requests.len(), 2);
-        let actual: std::collections::BTreeSet<_> = requests
+        let actual: std::collections::BTreeSet<_> = model
+            .contexts()
             .iter()
-            .map(|request| request.observation.as_ref().unwrap().operation().to_owned())
+            .map(|context| context.as_ref().unwrap().operation().to_owned())
             .collect();
         assert_eq!(
             actual.len(),
@@ -2144,26 +2145,23 @@ async fn recorder_context_reaches_model_handles_without_overwriting_callers() {
             driver.record_to(recorder.clone());
             let task = tokio::spawn(driver);
             let handle: ModelHandle = dispatcher.handle(&HandlerKey::from("model")).unwrap();
-            let mut request = completion_request_value();
-            if explicit {
-                request.observation = Some(AdapterContext::new(
-                    sink,
-                    Subject::scoped("caller"),
-                    "caller",
-                ));
-            }
+            let request = completion_request_value();
+            let context =
+                explicit.then(|| AdapterContext::new(sink, Subject::scoped("caller"), "caller"));
             if streamed {
-                let mut stream = handle.stream(request);
+                let mut stream = handle.stream_with_context(request, context);
                 while let Some(event) = within(stream.next()).await {
                     event.unwrap();
                 }
             } else {
-                within(handle.complete(request)).await.unwrap();
+                within(handle.complete_with_context(request, context))
+                    .await
+                    .unwrap();
             }
             let requests = model.requests();
             assert_eq!(requests.len(), 1);
             assert_eq!(
-                requests[0].observation.as_ref().unwrap().operation(),
+                model.contexts()[0].as_ref().unwrap().operation(),
                 if explicit { "caller" } else { "recorder" }
             );
             assert_eq!(recorder.begun.load(Ordering::SeqCst), 1);

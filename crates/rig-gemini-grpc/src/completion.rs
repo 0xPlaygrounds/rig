@@ -123,9 +123,10 @@ impl CompletionModel {
 }
 
 impl completion::CompletionModel for CompletionModel {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         completion_request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<completion::CompletionResponse, CompletionError> {
         // Capture before `try_into` consumes the raw value.
         let raw = self.raw_completion(completion_request).await?;
@@ -134,9 +135,10 @@ impl completion::CompletionModel for CompletionModel {
         Ok(response.with_raw(captured))
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<rig_core::streaming::StreamingCompletionResponse, CompletionError> {
         super::streaming::stream(self.client.clone(), self.model.clone(), request).await
     }
@@ -184,7 +186,6 @@ pub(crate) fn create_grpc_request(
         additional_params: _,
         output_schema: _,
         record_telemetry_content: _,
-        observation: _,
     } = completion_request;
 
     let (history_system, mut chat_history) = split_system_messages_from_history(chat_history);

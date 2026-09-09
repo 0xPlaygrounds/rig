@@ -229,12 +229,9 @@ async fn streamed_body_failure_preserves_boundary_through_provider_error_convers
             .unwrap();
         let model = client.completion_model("gemini-test");
         let log = Arc::new(ObservationLog::default());
-        let mut request = model.completion_request("hello").build();
-        if enabled {
-            request.observation =
-                Some(AdapterContext::new(log.clone(), Subject::default(), "call"));
-        }
-        let mut stream = model.stream(request).await.unwrap();
+        let request = model.completion_request("hello").build();
+        let context = enabled.then(|| AdapterContext::new(log.clone(), Subject::default(), "call"));
+        let mut stream = model.stream_with_context(request, context).await.unwrap();
         let error = loop {
             match stream.next().await {
                 Some(Err(error)) => break error,
@@ -376,16 +373,15 @@ fn cloned_context_numbers_attempts_and_closes_once_without_payloads() {
 
 #[test]
 fn context_is_not_part_of_serialized_completion_requests() {
-    let log = Arc::new(ObservationLog::default());
-    let context = AdapterContext::new(log, Subject::default(), "local-only-secret");
-    let request = crate::completion::CompletionRequestBuilder::unbound("hello")
-        .observation(context)
-        .build();
+    let request = crate::completion::CompletionRequestBuilder::unbound("hello").build();
     let encoded = serde_json::to_string(&request).unwrap();
     assert!(!encoded.contains("local-only-secret"));
     assert!(!encoded.contains("observation"));
     let decoded: crate::completion::CompletionRequest = serde_json::from_str(&encoded).unwrap();
-    assert!(decoded.observation.is_none());
+    assert_eq!(
+        serde_json::to_value(decoded).unwrap(),
+        serde_json::to_value(request).unwrap()
+    );
 }
 
 #[tokio::test]
@@ -404,13 +400,16 @@ async fn gemini_unary_emits_the_actual_http_boundary_without_changing_the_reques
     let plain = model.completion_request("hello").build();
     model.completion(plain.clone()).await.unwrap();
     let log = Arc::new(ObservationLog::default().with_clock(Arc::new(ManualClock::default())));
-    let mut observed = plain;
-    observed.observation = Some(AdapterContext::new(
+    let observed = plain;
+    let context = Some(AdapterContext::new(
         log.clone(),
         Subject::default(),
         "call-1",
     ));
-    model.completion(observed).await.unwrap();
+    model
+        .completion_with_context(observed, context)
+        .await
+        .unwrap();
     let requests = http.requests();
     assert_eq!(requests.len(), 2);
     assert_eq!(requests[0], requests[1]);
@@ -498,11 +497,9 @@ async fn unary_failure_facts_preserve_retryability_without_copying_error_bodies(
     let context = AdapterContext::new(log.clone(), Subject::default(), "retry-operation");
     for _ in 0..2 {
         let error = model
-            .completion(
-                model
-                    .completion_request("hello")
-                    .observation(context.clone())
-                    .build(),
+            .completion_with_context(
+                model.completion_request("hello").build(),
+                Some(context.clone()),
             )
             .await
             .unwrap_err();
@@ -632,15 +629,13 @@ async fn dropping_pending_transport_or_body_closes_the_attempt_once() {
             .unwrap();
         let model = client.completion_model("gemini-test");
         let log = Arc::new(ObservationLog::default());
-        let request = model
-            .completion_request("hello")
-            .observation(AdapterContext::new(
-                log.clone(),
-                Subject::default(),
-                "cancelled-call",
-            ))
-            .build();
-        let mut future = Box::pin(model.completion(request));
+        let request = model.completion_request("hello").build();
+        let context = Some(AdapterContext::new(
+            log.clone(),
+            Subject::default(),
+            "cancelled-call",
+        ));
+        let mut future = Box::pin(model.completion_with_context(request, context));
         assert!(futures::poll!(future.as_mut()).is_pending());
         drop(future);
         let trace = log.trace();
@@ -649,6 +644,68 @@ async fn dropping_pending_transport_or_body_closes_the_attempt_once() {
             Action::Adapter { observation } if observation.event == AdapterEvent::Finished { ending: AdapterEnding::Dropped }
         ));
     }
+}
+
+#[tokio::test]
+async fn shared_arc_model_keeps_mixed_invocations_distinct_after_context_scope_ends() {
+    use crate::{client::CompletionClient, completion::CompletionModel as _};
+    use futures::StreamExt;
+
+    let client = crate::providers::gemini::Client::builder()
+        .api_key("test-key")
+        .http_client(PendingHttp { body_pending: true })
+        .build()
+        .unwrap();
+    let model = Arc::new(client.completion_model("gemini-test"));
+    let sink = Arc::new(ObservationLog::default());
+    let request = model.completion_request("same request").build();
+    let mut stream = {
+        let context = AdapterContext::new(sink.clone(), Subject::default(), "stream");
+        model
+            .stream_with_context(request.clone(), Some(context))
+            .await
+            .unwrap()
+    };
+    assert!(sink.is_empty(), "stream creation remains lazy");
+    let mut unary = Box::pin(model.completion_with_context(
+        request,
+        Some(AdapterContext::new(
+            sink.clone(),
+            Subject::default(),
+            "unary",
+        )),
+    ));
+    assert!(futures::poll!(unary.as_mut()).is_pending());
+    // Move the lazy stream to another task before starting its HTTP attempt.
+    tokio::spawn(async move {
+        assert!(futures::poll!(stream.next()).is_pending());
+        drop(stream);
+    })
+    .await
+    .unwrap();
+    drop(unary);
+    let trace = sink.trace();
+    for operation in ["unary", "stream"] {
+        let facts: Vec<_> = trace
+            .observations
+            .iter()
+            .filter_map(|fact| {
+                let Action::Adapter { observation } = &fact.action else {
+                    return None;
+                };
+                (observation.operation == operation).then_some(observation)
+            })
+            .collect();
+        assert_eq!(facts.len(), 3);
+        assert!(facts.iter().all(|fact| fact.attempt == Some(1)));
+        assert_eq!(
+            facts.last().unwrap().event,
+            AdapterEvent::Finished {
+                ending: AdapterEnding::Dropped
+            }
+        );
+    }
+    assert_eq!(trace.observations.len(), 6);
 }
 
 #[tokio::test]
@@ -663,15 +720,13 @@ async fn dropping_stream_pending_on_connection_or_body_closes_once() {
             .unwrap();
         let model = client.completion_model("gemini-test");
         let log = Arc::new(ObservationLog::default());
-        let request = model
-            .completion_request("hello")
-            .observation(AdapterContext::new(
-                log.clone(),
-                Subject::default(),
-                "pending-stream",
-            ))
-            .build();
-        let mut stream = model.stream(request).await.unwrap();
+        let request = model.completion_request("hello").build();
+        let context = Some(AdapterContext::new(
+            log.clone(),
+            Subject::default(),
+            "pending-stream",
+        ));
+        let mut stream = model.stream_with_context(request, context).await.unwrap();
         assert!(log.is_empty());
         assert!(futures::poll!(stream.next()).is_pending());
         drop(stream);
@@ -697,7 +752,7 @@ async fn observed_stream(bytes: &str, stop_after_first: bool) -> crate::observe:
         .unwrap();
     let model = client.completion_model("gemini-test");
     let log = Arc::new(ObservationLog::default());
-    let mut request = model.completion_request("hello").build();
+    let request = model.completion_request("hello").build();
     let mut plain_stream = model.stream(request.clone()).await.unwrap();
     let mut plain_items = Vec::new();
     while let Some(item) = plain_stream.next().await {
@@ -711,12 +766,12 @@ async fn observed_stream(bytes: &str, stop_after_first: bool) -> crate::observe:
         }
     }
     drop(plain_stream);
-    request.observation = Some(AdapterContext::new(
+    let context = Some(AdapterContext::new(
         log.clone(),
         Subject::default(),
         "stream-call",
     ));
-    let mut stream = model.stream(request).await.unwrap();
+    let mut stream = model.stream_with_context(request, context).await.unwrap();
     assert!(
         log.is_empty(),
         "an unpolled lazy stream has not sent a request"
@@ -898,15 +953,18 @@ async fn empty_unary_rejection_preserves_optional_usage_before_failure() {
             .build()
             .unwrap();
         let model = client.completion_model("gemini-test");
-        let mut request = model.completion_request("hello").build();
+        let request = model.completion_request("hello").build();
         let plain_error = model.completion(request.clone()).await.unwrap_err();
         let log = Arc::new(ObservationLog::default());
-        request.observation = Some(AdapterContext::new(
+        let context = Some(AdapterContext::new(
             log.clone(),
             Subject::default(),
             "empty-call",
         ));
-        let error = model.completion(request).await.unwrap_err();
+        let error = model
+            .completion_with_context(request, context)
+            .await
+            .unwrap_err();
         assert_eq!(error.to_string(), plain_error.to_string());
         assert_eq!(http.requests()[0], http.requests()[1]);
         let trace = log.trace();
@@ -929,15 +987,16 @@ async fn empty_unary_rejection_preserves_optional_usage_before_failure() {
             Action::Adapter { observation } if observation.event == AdapterEvent::Finished { ending: AdapterEnding::Error { boundary: AdapterErrorBoundary::Decode, kind: "response".into(), status: None, retryable: false } }
         ));
         let raw_log = Arc::new(ObservationLog::default());
-        let raw_request = model
-            .completion_request("hello")
-            .observation(AdapterContext::new(
-                raw_log.clone(),
-                Subject::default(),
-                "raw-empty-call",
-            ))
-            .build();
-        let raw = model.raw_completion(raw_request).await.unwrap();
+        let raw_request = model.completion_request("hello").build();
+        let context = Some(AdapterContext::new(
+            raw_log.clone(),
+            Subject::default(),
+            "raw-empty-call",
+        ));
+        let raw = model
+            .raw_completion_with_context(raw_request, context)
+            .await
+            .unwrap();
         assert!(
             raw.candidates.is_empty(),
             "the raw API must retain its decode-only contract"
@@ -1003,17 +1062,17 @@ async fn streaming_http_rejection_preserves_usage_and_the_original_error() {
             r#"{"error":{"message":"synthetic-sensitive-body"},"usageMetadata":{"promptTokenCount":3}}"#))
         .build().unwrap();
     let model = client.completion_model("gemini-test");
-    let mut request = model.completion_request("hello").build();
+    let request = model.completion_request("hello").build();
     let mut plain = model.stream(request.clone()).await.unwrap();
     let plain_error = plain.next().await.unwrap().unwrap_err();
     assert!(plain.next().await.is_none());
     let log = Arc::new(ObservationLog::default());
-    request.observation = Some(AdapterContext::new(
+    let context = Some(AdapterContext::new(
         log.clone(),
         Subject::default(),
         "rejected-stream",
     ));
-    let mut stream = model.stream(request).await.unwrap();
+    let mut stream = model.stream_with_context(request, context).await.unwrap();
     let error = stream.next().await.unwrap().unwrap_err();
     assert_eq!(error.to_string(), plain_error.to_string());
     assert!(stream.next().await.is_none());
@@ -1076,15 +1135,19 @@ async fn provider_metadata_and_headers_are_scrubbed_before_observation() {
             .unwrap();
         let model = client.completion_model("gemini-test");
         let log = Arc::new(ObservationLog::default());
-        let request = model
-            .completion_request("hello")
-            .observation(AdapterContext::new(
-                log.clone(),
-                Subject::default(),
-                "metadata-call",
-            ))
-            .build();
-        assert!(model.completion(request).await.unwrap_err().is_retryable());
+        let request = model.completion_request("hello").build();
+        let context = Some(AdapterContext::new(
+            log.clone(),
+            Subject::default(),
+            "metadata-call",
+        ));
+        assert!(
+            model
+                .completion_with_context(request, context)
+                .await
+                .unwrap_err()
+                .is_retryable()
+        );
         let trace = log.trace();
         let facts: Vec<_> = trace
             .observations

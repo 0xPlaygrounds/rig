@@ -124,9 +124,10 @@ fn streaming_unsupported() -> CompletionError {
 }
 
 impl CompletionModelTrait for CompletionModel {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<CompletionResponse, CompletionError> {
         // Capture before `try_into` consumes the raw value.
         let raw = self.raw_completion(request).await?;
@@ -135,9 +136,10 @@ impl CompletionModelTrait for CompletionModel {
         Ok(response.with_raw(captured))
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         _request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         Err(streaming_unsupported())
     }

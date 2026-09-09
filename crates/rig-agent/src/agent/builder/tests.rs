@@ -16,9 +16,10 @@ fn builder_accepts_non_clone_model() {
     struct NonCloneModel;
 
     impl rig_core::completion::CompletionModel for NonCloneModel {
-        fn completion(
+        fn completion_with_context(
             &self,
             _request: rig_core::completion::CompletionRequest,
+            _context: Option<rig_core::observe::AdapterContext>,
         ) -> impl Future<
             Output = Result<
                 rig_core::completion::CompletionResponse,
@@ -30,9 +31,10 @@ fn builder_accepts_non_clone_model() {
             )))
         }
 
-        fn stream(
+        fn stream_with_context(
             &self,
             _request: rig_core::completion::CompletionRequest,
+            _context: Option<rig_core::observe::AdapterContext>,
         ) -> impl Future<
             Output = Result<
                 rig_core::streaming::StreamingCompletionResponse,

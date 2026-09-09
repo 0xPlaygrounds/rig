@@ -496,6 +496,7 @@ fn lock<T>(value: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// Reply transport and cancellation remain owned by the driver.
 pub struct Dispatch {
     adapter_context: Option<crate::observe::AdapterContext>,
+    adapter_context_explicit: bool,
     id: EffectId,
     streaming: bool,
     scopes: Vec<Arc<dyn std::any::Any + Send + Sync>>,
@@ -527,6 +528,7 @@ impl Dispatch {
             id,
             streaming,
             adapter_context: None,
+            adapter_context_explicit: false,
             scopes: Vec::new(),
             observer: None,
             replaced_by: Arc::new(Mutex::new(None)),
@@ -573,11 +575,24 @@ impl Dispatch {
 
     /// Observe the original handler answer independently of layer verdicts.
     pub fn with_observer(mut self, observer: Box<dyn Observe>) -> Self {
-        self.adapter_context = observer.adapter_context();
+        if !self.adapter_context_explicit {
+            self.adapter_context = observer.adapter_context();
+        }
         self.observer = Some(Arc::new(Mutex::new(Some(Observed {
             observer,
             told: false,
         }))));
+        self
+    }
+
+    /// Supply provider context for this invocation independently of request data.
+    ///
+    /// Explicit context takes precedence over context supplied by an observer,
+    /// regardless of installation order, and survives forwarding through layers.
+    /// Reuse an operation context only for attempts of that same logical call.
+    pub fn with_adapter_context(mut self, context: crate::observe::AdapterContext) -> Self {
+        self.adapter_context = Some(context);
+        self.adapter_context_explicit = true;
         self
     }
 
@@ -616,6 +631,7 @@ impl Dispatch {
             id: self.id,
             streaming: self.streaming,
             adapter_context: self.adapter_context.clone(),
+            adapter_context_explicit: self.adapter_context_explicit,
             scopes: self.scopes.clone(),
             observer: observer.map(|seen| Arc::new(Mutex::new(Some(seen)))),
             replaced_by: self.replaced_by.clone(),

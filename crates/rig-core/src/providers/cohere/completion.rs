@@ -801,9 +801,10 @@ impl<T> completion::CompletionModel for CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         completion_request: completion::CompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
     ) -> Result<completion::CompletionResponse, CompletionError> {
         // Capture before `try_into` consumes the raw value.
         let raw = self.raw_completion(completion_request).await?;
@@ -812,9 +813,10 @@ where
         Ok(response.with_raw(captured))
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         request: CompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         CompletionModel::stream(self, request).await
     }

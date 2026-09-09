@@ -62,7 +62,6 @@ fn perplexity_drops_tool_choice_instead_of_erroring() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     };
     request.tools = vec![crate::completion::ToolDefinition {
         name: "lookup".to_string(),

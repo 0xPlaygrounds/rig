@@ -71,7 +71,6 @@ fn chatgpt_conversion_request(chat_history: Vec<completion::Message>) -> Respons
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            observation: None,
         })
         .expect("request")
 }
@@ -117,7 +116,6 @@ fn test_create_request_merges_default_and_request_instructions() {
     let request = model
         .create_request(completion::CompletionRequest {
             record_telemetry_content: false,
-            observation: None,
             model: None,
             chat_history: vec![
                 completion::Message::system("Respond tersely."),
@@ -158,7 +156,6 @@ fn test_create_request_drops_temperature() {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            observation: None,
         })
         .expect("request");
 

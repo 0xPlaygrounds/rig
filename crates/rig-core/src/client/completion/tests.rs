@@ -11,9 +11,10 @@ struct ExternalModel {
 }
 
 impl CompletionModel for ExternalModel {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         _request: CompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
     ) -> Result<CompletionResponse, CompletionError> {
         Err(CompletionError::ResponseError(format!(
             "{} is a compile-coverage model",
@@ -21,9 +22,10 @@ impl CompletionModel for ExternalModel {
         )))
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         _request: CompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         Err(CompletionError::ResponseError(format!(
             "{} is a compile-coverage model",

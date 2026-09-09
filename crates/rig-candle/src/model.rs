@@ -538,9 +538,10 @@ impl CandleModel {
 }
 
 impl CompletionModel for CandleModel {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<CompletionResponse, CompletionError> {
         // Capture the local model's own record — what `raw_completion`
         // returns — before `into_normalized` consumes it.
@@ -549,9 +550,10 @@ impl CompletionModel for CandleModel {
         Ok(inferred.into_normalized().with_raw(captured))
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         let stream = self.open_stream(request).await?;
 

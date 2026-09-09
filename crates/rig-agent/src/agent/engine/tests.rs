@@ -2682,9 +2682,10 @@ mod span_safety_net {
     }
 
     impl CompletionModel for CompletionTelemetryModel {
-        async fn completion(
+        async fn completion_with_context(
             &self,
             request: CompletionRequest,
+            _context: Option<rig_core::observe::AdapterContext>,
         ) -> Result<CompletionResponse, CompletionError> {
             let span = CompletionSpanBuilder::new(
                 "fixture-provider",
@@ -2695,9 +2696,10 @@ mod span_safety_net {
             self.inner.completion(request).instrument(span).await
         }
 
-        async fn stream(
+        async fn stream_with_context(
             &self,
             request: CompletionRequest,
+            _context: Option<rig_core::observe::AdapterContext>,
         ) -> Result<StreamingCompletionResponse, CompletionError> {
             let span = CompletionSpanBuilder::new(
                 "fixture-provider",
@@ -6130,17 +6132,19 @@ impl PausingCompletionModel {
 }
 
 impl CompletionModel for PausingCompletionModel {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         request: crate::completion::CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<crate::completion::CompletionResponse, crate::completion::CompletionError> {
         self.inspect_and_pause(&request).await;
         self.inner.completion(request).await
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         request: crate::completion::CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<crate::streaming::StreamingCompletionResponse, crate::completion::CompletionError>
     {
         self.inspect_and_pause(&request).await;

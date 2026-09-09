@@ -48,15 +48,17 @@ struct ExternalModel<H> {
 }
 
 impl<H: ModelTransport> CompletionModel for ExternalModel<H> {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         _: CompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
     ) -> Result<CompletionResponse, CompletionError> {
         Err(CompletionError::ProviderError(self.model.clone()))
     }
-    async fn stream(
+    async fn stream_with_context(
         &self,
         _: CompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         Err(CompletionError::ProviderError(self.model.clone()))
     }

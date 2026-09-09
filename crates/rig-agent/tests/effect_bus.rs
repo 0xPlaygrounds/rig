@@ -1792,7 +1792,6 @@ async fn a_streamed_completion_names_its_provider_like_a_unary_one() {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     };
 
     let unary = within(model.complete(request("hi"))).await.expect("unary");
@@ -1926,7 +1925,6 @@ impl AgentHook for AsksTheModel {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            observation: None,
         };
         let answer = model
             .complete(request)

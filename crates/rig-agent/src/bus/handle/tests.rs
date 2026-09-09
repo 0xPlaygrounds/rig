@@ -90,7 +90,6 @@ fn request() -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     }
 }
 
@@ -186,21 +185,19 @@ async fn concurrent_model_handles_preserve_explicit_observation_contexts() {
         let task = tokio::spawn(driver);
         let handle: ModelHandle = dispatcher.handle(&HandlerKey::from("model")).unwrap();
         let sink = Arc::new(ObservationLog::default());
-        let requests: Vec<_> = ["operation/a", "operation/b"]
+        let contexts: Vec<_> = ["operation/a", "operation/b"]
             .into_iter()
             .map(|operation| {
-                let mut request = request();
-                request.observation = Some(AdapterContext::new(
+                Some(AdapterContext::new(
                     sink.clone(),
                     Subject::scoped("direct"),
                     operation,
-                ));
-                request
+                ))
             })
             .collect();
         if streamed {
-            let consume = |request| {
-                let mut stream = handle.stream(request);
+            let consume = |context| {
+                let mut stream = handle.stream_with_context(request(), context);
                 async move {
                     while let Some(event) = within(stream.next()).await {
                         event.unwrap();
@@ -208,19 +205,19 @@ async fn concurrent_model_handles_preserve_explicit_observation_contexts() {
                     assert_eq!(stream.finish().choice, vec![AssistantContent::text("same")]);
                 }
             };
-            tokio::join!(consume(requests[0].clone()), consume(requests[1].clone()));
+            tokio::join!(consume(contexts[0].clone()), consume(contexts[1].clone()));
         } else {
             let (a, b) = tokio::join!(
-                within(handle.complete(requests[0].clone())),
-                within(handle.complete(requests[1].clone()))
+                within(handle.complete_with_context(request(), contexts[0].clone())),
+                within(handle.complete_with_context(request(), contexts[1].clone()))
             );
             assert_eq!(a.unwrap().choice, vec![AssistantContent::text("same")]);
             assert_eq!(b.unwrap().choice, vec![AssistantContent::text("same")]);
         }
-        let received = provider.requests();
+        let received = provider.contexts();
         let mut operations: Vec<_> = received
             .iter()
-            .map(|request| request.observation.as_ref().unwrap().operation())
+            .map(|request| request.as_ref().unwrap().operation())
             .collect();
         operations.sort_unstable();
         assert_eq!(operations, ["operation/a", "operation/b"]);

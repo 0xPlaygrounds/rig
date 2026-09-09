@@ -376,7 +376,6 @@ async fn explicit_cache_hits_across_unrelated_conversations() {
                         model: None,
                         output_schema: None,
                         record_telemetry_content: false,
-                        observation: None,
                     };
                     let response = rig::completion::CompletionModel::completion(&model, request)
                         .await
@@ -489,7 +488,6 @@ fn mutation_request(
         model: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     }
 }
 

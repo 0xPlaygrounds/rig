@@ -2620,9 +2620,10 @@ where
             .with_native_output_tool_composition(Ext::COMPOSES_NATIVE_OUTPUT_WITH_TOOLS)
     }
 
-    async fn completion(
+    async fn completion_with_context(
         &self,
         completion_request: crate::completion::CompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
     ) -> Result<completion::CompletionResponse, CompletionError> {
         // Capture before `normalize` consumes the raw value.
         let response = self.raw_completion(completion_request).await?;
@@ -2630,9 +2631,10 @@ where
         Ok(response.normalize(Ext::PROVIDER_NAME)?.with_raw(captured))
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         request: crate::completion::CompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         GenericResponsesCompletionModel::stream(self, request).await
     }

@@ -61,10 +61,10 @@
 //! }
 //!
 //! impl<H: ModelTransport> CompletionModel for ExampleModel<H> {
-//!     async fn completion(&self, _: CompletionRequest) -> Result<CompletionResponse, CompletionError> {
+//!     async fn completion_with_context(&self, _: CompletionRequest, _: Option<rig_core::observe::AdapterContext>) -> Result<CompletionResponse, CompletionError> {
 //!         Err(CompletionError::ProviderError(self.model.clone()))
 //!     }
-//!     async fn stream(&self, _: CompletionRequest) -> Result<StreamingCompletionResponse, CompletionError> {
+//!     async fn stream_with_context(&self, _: CompletionRequest, _: Option<rig_core::observe::AdapterContext>) -> Result<StreamingCompletionResponse, CompletionError> {
 //!         Err(CompletionError::ProviderError(self.model.clone()))
 //!     }
 //! }

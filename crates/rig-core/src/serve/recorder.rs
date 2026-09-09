@@ -35,7 +35,7 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     /// Optional provider-observation context for a dispatch after [`Self::begin`].
     /// Keep this runtime-only; observations do not belong in the effect log.
     /// Return the same logical context when asked again for the same dispatch.
-    /// An explicit context on a completion request takes precedence.
+    /// An explicit invocation context on the dispatch takes precedence.
     fn adapter_context(&self, _id: EffectId) -> Option<crate::observe::AdapterContext> {
         None
     }

@@ -75,13 +75,8 @@ where
         }
     }
 
-    async fn serve(&self, mut kind: EffectKind, dispatch: Dispatch) -> Reply {
-        if let EffectKind::Completion { request, .. } = &mut kind {
-            // Explicit caller context wins; bus mediation must not duplicate it.
-            if request.observation.is_none() {
-                request.observation = dispatch.adapter_context();
-            }
-        }
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
+        let context = dispatch.adapter_context();
         match kind {
             EffectKind::Completion {
                 request,
@@ -89,7 +84,7 @@ where
             } => {
                 let outcome = self
                     .model
-                    .completion(request)
+                    .completion_with_context(request, context)
                     .await
                     .map(Outcome::Completion)
                     .map_err(ErrorReport::from);
@@ -98,7 +93,7 @@ where
             EffectKind::Completion {
                 request,
                 stream: true,
-            } => match self.model.stream(request).await {
+            } => match self.model.stream_with_context(request, context).await {
                 Ok(stream) => Reply::Stream(Box::pin(stream)),
                 Err(error) => Reply::Outcome(Err(ErrorReport::from(error))),
             },

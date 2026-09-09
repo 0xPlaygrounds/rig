@@ -674,12 +674,37 @@ pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
     fn completion(
         &self,
         request: CompletionRequest,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend
+    {
+        self.completion_with_context(request, None)
+    }
+
+    /// Generate a response with invocation-local provider observation context.
+    ///
+    /// Context is execution state, never provider request data. Forward it when
+    /// delegating to another model. Implementations without provider-boundary
+    /// observations may leave those facts absent rather than fabricate them.
+    fn completion_with_context(
+        &self,
+        request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
     ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend;
 
     /// Streams a completion response for the given completion request.
     fn stream(
         &self,
         request: CompletionRequest,
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
+    + WasmCompatSend {
+        self.stream_with_context(request, None)
+    }
+
+    /// Stream a response with invocation-local provider observation context.
+    /// The returned stream must retain its context through lazy startup and drop.
+    fn stream_with_context(
+        &self,
+        request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
     ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
     + WasmCompatSend;
 
@@ -706,20 +731,22 @@ pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
 /// sites. `Arc<M>: Clone` always holds, so [`CompletionModel::completion_request`]
 /// clones the `Arc` — never the model.
 impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
-    fn completion(
+    fn completion_with_context(
         &self,
         request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
     ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend
     {
-        (**self).completion(request)
+        (**self).completion_with_context(request, context)
     }
 
-    fn stream(
+    fn stream_with_context(
         &self,
         request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
     ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
     + WasmCompatSend {
-        (**self).stream(request)
+        (**self).stream_with_context(request, context)
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
@@ -730,9 +757,6 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
 /// Struct representing a general completion request that can be sent to a completion model provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompletionRequest {
-    /// Optional runtime-only provider witness and operation correlation.
-    #[serde(skip)]
-    pub observation: Option<crate::observe::AdapterContext>,
     /// Optional model override for this request.
     pub model: Option<String>,
     /// The chat history to be sent to the completion model provider.
@@ -1058,7 +1082,6 @@ pub struct CompletionRequestBuilder<M = Unbound> {
     additional_params: Option<serde_json::Value>,
     output_schema: Option<schemars::Schema>,
     record_telemetry_content: bool,
-    observation: Option<crate::observe::AdapterContext>,
 }
 
 /// The model slot of a request under assembly that has no model attached:
@@ -1091,14 +1114,7 @@ impl<M> CompletionRequestBuilder<M> {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            observation: None,
         }
-    }
-
-    /// Observe provider attempts with an execution-local operation context.
-    pub fn observation(mut self, context: crate::observe::AdapterContext) -> Self {
-        self.observation = Some(context);
-        self
     }
 
     /// Sets the preamble for the completion request. It becomes the leading
@@ -1324,7 +1340,6 @@ impl<M> CompletionRequestBuilder<M> {
             additional_params,
             output_schema: self.output_schema,
             record_telemetry_content: self.record_telemetry_content,
-            observation: self.observation,
         };
         (model, request)
     }

@@ -359,16 +359,18 @@ struct BetaModel(Arc<Script>);
 macro_rules! impl_test_model {
     ($model:ty) => {
         impl CompletionModel for $model {
-            async fn completion(
+            async fn completion_with_context(
                 &self,
                 request: CompletionRequest,
+                _context: Option<rig_core::observe::AdapterContext>,
             ) -> Result<CompletionResponse, CompletionError> {
                 completion_from_script(&self.0, request)
             }
 
-            async fn stream(
+            async fn stream_with_context(
                 &self,
                 request: CompletionRequest,
+                _context: Option<rig_core::observe::AdapterContext>,
             ) -> Result<StreamingCompletionResponse, CompletionError> {
                 stream_from_script(&self.0, request)
             }
@@ -408,7 +410,6 @@ fn request(prompt: &str) -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     }
 }
 
@@ -1355,9 +1356,10 @@ struct GatedToolModel {
 }
 
 impl CompletionModel for GatedToolModel {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         _request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<CompletionResponse, CompletionError> {
         self.started.notify_one();
         self.release.notified().await;
@@ -1368,9 +1370,10 @@ impl CompletionModel for GatedToolModel {
         )
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         _request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         Ok(StreamingCompletionResponse::stream(
             "gated",
@@ -1448,18 +1451,20 @@ struct PendingUnaryModel {
 }
 
 impl CompletionModel for PendingUnaryModel {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         _request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<CompletionResponse, CompletionError> {
         let _guard = DropGuard(self.dropped.clone());
         self.started.notify_one();
         std::future::pending::<Result<CompletionResponse, CompletionError>>().await
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         _request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         Ok(StreamingCompletionResponse::stream(
             "pending",
@@ -1499,9 +1504,10 @@ struct PendingStreamingModel {
 }
 
 impl CompletionModel for PendingStreamingModel {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         _request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<CompletionResponse, CompletionError> {
         Ok(CompletionResponse::new(
             vec![AssistantContent::text("unused")],
@@ -1510,9 +1516,10 @@ impl CompletionModel for PendingStreamingModel {
         ))
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         _request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         let raw: rig_agent::streaming::StreamingResult = Box::pin(PendingRawStream {
             started: self.started.clone(),

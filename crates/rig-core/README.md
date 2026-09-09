@@ -136,9 +136,19 @@ Are you also using Rig in production? [Open an issue](https://www.github.com/0xP
 ## Provider observations
 
 `observe::AdapterContext` carries a caller-owned operation identity and a
-`Witness` sink. Attach it through `CompletionRequestBuilder::observation` or
-`CompletionRequest::observation`; it is skipped by serde and never becomes
-provider request data. Clone the context for attempts of the same operation;
+`Witness` sink. Pass it separately from request data through
+`CompletionModel::completion_with_context(request, Some(context))` or
+`stream_with_context(request, Some(context))`. Ordinary `completion(request)`
+and `stream(request)` calls require no observation setup. Request builders and
+request literals contain only provider request data.
+
+Bus-backed `ModelHandle` calls use `complete_with_context` and
+`stream_with_context`. `CompletionAdapter` forwards `Dispatch::adapter_context`;
+explicit caller context takes precedence over Recorder/Observe context for
+that invocation, including through handler layers. It is never serialized into
+provider data or effect records and is not inherited by child calls.
+
+Clone the context for attempts of the same operation;
 use a distinct non-sensitive identity for another logical call.
 `for_host_attempt(subject, ordinal)` rebinds a host retry to its current
 dispatch subject while sharing the logical operation and HTTP send counter.

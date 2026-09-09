@@ -1010,9 +1010,10 @@ where
     Client<H>: HttpClientExt + Clone + 'static,
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         completion_request: completion::CompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
     ) -> Result<completion::CompletionResponse, CompletionError> {
         // The captured value is the route-tagged `CopilotCompletionResponse` —
         // what `raw_completion` returns — not the inner route type, so it
@@ -1027,9 +1028,10 @@ where
             .with_raw(captured))
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         completion_request: completion::CompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         self.stream_normalized(completion_request).await
     }

@@ -263,7 +263,6 @@ fn completion_kind(stream: bool) -> EffectKind {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            observation: None,
         },
         stream,
     }

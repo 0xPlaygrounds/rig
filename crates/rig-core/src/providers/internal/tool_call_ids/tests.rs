@@ -58,7 +58,6 @@ pub(crate) fn adapter_request() -> crate::completion::CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-        observation: None,
     }
 }
 

@@ -162,15 +162,25 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<GenerateContentResponse, CompletionError> {
-        self.complete_with(completion_request, Ok).await
+        self.raw_completion_with_context(completion_request, None)
+            .await
+    }
+
+    /// Return provider-native output with context owned by this invocation.
+    pub async fn raw_completion_with_context(
+        &self,
+        completion_request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<GenerateContentResponse, CompletionError> {
+        self.complete_with(completion_request, context, Ok).await
     }
 
     async fn complete_with<R>(
         &self,
         completion_request: CompletionRequest,
+        observation: Option<crate::observe::AdapterContext>,
         normalize: impl FnOnce(GenerateContentResponse) -> Result<R, CompletionError>,
     ) -> Result<R, CompletionError> {
-        let observation = completion_request.observation.clone();
         let request_model = resolve_request_model(&self.model, &completion_request);
         let span = CompletionSpanBuilder::new(
             PROVIDER_NAME,
@@ -240,11 +250,12 @@ impl<T> completion::CompletionModel for CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         completion_request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        self.complete_with(completion_request, |raw| {
+        self.complete_with(completion_request, context, |raw| {
             let captured = serde_json::to_value(&raw)?;
             let response: completion::CompletionResponse = raw.try_into()?;
             Ok(response.with_raw(captured))
@@ -252,11 +263,12 @@ where
         .await
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        CompletionModel::stream(self, request).await
+        self.stream_observed(request, context).await
     }
 }
 
@@ -276,7 +288,6 @@ pub(crate) fn create_request_body(
         mut additional_params,
         output_schema,
         record_telemetry_content: _,
-        observation: _,
     } = completion_request;
 
     let mut full_history = Vec::new();

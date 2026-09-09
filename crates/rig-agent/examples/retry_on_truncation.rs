@@ -58,9 +58,10 @@ impl BudgetedModel {
 }
 
 impl CompletionModel for BudgetedModel {
-    async fn completion(
+    async fn completion_with_context(
         &self,
         request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<CompletionResponse, CompletionError> {
         let (text, reason) = Self::answer_under(request.max_tokens);
         Ok(
@@ -69,9 +70,10 @@ impl CompletionModel for BudgetedModel {
         )
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         request: CompletionRequest,
+        _context: Option<rig_core::observe::AdapterContext>,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         // Identical semantics on the streaming surface: the hook sees the same
         // reason and the same cap either way.
