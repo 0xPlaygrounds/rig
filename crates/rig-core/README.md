@@ -132,3 +132,73 @@ Below is a non-exhaustive list of companies and people who are using Rig:
 - [Ironclaw](https://github.com/nearai/ironclaw) - A secure personal AI assistant
 
 Are you also using Rig in production? [Open an issue](https://www.github.com/0xPlaygrounds/rig/issues) to have your name added!
+
+## Provider observations
+
+`observe::AdapterContext` carries a caller-owned operation identity and a
+`Witness` sink. Pass it separately from request data through
+`CompletionModel::completion_with_context(request, Some(context))` or
+`stream_with_context(request, Some(context))`. Ordinary `completion(request)`
+and `stream(request)` are the required provider methods. The observed methods
+have defaults that delegate to them without emitting facts, so ordinary providers
+need no context boilerplate. Request builders and
+request literals contain only provider request data.
+
+Bus-backed `ModelHandle` calls use `complete_with_context` and
+`stream_with_context`. `CompletionAdapter` forwards `Dispatch::adapter_context`;
+explicit caller context takes precedence over Recorder/Observe context for
+that invocation, including through handler layers. It is never serialized into
+provider data or effect records and is not inherited by child calls.
+
+Clone the context for attempts of the same operation;
+use a distinct non-sensitive identity for another logical call.
+`for_host_attempt(subject, ordinal)` rebinds a host retry to its current
+dispatch subject while sharing the logical operation and HTTP send counter.
+Facts carry the optional host ordinal separately: multiple HTTP sends within
+one dispatch share its host ordinal. Already-running attempts keep their
+original subjects and ordinals. A changed logical request needs a new context.
+
+The Gemini unary and SSE paths emit `Action::Adapter` facts for send, HTTP
+response status, provider metadata, error envelopes and closure through their
+shared drivers. Unary closure
+reports decoding, error or drop. SSE closure distinguishes terminal, EOF,
+partial frame, error and drop; recoverable corrupt frames are separate facts.
+Usage facts retain provider-reported optional counts even when decoding or
+normalization rejects a response. Each fact is a cumulative snapshot for its
+attempt: replace earlier snapshots instead of summing them, keep absent counts
+unknown, and do not add overlapping token categories to invent a total.
+Provider verdicts retain reported finish/block reasons and model versions;
+error-envelope fields remain separate from HTTP status and Rig retryability.
+Sparse verdict fields update only when present. Response IDs and allowlisted
+headers are bounded, scrubbed analysis data, excluded from semantic comparison.
+An ID-only payload attaches its latest ID to the next verdict or attempt
+closure without creating an empty semantic event. This also preserves the ID
+on error and consumer drop. Known request credentials are redacted before
+persistence; arbitrary response bodies and headers are not copied wholesale.
+Credential extraction includes URL userinfo and known query keys, including
+origin-form request URIs. Diagnostic comparisons account for percent escapes
+and control removal without rewriting safe diagnostic text. Hosts can reuse
+`observe::diagnostic_url_secrets` for endpoint configuration; its returned
+secrets must stay in memory and must never be persisted or logged.
+The normalized Gemini unary API closes after normalization, so an empty
+decoded response closes as an error; the raw API retains its decode boundary.
+Error closures also preserve the original typed error boundary before report
+conversion erases HTTP subtypes: request construction, provider response,
+response decoding, typed transport termination, or unknown. An opaque client
+error stays unknown; its message is never used to infer a boundary. This field
+does not change the error returned to the caller or its retryability.
+`ObservationLog::with_clock` optionally stamps individual facts with host elapsed
+time. Rig does not calculate run, handler or transport intervals. These stamps
+describe the executing environment, including replay, and do not establish live
+provider performance.
+Partial-frame facts count raw bytes after the last blank SSE delimiter without
+retaining their contents. Complete-frame counts include only frames passed to
+the adapter driver, excluding provider-recognized analysis-only frames (Gemini
+frames containing only a valid string `responseId`). Unknown, malformed and
+otherwise-empty frames still count. Corrupt-frame ordinals start at one using
+the same counting rule. `TransportEof`
+records body completeness independently: a provider terminal followed by
+an incomplete trailing frame retains both its terminal closure and partial
+EOF evidence. The context does not promise cross-execution identity. The ECS completion adapter
+forwards its driver's context when the invocation supplies no explicit context. Response bodies and
+credentials are not copied into these boundary facts.

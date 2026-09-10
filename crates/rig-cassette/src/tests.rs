@@ -823,6 +823,12 @@ then:
     value: application/json
   - name: x-request-id
     value: req_abc123456789
+  - name: retry-after
+    value: '2'
+  - name: Retry-After
+    value: 'Sunday, 06-Nov-94 08:49:37 GMT'
+  - name: retry-after
+    value: opaque-private-credential
   - name: set-cookie
     value: __cf_bm=secret
   body: '{}'
@@ -838,6 +844,10 @@ then:
     assert!(scrubbed.contains("x-request-id"));
     assert!(!scrubbed.contains("req_abc123456789"));
     assert!(scrubbed.contains("req_REDACTED"));
+    assert!(scrubbed.contains("name: retry-after\n    value: '2'"));
+    assert!(scrubbed.contains("Sun, 06 Nov 1994 08:49:37 GMT"));
+    assert!(!scrubbed.contains("opaque-private-credential"));
+    assert_eq!(scrubbed, scrub_cassette_contents(&scrubbed));
     assert!(!scrubbed.contains("set-cookie"));
     assert!(scrubbed.contains("content-type"));
 }

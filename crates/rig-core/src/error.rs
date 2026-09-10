@@ -84,6 +84,35 @@ pub enum ErrorKind {
     Other,
 }
 
+impl ErrorKind {
+    /// A stable, machine-readable code for this kind: `snake_case`, without
+    /// the payload a variant may carry (an HTTP status, a tool error kind),
+    /// so a comparison keys on it and a rename of the variant is a
+    /// deliberate change here, never a silent drift.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Http { .. } => "http",
+            Self::Json => "json",
+            Self::Url => "url",
+            Self::Request => "request",
+            Self::Response => "response",
+            Self::Provider => "provider",
+            Self::ProviderResponse => "provider_response",
+            Self::Tool(_) => "tool",
+            Self::MemoryBackend => "memory_backend",
+            Self::MemoryPolicy => "memory_policy",
+            Self::Internal => "internal",
+            Self::Cancelled => "cancelled",
+            Self::Timeout => "timeout",
+            Self::BusClosed => "bus_closed",
+            Self::HandlerUnavailable => "handler_unavailable",
+            Self::Divergence => "divergence",
+            Self::Denied => "denied",
+            Self::Other => "other",
+        }
+    }
+}
+
 /// A serde-able error crossing a wire boundary.
 ///
 /// Field semantics:

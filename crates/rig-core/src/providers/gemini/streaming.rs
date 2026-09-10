@@ -88,6 +88,13 @@ pub struct StreamGenerateContentResponse {
     pub prompt_feedback: Option<PromptFeedback>,
     pub model_version: Option<String>,
     pub usage_metadata: Option<PartialUsage>,
+    /// Gemini's error envelope, sent as a frame of its own when the
+    /// service aborts a stream in-band (`{"error":{"code":500,"message":
+    /// …,"status":"INTERNAL"}}`). The provider's verdict, not an unknown
+    /// frame to skip: the stream closes after it, and without this the
+    /// turn ended as a truncation with the error lost. Kept raw so every
+    /// field (code, status, message, details) survives into the report.
+    pub error: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -123,9 +130,11 @@ fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<Comple
 /// The recognizability markers of a `streamGenerateContent` chunk: every
 /// genuine frame carries `candidates`, `usageMetadata` and/or
 /// `promptFeedback` (a blocked prompt's only chunk may carry nothing but
-/// the feedback). A frame with any of them must fully decode (else
-/// `Corrupt`); other JSON is `Unknown`.
-const RECOGNIZABLE_CHUNK_KEYS: &[&str] = &["candidates", "usageMetadata", "promptFeedback"];
+/// the feedback), and the service's in-band abort carries only `error`. A
+/// frame with any of them must fully decode (else `Corrupt`). A valid ID-only
+/// frame is recognized separately as metadata; other JSON is `Unknown`.
+const RECOGNIZABLE_CHUNK_KEYS: &[&str] =
+    &["candidates", "usageMetadata", "promptFeedback", "error"];
 
 /// The Gemini REST (`streamGenerateContent`) SSE wire as a [`WireAdapter`].
 ///
@@ -188,7 +197,26 @@ impl WireAdapter for GeminiRestAdapter {
     type Event = StreamGenerateContentResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<StreamGenerateContentResponse> {
+        // ID-only frames update terminal metadata without manufacturing an
+        // Unknown content item (and therefore a semantic truncation tail).
+        // This applies equally with observation enabled or disabled.
+        if self.is_analysis_only(&frame) {
+            return wire::classify_marker_keyed_frame(&frame.as_str(), &["responseId"]);
+        }
         wire::classify_marker_keyed_frame(&frame.as_str(), RECOGNIZABLE_CHUNK_KEYS)
+    }
+
+    fn is_analysis_only(&self, frame: &WireFrame) -> bool {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct ResponseIdOnly {
+            #[serde(rename = "responseId")]
+            _id: String,
+        }
+        matches!(
+            wire::classify_marker_keyed_frame::<ResponseIdOnly>(&frame.as_str(), &["responseId"]),
+            WireEvent::Known(_)
+        )
     }
 
     fn interpret(&mut self, data: StreamGenerateContentResponse, out: &mut AdapterOutput) {
@@ -208,6 +236,31 @@ impl WireAdapter for GeminiRestAdapter {
         if let Some(usage) = data.usage_metadata.as_ref() {
             span.record_token_usage(&crate::completion::Usage::from(usage));
             self.final_usage = Some(usage.clone());
+        }
+
+        if let Some(error) = data.error {
+            // The service aborted the turn in-band: the envelope is the
+            // whole answer and the stream closes after it. Surface it as
+            // the provider error it is, with the envelope as the body (as
+            // the unary wire and the other families' streams do), rather
+            // than skipping an unknown frame and reporting a truncation.
+            self.failed = true;
+            // GenerateContent's numeric error code is an HTTP status, unlike
+            // other providers' opaque codes or gRPC's small integer codes.
+            // Only error statuses participate in the unary retry policy.
+            let status = error
+                .get("code")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|code| u16::try_from(code).ok())
+                .and_then(|code| http::StatusCode::from_u16(code).ok())
+                .filter(|status| status.is_client_error() || status.is_server_error());
+            let body = serde_json::json!({ "error": error }).to_string();
+            let error = match status {
+                Some(status) => CompletionError::from_http_response(status, body),
+                None => crate::provider_response::completion_error_from_body(body),
+            };
+            out.push(Err(error));
+            return;
         }
 
         if let Some(blocked) = data.prompt_feedback.as_ref().and_then(blocked_prompt_error) {
@@ -392,9 +445,10 @@ impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    pub(crate) async fn stream(
+    pub(crate) async fn stream_observed(
         &self,
         completion_request: CompletionRequest,
+        observation: Option<crate::observe::AdapterContext>,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let span = CompletionSpanBuilder::new(
@@ -420,13 +474,20 @@ where
 
         let body = serde_json::to_vec(&request)?;
 
-        let req = self
+        let mut req = self
             .client
             .post(format!("{}?alt=sse", streaming_endpoint(&request_model)))?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
+        if let Some(observation) = observation {
+            super::observation::attach(
+                observation,
+                &mut req,
+                "/models/{model}:streamGenerateContent",
+            );
+        }
         Ok(streaming::StreamingCompletionResponse::stream(
             PROVIDER_NAME,
             open_wire_stream(

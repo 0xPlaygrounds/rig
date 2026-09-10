@@ -646,6 +646,8 @@ pub(super) struct Command {
     /// The context a tool call runs with, carried beside the effect (never
     /// in it) to the handler's dispatch context ([`Dispatcher::dispatch_tool_with_id`]).
     pub(super) context: Option<ToolContext>,
+    /// Observation state for this invocation only; never inherited by child dispatches.
+    pub(super) adapter_context: Option<rig_core::observe::AdapterContext>,
     /// Where the tool's published values come back, in dispatch context.
     pub(super) published: Option<Arc<PublishedContext>>,
     pub(super) reply: Reply,
@@ -823,10 +825,21 @@ impl Dispatcher {
         self.dispatch_with_id(self.mint(), key, kind)
     }
 
+    /// Dispatch with explicit invocation observation state. This takes precedence
+    /// over recorder context and is not inherited by subsequent calls.
+    pub fn dispatch_with_context(
+        &self,
+        key: &HandlerKey,
+        kind: EffectKind,
+        context: Option<rig_core::observe::AdapterContext>,
+    ) -> Pending {
+        self.dispatch_in(self.mint(), key, kind, None, context)
+    }
+
     /// [`Dispatcher::dispatch`] under an id minted earlier with
     /// [`Dispatcher::mint_id`].
     pub fn dispatch_with_id(&self, id: EffectId, key: &HandlerKey, kind: EffectKind) -> Pending {
-        self.dispatch_in(id, key, kind, None)
+        self.dispatch_in(id, key, kind, None, None)
     }
 
     /// A tool call under `context`: the context travels beside the effect
@@ -840,7 +853,7 @@ impl Dispatcher {
         kind: EffectKind,
         context: ToolContext,
     ) -> Pending {
-        self.dispatch_in(id, key, kind, Some(context))
+        self.dispatch_in(id, key, kind, Some(context), None)
     }
 
     fn dispatch_in(
@@ -849,6 +862,7 @@ impl Dispatcher {
         key: &HandlerKey,
         kind: EffectKind,
         context: Option<ToolContext>,
+        adapter_context: Option<rig_core::observe::AdapterContext>,
     ) -> Pending {
         let (reply, receiver) = oneshot::channel();
         let (cancel_guard, cancel) = oneshot::channel();
@@ -866,6 +880,7 @@ impl Dispatcher {
                     parent: self.parent,
                     scope: self.scope.clone(),
                     context,
+                    adapter_context,
                     published: published.clone(),
                     reply: Reply::Unary(reply),
                     span: tracing::Span::current(),
@@ -915,6 +930,27 @@ impl Dispatcher {
         key: &HandlerKey,
         kind: EffectKind,
     ) -> EffectStream {
+        self.dispatch_stream_in(id, key, kind, None)
+    }
+
+    /// Stream with explicit invocation observation state, retained through
+    /// lazy startup and stream consumption. Caller context wins over recording.
+    pub fn dispatch_stream_with_context(
+        &self,
+        key: &HandlerKey,
+        kind: EffectKind,
+        context: Option<rig_core::observe::AdapterContext>,
+    ) -> EffectStream {
+        self.dispatch_stream_in(self.mint(), key, kind, context)
+    }
+
+    fn dispatch_stream_in(
+        &self,
+        id: EffectId,
+        key: &HandlerKey,
+        kind: EffectKind,
+        adapter_context: Option<rig_core::observe::AdapterContext>,
+    ) -> EffectStream {
         if !kind.streams() {
             return EffectStream {
                 _cancel_guard: None,
@@ -945,6 +981,7 @@ impl Dispatcher {
                     parent: self.parent,
                     scope: self.scope.clone(),
                     context: None,
+                    adapter_context,
                     published: None,
                     reply: Reply::Stream(events),
                     span: tracing::Span::current(),

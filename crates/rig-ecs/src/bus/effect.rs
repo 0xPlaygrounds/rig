@@ -170,6 +170,8 @@ pub struct Issued(
 /// leaves it alone until the marker is removed (approve), the effect is
 /// denied (`EffectOutcome(Err(..))` inserted) or the entity despawned. The
 /// world-side spelling of a layer that suspends in `before`.
+/// Policies with independent ownership use [`super::acquire_hold`] and
+/// [`super::release_hold`]; removing this marker directly bypasses all owners.
 #[derive(Component, Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Held;
@@ -200,6 +202,8 @@ pub struct Streaming {
     >,
     /// The shared core fold of delivered events.
     pub fold: rig_core::serve::StreamTap,
+    /// Items consumed from this receiver, across collection passes.
+    pub delivered: usize,
 }
 
 impl Streaming {
@@ -218,6 +222,7 @@ impl Streaming {
             Self {
                 events,
                 fold: rig_core::serve::StreamTap::new(),
+                delivered: 0,
             },
             task,
         )

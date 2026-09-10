@@ -55,6 +55,18 @@
 //!   recording also keeps consumer delivery batches. Policy-visible replay
 //!   requires these boundaries and, for streams, kept events and error items;
 //!   it does not reconstruct arbitrary resources or elapsed time.
+//! - **Decisions are witnessed beside the log.** With a [`Witnessing`]
+//!   resource installed ([`Witnessing::install`]), the bus's own systems
+//!   emit a typed `rig_core::observe::Observation` at each decision site —
+//!   an intent issued, deferred by the intake bound or refused by the
+//!   driver; a stream that ended before its terminal record (with its last
+//!   frames); an in-flight cancellation; a landed record and any layer
+//!   verdict that differed from it — and lifecycle observers see the
+//!   transitions a user system makes by component write: `Held` added and
+//!   removed, an outcome landed before dispatch (a `Gate` denial), an
+//!   outcome overwritten after the record closed (a `Judge` replacement).
+//!   A host policy names itself through [`Witnessing::emit`]. The trace is
+//!   an analysis artifact: never replay identity, never part of the log.
 //! - **A scene is a checkpoint.** [`Scene::save`] takes the effect entities
 //!   (intent, ids, outcomes, stream state, causality, scope) and the bound descriptors as
 //!   serde; [`Scene::load`] spawns them back, ids reserved, outcomes kept,
@@ -91,11 +103,13 @@ pub mod delivery;
 pub mod dispatch;
 pub mod effect;
 pub mod handlers;
+pub mod hold;
 pub mod plugin;
 pub mod record;
 #[cfg(feature = "reflect")]
 pub mod reflect;
 pub mod scene;
+pub mod witness;
 
 #[cfg(feature = "replay")]
 pub mod replay;
@@ -110,6 +124,7 @@ pub use effect::{
 pub use handlers::{
     Bound, HandlerTable, Handlers, Served, WorldHandler, WorldServe, answered, unbound,
 };
+pub use hold::{HoldOwners, acquire_hold, release_hold};
 pub use plugin::{
     Bus, BusSet, Intake, Policy, Progress, QUIESCENCE_CAP, RigSchedule, install_bus,
     run_to_quiescence,
@@ -118,6 +133,7 @@ pub use record::{
     Observed, ObservedState, Recording, WorldObserver, record_bound, record_cancelled,
 };
 pub use scene::{Scene, SceneEffect};
+pub use witness::{AdapterOperation, BUS_EMITTER, SubjectWalk, Subjects, Witnessing, bus_emitter};
 
 #[cfg(feature = "replay")]
 pub use delivery::ReplayFailure;

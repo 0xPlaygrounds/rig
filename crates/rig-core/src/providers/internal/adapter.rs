@@ -535,6 +535,13 @@ pub trait WireAdapter {
     /// so the decode-then-validate policy cannot be re-derived per adapter.
     fn classify(&self, frame: Self::Frame) -> WireEvent<Self::Event>;
 
+    /// Whether this frame contains only valid analysis metadata. Such frames
+    /// still pass through classification and interpretation, but do not advance
+    /// observation EOF/corruption positions. Unknown or malformed frames count.
+    fn is_analysis_only(&self, _frame: &Self::Frame) -> bool {
+        false
+    }
+
     /// Map one `Known` event to canonical grammar events. Stateful: index→id
     /// maps, open-block state, id fabrication, and wire-quirk quarantine live
     /// here — policy for unknown/corrupt frames does not (the driver owns it).
@@ -656,7 +663,21 @@ fn unknown_payload_bytes(value: &impl serde::Serialize) -> u64 {
 ///
 /// This is the single policy site for every wire family (see the module table).
 /// Adapters contain no `match WireEvent`.
-pub fn run_wire_stream<A, S>(transport: S, mut adapter: A) -> StreamingResult
+pub fn run_wire_stream<A, S>(transport: S, adapter: A) -> StreamingResult
+where
+    A: WireAdapter + WasmCompatSend + 'static,
+    A::Frame: WasmCompatSend,
+    A::Event: WasmCompatSend,
+    S: Stream<Item = Result<A::Frame, CompletionError>> + WasmCompatSend + 'static,
+{
+    run_wire_stream_observed(transport, adapter, None)
+}
+
+pub(crate) fn run_wire_stream_observed<A, S>(
+    transport: S,
+    mut adapter: A,
+    observation: Option<crate::observe::AdapterSlot>,
+) -> StreamingResult
 where
     A: WireAdapter + WasmCompatSend + 'static,
     A::Frame: WasmCompatSend,
@@ -666,6 +687,7 @@ where
     Box::pin(async_stream::stream! {
         let mut transport = Box::pin(transport);
         let mut out = AdapterOutput::new();
+        let mut frames = 0usize;
         // Debug-mode sequence laws over the raw adapter output: every
         // conformance fixture and cassette replay checks what the adapter
         // ACTUALLY emits, not just what accumulator fixtures spell.
@@ -682,6 +704,7 @@ where
                     // the provider fully delivered (an adapter's buffered tool
                     // calls) still flushes first, so a first-`Err`-stop
                     // consumer sees it.
+                    if let Some(observation) = &observation { observation.fail(&error); }
                     adapter.flush_before_terminal_error(&mut out);
                     for item in out.drain() {
                         yield item;
@@ -691,7 +714,16 @@ where
                 }
             };
 
-            match triage_frame(adapter.classify(frame)) {
+            let analysis_only = observation.is_some() && adapter.is_analysis_only(&frame);
+            let classified = triage_frame(adapter.classify(frame));
+            // Never exempt a corrupt frame, even if the provider's metadata
+            // predicate accepts its shape. Valid analysis may use raw passthrough.
+            if observation.is_some()
+                && !(analysis_only && classified.is_ok())
+            {
+                frames += 1;
+            }
+            match classified {
                 Ok(TriagedFrame::Event(event)) => adapter.interpret(event, &mut out),
                 // Skipped semantically, but surfaced verbatim on the raw
                 // passthrough channel so consumers who want unmodeled frames
@@ -701,6 +733,7 @@ where
                     out.unknown(value);
                 }
                 Err(error) => {
+                    if let Some(observation) = &observation { observation.corrupt(frames); }
                     yield Err(error);
                 }
             }
@@ -712,6 +745,13 @@ where
                 .iter()
                 .any(|item| matches!(item, Ok(StreamEvent::Final(_))));
             for item in out.drain() {
+                if let Some(observation) = &observation {
+                    match &item {
+                        Ok(StreamEvent::Final(_)) => observation.finish(crate::observe::AdapterEnding::Terminal),
+                        Err(error) => observation.fail(error),
+                        _ => {}
+                    }
+                }
                 yield item;
             }
             if saw_terminal || adapter.is_finished() {
@@ -719,11 +759,24 @@ where
             }
         }
 
+        if let Some(observation) = &observation {
+            observation.transport_eof(frames);
+        }
         adapter.finish(&mut out);
         #[cfg(any(test, debug_assertions))]
         sequence_laws.check_batch(&out);
         for item in out.drain() {
+            if let Some(observation) = &observation {
+                match &item {
+                    Ok(StreamEvent::Final(_)) => observation.finish(crate::observe::AdapterEnding::Terminal),
+                    Err(error) => observation.fail(error),
+                    _ => {}
+                }
+            }
             yield item;
+        }
+        if let Some(observation) = &observation {
+            observation.eof(frames);
         }
     })
 }

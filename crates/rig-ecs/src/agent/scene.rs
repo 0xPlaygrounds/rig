@@ -142,6 +142,10 @@ pub struct WorldScene {
     /// `effects.effects`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub slots: Vec<(usize, ToolCallSlot)>,
+    /// Tool effects still waiting for the runtime's concurrency slot.
+    /// Independent named barriers are saved with the corresponding bus effect.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub batch_held: Vec<usize>,
     /// Which index each retrieval effect asks for ([`Retrieval`]), by
     /// index into `effects.effects`: a run cut while retrieving resumes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -268,7 +272,17 @@ pub fn save_world(world: &mut World) -> Result<WorldScene, rig_core::error::Erro
                 .map(|retrieval| (index, *retrieval))
         })
         .collect();
+    let batch_held = rows
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (entity, _))| {
+            world
+                .get::<crate::systems::BatchHeld>(*entity)
+                .map(|_| index)
+        })
+        .collect();
     Ok(WorldScene {
+        batch_held,
         graph,
         effects,
         slots,
@@ -314,6 +328,34 @@ pub fn load_world(
             ));
         }
     }
+    for (index, effect) in scene.effects.effects.iter().enumerate() {
+        if effect
+            .hold_owners
+            .as_ref()
+            .is_some_and(|owners| owners.owners().any(|owner| owner.name == "rig-ecs/batch"))
+            && !scene.batch_held.contains(&index)
+        {
+            return Err(extension_error(
+                "batch owner is missing its runtime hold marker",
+            ));
+        }
+    }
+    for index in &scene.batch_held {
+        let Some(effect) = scene.effects.effects.get(*index) else {
+            return Err(extension_error("batch hold refers to a missing effect"));
+        };
+        if !effect.held
+            || !effect
+                .hold_owners
+                .as_ref()
+                .is_some_and(|owners| owners.owners().any(|owner| owner.name == "rig-ecs/batch"))
+            || !scene.slots.iter().any(|(slot, _)| slot == index)
+        {
+            return Err(extension_error(
+                "batch hold is missing its barrier, owner or tool slot",
+            ));
+        }
+    }
     let registry = world
         .get_resource::<SceneExtensions>()
         .cloned()
@@ -338,6 +380,11 @@ pub fn load_world(
     for (index, slot) in &scene.slots {
         if let Some(effect) = effects.get(*index).copied() {
             world.entity_mut(effect).insert(slot.clone());
+        }
+    }
+    for index in &scene.batch_held {
+        if let Some(effect) = effects.get(*index).copied() {
+            world.entity_mut(effect).insert(crate::systems::BatchHeld);
         }
     }
     for (index, retrieval) in &scene.retrievals {

@@ -48,122 +48,131 @@ where
     A::Payload: serde::Serialize,
     F: FnOnce(&A::Payload),
 {
-    let response = match client.send::<_, Bytes>(request).await {
-        Ok(response) => response,
-        // The reqwest transport reports a non-success status as an error with
-        // the failed response's headers preserved. A provider with a
-        // request-id contract reads its header off them so the failed call's
-        // transport id — the one support asks for — survives onto the error
-        // (rig#2314); classification then follows the contract, so a given
-        // provider's errors stay one shape. Either way the whole header map
-        // rides along, so a caller can still read `Retry-After` off a 429
-        // (rig#2210).
-        Err(crate::http_client::Error::InvalidStatusCodeWithDetails {
-            status,
-            body,
-            headers,
-        }) => {
-            return Err(match request_id_header {
-                Some(header) => {
-                    let provider_request_id = headers
-                        .get(header)
-                        .and_then(|value| value.to_str().ok())
-                        .filter(|value| !value.is_empty())
-                        .map(str::to_string);
-                    CompletionError::from_http_response_with_request_id(
-                        status,
-                        body,
-                        provider_request_id,
-                    )
-                    .with_response_headers(Some(headers))
+    send_completion_with::<C, A, F, _, _>(
+        client,
+        request,
+        label,
+        request_id_header,
+        record_telemetry,
+        Ok,
+    )
+    .await
+}
+
+/// Keep the attempt alive through provider normalization, including rejection
+/// of a decoded empty/blocked response. The raw API uses an identity mapping.
+pub(crate) async fn send_completion_with<C, A, F, N, R>(
+    client: &C,
+    request: crate::http_client::Request<Vec<u8>>,
+    label: &str,
+    request_id_header: Option<&str>,
+    record_telemetry: F,
+    normalize: N,
+) -> Result<(R, Option<String>), CompletionError>
+where
+    C: HttpClientExt,
+    A: DeserializeOwned + ProviderEnvelope,
+    A::Payload: serde::Serialize,
+    F: FnOnce(&A::Payload),
+    N: FnOnce(A::Payload) -> Result<R, CompletionError>,
+{
+    let mut attempt = crate::observe::AdapterContext::from_request(&request);
+    let result = async {
+        let response = match client.send::<_, Bytes>(request).await.inspect_err(|error| {
+            if let Some(attempt) = &mut attempt {
+                if let Some(status) = error.non_success_status() {
+                    attempt.response_with_headers(status, error.non_success_headers());
                 }
-                // Contract-less providers keep the pre-#2314 transport shape;
-                // the details variant is that shape plus the headers, and
-                // displays identically.
-                None => CompletionError::HttpError(
-                    crate::http_client::Error::InvalidStatusCodeWithDetails {
-                        status,
-                        body,
-                        headers,
-                    },
-                ),
-            });
-        }
-        // A transport that reports non-success without preserved headers (a
-        // custom `HttpClientExt`): a contract provider still classifies as
-        // ProviderResponse — the shape follows the contract on every
-        // transport — with no id to read.
-        Err(crate::http_client::Error::InvalidStatusCodeWithMessage(status, body))
-            if request_id_header.is_some() =>
-        {
-            return Err(CompletionError::from_http_response_with_request_id(
-                status, body, None,
-            ));
-        }
-        Err(other) => return Err(other.into()),
-    };
-
-    // Take the response apart before awaiting the body: that hands over the
-    // headers already owned, so preserving them onto an error (rig#2210) costs
-    // no clone and every error path below can afford them — including the 2xx
-    // error envelope, which is a failure the caller may need to back off from
-    // even though its status says success.
-    let (parts, body) = response.into_parts();
-    let status = parts.status;
-    let provider_request_id = request_id_header.and_then(|header| {
-        parts
-            .headers
-            .get(header)
-            .and_then(|value| value.to_str().ok())
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-    });
-    let response_headers = Some(Box::new(parts.headers));
-    let body = body.await.map_err(CompletionError::HttpError)?;
-
-    if !status.is_success() {
-        // A provider with a request-id contract routes through the
-        // metadata-aware funnel so the failed call's transport id — the one
-        // support asks for — survives onto the error (rig#2314).
-        // Classification follows the contract, not the header's presence on
-        // a particular response, so a given provider's errors stay one shape.
-        return Err(match request_id_header {
-            Some(_) => CompletionError::from_http_response_with_request_id(
+                if let Some(body) = error.non_success_body() {
+                    attempt.payload(body.as_bytes());
+                }
+            }
+        }) {
+            Ok(response) => response,
+            // The reqwest transport reports a non-success status as an error with
+            // the failed response's headers preserved. A provider with a
+            // request-id contract reads its header off them so the failed call's
+            // transport id — the one support asks for — survives onto the error
+            // (rig#2314); classification then follows the contract, so a given
+            // provider's errors stay one shape. Either way the whole header map
+            // rides along, so a caller can still read `Retry-After` off a 429
+            // (rig#2210).
+            Err(crate::http_client::Error::InvalidStatusCodeWithDetails {
                 status,
-                String::from_utf8_lossy(&body),
-                provider_request_id,
-            ),
-            None => CompletionError::from_http_response(status, String::from_utf8_lossy(&body)),
-        }
-        .with_response_headers(response_headers));
-    }
+                body,
+                headers,
+            }) => {
+                return Err(match request_id_header {
+                    Some(header) => {
+                        let provider_request_id = headers
+                            .get(header)
+                            .and_then(|value| value.to_str().ok())
+                            .filter(|value| !value.is_empty())
+                            .map(str::to_string);
+                        CompletionError::from_http_response_with_request_id(
+                            status,
+                            body,
+                            provider_request_id,
+                        )
+                        .with_response_headers(Some(headers))
+                    }
+                    // Contract-less providers keep the pre-#2314 transport shape;
+                    // the details variant is that shape plus the headers, and
+                    // displays identically.
+                    None => CompletionError::HttpError(
+                        crate::http_client::Error::InvalidStatusCodeWithDetails {
+                            status,
+                            body,
+                            headers,
+                        },
+                    ),
+                });
+            }
+            // A transport that reports non-success without preserved headers (a
+            // custom `HttpClientExt`): a contract provider still classifies as
+            // ProviderResponse — the shape follows the contract on every
+            // transport — with no id to read.
+            Err(crate::http_client::Error::InvalidStatusCodeWithMessage(status, body))
+                if request_id_header.is_some() =>
+            {
+                return Err(CompletionError::from_http_response_with_request_id(
+                    status, body, None,
+                ));
+            }
+            Err(other) => return Err(other.into()),
+        };
 
-    let envelope: A = serde_json::from_slice(&body).map_err(|err| {
-        tracing::error!(
-            error = %err,
-            body = %String::from_utf8_lossy(&body),
-            "failed to deserialize {label} response"
-        );
-        CompletionError::JsonError(err)
-    })?;
-
-    match envelope.into_payload() {
-        Ok(payload) => {
-            record_telemetry(&payload);
-            super::trace_json(
-                crate::providers::internal::LogTarget::Completions,
-                &format!("{label} response"),
-                &payload,
-            );
-            Ok((payload, provider_request_id))
+        // Take the response apart before awaiting the body: that hands over the
+        // headers already owned, so preserving them onto an error (rig#2210) costs
+        // no clone and every error path below can afford them — including the 2xx
+        // error envelope, which is a failure the caller may need to back off from
+        // even though its status says success.
+        let (parts, body) = response.into_parts();
+        let status = parts.status;
+        if let Some(attempt) = &mut attempt {
+            attempt.response_with_headers(status, Some(&parts.headers));
         }
-        Err(message) => {
-            tracing::warn!(message = %message, "provider returned an error response");
-            // A 2xx error envelope preserves as ProviderResponse either way;
-            // the metadata-aware funnel just adds the captured id. Its headers
-            // matter as much as a non-success response's: gateways report rate
-            // limits this way, with `Retry-After` alongside a 200 (rig#2210).
-            Err(match request_id_header {
+        let provider_request_id = request_id_header.and_then(|header| {
+            parts
+                .headers
+                .get(header)
+                .and_then(|value| value.to_str().ok())
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+        });
+        let response_headers = Some(Box::new(parts.headers));
+        let body = body.await.map_err(CompletionError::HttpError)?;
+        if let Some(attempt) = &mut attempt {
+            attempt.payload(&body);
+        }
+
+        if !status.is_success() {
+            // A provider with a request-id contract routes through the
+            // metadata-aware funnel so the failed call's transport id — the one
+            // support asks for — survives onto the error (rig#2314).
+            // Classification follows the contract, not the header's presence on
+            // a particular response, so a given provider's errors stay one shape.
+            return Err(match request_id_header {
                 Some(_) => CompletionError::from_http_response_with_request_id(
                     status,
                     String::from_utf8_lossy(&body),
@@ -171,9 +180,68 @@ where
                 ),
                 None => CompletionError::from_http_response(status, String::from_utf8_lossy(&body)),
             }
-            .with_response_headers(response_headers))
+            .with_response_headers(response_headers));
+        }
+
+        let envelope: A = serde_json::from_slice(&body).map_err(|err| {
+            tracing::error!(
+                error = %err,
+                body = %String::from_utf8_lossy(&body),
+                "failed to deserialize {label} response"
+            );
+            CompletionError::JsonError(err)
+        })?;
+
+        match envelope.into_payload() {
+            Ok(payload) => {
+                record_telemetry(&payload);
+                super::trace_json(
+                    crate::providers::internal::LogTarget::Completions,
+                    &format!("{label} response"),
+                    &payload,
+                );
+                normalize(payload).map(|payload| (payload, provider_request_id))
+            }
+            Err(message) => {
+                tracing::warn!(message = %message, "provider returned an error response");
+                // A 2xx error envelope preserves as ProviderResponse either way;
+                // the metadata-aware funnel just adds the captured id. Its headers
+                // matter as much as a non-success response's: gateways report rate
+                // limits this way, with `Retry-After` alongside a 200 (rig#2210).
+                Err(match request_id_header {
+                    Some(_) => CompletionError::from_http_response_with_request_id(
+                        status,
+                        String::from_utf8_lossy(&body),
+                        provider_request_id,
+                    ),
+                    None => {
+                        CompletionError::from_http_response(status, String::from_utf8_lossy(&body))
+                    }
+                }
+                .with_response_headers(response_headers))
+            }
         }
     }
+    .await;
+    if let Some(attempt) = &mut attempt {
+        let ending = match &result {
+            Ok(_) => crate::observe::AdapterEnding::Decoded,
+            Err(error) => {
+                if let Some(status) = error.provider_response_status() {
+                    attempt.response(status);
+                }
+                let report = crate::error::ErrorReport::from(error);
+                crate::observe::AdapterEnding::Error {
+                    boundary: crate::observe::AdapterErrorBoundary::from_completion(error),
+                    kind: report.kind.code().to_owned(),
+                    status: report.http_status,
+                    retryable: report.is_retryable(),
+                }
+            }
+        };
+        attempt.finish(ending);
+    }
+    result
 }
 
 /// rig#2210: the failed response's headers must survive the driver, so a

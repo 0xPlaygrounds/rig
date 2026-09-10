@@ -61,6 +61,7 @@ fn command(id: u64) -> (Box<Command>, Receiver) {
             parent: None,
             scope: None,
             context: None,
+            adapter_context: None,
             published: None,
             reply: Reply::Unary(reply),
             span: tracing::Span::none(),

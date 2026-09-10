@@ -552,6 +552,7 @@ fn a_loaded_scene_never_collides_with_minted_ids() {
                 parent_ref: None,
                 scope: None,
                 held: false,
+                hold_owners: None,
                 tool_inputs: None,
                 tool_outputs: None,
             })

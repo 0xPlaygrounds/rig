@@ -764,6 +764,8 @@ mod unit {
         unknowns: usize,
         terminals: Vec<rig::streaming::StreamFinal>,
         errors: usize,
+        /// The error items' messages, in order.
+        error_messages: Vec<String>,
         last_was_terminal: bool,
         response: Option<rig::streaming::StreamFinal>,
     }
@@ -797,6 +799,7 @@ mod unit {
             unknowns: 0,
             terminals: Vec::new(),
             errors: 0,
+            error_messages: Vec::new(),
             last_was_terminal: false,
             response: None,
         };
@@ -824,9 +827,10 @@ mod unit {
                         _ => {}
                     }
                 }
-                Err(_) => {
+                Err(error) => {
                     run.last_was_terminal = false;
                     run.errors += 1;
+                    run.error_messages.push(error.to_string());
                 }
             }
         }
@@ -894,6 +898,54 @@ mod unit {
         assert!(run.terminals.is_empty(), "truncation is still truncation");
         assert!(run.response.is_none());
         assert_eq!(run.text, "The answer is 42.");
+    }
+
+    /// Gemini's in-band abort: a frame carrying only its error envelope.
+    const ERROR_FRAME: &str =
+        r#"{"error":{"code":500,"message":"An internal error has occurred.","status":"INTERNAL"}}"#;
+
+    #[tokio::test]
+    async fn an_error_frame_after_text_is_the_providers_verdict_not_a_truncation() {
+        let run = run(&[ANSWER, ERROR_FRAME]).await;
+        assert_eq!(run.text, "The answer is 42.");
+        assert_eq!(
+            run.unknowns, 0,
+            "the envelope is a modeled frame, never skipped"
+        );
+        assert_eq!(run.errors, 1, "one error item: the provider's");
+        assert!(
+            run.terminals.is_empty(),
+            "no terminal record after an abort"
+        );
+        let message = &run.error_messages[0];
+        assert!(
+            message.contains("INTERNAL"),
+            "the envelope's status survives: {message}"
+        );
+        assert!(
+            message.contains("An internal error has occurred."),
+            "the envelope's message survives: {message}"
+        );
+        assert!(
+            !message.contains("terminal record"),
+            "not reported as a cut stream: {message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_error_frame_alone_is_the_providers_verdict() {
+        let run = run(&[ERROR_FRAME]).await;
+        assert!(run.text.is_empty());
+        assert_eq!(run.errors, 1);
+        assert!(run.terminals.is_empty());
+        assert!(run.error_messages[0].contains("INTERNAL"));
+    }
+
+    #[tokio::test]
+    async fn frames_after_an_error_frame_are_not_read() {
+        let run = run(&[ERROR_FRAME, ANSWER]).await;
+        assert_eq!(run.errors, 1);
+        assert!(run.text.is_empty(), "the abort is the wire's terminal");
     }
 
     #[tokio::test]

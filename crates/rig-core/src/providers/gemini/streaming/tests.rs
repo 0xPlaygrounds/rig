@@ -772,6 +772,23 @@ mod terminal_emission {
     }
 
     #[tokio::test]
+    async fn id_only_frame_updates_terminal_metadata_without_content() {
+        let (texts, saw_error, saw_terminal, stream) = collect(sse(&[
+            CONTENT_CHUNK,
+            TERMINAL_CHUNK,
+            r#"{"responseId":"last-response"}"#,
+        ]))
+        .await;
+        assert_eq!(texts, ["hi", "!"]);
+        assert!(!saw_error);
+        assert!(saw_terminal);
+        assert_eq!(
+            stream.response.unwrap().response_id.as_deref(),
+            Some("last-response")
+        );
+    }
+
+    #[tokio::test]
     async fn malformed_frame_then_real_terminal_still_completes_the_stream() {
         let (texts, saw_error, saw_terminal, stream) =
             collect(sse(&[CONTENT_CHUNK, "{not json", TERMINAL_CHUNK])).await;
@@ -922,4 +939,55 @@ async fn blocked_prompt_with_an_unrecognised_safety_category_still_names_the_blo
         report.message
     );
     assert!(!finished);
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[tokio::test]
+async fn in_band_http_errors_match_unary_classification_and_preserve_the_envelope() {
+    for code in [400, 401, 404, 429, 500, 503] {
+        let body = json!({"error": {"code": code, "message": "Keep CASE", "status": "VERDICT"}})
+            .to_string();
+        let (items, finished) = collect_stream(&[&body]).await;
+        let errors: Vec<_> = items
+            .iter()
+            .filter_map(|item| item.as_ref().err())
+            .collect();
+        assert_eq!(errors.len(), 1, "{items:?}");
+        assert!(!finished);
+        let unary = crate::error::ErrorReport::from(CompletionError::from_http_response(
+            http::StatusCode::from_u16(code).expect("HTTP error status"),
+            body.clone(),
+        ));
+        assert_eq!(errors[0].kind, unary.kind);
+        assert_eq!(errors[0].http_status, unary.http_status);
+        assert_eq!(errors[0].is_retryable(), unary.is_retryable());
+        assert_eq!(errors[0].provider_response_body(), Some(body.as_str()));
+    }
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[tokio::test]
+async fn in_band_opaque_or_invalid_codes_do_not_invent_http_status() {
+    for code in [
+        json!(null),
+        json!("503"),
+        json!(14),
+        json!(-1),
+        json!(200),
+        json!(700),
+        json!(65536),
+    ] {
+        let body = json!({"error": {"code": code, "message": "unknown"}}).to_string();
+        let (items, finished) = collect_stream(&[&body]).await;
+        let errors: Vec<_> = items
+            .iter()
+            .filter_map(|item| item.as_ref().err())
+            .collect();
+        assert_eq!(errors.len(), 1, "{items:?}");
+        assert!(!finished);
+        assert_eq!(errors[0].kind, crate::error::ErrorKind::ProviderResponse);
+        assert_eq!(errors[0].http_status, None);
+        assert!(!errors[0].is_retryable());
+        assert_eq!(errors[0].provider_response_body(), Some(body.as_str()));
+    }
 }

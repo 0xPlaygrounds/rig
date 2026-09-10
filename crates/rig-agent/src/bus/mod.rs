@@ -209,7 +209,11 @@
 //! # Record and replay
 //!
 //! [`BusDriver::record_to`] takes any [`Recorder`](rig_core::serve::Recorder)
-//! — a handler-side seam, so a recorder needs no runtime crate; `rig_effect_log`'s
+//! implementation. Its optional `adapter_context(id)` forwards a host-owned
+//! witness context through the dispatch observer to completion adapters, without
+//! a World. A request's explicit context takes precedence; adapter facts remain
+//! outside the effect log. Contexts must distinguish concurrent logical calls.
+//! The recorder is a handler-side seam and needs no runtime crate; `rig_effect_log`'s
 //! `EffectLogRecorder` is the one that folds every served dispatch into an
 //! effect log as it resolves, and its `EffectLogReplayer` is the handler
 //! that answers the same dispatches from the record instead of a provider.

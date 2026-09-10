@@ -51,6 +51,10 @@ struct Recorded<R> {
 }
 
 impl<R: Recorder + Send + Sync> Observe for Recorded<R> {
+    fn adapter_context(&self) -> Option<rig_core::observe::AdapterContext> {
+        self.recorder.adapter_context(self.id)
+    }
+
     fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
         if let Some(output) = self
             .published
@@ -73,7 +77,7 @@ impl<R: Recorder + Send + Sync> Observe for Recorded<R> {
         self.recorder.stream_error(self.id, error);
     }
 
-    fn discard(&mut self) {
+    fn discard(&mut self, _: &str) {
         self.recorder.discard(self.id);
     }
 
@@ -303,6 +307,7 @@ impl BusDriver {
             parent,
             scope,
             context,
+            adapter_context,
             published,
             reply,
             span,
@@ -335,6 +340,9 @@ impl BusDriver {
         );
         let mut dispatch = Dispatch::new(id, matches!(&reply, super::dispatcher::Reply::Stream(_)))
             .with_scope(Arc::new(scoped));
+        if let Some(context) = adapter_context {
+            dispatch = dispatch.with_adapter_context(context);
+        }
         // A tool call's context, beside the effect: the inbound values the
         // tool runs with, and where what it publishes comes back.
         if let Some(context) = context {

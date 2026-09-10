@@ -163,6 +163,69 @@ async fn binding_checks_the_family_typed_at_bind_time() {
 }
 
 #[tokio::test]
+async fn concurrent_model_handles_preserve_explicit_observation_contexts() {
+    use rig_core::observe::{AdapterContext, ObservationLog, Subject};
+    use std::sync::Arc;
+
+    for streamed in [false, true] {
+        let provider = if streamed {
+            MockCompletionModel::from_stream_turns((0..2).map(|_| {
+                vec![
+                    MockStreamEvent::text("same"),
+                    MockStreamEvent::final_response_with_total_tokens(1),
+                ]
+            }))
+        } else {
+            MockCompletionModel::from_turns((0..2).map(|_| MockTurn::text("same")))
+        };
+        let (dispatcher, _registrar, mut driver) = Bus::channel();
+        driver
+            .register("model", CompletionAdapter::new("mock", provider.clone()))
+            .unwrap();
+        let task = tokio::spawn(driver);
+        let handle: ModelHandle = dispatcher.handle(&HandlerKey::from("model")).unwrap();
+        let sink = Arc::new(ObservationLog::default());
+        let contexts: Vec<_> = ["operation/a", "operation/b"]
+            .into_iter()
+            .map(|operation| {
+                Some(AdapterContext::new(
+                    sink.clone(),
+                    Subject::scoped("direct"),
+                    operation,
+                ))
+            })
+            .collect();
+        if streamed {
+            let consume = |context| {
+                let mut stream = handle.stream_with_context(request(), context);
+                async move {
+                    while let Some(event) = within(stream.next()).await {
+                        event.unwrap();
+                    }
+                    assert_eq!(stream.finish().choice, vec![AssistantContent::text("same")]);
+                }
+            };
+            tokio::join!(consume(contexts[0].clone()), consume(contexts[1].clone()));
+        } else {
+            let (a, b) = tokio::join!(
+                within(handle.complete_with_context(request(), contexts[0].clone())),
+                within(handle.complete_with_context(request(), contexts[1].clone()))
+            );
+            assert_eq!(a.unwrap().choice, vec![AssistantContent::text("same")]);
+            assert_eq!(b.unwrap().choice, vec![AssistantContent::text("same")]);
+        }
+        let received = provider.contexts();
+        let mut operations: Vec<_> = received
+            .iter()
+            .map(|request| request.as_ref().unwrap().operation())
+            .collect();
+        operations.sort_unstable();
+        assert_eq!(operations, ["operation/a", "operation/b"]);
+        task.abort();
+    }
+}
+
+#[tokio::test]
 async fn model_handle_completes_and_streams() {
     let (dispatcher, _registrar, _task) = bus();
     let model: ModelHandle = dispatcher

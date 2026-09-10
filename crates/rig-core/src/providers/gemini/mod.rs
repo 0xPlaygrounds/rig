@@ -21,6 +21,7 @@ pub mod embedding;
 pub mod image_generation;
 pub mod interactions_api;
 pub mod model_listing;
+mod observation;
 pub mod streaming;
 pub mod transcription;
 

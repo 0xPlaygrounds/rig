@@ -74,7 +74,7 @@ The agent's sets, around the bus's:
 | `RigSet::Select` | a run may lack a model of its own | the agent's `UsesModel`, copied — a routing system before it gives the run another |
 | `RigSet::Assemble` | a fresh turn's graph is complete | the fold spawns the effect; the run is `AwaitingModel` |
 | `RigSet::Patch` | the folded effect is a `PendingEffect` | the second steering slot: a user system rewrites the folded request |
-| `RigSet::Release` | a turn's tool batch is out | `release_batch` un-holds the next calls up to the concurrency, in call order |
+| `RigSet::Release` | a turn's tool batch is out | `release_batch` releases its `rig-ecs/batch` owner up to the concurrency, in call order. Policies use `bus::acquire_hold` and `bus::release_hold` with distinct stable emitter names; `Held` remains until every owner releases. A pre-existing bare `Held` is retained as an independent unknown owner. |
 | *`BusSet::Gate` … `BusSet::Judge`* | | |
 | `RigSet::Fold` | the effect may have streamed or landed | `Outputs` on the turn |
 | `RigSet::Judge` | the turn's outputs are complete | a user system may rewrite them, or a tool child's `EffectOutcome` |
@@ -234,6 +234,46 @@ The Bevy host fixture's fourteen proofs and the eight unproven behaviours of `ri
 ## What it deliberately does not have
 
 No hook trait, no history vector, no step enum, no run struct copied from anywhere, no batch machine (the batch is the turn's children and a query): steering is a system between sets. Program identity is data: `replay::stamp_run` writes the run's scope into `LogHeader::programs` and `replay::check_replayable` refuses a foreign log by policy or by row (`tests/run_identity.rs`). Memory is the graph and retrieval attaches (`tests/memory_graph.rs`); two runs on one agent are two `spawn_run`s; resume is a scene load (`agent::scene::{save_world, load_world}`, every resume and checkpoint row of the corpus as a world cell, CONTRACT §13). The `bus` module still has no agent-shaped item and its suite is agent-free (the guard checks). No streaming answers from a system yet (a later PR). `Scene` is the crate's own serde form and stores what this module owns; a host's other components are its own to save. No `Now`, no `Random`: nondeterminism is an effect a host registers, and the guard refuses a clock or a random draw in this crate.
+
+## The witness: decisions beside the record
+
+The effect log is the replay oracle: what a handler served and answered.
+A `Witnessing` resource (`rig_ecs::bus::Witnessing::install(world, sink)`,
+any `rig_core::observe::Witness`; `rig_core::observe::ObservationLog` is the
+bounded in-memory one) records what happened *around* those exchanges, as
+typed `Observation`s with a `Subject` (scope, dispatch order, effect id,
+parent, key), a `Stage` (`Gate`, `Dispatch`, `Handler`, `Collect`, `Judge`,
+`Runtime`, `Host`), an `Emitter` and an `Action`:
+
+| site | fact |
+|---|---|
+| a `Gate` system writes `Held` / removes it | `Held` / `Released` (emitter unknown unless the policy emits) |
+| a `Gate` system answers an intent before dispatch | `Denied { reason }` |
+| `Dispatch` | `Issued`; `Refused { handler_unavailable \| reentrant \| ids_exhausted }` |
+| a layer (`Intercept`) denies | `Denied { layer_discarded }` at `Handler`, the emitter named after the layer |
+| `Collect` | `StreamTruncated { delivered, tail, errors }`, `Landed { outcome }`, `Replaced` when a layer's verdict differed from the record (emitter named after the layer that said it replaced; unknown for a difference no layer claimed), `Cancelled` for a despawn in flight |
+| a `Judge` system overwrites a settled outcome (by insert; an in-place `Mut` rewrite must emit for itself) | `Replaced { recorded, consumed }`, whenever the whole value changed |
+| the agent runtime | `Ended { settled \| max_turns \| provider \| cancelled \| … }` |
+| Gemini unary and SSE drivers | `Adapter` send/status, usage, provider verdict/error envelope, EOF and closure facts at `Handler`, with execution-local operation and send ordinal; explicit invocation context takes precedence over the bus context |
+| a host system | `Witnessing::emit(subject, Stage::Host, Emitter::versioned(..), HostAction::action(..))` |
+
+Attach `bus::AdapterOperation` to a pending completion before dispatch when
+the host owns retry correlation. The bus binds its current effect, scope and
+parent while retaining the supplied operation's witness and send counter.
+The component's nonzero host attempt ordinal stays separate from the HTTP
+send ordinal. Without it, the bus creates an operation for the individual
+effect. The component is runtime-only and is not scene/effect-log state.
+
+The observation API does not promise semantic execution comparison. Tests use
+`rig_core::test_utils::observations` for deterministic fixture comparisons;
+applications own their comparison and aggregation rules. Optional host-clock
+stamps are diagnostic data. No run, handler or provider interval is calculated.
+`crates/rig-ecs/tests/bus_witness.rs` and `run_witness.rs` cover the emitted facts.
+
+World scenes preserve named hold owners and the batch scheduling marker together.
+A restored batch releases only its own hold; independent policy holds remain in
+force. Bare `Held` barriers remain unknown holds and require host reevaluation.
+Observation enablement does not affect hold ownership or checkpoint correctness.
 
 ## Replay delivery and streaming
 

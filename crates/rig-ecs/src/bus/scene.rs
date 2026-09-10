@@ -62,9 +62,14 @@ pub struct SceneEffect {
     /// The entity's own scope, if it carried one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
-    /// Whether a `Gate` system was holding it.
+    /// Whether a runtime or policy barrier was holding it.
+    /// A bare hold without named owners remains an unknown barrier at load.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub held: bool,
+    /// Independent owners of the saved barrier. Preserved so releasing the
+    /// runtime batch cannot release a policy hold after checkpoint restoration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hold_owners: Option<super::HoldOwners>,
     /// The context a tool call runs with ([`ToolInputs`]), when it carried one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_inputs: Option<ToolContext>,
@@ -148,6 +153,7 @@ impl Scene {
                 parent_ref,
                 scope: entity_ref.get::<Scope>().map(|scope| scope.0.clone()),
                 held: entity_ref.contains::<Held>(),
+                hold_owners: entity_ref.get::<super::HoldOwners>().cloned(),
                 tool_inputs: entity_ref
                     .get::<ToolInputs>()
                     .map(|inputs| inputs.0.clone()),
@@ -229,6 +235,9 @@ impl Scene {
                 entity.insert(Scope(scope.clone()));
             }
             if effect.held {
+                if let Some(owners) = &effect.hold_owners {
+                    entity.insert(owners.clone());
+                }
                 entity.insert(Held);
             }
             if let Some(inputs) = &effect.tool_inputs {

@@ -143,6 +143,22 @@ pub fn record_outcome(
 #[derive(Component, Clone, Default)]
 pub struct Observed(pub Arc<ObservedState>);
 
+/// The dispatch's replacement slot (`Dispatch::replaced_by`): the layer
+/// whose verdict the consumer's answer is from, once one said so. Runtime-
+/// only; removed with the in-flight markers at collection.
+#[derive(Component)]
+pub struct ReplacedBy(pub Arc<std::sync::Mutex<Option<String>>>);
+
+impl ReplacedBy {
+    /// The layer named, if any.
+    pub fn layer(&self) -> Option<String> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
 /// The observer's slots.
 #[derive(Default)]
 pub struct ObservedState {
@@ -188,6 +204,8 @@ impl ObservedState {
 /// it is told are the innermost handler's — what the record holds,
 /// whatever verdict the outer reply carries to the world.
 pub struct WorldObserver {
+    /// Explicit host operation, already bound to this dispatch's subject.
+    pub adapter: Option<rig_core::observe::AdapterContext>,
     /// Tool output shared with the caller, read without consuming it.
     pub published: Option<Arc<rig_core::tool::PublishedContext>>,
     /// The dispatch.
@@ -196,6 +214,8 @@ pub struct WorldObserver {
     pub recording: Option<Recording>,
     /// The shared slots.
     pub observed: Arc<ObservedState>,
+    /// The world's witness with the current dispatch subject.
+    pub witness: Option<(super::witness::Witnessing, rig_core::observe::Subject)>,
 }
 
 impl WorldObserver {
@@ -224,6 +244,20 @@ impl WorldObserver {
 }
 
 impl rig_core::serve::Observe for WorldObserver {
+    fn adapter_context(&self) -> Option<rig_core::observe::AdapterContext> {
+        if let Some(context) = &self.adapter {
+            return Some(context.clone());
+        }
+        let (witness, subject) = self.witness.as_ref()?;
+        let mut subject = subject.clone();
+        subject.effect = Some(self.id);
+        Some(rig_core::observe::AdapterContext::new(
+            witness.sink().clone(),
+            subject,
+            format!("effect/{}", self.id),
+        ))
+    }
+
     fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
         let mut state = self.observed.lock();
         if !state.closed {
@@ -270,12 +304,24 @@ impl rig_core::serve::Observe for WorldObserver {
         }
     }
 
-    fn discard(&mut self) {
+    fn discard(&mut self, layer: &str) {
         let mut state = self.observed.lock();
         if !state.closed {
             state.discarded = true;
             if let Some(recording) = &self.recording {
                 recording.discard(self.id);
+            }
+            if let Some((witness, subject)) = &self.witness {
+                let mut subject = subject.clone();
+                subject.effect = Some(self.id);
+                witness.emit(
+                    subject,
+                    rig_core::observe::Stage::Handler,
+                    rig_core::observe::Emitter::named(layer),
+                    rig_core::observe::Action::Denied {
+                        reason: rig_core::observe::Reason::code("layer_discarded"),
+                    },
+                );
             }
         }
     }
@@ -333,6 +379,35 @@ pub fn record_cancelled(
         }
         recording.resolve(*id, original.unwrap_or_else(|| Err(cancelled())));
     }
+}
+
+/// An in-flight effect losing `InFlight` without an outcome, seen by the
+/// witness: a cancelled dispatch, whether or not a record is kept.
+pub fn witness_cancelled(
+    removed: On<Remove, InFlight>,
+    effects: Query<(Has<EffectOutcome>, Option<&Observed>), With<Issued>>,
+    subjects: super::witness::Subjects,
+    witness: Option<Res<super::witness::Witnessing>>,
+) {
+    let entity = removed.event().entity;
+    let Some(witness) = witness else {
+        return;
+    };
+    let Ok((answered, observed)) = effects.get(entity) else {
+        return;
+    };
+    if answered || observed.is_some_and(|observed| observed.0.is_discarded()) {
+        return;
+    }
+    let observation = rig_core::observe::Observation::new(
+        subjects.of(entity),
+        rig_core::observe::Stage::Collect,
+        super::witness::bus_emitter(),
+        rig_core::observe::Action::Cancelled {
+            reason: rig_core::observe::Reason::from_report(&cancelled()),
+        },
+    );
+    witness.observe(observation);
 }
 
 /// A handler bound (or re-bound) while recording: described to the

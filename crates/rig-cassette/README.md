@@ -33,6 +33,9 @@ The engine retains secret and generated-identifier scrubbing, strict request
 matching, and safety validation. Repository-specific source scans and fixture
 censuses remain with each caller. Rig's adapter in `tests/common/cassettes.rs`
 supplies its own root; a downstream can supply `fixtures/cassettes` instead.
+`Retry-After` response headers retain canonical seconds or HTTP dates for
+replay diagnostics; malformed values are discarded instead of persisting
+arbitrary server text. Generated request IDs remain placeholdered.
 
 ```sh
 RIG_PROVIDER_TEST_MODE=replay cargo test --locked -p rig-cassette --no-default-features
