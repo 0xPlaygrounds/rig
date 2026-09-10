@@ -230,23 +230,27 @@ pub fn dispatch(
             scope: nearest_scope(entity, &parents, &scopes)
                 .map(|scope| std::sync::Arc::from(scope.as_str())),
         };
+        // Parent Issued writes can still be deferred in this dispatch pass.
+        // Resolve once from issued_now for every observer/context surface.
+        let mut subject = subjects.of(entity);
+        subject.effect = Some(id);
+        subject.parent = origin.parent;
         let adapter = operation.map(|operation| {
-            let mut subject = subjects.of(entity);
-            subject.effect = Some(id);
-            subject.parent = origin.parent;
             operation
                 .context
-                .for_host_attempt(subject, operation.host_attempt)
+                .for_host_attempt(subject.clone(), operation.host_attempt)
         });
 
         let timer = witness
             .as_ref()
             .and_then(|witness| super::witness::HandlerTimer::start(witness, effect.is_stream()));
         if let Some(witness) = &witness {
-            let mut subject = subjects.of(entity);
-            subject.effect = Some(id);
-            subject.parent = origin.parent;
-            witness.emit(subject, Stage::Dispatch, bus_emitter(), Action::Issued);
+            witness.emit(
+                subject.clone(),
+                Stage::Dispatch,
+                bus_emitter(),
+                Action::Issued,
+            );
         }
         let mut entity_commands = commands.entity(entity);
         if let Some(timer) = timer {
@@ -279,13 +283,9 @@ pub fn dispatch(
                     id,
                     recording: recording.as_ref().map(|r| (**r).clone()),
                     observed,
-                    witness: witness.as_ref().map(|witness| {
-                        (
-                            (**witness).clone(),
-                            subjects.of(entity),
-                            effect.kind.clone(),
-                        )
-                    }),
+                    witness: witness
+                        .as_ref()
+                        .map(|witness| ((**witness).clone(), subject.clone(), effect.kind.clone())),
                 }));
                 let streaming = effect.is_stream();
 

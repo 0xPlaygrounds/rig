@@ -66,6 +66,7 @@ fn ready(world: &mut World, seq: u64, count: usize) -> Entity {
         Streaming {
             events,
             fold: rig_core::serve::StreamTap::new(),
+            delivered: 0,
         },
         seq,
     )
@@ -110,6 +111,7 @@ fn empty_setup_polls_do_not_rotate_a_later_ready_delivery_batch() {
         Streaming {
             events: first_events,
             fold: rig_core::serve::StreamTap::new(),
+            delivered: 0,
         },
         0,
     );
@@ -125,6 +127,7 @@ fn empty_setup_polls_do_not_rotate_a_later_ready_delivery_batch() {
         Streaming {
             events: second_events,
             fold: rig_core::serve::StreamTap::new(),
+            delivered: 0,
         },
         1,
     );
@@ -278,4 +281,32 @@ fn scheduled_despawn_replacement_and_shutdown_drop_owned_workers() {
         .insert(effect, task);
     drop(world);
     wait_for(|| drops.load(Ordering::SeqCst) == 3);
+}
+
+#[test]
+fn unary_stream_truncation_counts_items_across_collection_passes() {
+    let mut world = world();
+    let log = Arc::new(rig_core::observe::ObservationLog::default());
+    Witnessing::install(&mut world, log.clone());
+    let count = STREAM_ITEMS_PER_EFFECT * 2 + 3;
+    let effect = ready(&mut world, 0, count);
+    // Exercise the collector's unary fold, with a closed, prefilled receiver.
+    world.entity_mut(effect).remove::<Streamed>();
+    for _ in 0..4 {
+        super::super::plugin::run_to_quiescence(&mut world);
+        if world.get::<EffectOutcome>(effect).is_some() {
+            break;
+        }
+    }
+    assert!(world.get::<EffectOutcome>(effect).unwrap().0.is_err());
+    let after: Vec<_> = log
+        .trace()
+        .observations
+        .iter()
+        .filter_map(|fact| match &fact.action {
+            Action::StreamTruncated { delivered, .. } => Some(*delivered),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(after, [count]);
 }

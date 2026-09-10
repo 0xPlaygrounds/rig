@@ -209,3 +209,19 @@ fn reasons_and_summaries_come_from_reports_without_inventing_detail() {
     assert!(!Emitter::named("rig-ecs/bus").is_unknown());
     assert_eq!(&*Reason::unknown().code, "unknown");
 }
+
+#[test]
+fn a_later_fact_reopens_a_finalized_capture_even_when_dropped() {
+    for capacity in [0, 8] {
+        let log = ObservationLog::with_capacity(capacity);
+        log.finalize();
+        assert!(log.trace().finalized);
+        log.observe(denied(0));
+        assert!(
+            !log.trace().finalized,
+            "a later producer fact invalidates finalization"
+        );
+        log.finalize();
+        assert!(log.trace().finalized);
+    }
+}

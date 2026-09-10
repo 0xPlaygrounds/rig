@@ -152,7 +152,6 @@ pub fn collect_streams(
             continue;
         };
         let mut delivered = 0;
-        let mut folded = 0usize;
         for _ in 0..STREAM_ITEMS_PER_EFFECT {
             if budget.remaining == 0 {
                 break;
@@ -166,6 +165,7 @@ pub fn collect_streams(
             let outcome = match polled {
                 Poll::Pending => break,
                 Poll::Ready(Some(item)) => {
+                    streaming.delivered += 1;
                     if let Ok(mut timing) = timings.get_mut(entity) {
                         timing.first_item();
                     }
@@ -194,7 +194,6 @@ pub fn collect_streams(
                         continue;
                     }
                     // A unary request answered by a stream ends at the first fold.
-                    folded += 1;
                     let Some(outcome) = streaming.fold.observe(&item) else {
                         continue;
                     };
@@ -230,7 +229,7 @@ pub fn collect_streams(
                                 Stage::Collect,
                                 bus_emitter(),
                                 Action::stream_truncated(
-                                    streamed.as_ref().map_or(folded, |streamed| {
+                                    streamed.as_ref().map_or(streaming.delivered, |streamed| {
                                         streamed.events.len() + streamed.errors.len()
                                     }),
                                     tail,

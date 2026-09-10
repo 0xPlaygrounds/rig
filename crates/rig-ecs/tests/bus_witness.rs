@@ -1485,3 +1485,77 @@ fn despawning_a_held_intent_is_a_cancellation_not_a_release() {
         .contains("Despawning({})")
     );
 }
+
+#[test]
+fn same_pass_parent_is_kept_in_fallback_adapter_and_layer_facts() {
+    use rig_core::{
+        client::CompletionClient, completion::CompletionModel as _,
+        serve::adapters::CompletionAdapter, test_utils::RecordingHttpClient,
+    };
+    let mut app = app();
+    let log = witnessed(&mut app);
+    let recorder = EffectLogRecorder::new();
+    EffectLogResource::install(app.world_mut(), recorder.clone());
+    let http = RecordingHttpClient::new(
+        r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#,
+    );
+    let client = rig_core::providers::gemini::Client::builder()
+        .api_key("test-key")
+        .http_client(http)
+        .build()
+        .unwrap();
+    let model = client.completion_model("test-model");
+    let request = model.completion_request("same pass").build();
+    register(
+        &mut app,
+        "parent",
+        CompletionAdapter::new("test-model", model.clone()),
+    );
+    register(
+        &mut app,
+        "child",
+        ErasedHandler::new(CompletionAdapter::new("test-model", model)).layered(Warmer),
+    );
+    let kind = EffectKind::Completion {
+        request,
+        stream: false,
+    };
+    // Both intents exist before dispatch; different handler keys allow them
+    // through the same pass while the parent's Issued insertion is deferred.
+    let parent = app
+        .world_mut()
+        .spawn((
+            PendingEffect::new("parent", kind.clone()),
+            Scope("same-pass".into()),
+        ))
+        .id();
+    let child = app
+        .world_mut()
+        .spawn((PendingEffect::new("child", kind), ChildOf(parent)))
+        .id();
+    tick_until(&mut app, "parent and child complete", |world| {
+        world.get::<EffectOutcome>(parent).is_some() && world.get::<EffectOutcome>(child).is_some()
+    });
+    let parent_id = app.world().get::<Issued>(parent).unwrap().0;
+    let child_id = app.world().get::<Issued>(child).unwrap().0;
+    let trace = log.trace();
+    let child_facts: Vec<_> = trace
+        .observations
+        .iter()
+        .filter(|fact| fact.subject.effect == Some(child_id))
+        .collect();
+    assert!(
+        child_facts
+            .iter()
+            .any(|fact| matches!(fact.action, Action::Adapter { .. }))
+    );
+    assert!(
+        child_facts
+            .iter()
+            .any(|fact| matches!(fact.action, Action::Patched { .. }))
+    );
+    for fact in child_facts {
+        assert_eq!(fact.subject.parent, Some(parent_id), "{:?}", fact.action);
+        assert_eq!(fact.subject.scope.as_deref(), Some("same-pass"));
+    }
+}

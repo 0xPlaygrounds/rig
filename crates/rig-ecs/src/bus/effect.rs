@@ -202,6 +202,8 @@ pub struct Streaming {
     >,
     /// The shared core fold of delivered events.
     pub fold: rig_core::serve::StreamTap,
+    /// Items consumed from this receiver, across collection passes.
+    pub delivered: usize,
 }
 
 impl Streaming {
@@ -220,6 +222,7 @@ impl Streaming {
             Self {
                 events,
                 fold: rig_core::serve::StreamTap::new(),
+                delivered: 0,
             },
             task,
         )

@@ -610,7 +610,8 @@ impl ObservationLog {
     }
 
     /// The session finished normally: later readers know the trace is not
-    /// a partial artifact of a killed process.
+    /// a partial artifact of a killed process. A later fact reopens the capture.
+    /// Hosts must drain their producers before exporting a finalized snapshot.
     pub fn finalize(&self) {
         self.lock().finalized = true;
     }
@@ -645,6 +646,7 @@ impl Witness for ObservationLog {
     fn observe(&self, mut observation: Observation) {
         let at = self.clock.as_ref().map(|clock| clock.elapsed());
         let mut state = self.lock();
+        state.finalized = false;
         observation.seq = state.next;
         state.next += 1;
         if state.observations.len() >= self.capacity {
