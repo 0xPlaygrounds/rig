@@ -3044,7 +3044,8 @@ where
                 .uri_ref()
                 .map(ToString::to_string)
                 .unwrap_or_default();
-            for (name, value) in super::sigv4::signed_headers("POST", &uri, &request, region).await?
+            for (name, value) in
+                super::sigv4::signed_headers("POST", &uri, &request, region).await?
             {
                 builder = builder.header(name, value);
             }

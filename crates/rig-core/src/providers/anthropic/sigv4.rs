@@ -59,7 +59,9 @@ pub(crate) async fn signed_headers(
         .nth(1)
         .and_then(|rest| rest.split('/').next())
         .ok_or_else(|| {
-            CompletionError::RequestError(format!("could not derive a host to sign from {uri:?}").into())
+            CompletionError::RequestError(
+                format!("could not derive a host to sign from {uri:?}").into(),
+            )
         })?
         .to_owned();
 
@@ -72,10 +74,9 @@ pub(crate) async fn signed_headers(
                 .into(),
         )
     })?;
-    let credentials = provider
-        .provide_credentials()
-        .await
-        .map_err(|e| CompletionError::RequestError(format!("AWS credential resolution failed: {e}").into()))?;
+    let credentials = provider.provide_credentials().await.map_err(|e| {
+        CompletionError::RequestError(format!("AWS credential resolution failed: {e}").into())
+    })?;
     let identity = credentials.into();
 
     let params = v4::SigningParams::builder()
