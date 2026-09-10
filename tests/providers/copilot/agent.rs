@@ -1,6 +1,5 @@
 //! Copilot agent completion smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use crate::copilot::{LIVE_MODEL, live_client, with_copilot_cassette};
@@ -16,7 +15,7 @@ async fn completion_smoke() {
             .await
             .expect("completion should succeed");
 
-        assert_nonempty_response(&response);
+        assert_nonempty_response(&response.output);
     })
     .await;
 }
@@ -54,7 +53,7 @@ async fn all_models_completion_smoke() {
             .build();
 
         match agent.prompt(BASIC_PROMPT).await {
-            Ok(response) if !response.is_empty() => succeeded.push(model.id.clone()),
+            Ok(response) if !response.output.is_empty() => succeeded.push(model.id.clone()),
             Ok(_) => failed.push(format!("{}: empty response", model.id)),
             Err(e) => failed.push(format!("{}: {e}", model.id)),
         }

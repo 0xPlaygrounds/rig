@@ -38,7 +38,7 @@ Node.js 19 or later do. WASI targets are not supported.
 ## Simple example
 ```rust
 use rig_core::{
-    client::{CompletionClient, ProviderClient},
+    client::CompletionClient,
     completion::{AssistantContent, CompletionModel},
     providers::openai,
 };

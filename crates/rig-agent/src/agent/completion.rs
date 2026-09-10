@@ -1,14 +1,13 @@
 use super::hook::{HookStack, RequestPatch};
-use super::prompt_request::{self, PromptRequest};
 use super::run::OutputMode;
 use super::runner::AgentRunner;
+use super::typed::TypedRun;
 use crate::{
-    agent::prompt_request::streaming::StreamingPromptRequest,
     completion::{
-        Chat, CompletionError, CompletionModel, CompletionRequestBuilder, Document, Message,
-        Prompt, PromptError, ToolDefinition, TypedPrompt,
+        CompletionError, CompletionModel, CompletionRequestBuilder, Document, Message, PromptError,
+        ToolDefinition,
     },
-    streaming::{StreamingChat, StreamingPrompt},
+    run::response::PromptResponse,
     tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
 };
 use rig_core::completion::ModelHandle;
@@ -58,7 +57,7 @@ pub(crate) struct PreparedCompletionRequest {
 ///
 /// The driver's share is the IO around the protocol: retrieve this turn's
 /// tools (the one `.await`), hand them with the spec and patch to
-/// [`rig_run::prepare_request`], then bind the prepared data to the selected
+/// [`crate::run::prepare::prepare_request`], then bind the prepared data to the selected
 /// model's request builder and pin the snapshot to the executable set.
 pub(crate) async fn build_prepared_completion_request(
     runner: &crate::agent::AgentRunner,
@@ -86,10 +85,11 @@ pub(crate) async fn build_prepared_completion_request(
         .map_err(|_| CompletionError::RequestError("Failed to get tool definitions".into()))?;
 
     let mut spec = runner.config.run_spec();
-    spec.output_tool_description = runner.output_tool_description.clone();
+    spec.output_tool_description
+        .clone_from(&runner.output_tool_description);
     spec.augment_output_preamble = runner.augment_output_preamble;
 
-    let prepared = rig_run::prepare_request(
+    let prepared = crate::run::prepare::prepare_request(
         &spec,
         &model.capabilities(),
         chat_history,
@@ -236,8 +236,8 @@ impl AgentConfig {
     /// The protocol-facing half of this configuration as plain data: what a
     /// driver needs to shape requests and budget a run, without the model,
     /// hooks, memory or identity this config also carries.
-    pub(crate) fn run_spec(&self) -> rig_run::RunSpec {
-        rig_run::RunSpec {
+    pub(crate) fn run_spec(&self) -> crate::run::spec::RunSpec {
+        crate::run::spec::RunSpec {
             preamble: self.preamble.clone(),
             static_context: self.static_context.clone(),
             additional_params: self.additional_params.clone(),
@@ -254,6 +254,7 @@ impl AgentConfig {
             output_tool_name: None,
             output_tool_description: None,
             augment_output_preamble: true,
+            unhandled_invalid_tool_call: crate::run::spec::UnhandledInvalidToolCall::Fail,
         }
     }
 
@@ -262,14 +263,14 @@ impl AgentConfig {
     /// not a valid JSON schema.
     pub(crate) fn apply_run_spec(
         &mut self,
-        spec: &rig_run::RunSpec,
+        spec: &crate::run::spec::RunSpec,
     ) -> Result<(), serde_json::Error> {
-        self.preamble = spec.preamble.clone();
-        self.static_context = spec.static_context.clone();
-        self.additional_params = spec.additional_params.clone();
+        self.preamble.clone_from(&spec.preamble);
+        self.static_context.clone_from(&spec.static_context);
+        self.additional_params.clone_from(&spec.additional_params);
         self.max_tokens = spec.max_tokens;
         self.temperature = spec.temperature;
-        self.tool_choice = spec.tool_choice.clone();
+        self.tool_choice.clone_from(&spec.tool_choice);
         self.max_turns = spec.effective_max_turns();
         self.output_schema = spec
             .output_schema
@@ -283,10 +284,10 @@ impl AgentConfig {
 
 impl Agent {
     /// The protocol-facing configuration of this agent as plain data
-    /// ([`RunSpec`](rig_run::RunSpec)): preamble, static context, sampling
+    /// ([`RunSpec`](crate::run::spec::RunSpec)): preamble, static context, sampling
     /// parameters, turn budget, tool choice and structured-output policy —
     /// everything a run needs that is not a model, a tool, a hook or a memory.
-    pub fn run_spec(&self) -> rig_run::RunSpec {
+    pub fn run_spec(&self) -> crate::run::spec::RunSpec {
         self.config.run_spec()
     }
 }
@@ -371,579 +372,83 @@ impl Agent {
     }
 }
 
-// Here, we need to ensure that usage of `.prompt` on agent uses these redefinitions on the opaque
-//  `Prompt` trait so that when `.prompt` is used at the call-site, it'll use the more specific
-//  `PromptRequest` implementation for `Agent`, making the builder's usage fluent.
-//
-// References:
-//  - https://github.com/rust-lang/rust/issues/121718 (refining_impl_trait)
-
-#[allow(refining_impl_trait)]
-impl Prompt for Agent {
-    fn prompt(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> PromptRequest<prompt_request::Standard> {
-        PromptRequest::from_agent(self, prompt)
+impl Agent {
+    /// Run `prompt` through the agent loop. The returned [`AgentRunner`] is the
+    /// run: configure it (history, turn budget, tool context, hooks, …) and
+    /// `.await` it for the [`PromptResponse`], whose `output` is the accepted
+    /// assistant text.
+    ///
+    /// ```rust,no_run
+    /// # use rig_agent::Agent;
+    /// # async fn example(agent: Agent) -> Result<(), Box<dyn std::error::Error>> {
+    /// let response = agent.prompt("What is 2 + 2?").max_turns(3).await?;
+    /// println!("{}", response.output);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn prompt(&self, prompt: impl Into<Message>) -> AgentRunner {
+        AgentRunner::from_agent(self, prompt)
     }
-}
 
-#[allow(refining_impl_trait)]
-impl Prompt for &Agent {
-    #[tracing::instrument(skip(self, prompt), fields(agent_name = self.name_or_default()))]
-    fn prompt(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> PromptRequest<prompt_request::Standard> {
-        PromptRequest::from_agent(self, prompt)
-    }
-}
-
-#[allow(refining_impl_trait)]
-impl Chat for Agent {
+    /// Run one turn against caller-owned history, appending only the messages
+    /// the run committed. Returns the same [`PromptResponse`] as
+    /// [`prompt`](Self::prompt).
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name_or_default()))]
-    async fn chat(
+    pub async fn chat(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
         chat_history: &mut Vec<Message>,
-    ) -> Result<String, PromptError> {
-        let response = PromptRequest::from_agent(self, prompt)
+    ) -> Result<PromptResponse, PromptError> {
+        let mut response = AgentRunner::from_agent(self, prompt)
             .history(chat_history.clone())
-            .extended_details()
             .await?;
-
-        if let Some(messages) = response.messages {
+        if let Some(messages) = response.messages.take() {
             chat_history.extend(messages);
         }
-
-        Ok(response.output)
+        Ok(response)
     }
-}
 
-impl StreamingPrompt for Agent {
-    fn stream_prompt(&self, prompt: impl Into<Message> + WasmCompatSend) -> StreamingPromptRequest {
-        StreamingPromptRequest::from_agent(self, prompt)
+    /// Run `prompt` as a stream: configure the returned runner, then call
+    /// [`AgentRunner::stream`] or [`AgentRunner::run_channel`].
+    pub fn stream_prompt(&self, prompt: impl Into<Message>) -> AgentRunner {
+        AgentRunner::from_agent(self, prompt)
     }
-}
 
-impl StreamingChat for Agent {
-    fn stream_chat<I, T>(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-        chat_history: I,
-    ) -> StreamingPromptRequest
+    /// [`stream_prompt`](Self::stream_prompt) with canonical chat history.
+    pub fn stream_chat<I, T>(&self, prompt: impl Into<Message>, chat_history: I) -> AgentRunner
     where
         I: IntoIterator<Item = T>,
         T: Into<Message>,
     {
-        StreamingPromptRequest::from_agent(self, prompt).history(chat_history)
+        AgentRunner::from_agent(self, prompt).history(chat_history)
     }
-}
 
-use crate::agent::prompt_request::TypedPromptRequest;
-use schemars::JsonSchema;
-use serde::de::DeserializeOwned;
-
-#[allow(refining_impl_trait)]
-impl TypedPrompt for Agent {
-    type TypedRequest<T>
-        = TypedPromptRequest<T, prompt_request::Standard>
-    where
-        T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
-
-    /// Send a prompt and receive a typed structured response.
+    /// Run `prompt` and deserialize the accepted structured response as `T`.
     ///
-    /// The JSON schema for `T` is automatically generated and sent to the provider.
-    /// Providers that support native structured outputs will constrain the model's
-    /// response to match this schema.
+    /// The JSON schema for `T` is generated and sent to the provider as the
+    /// run's structured-output schema. Providers that support native structured
+    /// outputs constrain the model's response to match it.
     ///
-    /// # Example
     /// ```rust,ignore
-    /// use rig_core::prelude::*;
-    /// use schemars::JsonSchema;
-    /// use serde::Deserialize;
-    ///
     /// #[derive(Debug, Deserialize, JsonSchema)]
-    /// struct WeatherForecast {
-    ///     city: String,
-    ///     temperature_f: f64,
-    ///     conditions: String,
-    /// }
+    /// struct WeatherForecast { city: String, temperature_f: f64 }
     ///
-    /// let agent = client.agent("gpt-4o").build();
-    ///
-    /// // Type inferred from variable
-    /// let forecast: WeatherForecast = agent
-    ///     .prompt_typed("What's the weather in NYC?")
-    ///     .await?;
-    ///
-    /// // Or explicit turbofish syntax
     /// let forecast = agent
     ///     .prompt_typed::<WeatherForecast>("What's the weather in NYC?")
     ///     .max_turns(3)
-    ///     .await?;
+    ///     .await?
+    ///     .output;
     /// ```
-    fn prompt_typed<T>(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> TypedPromptRequest<T, prompt_request::Standard>
+    pub fn prompt_typed<T>(&self, prompt: impl Into<Message>) -> TypedRun<T>
     where
         T: JsonSchema + DeserializeOwned + WasmCompatSend,
     {
-        TypedPromptRequest::from_agent(self, prompt)
+        TypedRun::native(self, prompt)
     }
 }
 
-#[allow(refining_impl_trait)]
-impl TypedPrompt for &Agent {
-    type TypedRequest<T>
-        = TypedPromptRequest<T, prompt_request::Standard>
-    where
-        T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static;
-
-    fn prompt_typed<T>(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-    ) -> TypedPromptRequest<T, prompt_request::Standard>
-    where
-        T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    {
-        TypedPromptRequest::from_agent(self, prompt)
-    }
-}
+use schemars::JsonSchema;
+use serde::de::DeserializeOwned;
 
 #[cfg(test)]
-mod request_identity_tests {
-    //! Pins the exact request the futures driver hands the model for a scripted
-    //! tool turn — preamble, static context, a `CompletionCall` patch
-    //! (preamble/temperature/max_tokens/tool_choice/active_tools/
-    //! additional_params/extra_context), an output schema in Tool mode — so
-    //! `rig_run::prepare_request` cannot drift from what the agent sent before
-    //! request preparation moved into the protocol crate. The golden values
-    //! were captured from the pre-move driver; the cassette suites replay the
-    //! same bodies against recorded provider traffic.
-
-    use super::*;
-    use crate::agent::{
-        AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent, HookContext,
-    };
-    use crate::test_utils::{MockAddTool, MockCompletionModel, MockSubtractTool, MockTurn};
-    use rig_core::completion::Document;
-    use serde_json::json;
-
-    struct GoldenPatchHook;
-
-    impl AgentHook for GoldenPatchHook {
-        async fn on_completion_call(
-            &self,
-            _ctx: &HookContext,
-            _event: CompletionCallEvent<'_>,
-        ) -> CompletionCallAction {
-            CompletionCallAction::patch(
-                RequestPatch::new()
-                    .preamble("patched preamble")
-                    .temperature(0.25)
-                    .max_tokens(512)
-                    .tool_choice(ToolChoice::Required)
-                    .active_tools(["add"])
-                    .additional_params(json!({"injected": true, "shared": "hook"}))
-                    .context(Document {
-                        id: "extra".into(),
-                        text: "extra context".into(),
-                        additional_props: Default::default(),
-                    }),
-            )
-        }
-    }
-
-    fn golden_model() -> MockCompletionModel {
-        MockCompletionModel::from_turns([
-            MockTurn::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
-            MockTurn::text("done"),
-        ])
-    }
-
-    fn golden_agent(model: MockCompletionModel) -> Agent {
-        AgentBuilder::new(model)
-            .preamble("base preamble")
-            .context("static context")
-            .temperature(0.9)
-            .max_tokens(64)
-            .additional_params(json!({"base": 1, "shared": "agent"}))
-            .tool(MockAddTool)
-            .tool(MockSubtractTool)
-            .output_schema_raw(
-                serde_json::from_value(json!({
-                    "type": "object",
-                    "properties": {"answer": {"type": "integer"}},
-                    "required": ["answer"]
-                }))
-                .expect("valid schema"),
-            )
-            .add_hook(GoldenPatchHook)
-            .build()
-    }
-
-    #[tokio::test]
-    async fn scripted_tool_turn_requests_match_golden() {
-        let model = golden_model();
-        let agent = golden_agent(model.clone());
-        let _ = agent.runner("add 2 and 3").max_turns(3).run().await;
-
-        let requests = model
-            .requests()
-            .into_iter()
-            .map(|request| serde_json::to_value(&request).expect("serializable request"))
-            .collect::<Vec<_>>();
-        assert_eq!(
-            requests.len(),
-            3,
-            "a tool turn, a plain-text turn that Tool mode re-prompts, and the retry"
-        );
-
-        let golden: Vec<serde_json::Value> = serde_json::from_str(GOLDEN).expect("golden JSON");
-        for (turn, (actual, expected)) in requests.iter().zip(&golden).enumerate() {
-            assert_eq!(
-                actual,
-                expected,
-                "request for turn {} differs from golden:\n{}",
-                turn + 1,
-                serde_json::to_string_pretty(actual).unwrap_or_default()
-            );
-        }
-    }
-
-    const GOLDEN: &str = r#"
-[
-  {
-    "additional_params": {
-      "base": 1,
-      "injected": true,
-      "shared": "hook"
-    },
-    "chat_history": [
-      {
-        "content": "patched preamble\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
-        "role": "system"
-      },
-      {
-        "content": [
-          {
-            "text": "add 2 and 3",
-            "type": "text"
-          }
-        ],
-        "role": "user"
-      }
-    ],
-    "documents": [
-      {
-        "id": "static_doc_0",
-        "text": "static context"
-      },
-      {
-        "id": "extra",
-        "text": "extra context"
-      }
-    ],
-    "max_tokens": 512,
-    "model": null,
-    "output_schema": null,
-    "preamble": null,
-    "temperature": 0.25,
-    "tool_choice": "required",
-    "tools": [
-      {
-        "description": "Add x and y together",
-        "name": "add",
-        "parameters": {
-          "properties": {
-            "x": {
-              "description": "The first number to add",
-              "type": "number"
-            },
-            "y": {
-              "description": "The second number to add",
-              "type": "number"
-            }
-          },
-          "required": [
-            "x",
-            "y"
-          ],
-          "type": "object"
-        }
-      },
-      {
-        "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
-        "name": "final_result",
-        "parameters": {
-          "properties": {
-            "answer": {
-              "type": "integer"
-            }
-          },
-          "required": [
-            "answer"
-          ],
-          "type": "object"
-        }
-      }
-    ]
-  },
-  {
-    "additional_params": {
-      "base": 1,
-      "injected": true,
-      "shared": "hook"
-    },
-    "chat_history": [
-      {
-        "content": "patched preamble\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
-        "role": "system"
-      },
-      {
-        "content": [
-          {
-            "text": "add 2 and 3",
-            "type": "text"
-          }
-        ],
-        "role": "user"
-      },
-      {
-        "content": [
-          {
-            "additional_params": null,
-            "function": {
-              "arguments": {
-                "x": 2,
-                "y": 3
-              },
-              "name": "add"
-            },
-            "id": "tc1",
-            "provider": {
-              "call_id": "tc1"
-            },
-            "signature": null,
-            "type": "toolcall"
-          }
-        ],
-        "id": null,
-        "role": "assistant"
-      },
-      {
-        "content": [
-          {
-            "call": "tc1",
-            "content": [
-              {
-                "type": "json",
-                "value": 5
-              }
-            ],
-            "name": "add",
-            "provider": {
-              "call_id": "tc1"
-            },
-            "type": "toolresult"
-          }
-        ],
-        "role": "user"
-      }
-    ],
-    "documents": [
-      {
-        "id": "static_doc_0",
-        "text": "static context"
-      },
-      {
-        "id": "extra",
-        "text": "extra context"
-      }
-    ],
-    "max_tokens": 512,
-    "model": null,
-    "output_schema": null,
-    "preamble": null,
-    "temperature": 0.25,
-    "tool_choice": "required",
-    "tools": [
-      {
-        "description": "Add x and y together",
-        "name": "add",
-        "parameters": {
-          "properties": {
-            "x": {
-              "description": "The first number to add",
-              "type": "number"
-            },
-            "y": {
-              "description": "The second number to add",
-              "type": "number"
-            }
-          },
-          "required": [
-            "x",
-            "y"
-          ],
-          "type": "object"
-        }
-      },
-      {
-        "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
-        "name": "final_result",
-        "parameters": {
-          "properties": {
-            "answer": {
-              "type": "integer"
-            }
-          },
-          "required": [
-            "answer"
-          ],
-          "type": "object"
-        }
-      }
-    ]
-  },
-  {
-    "additional_params": {
-      "base": 1,
-      "injected": true,
-      "shared": "hook"
-    },
-    "chat_history": [
-      {
-        "content": "patched preamble\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.",
-        "role": "system"
-      },
-      {
-        "content": [
-          {
-            "text": "add 2 and 3",
-            "type": "text"
-          }
-        ],
-        "role": "user"
-      },
-      {
-        "content": [
-          {
-            "additional_params": null,
-            "function": {
-              "arguments": {
-                "x": 2,
-                "y": 3
-              },
-              "name": "add"
-            },
-            "id": "tc1",
-            "provider": {
-              "call_id": "tc1"
-            },
-            "signature": null,
-            "type": "toolcall"
-          }
-        ],
-        "id": null,
-        "role": "assistant"
-      },
-      {
-        "content": [
-          {
-            "call": "tc1",
-            "content": [
-              {
-                "type": "json",
-                "value": 5
-              }
-            ],
-            "name": "add",
-            "provider": {
-              "call_id": "tc1"
-            },
-            "type": "toolresult"
-          }
-        ],
-        "role": "user"
-      },
-      {
-        "content": [
-          {
-            "text": "done",
-            "type": "text"
-          }
-        ],
-        "id": null,
-        "role": "assistant"
-      },
-      {
-        "content": [
-          {
-            "text": "Provide your final answer by calling the `final_result` tool with the structured result as its arguments, not as plain text.",
-            "type": "text"
-          }
-        ],
-        "role": "user"
-      }
-    ],
-    "documents": [
-      {
-        "id": "static_doc_0",
-        "text": "static context"
-      },
-      {
-        "id": "extra",
-        "text": "extra context"
-      }
-    ],
-    "max_tokens": 512,
-    "model": null,
-    "output_schema": null,
-    "preamble": null,
-    "temperature": 0.25,
-    "tool_choice": "required",
-    "tools": [
-      {
-        "description": "Add x and y together",
-        "name": "add",
-        "parameters": {
-          "properties": {
-            "x": {
-              "description": "The first number to add",
-              "type": "number"
-            },
-            "y": {
-              "description": "The second number to add",
-              "type": "number"
-            }
-          },
-          "required": [
-            "x",
-            "y"
-          ],
-          "type": "object"
-        }
-      },
-      {
-        "description": "Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.",
-        "name": "final_result",
-        "parameters": {
-          "properties": {
-            "answer": {
-              "type": "integer"
-            }
-          },
-          "required": [
-            "answer"
-          ],
-          "type": "object"
-        }
-      }
-    ]
-  }
-]
-"#;
-}
+mod request_identity_tests;

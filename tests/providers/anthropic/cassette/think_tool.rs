@@ -1,6 +1,5 @@
 //! Migrated from `examples/anthropic_think_tool.rs`.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::builtin::ThinkTool;
@@ -28,7 +27,8 @@ async fn think_tool_menu_planning() {
             )
             .max_turns(10)
             .await
-            .expect("think tool prompt should succeed");
+            .expect("think tool prompt should succeed")
+            .output;
 
         assert_nonempty_response(&response);
         assert_contains_any_case_insensitive(&response, &["appetizer", "main", "dessert"]);

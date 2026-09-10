@@ -1,0 +1,14 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition = { workspace = true }
+license = "MIT"
+publish = false
+description = "Workspace maintenance tasks for rig. Not published."
+
+[lints]
+workspace = true
+
+[dependencies]
+syn = { workspace = true, features = ["full"] }
+proc-macro2 = { workspace = true, features = ["span-locations"] }

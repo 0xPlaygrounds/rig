@@ -6,7 +6,6 @@
 //! Assertions are loose for model-shaped values and exact only for
 //! rig-synthesized values (see `tools_support`'s note).
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::gemini;
 
@@ -52,7 +51,7 @@ async fn hook_context_identity_stable_and_turn_advances_blocking() {
                 .await
                 .expect("dependent chain should succeed");
 
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
             assert_eq!(probe.distinct_run_ids(), 1, "run_id must be stable");
             assert_eq!(probe.is_streaming(), Some(false));
             assert_eq!(probe.agent_name().as_deref(), Some("stress-agent"));
@@ -96,7 +95,7 @@ async fn agent_name_absent_when_unconfigured_blocking() {
                 .await
                 .expect("run should succeed");
 
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
             assert_eq!(
                 probe.agent_name(),
                 None,
@@ -147,7 +146,7 @@ async fn scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking
                 .await
                 .expect("dependent chain should succeed");
 
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
             let total_calls = add_calls.count() + subtract_calls.count();
             let tallies = reader_probe.tallies();
             assert!(
@@ -210,7 +209,7 @@ async fn internal_call_id_correlates_tool_call_and_result_blocking() {
                 .await
                 .expect("dependent chain should succeed");
 
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
             let call_ids = probe.call_ids();
             let result_ids = probe.result_ids();
             assert!(!call_ids.is_empty(), "the run should make tool calls");
@@ -258,7 +257,7 @@ async fn two_observe_only_hooks_both_observe_the_run_blocking() {
                 .await
                 .expect("run should succeed");
 
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
             // Both observe-only hooks see the same run — neither short-circuits.
             for tag in [
                 "CompletionCall",
@@ -307,7 +306,7 @@ async fn add_hook_appends_across_builder_and_request_blocking() {
                 .await
                 .expect("run should succeed");
 
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
             assert!(
                 builder_probe.count("CompletionCall") >= 1,
                 "the agent-default (builder) hook must still fire"
@@ -361,11 +360,11 @@ async fn completion_call_patches_accumulate_from_two_hooks_blocking() {
                 .expect("accumulated context run should succeed");
 
             assert!(
-                response.contains("ALPHA-11"),
+                response.output.contains("ALPHA-11"),
                 "the first hook's injected fact must reach the model: {response:?}"
             );
             assert!(
-                response.contains("BETA-22"),
+                response.output.contains("BETA-22"),
                 "the second hook's injected fact must reach the model too (patches accumulate): \
                  {response:?}"
             );
@@ -416,7 +415,7 @@ async fn two_hooks_narrow_active_tools_to_intersection_blocking() {
                 .await
                 .expect("intersected-tools run should succeed");
 
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
             // Only `add` is in the intersection, so only it can execute.
             assert!(
                 add_calls.count() >= 1,

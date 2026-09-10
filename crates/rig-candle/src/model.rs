@@ -7,7 +7,7 @@
 //! and invoke the model in a Web Worker to avoid blocking the UI thread.
 //!
 //! ```no_run
-//! use rig_agent::{agent::AgentBuilder, completion::Prompt};
+//! use rig_agent::agent::AgentBuilder;
 //! use rig_candle::{CandleModel, ModelData};
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,7 +22,7 @@
 //!     .temperature(0.7)
 //!     .max_tokens(256)
 //!     .build();
-//! let answer = agent.prompt("Explain Rust ownership briefly.").await?;
+//! let answer = agent.prompt("Explain Rust ownership briefly.").await?.output;
 //! println!("{answer}");
 //! # Ok(())
 //! # }
@@ -90,7 +90,7 @@ use crate::loader::{LoadedModel, load_gguf_model, load_model_with_family};
 use crate::profile::{ArtifactFormat, LoaderBackend, definition_for};
 #[cfg(test)]
 use crate::profile::{BEGIN_OF_TEXT, END_HEADER, END_OF_TURN, IM_END, IM_START, START_HEADER};
-use crate::profile::{ConversationProtocol, ModelArchitecture, ModelFamily, Quantization};
+use crate::profile::{ConversationProtocol, ModelArchitecture, Quantization};
 use crate::runtime::CancellationSignal;
 #[cfg(all(test, not(target_family = "wasm")))]
 use crate::runtime::TestControl;
@@ -116,7 +116,7 @@ pub struct CandleModel {
 /// Builder for loading a [`CandleModel`] and customizing generation defaults.
 pub struct CandleModelBuilder<'a> {
     source: ModelSource<'a>,
-    family: Option<ModelFamily>,
+    family: Option<ConversationProtocol>,
     generation: GenerationConfig,
     max_concurrent_requests: usize,
 }
@@ -125,12 +125,6 @@ enum ModelSource<'a> {
     Owned(ModelArtifacts),
     BorrowedGguf(GgufModelData<'a>),
 }
-
-/// Backwards-compatible alias for [`CandleModel`].
-///
-/// New code should use `CandleModel`, which accurately reflects that the
-/// backend also supports validated Qwen3 checkpoints.
-pub type LlamaModel = CandleModel;
 
 impl CandleModel {
     /// Loads a model from config, tokenizer, and one unsharded safetensors buffer.
@@ -307,13 +301,13 @@ async fn join_model_load(
 
 #[cfg(test)]
 fn render_prompt(request: &CompletionRequest) -> Result<String, CandleError> {
-    render_prompt_for(request, ModelFamily::Llama3)
+    render_prompt_for(request, ConversationProtocol::Llama3)
 }
 
 #[cfg(test)]
 fn render_prompt_for(
     request: &CompletionRequest,
-    family: ModelFamily,
+    family: ConversationProtocol,
 ) -> Result<String, CandleError> {
     crate::protocol::render_prompt(request, family)
 }

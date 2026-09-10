@@ -7,7 +7,6 @@
 //! Requires `OPENAI_API_KEY`.
 
 use anyhow::Result;
-use rig::completion::Prompt;
 use rig::memory::InMemoryConversationMemory;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -27,13 +26,15 @@ async fn main() -> Result<()> {
     let first = agent
         .prompt("My name is Alice.")
         .conversation("user-123")
-        .await?;
+        .await?
+        .output;
     println!("turn 1: {first}");
 
     let second = agent
         .prompt("What's my name?")
         .conversation("user-123")
-        .await?;
+        .await?
+        .output;
     println!("turn 2: {second}");
 
     Ok(())

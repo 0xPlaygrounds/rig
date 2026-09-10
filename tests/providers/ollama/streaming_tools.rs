@@ -2,7 +2,6 @@
 
 use rig::prelude::*;
 use rig::providers::ollama;
-use rig::streaming::StreamingPrompt;
 
 use crate::support::{
     Adder, Subtract, assert_mentions_expected_number, collect_stream_final_response,
@@ -23,7 +22,7 @@ async fn example_streaming_with_tools() {
         .tool(Subtract)
         .build();
 
-    let mut stream = agent.stream_prompt("Calculate 2 - 5").await;
+    let mut stream = agent.stream_prompt("Calculate 2 - 5").stream().await;
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming prompt should succeed");

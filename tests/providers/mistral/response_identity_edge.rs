@@ -16,7 +16,6 @@ use futures::StreamExt;
 use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::mistral;
-use rig::streaming::StreamingPrompt;
 
 use crate::support::collect_stream_final_response_and_provider_final;
 
@@ -67,6 +66,7 @@ async fn streaming_terminal_carries_the_correlation_id() -> Result<()> {
             let agent = client.agent(mistral::MISTRAL_SMALL).build();
             let mut stream = agent
                 .stream_prompt("Reply with exactly: identity probe")
+                .stream()
                 .await;
             let (_text, provider_final) =
                 collect_stream_final_response_and_provider_final(&mut stream).await?;

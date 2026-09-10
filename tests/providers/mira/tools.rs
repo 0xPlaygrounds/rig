@@ -1,6 +1,5 @@
 //! Mira tools smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::{anthropic, mira};
 
@@ -22,7 +21,8 @@ async fn tools_smoke() {
     let response = agent
         .prompt(TOOLS_PROMPT)
         .await
-        .expect("tool prompt should succeed");
+        .expect("tool prompt should succeed")
+        .output;
 
     assert_mentions_expected_number(&response, -3);
 }

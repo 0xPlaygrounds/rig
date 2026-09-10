@@ -11,11 +11,10 @@
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::completion::{Chat, CompletionModel, FinishReason, Message};
+use rig::completion::{CompletionModel, FinishReason, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::{StreamingChat, StreamingPrompt};
 use rig::tool::Tool;
 
 use super::super::support::with_anthropic_cassette;
@@ -109,7 +108,8 @@ async fn sequential_tool_calls_nonstreaming() {
             let result = agent
                 .chat(SEQUENTIAL_TOOLS_PROMPT, &mut history)
                 .await
-                .expect("sequential tool chat should succeed");
+                .expect("sequential tool chat should succeed")
+                .output;
 
             assert_mentions_expected_number(&result, 2);
 
@@ -159,6 +159,7 @@ async fn sequential_tool_calls_streaming() {
             let mut stream = agent
                 .stream_chat(SEQUENTIAL_TOOLS_PROMPT, Vec::<Message>::new())
                 .max_turns(6)
+                .stream()
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 
@@ -208,7 +209,8 @@ async fn parallel_tool_use_single_turn_nonstreaming() {
             let result = agent
                 .chat(TWO_TOOL_STREAM_PROMPT, &mut history)
                 .await
-                .expect("parallel tool chat should succeed");
+                .expect("parallel tool chat should succeed")
+                .output;
 
             let lowered = result.to_ascii_lowercase();
             assert!(
@@ -388,6 +390,7 @@ async fn usage_accumulates_across_streaming_multi_turn() {
             let mut stream = agent
                 .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
                 .max_turns(5)
+                .stream()
                 .await;
 
             let mut saw_tool_result = false;

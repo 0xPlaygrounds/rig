@@ -1,5 +1,6 @@
 #[cfg(feature = "image")]
 mod image {
+    use crate::client::{Client, ModelTransport, Provider};
     use crate::image_generation::ImageGenerationModel;
 
     /// A provider client with image generation capabilities.
@@ -26,18 +27,30 @@ mod image {
         fn image_generation_model(&self, model: impl Into<String>) -> Self::ImageGenerationModel;
     }
 
-    /// Construction hook for the blanket [`ImageGenerationClient`] implementation over
-    /// [`crate::client::Client`] — the image generation twin of
-    /// [`crate::client::ConstructCompletionModel`].
-    ///
-    /// Public for the same reason: an out-of-tree provider extension built on the
-    /// generic `Client<Ext, H>` cannot implement [`ImageGenerationClient`] for that foreign
-    /// type (orphan rule), so it implements this trait on its own model type and
-    /// the blanket implementation supplies the constructor. Providers with their
-    /// own client type implement [`ImageGenerationClient`] directly and never need this.
-    pub trait ConstructImageGenerationModel<C>: Sized {
-        /// Build this model from its provider client and a model identifier.
-        fn construct(client: &C, model: String) -> Self;
+    /// A [`Provider`] that offers image generation models. Implementing this
+    /// is what makes [`ImageGenerationClient`] available on `Client<Self, H>`.
+    pub trait HasImageGeneration: Provider {
+        /// The concrete image generation model built over transport `H`.
+        type Model<H>: ImageGenerationModel
+        where
+            H: ModelTransport;
+
+        /// Build the image generation model `model` from `client`.
+        fn image_generation_model<H>(client: &Client<Self, H>, model: String) -> Self::Model<H>
+        where
+            H: ModelTransport;
+    }
+
+    impl<P, H> ImageGenerationClient for Client<P, H>
+    where
+        P: HasImageGeneration,
+        H: ModelTransport,
+    {
+        type ImageGenerationModel = P::Model<H>;
+
+        fn image_generation_model(&self, model: impl Into<String>) -> Self::ImageGenerationModel {
+            P::image_generation_model(self, model.into())
+        }
     }
 }
 

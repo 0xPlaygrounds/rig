@@ -1660,7 +1660,6 @@ async fn conformance_agent_loop_keeps_hitting_across_tool_turns() {
                 .build()
                 .prompt(AGENT_CACHE_PROMPT)
                 .max_turns(6)
-                .extended_details()
                 .await
                 .expect("anthropic agent cache probe should complete");
 

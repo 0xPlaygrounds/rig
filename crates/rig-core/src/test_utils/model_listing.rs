@@ -27,10 +27,3 @@ impl<H> ModelLister<H> for MockModelLister {
         async move { Ok(ModelList::new(models)) }
     }
 }
-
-impl crate::client::ConstructModelLister<Vec<Model>> for MockModelLister {
-    fn construct(client: &Vec<Model>) -> Self {
-        let client = client.clone();
-        Self { models: client }
-    }
-}

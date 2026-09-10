@@ -1,6 +1,6 @@
 //! Cassette-backed Cohere non-streaming completion coverage.
 
-use rig::completion::{AssistantContent, CompletionModel, Message, Prompt};
+use rig::completion::{AssistantContent, CompletionModel, Message};
 use rig::prelude::*;
 use rig::providers::cohere::completion::FinishReason;
 
@@ -23,7 +23,7 @@ async fn completion_smoke() {
             .await
             .expect("completion should succeed");
 
-        assert_nonempty_response(&response);
+        assert_nonempty_response(&response.output);
     })
     .await;
 }

@@ -4,7 +4,6 @@ use rig::message::ToolChoice;
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::xai;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -94,6 +93,7 @@ async fn responses_stream_preserves_tool_result_flow() {
             let mut stream = agent
                 .stream_prompt(XAI_STATUS_TOOL_PROMPT)
                 .max_turns(5)
+                .stream()
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 

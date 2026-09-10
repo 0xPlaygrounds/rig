@@ -32,11 +32,11 @@ async fn extractor_smoke() {
         .build();
 
     let response = extractor
-        .extract_with_usage(EXTRACTOR_TEXT)
+        .extract(EXTRACTOR_TEXT)
         .await
         .expect("extractor request should succeed");
 
-    assert_smoke_person(&response.data);
+    assert_smoke_person(&response.output);
     assert!(response.usage.total_tokens > 0, "usage should be populated");
 }
 
@@ -48,15 +48,13 @@ async fn extractor_with_chat_history_smoke() {
         .build();
 
     let response = extractor
-        .extract_with_chat_history_with_usage(
-            "The text is about Ada Lovelace, a mathematician.",
-            vec![Message::user(
-                "Extract the person's name and job from the next message.",
-            )],
-        )
+        .extract("The text is about Ada Lovelace, a mathematician.")
+        .history(vec![Message::user(
+            "Extract the person's name and job from the next message.",
+        )])
         .await
         .expect("extractor request with chat history should succeed");
 
-    assert_smoke_person(&response.data);
+    assert_smoke_person(&response.output);
     assert!(response.usage.total_tokens > 0, "usage should be populated");
 }

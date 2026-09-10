@@ -25,7 +25,7 @@
 //! # Simple example
 //! ```ignore
 //! use rig_core::{
-//!     client::{CompletionClient, ProviderClient},
+//!     client::CompletionClient,
 //!     completion::{AssistantContent, CompletionModel},
 //!     providers::openai,
 //! };
@@ -173,9 +173,13 @@ pub mod streaming;
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils;
 pub mod tool;
+pub mod transcript;
 pub mod transcription;
 pub mod vector_store;
 pub mod wasm_compat;
+#[cfg(feature = "websocket")]
+#[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
+pub mod ws_client;
 
 // Re-export commonly used types and traits
 pub use completion::message;

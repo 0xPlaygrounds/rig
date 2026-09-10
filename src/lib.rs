@@ -38,23 +38,36 @@
 
 pub use rig_core::*;
 
-/// The bundled `reqwest` transport and its default-transport conveniences
-/// (`rig-reqwest`). With the default `reqwest` feature, [`providers`] is the
-/// aliased tree whose types default to [`rig_reqwest::ReqwestClient`], and
-/// [`prelude`] carries [`rig_reqwest::client::DefaultTransportClient`] /
-/// [`rig_reqwest::client::DefaultTransportBuilder`]. Without it, rig has no
-/// default transport: construct clients with `new_with(..)` / `.http_client(..)`
-/// and any `HttpClientExt` implementation.
+/// The bundled `reqwest` transport and its construction conveniences
+/// (`rig-reqwest`). Provider types default to the erased
+/// [`BoxedHttpClient`](rig_core::http_client::BoxedHttpClient) in every
+/// configuration; with the default `reqwest` feature, [`prelude`] carries
+/// [`rig_reqwest::client::DefaultTransportClient`] /
+/// [`rig_reqwest::client::DefaultTransportBuilder`], which fill that default
+/// with a [`rig_reqwest::ReqwestClient`] so `Client::new(key)` and
+/// `Client::from_env()` work without naming a transport. Without the feature,
+/// construct clients with `new_with(..)` / `.http_client(..)` and any
+/// `HttpClientExt` implementation.
 #[cfg(feature = "reqwest")]
 #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
 pub use rig_reqwest;
 
-/// Provider clients and models, with the transport defaulted to the bundled
-/// `reqwest` one.
-#[cfg(feature = "reqwest")]
-#[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
+/// The bundled `tokio-tungstenite` websocket backend and its default-backend
+/// conveniences (`rig-tungstenite`), on native targets. With the `websocket`
+/// feature,
+/// `client.responses_websocket("gpt-5.4")` opens a session over it with no
+/// backend named; without it, rig has no websocket backend and a session is
+/// opened with `connect_with(..)` and any
+/// [`rig_core::ws_client::WebSocketClientExt`] implementation.
+#[cfg(all(feature = "websocket", not(target_family = "wasm")))]
+#[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
+pub use rig_tungstenite;
+
+/// Provider clients and models. Every transport-generic type defaults to the
+/// erased [`BoxedHttpClient`](rig_core::http_client::BoxedHttpClient); the
+/// `reqwest` feature supplies the value behind it.
 pub mod providers {
-    pub use rig_reqwest::providers::*;
+    pub use rig_core::providers::*;
 }
 
 /// Transport-agnostic HTTP contracts, plus the bundled reqwest transport type.
@@ -67,18 +80,22 @@ pub mod http_client {
 
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
-pub use rig_agent::{Agent, AgentBuilder, AgentRun, AgentRunner, ExtractionResponse};
+pub use rig_agent::{Agent, AgentBuilder, AgentRun, AgentRunner, TypedPromptResponse};
 
 /// Direct access to the portable provider and data contracts.
 pub mod core {
     pub use rig_core::*;
 }
 
-/// The sans-IO agent-run protocol (`rig-run`): `AgentRun` and the data a
-/// driver needs to step it. Available without the classic runtime, so a host
-/// that drives runs itself (an ECS plugin, a job system) does not need `agent`.
+/// The sans-IO run layer of rig-agent (`rig_agent::run`): `AgentRun` and its
+/// step/turn types, the run's spec, request preparation, output policy and
+/// per-turn patch, its response and error types, the invalid-call decision
+/// data, the streamed-turn assembler and the loop-side transcript helpers.
+/// rig-core keeps only the message-model invariants (`rig::core::transcript`).
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub mod run {
-    pub use rig_run::*;
+    pub use rig_agent::run::*;
 }
 
 /// Classic agent orchestration and lifecycle APIs.
@@ -114,12 +131,10 @@ pub mod client {
     pub use rig_reqwest::client::{DefaultTransportBuilder, DefaultTransportClient};
 }
 
-/// Low-level completion contracts plus classic prompting traits and errors.
+/// Low-level completion contracts plus the classic runtime's errors.
 pub mod completion {
     #[cfg(feature = "agent")]
-    pub use rig_agent::completion::{
-        Chat, Prompt, PromptError, StructuredOutputError, TypedPrompt,
-    };
+    pub use rig_agent::completion::{PromptError, StructuredOutputError};
     pub use rig_core::completion::*;
 }
 
@@ -151,21 +166,23 @@ pub mod prelude {
     // pre-split `client.completion_model(m)` / `client.agent(m)` surface.
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
-        Agent, AgentClientExt, AgentModelExt, Chat, MultiTurnStreamItem, Prompt, PromptError,
-        RunEvents, StreamingChat, StreamingPrompt, StreamingResult, StructuredOutputError, ToolSet,
-        TypedPrompt,
+        Agent, AgentClientExt, AgentModelExt, MultiTurnStreamItem, PromptError, RunEvents,
+        StreamingResult, StructuredOutputError, ToolSet,
     };
     pub use rig_core::prelude::*;
     // Default-transport construction traits: `Client::new(..)` / `from_env()` /
     // `builder().build()` over the bundled reqwest transport.
     #[cfg(feature = "reqwest")]
     pub use rig_reqwest::prelude::*;
+    // Default-backend websocket traits: `client.responses_websocket(..)` and
+    // `builder().connect()` over the bundled tungstenite backend, plus the
+    // provider's own session extension trait.
+    #[cfg(all(feature = "websocket", not(target_family = "wasm")))]
+    pub use rig_tungstenite::prelude::*;
 }
 
-/// Low-level streaming values plus classic streaming traits.
+/// Low-level streaming values.
 pub mod streaming {
-    #[cfg(feature = "agent")]
-    pub use rig_agent::streaming::{StreamingChat, StreamingPrompt};
     pub use rig_core::streaming::*;
 }
 

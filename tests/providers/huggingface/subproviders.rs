@@ -1,6 +1,5 @@
 //! Migrated from `examples/huggingface_subproviders.rs`.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::huggingface::{self, SubProvider};
 
@@ -40,6 +39,6 @@ async fn tool_prompt_across_subproviders() {
             .prompt("Calculate 2 - 5")
             .await
             .expect("prompt should succeed");
-        assert_mentions_expected_number(&response, -3);
+        assert_mentions_expected_number(&response.output, -3);
     }
 }

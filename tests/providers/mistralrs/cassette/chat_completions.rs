@@ -1,7 +1,7 @@
 //! Cassette coverage for mistral.rs `/v1/chat/completions` responses.
 
+use rig::completion::CompletionModel;
 use rig::completion::NormalizeCompletionResponse;
-use rig::completion::{CompletionModel, Prompt};
 use rig::prelude::*;
 use serde_json::Value;
 
@@ -77,7 +77,7 @@ async fn chat_completions_agent_prompt_completes() {
                     "/no_think Explain why a local OpenAI-compatible server should return token usage.",
                 )
                 .await
-                .expect("Rig OpenAI Chat Completions API prompt should succeed");
+                .expect("Rig OpenAI Chat Completions API prompt should succeed").output;
 
             assert!(
                 !response.trim().is_empty(),

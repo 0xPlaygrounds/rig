@@ -59,12 +59,13 @@ const FACADE_CI_STEP: &str = "Test with latest nextest release";
 const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
     OutOfBinaryFamily {
         family: "openai_responses_websocket",
-        suite_file: "crates/rig-reqwest/tests/streaming_conformance_websocket.rs",
+        suite_file: "crates/rig-tungstenite/tests/streaming_conformance_websocket.rs",
         ci_step: GUARD_CI_STEP,
         ci_selector: Some("binary(streaming_conformance_websocket)"),
-        ci_package: Some("rig-core"),
-        reason: "drives a real `ResponsesWebSocketSession` against a local ws server, so it \
-                 needs rig-core's `websocket` + `test-utils` features rather than the facade's",
+        ci_package: Some("rig-tungstenite"),
+        reason: "drives a real `ResponsesWebSocketSession` over the bundled tungstenite backend \
+                 against a local ws server; rig-tungstenite is a separate package the facade \
+                 pulls in only behind its `websocket` feature",
     },
     OutOfBinaryFamily {
         family: "candle",

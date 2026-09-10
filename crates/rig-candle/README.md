@@ -5,7 +5,7 @@ and agent APIs. The crate receives byte buffers and performs no filesystem or
 network access itself.
 
 ```rust,no_run
-use rig_agent::{agent::AgentBuilder, completion::Prompt};
+use rig_agent::agent::AgentBuilder;
 use rig_candle::{CandleModel, ModelData};
 
 #[tokio::main(flavor = "current_thread")]
@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = AgentBuilder::new(model)
         .preamble("You are a concise assistant.")
         .build();
-    println!("{}", agent.prompt("Explain ownership briefly.").await?);
+    println!("{}", agent.prompt("Explain ownership briefly.").await?.output);
     Ok(())
 }
 ```

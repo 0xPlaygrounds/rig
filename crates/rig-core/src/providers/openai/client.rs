@@ -1,9 +1,16 @@
 use super::responses_api::{
     ConfigurableSystemInstructionsPlacement, ResponsesProviderExt, SystemInstructionsPlacement,
 };
+#[cfg(feature = "audio")]
+use crate::client::HasAudioGeneration;
+#[cfg(feature = "image")]
+use crate::client::HasImageGeneration;
 use crate::{
-    client::{self, BearerAuth, DebugExt, Provider},
-    http_client::HttpClientExt,
+    client::{
+        self, BearerAuth, HasCompletion, HasEmbeddings, HasModelListing, HasTranscription,
+        ModelTransport, Provider, ProviderClientResult,
+    },
+    http_client::{self, HttpClientExt},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::Deserialize;
@@ -18,91 +25,247 @@ const OPENAI_API_BASE_URL: &str = "https://api.openai.com/v1";
 // OpenAI Responses API Extension
 // ================================================================
 #[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAIResponsesExt {
+pub struct OpenAIResponses {
     pub(crate) system_instructions_placement: SystemInstructionsPlacement,
 }
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAIResponsesExtBuilder;
 
 // ================================================================
 // OpenAI Completions API Extension
 // ================================================================
 #[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAICompletionsExt {
+pub struct OpenAICompletions {
     /// Carried through API switches so that a placement configured on a
     /// Responses client survives `completions_api()` → `responses_api()`
     /// round trips. Not used by Chat Completions requests themselves.
     pub(crate) system_instructions_placement: SystemInstructionsPlacement,
 }
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct OpenAICompletionsExtBuilder;
-
 type OpenAIApiKey = BearerAuth;
 
 // Responses API client (default)
-pub type Client<H> = client::Client<OpenAIResponsesExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<OpenAIResponsesExtBuilder, OpenAIApiKey, H>;
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<OpenAIResponses, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<OpenAIResponses, H>;
 
 // Completions API client
-pub type CompletionsClient<H> = client::Client<OpenAICompletionsExt, H>;
+pub type CompletionsClient<H = crate::http_client::BoxedHttpClient> =
+    client::Client<OpenAICompletions, H>;
 pub type CompletionsClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<OpenAICompletionsExtBuilder, OpenAIApiKey, H>;
+    client::ClientBuilder<OpenAICompletions, H>;
 
-impl Provider for OpenAIResponsesExt {
-    type Builder = OpenAIResponsesExtBuilder;
+impl Provider for OpenAIResponses {
+    const NAME: &'static str = "openai";
+    const BASE_URL: &'static str = OPENAI_API_BASE_URL;
     const VERIFY_PATH: &'static str = "/models";
+    type ApiKey = OpenAIApiKey;
+    type Config = ();
+    type EnvInput = OpenAIApiKey;
+
+    fn build(_: (), _: &OpenAIApiKey) -> http_client::Result<Self> {
+        Ok(OpenAIResponses::default())
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        Client::from_env_api_key("OPENAI_API_KEY", Some("OPENAI_BASE_URL"), http)
+    }
+
+    fn from_val<H: HttpClientExt>(input: OpenAIApiKey, http: H) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
+    }
 }
 
-impl ResponsesProviderExt for OpenAIResponsesExt {
+impl HasCompletion for OpenAIResponses {
+    type Model<H>
+        = super::responses_api::ResponsesCompletionModel<H>
+    where
+        H: ModelTransport;
+
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        super::responses_api::ResponsesCompletionModel::new(client.clone(), model)
+    }
+}
+
+impl HasEmbeddings for OpenAIResponses {
+    type Model<H>
+        = super::EmbeddingModel<H>
+    where
+        H: ModelTransport;
+
+    fn embedding_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self::Model<H> {
+        super::EmbeddingModel::make(client, model, ndims)
+    }
+}
+
+impl HasTranscription for OpenAIResponses {
+    type Model<H>
+        = super::TranscriptionModel<H>
+    where
+        H: ModelTransport;
+
+    fn transcription_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        super::TranscriptionModel::new(client.clone(), model)
+    }
+}
+
+impl HasModelListing for OpenAIResponses {
+    type Lister<H>
+        = super::OpenAIModelLister<H>
+    where
+        H: ModelTransport;
+
+    fn model_lister<H: ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        super::OpenAIModelLister::new(client.clone())
+    }
+}
+
+#[cfg(feature = "image")]
+impl HasImageGeneration for OpenAIResponses {
+    type Model<H>
+        = super::ImageGenerationModel<H>
+    where
+        H: ModelTransport;
+
+    fn image_generation_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::ImageGenerationModel::new(client.clone(), model)
+    }
+}
+
+#[cfg(feature = "audio")]
+impl HasAudioGeneration for OpenAIResponses {
+    type Model<H>
+        = super::audio_generation::AudioGenerationModel<H>
+    where
+        H: ModelTransport;
+
+    fn audio_generation_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::audio_generation::AudioGenerationModel::new(client.clone(), model)
+    }
+}
+
+impl ResponsesProviderExt for OpenAIResponses {
     fn system_instructions_placement(&self) -> SystemInstructionsPlacement {
         self.system_instructions_placement
     }
 }
 
-impl ConfigurableSystemInstructionsPlacement for OpenAIResponsesExt {}
+impl ConfigurableSystemInstructionsPlacement for OpenAIResponses {}
 
-impl Provider for OpenAICompletionsExt {
-    type Builder = OpenAICompletionsExtBuilder;
+impl Provider for OpenAICompletions {
+    const NAME: &'static str = "openai";
+    const BASE_URL: &'static str = OPENAI_API_BASE_URL;
     const VERIFY_PATH: &'static str = "/models";
+    type ApiKey = OpenAIApiKey;
+    type Config = ();
+    type EnvInput = OpenAIApiKey;
+
+    fn build(_: (), _: &OpenAIApiKey) -> http_client::Result<Self> {
+        Ok(OpenAICompletions::default())
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<CompletionsClient<H>> {
+        CompletionsClient::from_env_api_key("OPENAI_API_KEY", Some("OPENAI_BASE_URL"), http)
+    }
+
+    fn from_val<H: HttpClientExt>(
+        input: OpenAIApiKey,
+        http: H,
+    ) -> ProviderClientResult<CompletionsClient<H>> {
+        CompletionsClient::new_with(input, http)
+    }
 }
 
-client::impl_capabilities!(
-    OpenAIResponsesExt,
-    completion = super::responses_api::ResponsesCompletionModel<H>,
-    embeddings = super::EmbeddingModel<H>,
-    transcription = super::TranscriptionModel<H>,
-    model_listing = super::OpenAIModelLister<H>,
-    image_generation = super::ImageGenerationModel<H>,
-    audio_generation = super::audio_generation::AudioGenerationModel<H>,
-);
+impl HasCompletion for OpenAICompletions {
+    type Model<H>
+        = super::completion::CompletionModel<H>
+    where
+        H: ModelTransport;
 
-client::impl_capabilities!(
-    OpenAICompletionsExt,
-    completion = super::completion::CompletionModel<H>,
-    embeddings = super::GenericEmbeddingModel<OpenAICompletionsExt, H>,
-    transcription = super::CompletionsTranscriptionModel<H>,
-    model_listing = super::OpenAICompletionsModelLister<H>,
-    image_generation = super::CompletionsImageGenerationModel<H>,
-    audio_generation = super::audio_generation::CompletionsAudioGenerationModel<H>,
-);
+    fn completion_model<H: ModelTransport>(
+        client: &CompletionsClient<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::completion::CompletionModel::new(client.clone(), model)
+    }
+}
 
-impl DebugExt for OpenAIResponsesExt {}
+impl HasEmbeddings for OpenAICompletions {
+    type Model<H>
+        = super::GenericEmbeddingModel<OpenAICompletions, H>
+    where
+        H: ModelTransport;
 
-impl DebugExt for OpenAICompletionsExt {}
+    fn embedding_model<H: ModelTransport>(
+        client: &CompletionsClient<H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self::Model<H> {
+        super::GenericEmbeddingModel::make(client, model, ndims)
+    }
+}
 
-client::impl_default_provider_builder!(
-    OpenAIResponsesExtBuilder => OpenAIResponsesExt,
-    api_key = OpenAIApiKey,
-    base_url = OPENAI_API_BASE_URL,
-);
-client::impl_default_provider_builder!(
-    OpenAICompletionsExtBuilder => OpenAICompletionsExt,
-    api_key = OpenAIApiKey,
-    base_url = OPENAI_API_BASE_URL,
-);
+impl HasTranscription for OpenAICompletions {
+    type Model<H>
+        = super::CompletionsTranscriptionModel<H>
+    where
+        H: ModelTransport;
+
+    fn transcription_model<H: ModelTransport>(
+        client: &CompletionsClient<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::CompletionsTranscriptionModel::new(client.clone(), model)
+    }
+}
+
+impl HasModelListing for OpenAICompletions {
+    type Lister<H>
+        = super::OpenAICompletionsModelLister<H>
+    where
+        H: ModelTransport;
+
+    fn model_lister<H: ModelTransport>(client: &CompletionsClient<H>) -> Self::Lister<H> {
+        super::OpenAICompletionsModelLister::new(client.clone())
+    }
+}
+
+#[cfg(feature = "image")]
+impl HasImageGeneration for OpenAICompletions {
+    type Model<H>
+        = super::CompletionsImageGenerationModel<H>
+    where
+        H: ModelTransport;
+
+    fn image_generation_model<H: ModelTransport>(
+        client: &CompletionsClient<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::CompletionsImageGenerationModel::new(client.clone(), model)
+    }
+}
+
+#[cfg(feature = "audio")]
+impl HasAudioGeneration for OpenAICompletions {
+    type Model<H>
+        = super::audio_generation::CompletionsAudioGenerationModel<H>
+    where
+        H: ModelTransport;
+
+    fn audio_generation_model<H: ModelTransport>(
+        client: &CompletionsClient<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::audio_generation::CompletionsAudioGenerationModel::new(client.clone(), model)
+    }
+}
 
 impl<H> Client<H>
 where
@@ -116,9 +279,9 @@ where
         self,
         placement: SystemInstructionsPlacement,
     ) -> Self {
-        let mut ext = *self.ext();
+        let mut ext = *self.provider();
         ext.system_instructions_placement = placement;
-        self.with_ext(ext)
+        self.with_provider(ext)
     }
 
     /// Sends Rig system instructions as `system` messages in `input` instead of
@@ -135,8 +298,8 @@ where
     /// Create a Completions API client from this Responses API client.
     /// Useful for switching to the traditional Chat Completions API.
     pub fn completions_api(self) -> CompletionsClient<H> {
-        let system_instructions_placement = self.ext().system_instructions_placement;
-        self.with_ext(OpenAICompletionsExt {
+        let system_instructions_placement = self.provider().system_instructions_placement;
+        self.with_provider(OpenAICompletions {
             system_instructions_placement,
         })
     }
@@ -151,25 +314,12 @@ where
     /// placement configured before switching to the Completions API is
     /// restored.
     pub fn responses_api(self) -> Client<H> {
-        let system_instructions_placement = self.ext().system_instructions_placement;
-        self.with_ext(OpenAIResponsesExt {
+        let system_instructions_placement = self.provider().system_instructions_placement;
+        self.with_provider(OpenAIResponses {
             system_instructions_placement,
         })
     }
 }
-
-client::impl_provider_from_env!(
-    OpenAIResponsesExt,
-    input = OpenAIApiKey,
-    api_key_env = "OPENAI_API_KEY",
-    base_url_env_first = "OPENAI_BASE_URL",
-);
-client::impl_provider_from_env!(
-    OpenAICompletionsExt,
-    input = OpenAIApiKey,
-    api_key_env = "OPENAI_API_KEY",
-    base_url_env_first = "OPENAI_BASE_URL",
-);
 
 /// Error envelope returned by OpenAI-compatible providers alongside 2xx
 /// statuses. Providers spell the message field differently (`message`,
@@ -203,436 +353,4 @@ pub(crate) enum ApiResponse<T> {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::client::{CompletionClient, EmbeddingsClient};
-    use crate::message;
-    use crate::message::ImageDetail;
-    use crate::providers::openai::{
-        AssistantContent, Function, ImageUrl, Message, ToolCall, ToolType, UserContent,
-    };
-    use serde_path_to_error::deserialize;
-
-    #[test]
-    fn test_deserialize_message() {
-        let assistant_message_json = r#"
-        {
-            "role": "assistant",
-            "content": "\n\nHello there, how may I assist you today?"
-        }
-        "#;
-
-        let assistant_message_json2 = r#"
-        {
-            "role": "assistant",
-            "content": [
-                {
-                    "type": "text",
-                    "text": "\n\nHello there, how may I assist you today?"
-                }
-            ],
-            "tool_calls": null
-        }
-        "#;
-
-        let assistant_message_json3 = r#"
-        {
-            "role": "assistant",
-            "tool_calls": [
-                {
-                    "id": "call_h89ipqYUjEpCPI6SxspMnoUU",
-                    "type": "function",
-                    "function": {
-                        "name": "subtract",
-                        "arguments": "{\"x\": 2, \"y\": 5}"
-                    }
-                }
-            ],
-            "content": null,
-            "refusal": null
-        }
-        "#;
-
-        let user_message_json = r#"
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": "What's in this image?"
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
-                    }
-                },
-                {
-                    "type": "audio",
-                    "input_audio": {
-                        "data": "...",
-                        "format": "mp3"
-                    }
-                }
-            ]
-        }
-        "#;
-
-        let assistant_message: Message = {
-            let jd = &mut serde_json::Deserializer::from_str(assistant_message_json);
-            deserialize(jd).unwrap_or_else(|err| {
-                panic!(
-                    "Deserialization error at {} ({}:{}): {}",
-                    err.path(),
-                    err.inner().line(),
-                    err.inner().column(),
-                    err
-                );
-            })
-        };
-
-        let assistant_message2: Message = {
-            let jd = &mut serde_json::Deserializer::from_str(assistant_message_json2);
-            deserialize(jd).unwrap_or_else(|err| {
-                panic!(
-                    "Deserialization error at {} ({}:{}): {}",
-                    err.path(),
-                    err.inner().line(),
-                    err.inner().column(),
-                    err
-                );
-            })
-        };
-
-        let assistant_message3: Message = {
-            let jd: &mut serde_json::Deserializer<serde_json::de::StrRead<'_>> =
-                &mut serde_json::Deserializer::from_str(assistant_message_json3);
-            deserialize(jd).unwrap_or_else(|err| {
-                panic!(
-                    "Deserialization error at {} ({}:{}): {}",
-                    err.path(),
-                    err.inner().line(),
-                    err.inner().column(),
-                    err
-                );
-            })
-        };
-
-        let user_message: Message = {
-            let jd = &mut serde_json::Deserializer::from_str(user_message_json);
-            deserialize(jd).unwrap_or_else(|err| {
-                panic!(
-                    "Deserialization error at {} ({}:{}): {}",
-                    err.path(),
-                    err.inner().line(),
-                    err.inner().column(),
-                    err
-                );
-            })
-        };
-
-        match assistant_message {
-            Message::Assistant { content, .. } => {
-                assert_eq!(
-                    content[0],
-                    AssistantContent::Text {
-                        text: "\n\nHello there, how may I assist you today?".to_string()
-                    }
-                );
-            }
-            _ => panic!("Expected assistant message"),
-        }
-
-        match assistant_message2 {
-            Message::Assistant {
-                content,
-                tool_calls,
-                ..
-            } => {
-                assert_eq!(
-                    content[0],
-                    AssistantContent::Text {
-                        text: "\n\nHello there, how may I assist you today?".to_string()
-                    }
-                );
-
-                assert_eq!(tool_calls, vec![]);
-            }
-            _ => panic!("Expected assistant message"),
-        }
-
-        match assistant_message3 {
-            Message::Assistant {
-                content,
-                tool_calls,
-                refusal,
-                ..
-            } => {
-                assert!(content.is_empty());
-                assert!(refusal.is_none());
-                assert_eq!(
-                    tool_calls[0],
-                    ToolCall {
-                        id: "call_h89ipqYUjEpCPI6SxspMnoUU".to_string(),
-                        r#type: ToolType::Function,
-                        function: Function {
-                            name: "subtract".to_string(),
-                            arguments: serde_json::json!({"x": 2, "y": 5}),
-                        },
-                    }
-                );
-            }
-            _ => panic!("Expected assistant message"),
-        }
-
-        match user_message {
-            Message::User { content, .. } => {
-                let (first, second) = {
-                    let mut iter = content.into_iter();
-                    (iter.next().unwrap(), iter.next().unwrap())
-                };
-                assert_eq!(
-                    first,
-                    UserContent::Text {
-                        text: "What's in this image?".to_string()
-                    }
-                );
-                assert_eq!(second, UserContent::Image { image_url: ImageUrl { url: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg".to_string(), detail: None } });
-            }
-            _ => panic!("Expected user message"),
-        }
-    }
-
-    #[test]
-    fn test_message_to_message_conversion() {
-        let user_message = message::Message::User {
-            content: vec![message::UserContent::text("Hello")],
-        };
-
-        let assistant_message = message::Message::Assistant {
-            id: None,
-            content: vec![message::AssistantContent::text("Hi there!")],
-        };
-
-        let converted_user_message: Vec<Message> = user_message.clone().try_into().unwrap();
-        let converted_assistant_message: Vec<Message> =
-            assistant_message.clone().try_into().unwrap();
-
-        match converted_user_message[0].clone() {
-            Message::User { content, .. } => {
-                assert_eq!(
-                    content.first(),
-                    Some(&UserContent::Text {
-                        text: "Hello".to_string()
-                    })
-                );
-            }
-            _ => panic!("Expected user message"),
-        }
-
-        match converted_assistant_message[0].clone() {
-            Message::Assistant { content, .. } => {
-                assert_eq!(
-                    content[0].clone(),
-                    AssistantContent::Text {
-                        text: "Hi there!".to_string()
-                    }
-                );
-            }
-            _ => panic!("Expected assistant message"),
-        }
-
-        let original_user_message: message::Message =
-            converted_user_message[0].clone().try_into().unwrap();
-        let original_assistant_message: message::Message =
-            converted_assistant_message[0].clone().try_into().unwrap();
-
-        assert_eq!(original_user_message, user_message);
-        assert_eq!(original_assistant_message, assistant_message);
-    }
-
-    #[test]
-    fn test_message_from_message_conversion() {
-        let user_message = Message::User {
-            content: vec![UserContent::Text {
-                text: "Hello".to_string(),
-            }],
-            name: None,
-        };
-
-        let assistant_message = Message::Assistant {
-            content: vec![AssistantContent::Text {
-                text: "Hi there!".to_string(),
-            }],
-            reasoning: None,
-            refusal: None,
-            audio: None,
-            name: None,
-            tool_calls: vec![],
-            reasoning_details: vec![],
-            images: vec![],
-        };
-
-        let converted_user_message: message::Message = user_message.clone().try_into().unwrap();
-        let converted_assistant_message: message::Message =
-            assistant_message.clone().try_into().unwrap();
-
-        match converted_user_message.clone() {
-            message::Message::User { content } => {
-                assert_eq!(content.first(), Some(&message::UserContent::text("Hello")));
-            }
-            _ => panic!("Expected user message"),
-        }
-
-        match converted_assistant_message.clone() {
-            message::Message::Assistant { content, .. } => {
-                assert_eq!(
-                    content.first(),
-                    Some(&message::AssistantContent::text("Hi there!"))
-                );
-            }
-            _ => panic!("Expected assistant message"),
-        }
-
-        let original_user_message: Vec<Message> = converted_user_message.try_into().unwrap();
-        let original_assistant_message: Vec<Message> =
-            converted_assistant_message.try_into().unwrap();
-
-        assert_eq!(original_user_message[0], user_message);
-        assert_eq!(original_assistant_message[0], assistant_message);
-    }
-
-    #[test]
-    fn test_user_message_single_text_serializes_as_string() {
-        let user_message = Message::User {
-            content: vec![UserContent::Text {
-                text: "Hello world".to_string(),
-            }],
-            name: None,
-        };
-
-        let serialized = serde_json::to_value(&user_message).unwrap();
-
-        assert_eq!(serialized["role"], "user");
-        assert_eq!(serialized["content"], "Hello world");
-    }
-
-    #[test]
-    fn test_user_message_multiple_parts_serializes_as_array() {
-        let user_message = Message::User {
-            content: vec![
-                UserContent::Text {
-                    text: "What's in this image?".to_string(),
-                },
-                UserContent::Image {
-                    image_url: ImageUrl {
-                        url: "https://example.com/image.jpg".to_string(),
-                        detail: Some(ImageDetail::default()),
-                    },
-                },
-            ],
-            name: None,
-        };
-
-        let serialized = serde_json::to_value(&user_message).unwrap();
-
-        assert_eq!(serialized["role"], "user");
-        assert!(serialized["content"].is_array());
-        assert_eq!(serialized["content"].as_array().unwrap().len(), 2);
-    }
-
-    #[test]
-    fn test_user_message_single_image_serializes_as_array() {
-        let user_message = Message::User {
-            content: vec![UserContent::Image {
-                image_url: ImageUrl {
-                    url: "https://example.com/image.jpg".to_string(),
-                    detail: Some(ImageDetail::default()),
-                },
-            }],
-            name: None,
-        };
-
-        let serialized = serde_json::to_value(&user_message).unwrap();
-
-        assert_eq!(serialized["role"], "user");
-        // Single non-text content should still serialize as array
-        assert!(serialized["content"].is_array());
-    }
-    #[test]
-    fn test_client_initialization() {
-        let _client = crate::providers::openai::Client::new_with(
-            "dummy-key",
-            crate::test_utils::RecordingHttpClient::new(""),
-        )
-        .expect("Client::new() failed");
-        let _client_from_builder = crate::providers::openai::Client::builder()
-            .api_key("dummy-key")
-            .http_client(crate::test_utils::RecordingHttpClient::new(""))
-            .build()
-            .expect("Client::builder() failed");
-    }
-
-    #[test]
-    fn test_legacy_chat_completion_model_type_annotation_still_compiles() {
-        let client = crate::providers::openai::Client::new_with(
-            "dummy-key",
-            crate::test_utils::RecordingHttpClient::new(""),
-        )
-        .expect("Client::new() failed")
-        .completions_api();
-
-        let _model: crate::providers::openai::completion::CompletionModel<
-            crate::test_utils::RecordingHttpClient,
-        > = client.completion_model("gpt-4o");
-    }
-
-    #[test]
-    fn test_legacy_embedding_model_type_annotation_still_compiles() {
-        let client = crate::providers::openai::Client::new_with(
-            "dummy-key",
-            crate::test_utils::RecordingHttpClient::new(""),
-        )
-        .expect("Client::new() failed");
-
-        let _model: crate::providers::openai::EmbeddingModel<
-            crate::test_utils::RecordingHttpClient,
-        > = client.embedding_model(crate::providers::openai::TEXT_EMBEDDING_3_SMALL);
-    }
-
-    #[test]
-    fn api_switch_preserves_non_completion_capabilities() {
-        use crate::client::ModelListingClient;
-        use crate::client::transcription::TranscriptionClient;
-
-        let client = crate::providers::openai::Client::new_with(
-            "dummy-key",
-            crate::test_utils::RecordingHttpClient::new(""),
-        )
-        .expect("Client::new() failed")
-        .completions_api();
-
-        let _: crate::providers::openai::GenericEmbeddingModel<
-            crate::providers::openai::OpenAICompletionsExt,
-            crate::test_utils::RecordingHttpClient,
-        > = client.embedding_model(crate::providers::openai::TEXT_EMBEDDING_3_SMALL);
-        let _: crate::providers::openai::CompletionsTranscriptionModel<_> =
-            client.transcription_model(crate::providers::openai::WHISPER_1);
-
-        fn assert_model_listing<T: ModelListingClient>(_: &T) {}
-        assert_model_listing(&client);
-
-        #[cfg(feature = "image")]
-        {
-            use crate::client::image_generation::ImageGenerationClient;
-            let _: crate::providers::openai::CompletionsImageGenerationModel<_> =
-                client.image_generation_model(crate::providers::openai::DALL_E_3);
-        }
-
-        #[cfg(feature = "audio")]
-        {
-            use crate::client::audio_generation::AudioGenerationClient;
-            let _: crate::providers::openai::audio_generation::CompletionsAudioGenerationModel<_> =
-                client.audio_generation_model(crate::providers::openai::TTS_1);
-        }
-    }
-}
+mod tests;

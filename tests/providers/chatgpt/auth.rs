@@ -3,7 +3,6 @@
 use assert_fs::TempDir;
 use rig::prelude::*;
 use rig::providers::chatgpt;
-use rig::streaming::StreamingPrompt;
 use serde_json::json;
 use std::fs;
 use std::path::Path;
@@ -67,7 +66,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
     );
 
     let agent = client.agent(LIVE_MODEL).preamble(BASIC_PREAMBLE).build();
-    let mut stream = agent.stream_prompt(BASIC_PROMPT).await;
+    let mut stream = agent.stream_prompt(BASIC_PROMPT).stream().await;
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("authorized streaming completion should succeed");
@@ -81,6 +80,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
     let cached_agent = cached_client.agent(LIVE_MODEL).build();
     let mut cached_stream = cached_agent
         .stream_prompt("Reply with the single word cached.")
+        .stream()
         .await;
     let cached_response = collect_stream_final_response(&mut cached_stream)
         .await
@@ -126,6 +126,7 @@ async fn refresh_token_cache_authorize_and_completion_smoke() {
     let agent = client.agent(LIVE_MODEL).build();
     let mut stream = agent
         .stream_prompt("Reply with the single word refreshed.")
+        .stream()
         .await;
     let response = collect_stream_final_response(&mut stream)
         .await

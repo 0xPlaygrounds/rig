@@ -6,9 +6,8 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use rig::completion::{Chat, Message};
+use rig::completion::Message;
 use rig::prelude::*;
-use rig::streaming::StreamingChat;
 
 use super::super::support::with_openai_cassette;
 use crate::reasoning::{self, WeatherTool};
@@ -30,6 +29,7 @@ async fn streaming() {
         let stream = agent
             .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
             .max_turns(3)
+            .stream()
             .await;
 
         let stats = reasoning::collect_stream_stats(stream, "openai").await;
@@ -66,7 +66,8 @@ async fn nonstreaming() {
             let result = agent
                 .chat(reasoning::TOOL_USER_PROMPT, &mut Vec::<Message>::new())
                 .await
-                .expect("[openai] Non-streaming chat failed - likely 400 from dropped reasoning");
+                .expect("[openai] Non-streaming chat failed - likely 400 from dropped reasoning")
+                .output;
 
             reasoning::assert_nonstreaming_universal(&result, &call_count, "openai");
         },

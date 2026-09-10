@@ -1,6 +1,5 @@
 //! Groq loaders smoke test.
 
-use rig::completion::Prompt;
 use rig::loaders::FileLoader;
 use rig::prelude::*;
 use rig::providers::groq;
@@ -39,5 +38,5 @@ async fn loaders_smoke() {
         .await
         .expect("loader prompt should succeed");
 
-    assert_loader_answer_is_relevant(&response);
+    assert_loader_answer_is_relevant(&response.output);
 }

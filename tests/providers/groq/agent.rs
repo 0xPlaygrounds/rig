@@ -1,6 +1,5 @@
 //! Groq agent completion smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::groq;
 
@@ -19,5 +18,5 @@ async fn completion_smoke() {
         .await
         .expect("completion should succeed");
 
-    assert_nonempty_response(&response);
+    assert_nonempty_response(&response.output);
 }

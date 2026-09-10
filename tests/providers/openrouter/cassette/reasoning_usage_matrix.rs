@@ -24,7 +24,7 @@
 //! span, and every caller reading the field, saw a hardcoded zero no matter
 //! how much reasoning the route billed for.
 //!
-//! The same type is `OpenRouterExt::StreamingUsage`, so the streaming
+//! The same type is `OpenRouter::StreamingUsage`, so the streaming
 //! terminal record lost it too — the zero was consistent across transports,
 //! which is exactly why nothing caught it.
 //!
@@ -79,7 +79,6 @@
 use rig::client::completion::CompletionClient;
 use rig::completion::{CompletionModel, NormalizeCompletionResponse};
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 use rig::telemetry::ProviderResponseExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -197,10 +196,9 @@ async fn streaming_reasoning_tokens_reach_the_terminal_record() {
     );
 }
 
-/// The agent surface must report the breakdown too — but only
-/// `extended_details()` exposes usage at all: plain `prompt()` returns a bare
-/// `String`, so a cell written against it could never fail on `origin/main`
-/// no matter what the mapping did.
+/// The agent surface must report the breakdown too: `prompt()` returns a
+/// `PromptResponse` whose `usage` carries the reasoning tokens, so this cell
+/// fails if the mapping drops them.
 #[tokio::test]
 async fn blocking_agent_reports_reasoning_tokens() {
     const SCENARIO: &str = "reasoning_usage_matrix/blocking_agent_reports_reasoning_tokens";
@@ -219,7 +217,6 @@ async fn blocking_agent_reports_reasoning_tokens() {
 
             let response = agent
                 .prompt(REASONING_PROMPT)
-                .extended_details()
                 .await
                 .expect("agent reasoning turn");
 
@@ -254,7 +251,7 @@ async fn streaming_agent_reports_reasoning_tokens() {
                 .additional_params(openai_reasoning("medium"))
                 .build();
 
-            let mut stream = agent.stream_prompt(REASONING_PROMPT).await;
+            let mut stream = agent.stream_prompt(REASONING_PROMPT).stream().await;
             let (_, provider_final) = collect_stream_final_response_and_provider_final(&mut stream)
                 .await
                 .expect("agent stream should succeed");
@@ -608,7 +605,7 @@ async fn blocking_reasoning_tokens_with_tools_in_request() {
 }
 
 /// One scenario, both transports: `openrouter::Usage` is also
-/// `OpenRouterExt::StreamingUsage`, so a fix that only reached the blocking
+/// `OpenRouter::StreamingUsage`, so a fix that only reached the blocking
 /// mapping would show up here.
 #[tokio::test]
 async fn transports_agree_on_reasoning_tokens() {

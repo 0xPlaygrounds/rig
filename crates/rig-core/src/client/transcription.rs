@@ -1,3 +1,4 @@
+use super::{Client, ModelTransport, Provider};
 use crate::transcription::TranscriptionModel;
 
 /// A provider client with transcription capabilities.
@@ -24,16 +25,28 @@ pub trait TranscriptionClient {
     fn transcription_model(&self, model: impl Into<String>) -> Self::TranscriptionModel;
 }
 
-/// Construction hook for the blanket [`TranscriptionClient`] implementation over
-/// [`crate::client::Client`] — the transcription twin of
-/// [`crate::client::ConstructCompletionModel`].
-///
-/// Public for the same reason: an out-of-tree provider extension built on the
-/// generic `Client<Ext, H>` cannot implement [`TranscriptionClient`] for that foreign
-/// type (orphan rule), so it implements this trait on its own model type and
-/// the blanket implementation supplies the constructor. Providers with their
-/// own client type implement [`TranscriptionClient`] directly and never need this.
-pub trait ConstructTranscriptionModel<C>: Sized {
-    /// Build this model from its provider client and a model identifier.
-    fn construct(client: &C, model: String) -> Self;
+/// A [`Provider`] that offers transcription models. Implementing this is what
+/// makes [`TranscriptionClient`] available on `Client<Self, H>`.
+pub trait HasTranscription: Provider {
+    /// The concrete transcription model built over transport `H`.
+    type Model<H>: TranscriptionModel
+    where
+        H: ModelTransport;
+
+    /// Build the transcription model `model` from `client`.
+    fn transcription_model<H>(client: &Client<Self, H>, model: String) -> Self::Model<H>
+    where
+        H: ModelTransport;
+}
+
+impl<P, H> TranscriptionClient for Client<P, H>
+where
+    P: HasTranscription,
+    H: ModelTransport,
+{
+    type TranscriptionModel = P::Model<H>;
+
+    fn transcription_model(&self, model: impl Into<String>) -> Self::TranscriptionModel {
+        P::transcription_model(self, model.into())
+    }
 }

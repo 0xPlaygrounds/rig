@@ -1,6 +1,5 @@
 //! xAI context smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::xai;
 
@@ -38,7 +37,7 @@ async fn context_smoke() {
             .await
             .expect("context prompt should succeed");
 
-        assert_contains_any_case_insensitive(&response, &["ancient tool"]);
+        assert_contains_any_case_insensitive(&response.output, &["ancient tool"]);
     })
     .await;
 }

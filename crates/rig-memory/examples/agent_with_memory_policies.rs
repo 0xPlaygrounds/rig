@@ -58,7 +58,8 @@ async fn main() -> Result<()> {
     let reply = sliding_agent
         .prompt("Remember: my favorite color is teal.")
         .conversation("alice")
-        .await?;
+        .await?
+        .output;
     println!("[sliding] {reply}");
 
     let token_memory = InMemoryConversationMemory::new()
@@ -73,7 +74,8 @@ async fn main() -> Result<()> {
     let reply = token_agent
         .prompt("Plan a 3-day trip to Kyoto.")
         .conversation("alice")
-        .await?;
+        .await?
+        .output;
     println!("[token]   {reply}");
 
     Ok(())

@@ -6,7 +6,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::{CompletionModel, Message};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::chatgpt;
@@ -145,7 +145,7 @@ async fn explicit_preamble_and_mid_conversation_system_messages_are_instructions
                 .expect("chat with a mid-conversation system message should succeed");
 
             assert!(
-                result.contains("FALCON-9"),
+                result.output.contains("FALCON-9"),
                 "the mid-conversation system message must reach the model, got {result:?}"
             );
         },
@@ -174,8 +174,8 @@ async fn default_instructions_merge_with_explicit_preamble() {
                 .expect("default and explicit instructions should both reach the backend");
 
             assert!(
-                result.contains("DEFAULT-CODEX-MARKER")
-                    && result.contains("EXPLICIT-CODEX-MARKER"),
+                result.output.contains("DEFAULT-CODEX-MARKER")
+                    && result.output.contains("EXPLICIT-CODEX-MARKER"),
                 "merged instructions should influence the answer, got {result:?}"
             );
         },

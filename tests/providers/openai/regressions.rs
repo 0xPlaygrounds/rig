@@ -69,7 +69,8 @@ async fn extractor_accepts_nullable_strict_in_echoed_tool_definition() {
         .build()
         .extract("What fruit is mentioned in the database?")
         .await
-        .expect("nullable strict should not prevent extraction");
+        .expect("nullable strict should not prevent extraction")
+        .output;
 
     assert_eq!(
         extracted,

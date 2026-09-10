@@ -1,10 +1,9 @@
 //! Gemini tool-choice cassette coverage.
 
-use rig::completion::{AssistantContent, Chat, CompletionModel, Message};
+use rig::completion::{AssistantContent, CompletionModel, Message};
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 
 use crate::support::{
@@ -168,6 +167,7 @@ async fn none_streaming_does_not_emit_tool_calls() {
 
             let mut stream = agent
                 .stream_prompt("Calculate 20 + 22 directly in text. Do not call tools.")
+                .stream()
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 
@@ -221,7 +221,7 @@ async fn none_nonstreaming_does_not_emit_tool_calls() {
                 .await
                 .expect("ToolChoice::None prompt should succeed");
 
-            assert_mentions_expected_number(&response, 42);
+            assert_mentions_expected_number(&response.output, 42);
             assert_history_tool_calls(&chat_history, &[], &[Adder::NAME, Subtract::NAME]);
         },
     )

@@ -8,7 +8,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{Chat, CompletionModel, Message, ToolDefinition};
+use rig::completion::{CompletionModel, Message, ToolDefinition};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::chatgpt;
@@ -231,7 +231,7 @@ async fn nested_arguments_roundtrip_nonstreaming() {
                 .expect("nested-args tool chat should succeed");
 
             assert!(
-                result.contains("SAKURA-77"),
+                result.output.contains("SAKURA-77"),
                 "final answer should repeat the tool's confirmation code, got {result:?}"
             );
 

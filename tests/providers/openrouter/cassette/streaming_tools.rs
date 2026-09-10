@@ -7,7 +7,6 @@
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
@@ -36,7 +35,7 @@ async fn streaming_tools_smoke() {
                 .default_max_turns(2)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");

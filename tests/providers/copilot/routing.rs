@@ -2,7 +2,6 @@
 
 use crate::copilot::{LIVE_MODEL, live_client, live_responses_model, with_copilot_cassette};
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 #[tokio::test]
@@ -16,7 +15,7 @@ async fn chat_models_route_through_chat_completions() {
         .await
         .expect("chat-completions route should succeed");
 
-    assert_nonempty_response(&response);
+    assert_nonempty_response(&response.output);
 }
 
 #[tokio::test]
@@ -32,7 +31,7 @@ async fn codex_models_route_through_responses() {
                 .await
                 .expect("responses route should succeed");
 
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
         },
     )
     .await;

@@ -1,6 +1,5 @@
 //! llama.cpp structured output coverage, including the migrated example path.
 
-use rig::completion::{Prompt, TypedPrompt};
 use rig::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -59,7 +58,8 @@ async fn structured_output_smoke() {
             let response: SmokeStructuredOutput = agent
                 .prompt_typed(STRUCTURED_OUTPUT_PROMPT)
                 .await
-                .expect("structured output prompt should succeed");
+                .expect("structured output prompt should succeed")
+                .output;
 
             assert_smoke_structured_output(&response);
         },
@@ -82,7 +82,7 @@ async fn prompt_typed_structured_output() {
                 "Return JSON weather data for New York City today with fields city, current.temperature_f, current.humidity_pct, and current.description.",
             )
             .await
-            .expect("prompt_typed should succeed");
+            .expect("prompt_typed should succeed").output;
         assert_weather_forecast(&forecast, &["new york", "nyc"]);
     })
     .await;
@@ -102,7 +102,6 @@ async fn prompt_typed_extended_details_structured_output() {
             .prompt_typed::<WeatherForecast>(
                 "Return JSON weather data for Los Angeles with fields city, current.temperature_f, current.humidity_pct, and current.description.",
             )
-            .extended_details()
             .await
             .expect("extended prompt_typed should succeed");
         assert_weather_forecast(&extended.output, &["los angeles", "la"]);
@@ -128,7 +127,7 @@ async fn output_schema_structured_output() {
             .await
             .expect("output schema prompt should succeed");
         let parsed: WeatherForecast =
-            serde_json::from_str(&response).expect("schema response should deserialize");
+            serde_json::from_str(&response.output).expect("schema response should deserialize");
         assert_weather_forecast(&parsed, &["chicago"]);
     })
     .await;

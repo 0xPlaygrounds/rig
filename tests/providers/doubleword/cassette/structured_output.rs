@@ -1,6 +1,5 @@
 //! Cassette-backed Doubleword structured output coverage.
 
-use rig::completion::TypedPrompt;
 use rig::prelude::*;
 
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
@@ -18,7 +17,8 @@ async fn structured_output_smoke() {
                 .build()
                 .prompt_typed(STRUCTURED_OUTPUT_PROMPT)
                 .await
-                .expect("structured output prompt should succeed");
+                .expect("structured output prompt should succeed")
+                .output;
             assert_smoke_structured_output(&response);
         },
     )

@@ -4,7 +4,6 @@
 //! proven by a downstream-observable change (the model can't echo settings).
 
 use rig::agent::RequestPatch;
-use rig::completion::Prompt;
 use rig::message::{Message, ToolChoice};
 use rig::prelude::*;
 use rig::providers::gemini;
@@ -45,7 +44,7 @@ async fn preamble_override_forces_codeword_blocking() {
                 .expect("preamble-override run should succeed");
 
             assert!(
-                response.contains(CODEWORD),
+                response.output.contains(CODEWORD),
                 "the overridden preamble must change behavior; answer: {response:?}"
             );
         },
@@ -83,7 +82,7 @@ async fn tool_choice_required_forces_a_tool_call_blocking() {
                 .await
                 .expect("tool_choice=Required run should succeed");
 
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
             assert!(
                 add_calls.count() >= 1,
                 "tool_choice=Required (via RequestPatch) must force a tool call"
@@ -120,7 +119,7 @@ async fn history_replacement_injects_prior_fact_blocking() {
                 .expect("history-replacement run should succeed");
 
             assert!(
-                response.contains("OMEGA-7"),
+                response.output.contains("OMEGA-7"),
                 "the per-turn history view must reach the model; answer: {response:?}"
             );
         },
@@ -157,11 +156,11 @@ async fn multi_field_patch_applies_preamble_and_context_blocking() {
                 .expect("multi-field patch run should succeed");
 
             assert!(
-                response.contains("GAMMA-33"),
+                response.output.contains("GAMMA-33"),
                 "the patch's extra_context must reach the model; answer: {response:?}"
             );
             assert!(
-                response.contains(CODEWORD),
+                response.output.contains(CODEWORD),
                 "the patch's preamble override must also take effect; answer: {response:?}"
             );
         },

@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
         .preamble("You are a helpful assistant.")
         .build();
 
-    let response = agent.prompt("What is 2 + 2?").await?;
+    let response = agent.prompt("What is 2 + 2?").await?.output;
     println!("Response: {response}");
 
     Ok(())

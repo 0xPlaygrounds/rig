@@ -1089,7 +1089,7 @@ async fn agent_blocking_truncated_call_is_not_invoked() {
             // `origin/main` the response never decodes, so `prompt` fails and
             // the count is trivially zero. The cell only tests the fix if the
             // turn is required to have reached the loop at all.
-            let outcome = rig::completion::Prompt::prompt(&agent, INCIDENT_PROMPT).await;
+            let outcome = agent.prompt(INCIDENT_PROMPT).await;
             let error = match outcome {
                 Ok(_) => None,
                 Err(error) => Some(error.to_string()),
@@ -1131,13 +1131,11 @@ async fn agent_streaming_truncated_call_is_not_invoked() {
                 .max_tokens(32)
                 .build();
 
-            let mut stream = rig::streaming::StreamingChat::stream_chat(
-                &agent,
-                INCIDENT_PROMPT,
-                Vec::<rig::completion::Message>::new(),
-            )
-            .max_turns(1)
-            .await;
+            let mut stream = agent
+                .stream_chat(INCIDENT_PROMPT, Vec::<rig::completion::Message>::new())
+                .max_turns(1)
+                .stream()
+                .await;
             let observation = crate::support::collect_stream_observation(&mut stream).await;
 
             assert!(
@@ -1182,7 +1180,7 @@ async fn agent_blocking_empty_arguments_on_length_are_not_invoked() {
                 .default_max_turns(1)
                 .build();
 
-            let outcome = rig::completion::Prompt::prompt(&agent, INCIDENT_PROMPT).await;
+            let outcome = agent.prompt(INCIDENT_PROMPT).await;
             if let Err(error) = outcome {
                 assert!(
                     !error.to_string().contains("ProviderResponseError"),
@@ -1222,13 +1220,11 @@ async fn agent_streaming_empty_arguments_on_length_are_not_invoked() {
                 .max_tokens(16)
                 .build();
 
-            let mut stream = rig::streaming::StreamingChat::stream_chat(
-                &agent,
-                INCIDENT_PROMPT,
-                Vec::<rig::completion::Message>::new(),
-            )
-            .max_turns(1)
-            .await;
+            let mut stream = agent
+                .stream_chat(INCIDENT_PROMPT, Vec::<rig::completion::Message>::new())
+                .max_turns(1)
+                .stream()
+                .await;
             let observation = crate::support::collect_stream_observation(&mut stream).await;
             assert!(observation.tool_calls.is_empty());
             assert_eq!(

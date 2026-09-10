@@ -20,3 +20,5 @@ pub(crate) mod sigv4;
 pub mod streaming;
 
 pub use client::{AnthropicKey, Client, ClientBuilder};
+pub use completion::CompletionModel;
+pub use model_listing::AnthropicModelLister;

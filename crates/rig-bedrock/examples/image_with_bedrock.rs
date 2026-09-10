@@ -8,7 +8,6 @@ use rig_core::{
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_agent::prelude::*;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
-use rig_core::client::ProviderClient;
 use tracing::info;
 
 const IMAGE_URL: &str = "https://playgrounds.network/assets/PG-Logo.png";
@@ -40,7 +39,7 @@ async fn main() -> Result<(), anyhow::Error> {
     };
 
     // Prompt the agent and print the response
-    let response = agent.prompt(image).await?;
+    let response = agent.prompt(image).await?.output;
     info!("{}", response);
 
     Ok(())

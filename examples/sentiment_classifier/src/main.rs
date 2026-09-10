@@ -28,7 +28,7 @@ async fn main() -> Result<()> {
         .extractor::<DocumentSentiment>(openai::GPT_4)
         .build();
 
-    let sentiment = extractor.extract("I am happy").await?;
+    let sentiment = extractor.extract("I am happy").await?.output;
 
     println!("GPT-4: {sentiment:?}");
 

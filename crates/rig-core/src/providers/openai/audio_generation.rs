@@ -1,65 +1,30 @@
 use crate::providers::internal::audio_generation::{
     GenericAudioGenerationModel, RawAudioGenerationProvider,
 };
-use crate::providers::openai::{OpenAICompletionsExt, OpenAIResponsesExt};
+use crate::providers::openai::{OpenAICompletions, OpenAIResponses};
 
 pub const TTS_1: &str = "tts-1";
 pub const TTS_1_HD: &str = "tts-1-hd";
 
 /// OpenAI audio generation model.
-pub type AudioGenerationModel<T> = GenericAudioGenerationModel<OpenAIResponsesExt, T>;
+pub type AudioGenerationModel<T = crate::http_client::BoxedHttpClient> =
+    GenericAudioGenerationModel<OpenAIResponses, T>;
 
 /// OpenAI audio generation model for a client using Chat Completions.
-pub type CompletionsAudioGenerationModel<T> = GenericAudioGenerationModel<OpenAICompletionsExt, T>;
+pub type CompletionsAudioGenerationModel<T = crate::http_client::BoxedHttpClient> =
+    GenericAudioGenerationModel<OpenAICompletions, T>;
 
-impl RawAudioGenerationProvider for OpenAIResponsesExt {
+impl RawAudioGenerationProvider for OpenAIResponses {
     const AUDIO_GENERATION_PATH: &'static str = "/audio/speech";
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 }
 
-impl RawAudioGenerationProvider for OpenAICompletionsExt {
+impl RawAudioGenerationProvider for OpenAICompletions {
     const AUDIO_GENERATION_PATH: &'static str = "/audio/speech";
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::audio_generation::{AudioGenerationError, AudioGenerationModel as _};
-    use crate::client::audio_generation::AudioGenerationClient;
-    use crate::providers::openai::Client;
-    use crate::test_utils::RecordingHttpClient;
-
-    #[tokio::test]
-    async fn audio_generation_non_success_preserves_status_and_body() {
-        let body = r#"{"error":{"message":"boom"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.audio_generation_model(TTS_1);
-
-        let request = model
-            .audio_generation_request()
-            .text("hello")
-            .voice("alloy")
-            .build();
-
-        let error = model
-            .audio_generation(request)
-            .await
-            .expect_err("should fail with non-success status");
-
-        assert!(matches!(error, AudioGenerationError::HttpError(_)));
-        assert_eq!(
-            error.provider_response_status(),
-            Some(http::StatusCode::SERVICE_UNAVAILABLE)
-        );
-        assert_eq!(error.provider_response_body(), Some(body));
-    }
-}
+mod tests;

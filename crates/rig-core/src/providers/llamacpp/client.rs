@@ -1,5 +1,8 @@
-use crate::client::{self, ApiKey, DebugExt, Nothing, Provider, Transport};
-use crate::http_client;
+use crate::client::{
+    self, ApiKey, HasCompletion, HasEmbeddings, HasModelListing, HasRerank, ModelTransport,
+    Nothing, Provider, ProviderClientResult,
+};
+use crate::http_client::{self, HttpClientExt};
 use crate::providers::internal::model_listing::{ListModelEntry, impl_model_lister};
 use crate::providers::openai;
 
@@ -31,6 +34,12 @@ impl ApiKey for LlamacppApiKey {
     ) -> Option<http_client::Result<(http::header::HeaderName, http::header::HeaderValue)>> {
         self.0.map(http_client::make_auth_header)
     }
+
+    // A local `llama-server` needs no credential by default, so a builder
+    // without one is complete.
+    fn absent() -> Option<Self> {
+        Some(Self(None))
+    }
 }
 
 impl From<Nothing> for LlamacppApiKey {
@@ -60,10 +69,7 @@ impl From<&str> for LlamacppApiKey {
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct LlamacppExt;
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct LlamacppBuilder;
+pub struct Llamacpp;
 
 /// `llama-server` routes that live **outside** the `/v1` namespace.
 ///
@@ -91,8 +97,12 @@ const UNVERSIONED_ROUTES: &[&str] = &[
     "/lora-adapters",
 ];
 
-impl Provider for LlamacppExt {
-    type Builder = LlamacppBuilder;
+impl Provider for Llamacpp {
+    const NAME: &'static str = "llamacpp";
+    const BASE_URL: &'static str = LLAMACPP_API_BASE_URL;
+    type ApiKey = LlamacppApiKey;
+    type Config = ();
+    type EnvInput = LlamacppApiKey;
 
     // `/v1/models` and `/health` are the only two routes `llama-server`
     // serves without an API-key check, so neither can distinguish a good
@@ -120,7 +130,7 @@ impl Provider for LlamacppExt {
     /// the segment (a reverse proxy at `https://gw.example/v1/llama`) still
     /// gets the prefix, because the OpenAI routes are relative to that mount
     /// point rather than to the segment that happens to appear inside it.
-    fn build_uri(&self, base_url: &str, path: &str, _transport: Transport) -> String {
+    fn build_uri(&self, base_url: &str, path: &str) -> String {
         let base_url = base_url.trim_end_matches('/');
         let trimmed = path.trim_start_matches('/');
 
@@ -139,9 +149,41 @@ impl Provider for LlamacppExt {
             format!("{base_url}/v1/{trimmed}")
         }
     }
+
+    fn build(_: (), _: &LlamacppApiKey) -> http_client::Result<Self> {
+        Ok(Llamacpp)
+    }
+
+    /// Read `LLAMACPP_API_BASE_URL` (optional, defaults to
+    /// `http://localhost:8080`) and `LLAMACPP_API_KEY` (optional).
+    ///
+    /// The base URL is optional where the predecessor `llamafile` provider
+    /// required it: a llama.cpp server on its default port is the overwhelming
+    /// case, and demanding an environment variable to reach `localhost:8080`
+    /// bought nothing.
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        let api_base = crate::client::optional_env_var("LLAMACPP_API_BASE_URL")?
+            .unwrap_or_else(|| LLAMACPP_API_BASE_URL.to_string());
+        let api_key = crate::client::optional_env_var("LLAMACPP_API_KEY")?
+            .map(LlamacppApiKey::from)
+            .unwrap_or_default();
+
+        Client::builder()
+            .api_key(api_key)
+            .base_url(&api_base)
+            .http_client(http)
+            .build()
+    }
+
+    fn from_val<H: HttpClientExt>(
+        api_key: LlamacppApiKey,
+        http: H,
+    ) -> ProviderClientResult<Client<H>> {
+        Client::new_with(api_key, http)
+    }
 }
 
-impl openai::completion::OpenAICompatibleProvider for LlamacppExt {
+impl openai::completion::OpenAICompatibleProvider for Llamacpp {
     const PROVIDER_NAME: &'static str = "llamacpp";
 
     type StreamingUsage = openai::Usage;
@@ -234,42 +276,76 @@ impl_model_lister!(
     "/models"
 );
 
-client::impl_capabilities!(
-    LlamacppExt,
-    completion = openai::completion::GenericCompletionModel<LlamacppExt, H>,
-    embeddings = openai::embedding::GenericEmbeddingModel<LlamacppExt, H>,
-    model_listing = LlamacppModelLister<H>,
-    rerank = super::rerank::RerankModel<H>,
-    // Deliberately `Nothing`, each for a stated reason:
-    //
-    // * `transcription` — `llama-server` does serve
-    //   `POST /v1/audio/transcriptions`, but only by rewriting the upload into
-    //   a chat-template ASR prompt, so it answers
-    //   `501 "The current model does not support audio input."` unless the
-    //   loaded model is audio-multimodal (`--mmproj` with an audio projector).
-    //   Rig's `TranscriptionModel` contract has no way to express "this
-    //   endpoint exists but depends on which weights are loaded", and the
-    //   endpoint additionally rejects every `response_format` except `json`,
-    //   which rig's shared multipart driver does not send. Left unimplemented
-    //   rather than shipped as a capability that 501s on most servers; the
-    //   501 itself is recorded in the error matrix.
-    // * `image_generation` — `llama-server` registers no image route at all
-    //   (there is no `/v1/images/generations` in its route table).
-    // * `audio_generation` — likewise no `/v1/audio/speech`; llama.cpp's TTS
-    //   support lives in a separate `llama-tts` binary, not in the server.
-);
+impl HasCompletion for Llamacpp {
+    type Model<H>
+        = openai::completion::GenericCompletionModel<Llamacpp, H>
+    where
+        H: ModelTransport;
 
-impl DebugExt for LlamacppExt {}
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        openai::completion::GenericCompletionModel::new(client.clone(), model)
+    }
+}
 
-client::impl_default_provider_builder!(
-    LlamacppBuilder => LlamacppExt,
-    api_key = LlamacppApiKey,
-    base_url = LLAMACPP_API_BASE_URL,
-);
+impl HasEmbeddings for Llamacpp {
+    type Model<H>
+        = openai::embedding::GenericEmbeddingModel<Llamacpp, H>
+    where
+        H: ModelTransport;
 
-pub type Client<H> = client::Client<LlamacppExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<LlamacppBuilder, LlamacppApiKey, H>;
+    fn embedding_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self::Model<H> {
+        openai::embedding::GenericEmbeddingModel::make(client, model, ndims)
+    }
+}
+
+impl HasModelListing for Llamacpp {
+    type Lister<H>
+        = LlamacppModelLister<H>
+    where
+        H: ModelTransport;
+
+    fn model_lister<H: ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        LlamacppModelLister::new(client.clone())
+    }
+}
+
+impl HasRerank for Llamacpp {
+    type Model<H>
+        = super::rerank::RerankModel<H>
+    where
+        H: ModelTransport;
+
+    fn rerank_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        super::rerank::RerankModel::new(client.clone(), model)
+    }
+}
+
+// Capabilities deliberately left unimplemented, each for a stated reason:
+//
+// Deliberately `Nothing`, each for a stated reason:
+//
+// * `transcription` — `llama-server` does serve
+//   `POST /v1/audio/transcriptions`, but only by rewriting the upload into
+//   a chat-template ASR prompt, so it answers
+//   `501 "The current model does not support audio input."` unless the
+//   loaded model is audio-multimodal (`--mmproj` with an audio projector).
+//   Rig's `TranscriptionModel` contract has no way to express "this
+//   endpoint exists but depends on which weights are loaded", and the
+//   endpoint additionally rejects every `response_format` except `json`,
+//   which rig's shared multipart driver does not send. Left unimplemented
+//   rather than shipped as a capability that 501s on most servers; the
+//   501 itself is recorded in the error matrix.
+// * `image_generation` — `llama-server` registers no image route at all
+//   (there is no `/v1/images/generations` in its route table).
+// * `audio_generation` — likewise no `/v1/audio/speech`; llama.cpp's TTS
+//   support lives in a separate `llama-tts` binary, not in the server.
+
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<Llamacpp, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<Llamacpp, H>;
 
 impl<H> Client<H>
 where
@@ -281,58 +357,10 @@ where
     /// For a server started with `--api-key`, use
     /// [`Client::builder`] and set [`ClientBuilder::api_key`].
     pub fn from_url_with(base_url: &str, http: H) -> crate::client::ProviderClientResult<Self> {
-        Client::<crate::markers::Missing>::builder()
-            .api_key(LlamacppApiKey::default())
+        Client::builder()
             .base_url(base_url)
             .http_client(http)
             .build()
-            .map_err(Into::into)
-    }
-}
-
-impl crate::client::ProviderFromEnv for LlamacppExt {
-    type Input = LlamacppApiKey;
-    /// Read `LLAMACPP_API_BASE_URL` (optional, defaults to
-    /// `http://localhost:8080`) and `LLAMACPP_API_KEY` (optional).
-    ///
-    /// The base URL is optional where the predecessor `llamafile` provider
-    /// required it: a llama.cpp server on its default port is the overwhelming
-    /// case, and demanding an environment variable to reach `localhost:8080`
-    /// bought nothing.
-    fn from_env_with<H>(
-        http: H,
-    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
-    where
-        H: crate::http_client::HttpClientExt,
-        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
-    {
-        let api_base = crate::client::optional_env_var("LLAMACPP_API_BASE_URL")?
-            .unwrap_or_else(|| LLAMACPP_API_BASE_URL.to_string());
-        let api_key = crate::client::optional_env_var("LLAMACPP_API_KEY")?
-            .map(LlamacppApiKey::from)
-            .unwrap_or_default();
-
-        crate::client::Client::<Self, crate::markers::Missing>::builder()
-            .api_key(api_key)
-            .base_url(&api_base)
-            .http_client(http)
-            .build()
-            .map_err(Into::into)
-    }
-
-    fn from_val_with<H>(
-        api_key: Self::Input,
-        http: H,
-    ) -> Result<crate::client::Client<Self, H>, crate::client::ProviderClientError>
-    where
-        H: crate::http_client::HttpClientExt,
-        Self::Builder: crate::client::ProviderBuilder<Extension<H> = Self>,
-    {
-        crate::client::Client::<Self, crate::markers::Missing>::builder()
-            .api_key(api_key)
-            .http_client(http)
-            .build()
-            .map_err(Into::into)
     }
 }
 
@@ -345,368 +373,4 @@ impl crate::client::ProviderFromEnv for LlamacppExt {
 // therefore checkable without a server. The observed half — what
 // `llama-server` answers — lives in `tests/providers/llamacpp/`.
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::client::{EmbeddingsClient, RerankingClient};
-    use crate::embeddings::EmbeddingModel as _;
-    use crate::providers::openai::embedding::EncodingFormat;
-    use crate::test_utils::RecordingHttpClient;
-
-    #[test]
-    fn client_initialization() {
-        let _from_new = Client::new_with(
-            LlamacppApiKey::default(),
-            crate::test_utils::RecordingHttpClient::new(""),
-        )
-        .expect("Client::new() failed");
-        let _from_builder = Client::builder()
-            .api_key(LlamacppApiKey::default())
-            .http_client(crate::test_utils::RecordingHttpClient::new(""))
-            .build()
-            .expect("Client::builder() failed");
-        let _from_url = Client::from_url_with(
-            "http://localhost:8080",
-            crate::test_utils::RecordingHttpClient::new(""),
-        )
-        .expect("Client::from_url_with() failed");
-        // A bare `&str` key is accepted by the builder, which is the
-        // `--api-key` path.
-        let _keyed = Client::builder()
-            .api_key("hunter2")
-            .http_client(crate::test_utils::RecordingHttpClient::new(""))
-            .build()
-            .expect("keyed Client::builder() failed");
-    }
-
-    /// `/v1` is added when the base URL lacks it and *not* added when it has
-    /// it. The predecessor provider appended unconditionally, so the second
-    /// case produced `/v1/v1/chat/completions`.
-    #[test]
-    fn build_uri_adds_v1_once_and_only_once() {
-        let ext = LlamacppExt;
-
-        for base in ["http://localhost:8080", "http://localhost:8080/"] {
-            assert_eq!(
-                ext.build_uri(base, "/chat/completions", Transport::Http),
-                "http://localhost:8080/v1/chat/completions",
-                "bare host base URL should gain /v1"
-            );
-        }
-
-        for base in ["http://localhost:8080/v1", "http://localhost:8080/v1/"] {
-            assert_eq!(
-                ext.build_uri(base, "/chat/completions", Transport::Http),
-                "http://localhost:8080/v1/chat/completions",
-                "a base URL that already ends in /v1 must not double it"
-            );
-        }
-
-        // Every path this provider uses composes the same way.
-        assert_eq!(
-            ext.build_uri("http://localhost:8080", "/embeddings", Transport::Http),
-            "http://localhost:8080/v1/embeddings"
-        );
-        assert_eq!(
-            ext.build_uri("http://localhost:8080", "/rerank", Transport::Http),
-            "http://localhost:8080/v1/rerank"
-        );
-        assert_eq!(
-            ext.build_uri("http://localhost:8080", "/models", Transport::Http),
-            "http://localhost:8080/v1/models"
-        );
-    }
-
-    /// llama.cpp's operational routes are relative to the server root, not to
-    /// `/v1` — `GET /v1/props` is a 404 — and that has to hold whichever of
-    /// the two accepted base-URL spellings the caller used.
-    #[test]
-    fn build_uri_keeps_the_unversioned_routes_off_the_v1_namespace() {
-        let ext = LlamacppExt;
-        for base in [
-            "http://localhost:8080",
-            "http://localhost:8080/",
-            "http://localhost:8080/v1",
-            "http://localhost:8080/v1/",
-        ] {
-            assert_eq!(
-                ext.build_uri(base, LlamacppExt::VERIFY_PATH, Transport::Http),
-                "http://localhost:8080/props",
-                "the verify path must reach the server root from base URL `{base}`"
-            );
-        }
-        assert_eq!(
-            ext.build_uri("http://localhost:8080/v1", "/health", Transport::Http),
-            "http://localhost:8080/health"
-        );
-        // Only the routes llama.cpp actually serves unversioned are exempt; an
-        // OpenAI route that merely looks operational is not.
-        assert_eq!(
-            ext.build_uri("http://localhost:8080", "/models", Transport::Http),
-            "http://localhost:8080/v1/models"
-        );
-    }
-
-    /// Only a *trailing* `/v1` suppresses the prefix. A reverse proxy mounted
-    /// under a path that merely contains the segment still needs it, because
-    /// the OpenAI routes hang off the mount point.
-    #[test]
-    fn build_uri_only_treats_a_trailing_v1_as_the_prefix() {
-        let ext = LlamacppExt;
-        assert_eq!(
-            ext.build_uri(
-                "https://gw.example/v1/llama",
-                "/chat/completions",
-                Transport::Http
-            ),
-            "https://gw.example/v1/llama/v1/chat/completions"
-        );
-        assert_eq!(
-            ext.build_uri(
-                "https://gw.example/v10",
-                "/chat/completions",
-                Transport::Http
-            ),
-            "https://gw.example/v10/v1/chat/completions"
-        );
-    }
-
-    /// The header is present when a key is set and **absent** when it is not.
-    ///
-    /// Both halves matter: a local server started without `--api-key` must
-    /// keep working, and a server started with one is unreachable unless the
-    /// header is really sent. The predecessor provider could only ever do the
-    /// first, because its key type was `Nothing`.
-    #[tokio::test]
-    async fn authorization_header_is_sent_only_when_a_key_is_set() {
-        let recorder = RecordingHttpClient::new("{}");
-        let keyed = Client::builder()
-            .api_key("hunter2")
-            .http_client(recorder.clone())
-            .build()
-            .expect("client should build");
-        let _ = keyed
-            .embedding_model("m")
-            .embed_texts(["hello".to_string()])
-            .await;
-        let sent = &recorder.requests()[0];
-        assert_eq!(
-            sent.headers
-                .get("authorization")
-                .map(|v| v.to_str().unwrap_or_default()),
-            Some("Bearer hunter2"),
-            "a set key must reach the wire as a bearer token"
-        );
-
-        let recorder = RecordingHttpClient::new("{}");
-        let unkeyed = Client::builder()
-            .api_key(LlamacppApiKey::default())
-            .http_client(recorder.clone())
-            .build()
-            .expect("client should build");
-        let _ = unkeyed
-            .embedding_model("m")
-            .embed_texts(["hello".to_string()])
-            .await;
-        let sent = &recorder.requests()[0];
-        assert!(
-            sent.headers.get("authorization").is_none(),
-            "no key means no Authorization header at all, not an empty one"
-        );
-
-        // An empty string is treated as "no key" rather than as the literal
-        // credential `Bearer `, which every server rejects.
-        let recorder = RecordingHttpClient::new("{}");
-        let empty = Client::builder()
-            .api_key("")
-            .http_client(recorder.clone())
-            .build()
-            .expect("client should build");
-        let _ = empty
-            .embedding_model("m")
-            .embed_texts(["hello".to_string()])
-            .await;
-        assert!(
-            recorder.requests()[0]
-                .headers
-                .get("authorization")
-                .is_none(),
-            "an empty key is absence, not a blank credential"
-        );
-    }
-
-    #[tokio::test]
-    async fn embedding_model_preserves_v1_path_and_usage() {
-        let response = r#"{
-            "object": "list",
-            "model": "LLaMA_CPP",
-            "usage": { "prompt_tokens": 2, "total_tokens": 2 },
-            "data": [{ "object": "embedding", "index": 0, "embedding": [0.1, 0.2] }]
-        }"#;
-        let http_client = RecordingHttpClient::new(response);
-        let client = Client::builder()
-            .api_key(LlamacppApiKey::default())
-            .http_client(http_client.clone())
-            .build()
-            .expect("client should build");
-        let model = client.embedding_model(super::super::LLAMA_CPP);
-
-        let response = model
-            .embed_texts_response(["hello".to_string()])
-            .await
-            .expect("embedding request should succeed");
-
-        assert_eq!(response.usage.total_tokens, 2);
-        assert_eq!(
-            http_client.requests()[0].uri,
-            "http://localhost:8080/v1/embeddings"
-        );
-    }
-
-    #[tokio::test]
-    async fn embedding_model_rejects_base64_before_sending() {
-        let http_client = RecordingHttpClient::new("{}");
-        let client = Client::builder()
-            .api_key(LlamacppApiKey::default())
-            .http_client(http_client.clone())
-            .build()
-            .expect("client should build");
-        let model = client
-            .embedding_model(super::super::LLAMA_CPP)
-            .encoding_format(EncodingFormat::Base64);
-
-        let error = model
-            .embed_texts(["hello".to_string()])
-            .await
-            .expect_err("numeric response parser should reject base64");
-
-        assert!(matches!(
-            error,
-            crate::embeddings::EmbeddingError::UnsupportedResponseEncoding {
-                provider: "llamacpp",
-                encoding_format: "base64"
-            }
-        ));
-        assert!(http_client.requests().is_empty());
-    }
-
-    /// The rerank request rig sends is the Jina-shaped body llama.cpp parses,
-    /// on the `/v1`-prefixed path, and `top_n` is omitted unless asked for.
-    #[tokio::test]
-    async fn rerank_request_shape_and_path() {
-        use crate::rerank::RerankModel as _;
-
-        let response = r#"{
-            "model": "reranker",
-            "object": "list",
-            "usage": { "prompt_tokens": 42, "total_tokens": 42 },
-            "results": [
-                { "index": 1, "relevance_score": 0.9 },
-                { "index": 0, "relevance_score": 0.1 }
-            ]
-        }"#;
-        let http_client = RecordingHttpClient::new(response);
-        let client = Client::builder()
-            .api_key(LlamacppApiKey::default())
-            .http_client(http_client.clone())
-            .build()
-            .expect("client should build");
-
-        let reranked = client
-            .rerank_model("reranker")
-            .rerank("what is a panda?", vec!["hi".into(), "it is a bear".into()])
-            .await
-            .expect("rerank should succeed");
-
-        let sent = &http_client.requests()[0];
-        assert_eq!(sent.uri, "http://localhost:8080/v1/rerank");
-        let body: serde_json::Value =
-            serde_json::from_slice(&sent.body).expect("request body should be JSON");
-        assert_eq!(
-            body,
-            serde_json::json!({
-                "model": "reranker",
-                "query": "what is a panda?",
-                "documents": ["hi", "it is a bear"],
-            }),
-            "no top_n unless the caller set one"
-        );
-
-        assert_eq!(reranked.model.as_deref(), Some("reranker"));
-        assert_eq!(reranked.usage.input_tokens, 42);
-        assert_eq!(reranked.usage.total_tokens, 42);
-        assert_eq!(
-            reranked.results.iter().map(|r| r.index).collect::<Vec<_>>(),
-            vec![1, 0],
-            "results keep the server's ranking order"
-        );
-        assert!(
-            reranked.results.iter().all(|r| r.document.is_none()),
-            "llama.cpp does not echo documents back on this path"
-        );
-    }
-
-    /// A 200 whose body is not a rerank payload is a *named* error, not a bare
-    /// serde failure.
-    ///
-    /// The one path in the shared driver a live server cannot produce:
-    /// llama.cpp always answers the Jina shape on this route, so the case only
-    /// arises behind a proxy or gateway that returns something else with a 200.
-    /// Without the provider label the caller gets a `serde_json` message with
-    /// no indication of which server produced it, and this driver is shared.
-    #[tokio::test]
-    async fn rerank_names_the_provider_when_the_body_is_not_a_ranking() {
-        use crate::rerank::RerankModel as _;
-
-        let http_client = RecordingHttpClient::new(r#"{"detail":"upstream unavailable"}"#);
-        let client = Client::builder()
-            .api_key(LlamacppApiKey::default())
-            .http_client(http_client)
-            .build()
-            .expect("client should build");
-
-        let error = client
-            .rerank_model("reranker")
-            .rerank("q", vec!["a".into()])
-            .await
-            .expect_err("a 200 that is not a ranking must fail");
-
-        match error {
-            crate::rerank::RerankError::ResponseError(message) => {
-                assert!(
-                    message.starts_with("llamacpp:"),
-                    "the shared driver must name which provider produced it: {message}"
-                );
-                assert!(
-                    message.contains("Jina-shaped"),
-                    "and say what it expected: {message}"
-                );
-            }
-            other => panic!("expected a named ResponseError, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn rerank_sends_top_n_when_set() {
-        use crate::rerank::RerankModel as _;
-
-        let http_client = RecordingHttpClient::new(
-            r#"{"model":"m","object":"list","usage":{"prompt_tokens":1,"total_tokens":1},"results":[]}"#,
-        );
-        let client = Client::builder()
-            .api_key(LlamacppApiKey::default())
-            .http_client(http_client.clone())
-            .build()
-            .expect("client should build");
-
-        let _ = client
-            .rerank_model("m")
-            .top_n(1)
-            .rerank("q", vec!["a".into(), "b".into()])
-            .await
-            .expect("rerank should succeed");
-
-        let body: serde_json::Value = serde_json::from_slice(&http_client.requests()[0].body)
-            .expect("request body should be JSON");
-        assert_eq!(body["top_n"], serde_json::json!(1));
-    }
-}
+mod tests;

@@ -69,17 +69,18 @@ pub mod integrations;
 // `json_utils::merge` / `json_utils::serialize_json_value`.
 pub(crate) use rig_core::json_utils;
 pub mod prelude;
+pub mod run;
 pub mod streaming;
 #[cfg(any(test, feature = "test-utils"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils;
 pub mod tool;
 
+pub use agent::TypedPromptResponse;
 pub use agent::{
     Agent, AgentBuilder, AgentHook, AgentRun, AgentRunner, HookContext, ModelHandle, ModelRef,
     ModelSelection, ModelSelectionAction,
 };
-pub use extractor::ExtractionResponse;
 
 #[cfg(feature = "derive")]
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]

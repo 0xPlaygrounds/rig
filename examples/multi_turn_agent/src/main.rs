@@ -1,5 +1,5 @@
 use rig::prelude::*;
-use rig::{completion::Prompt, providers::anthropic, tool::Tool};
+use rig::{providers::anthropic, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -34,7 +34,8 @@ async fn main() -> anyhow::Result<()> {
     let result = agent
         .prompt("Calculate 5 - 2 = ?. Describe the result to me.")
         .max_turns(20)
-        .await?;
+        .await?
+        .output;
 
     println!("\n\nOpenAI Calculator Agent: {result}");
 
@@ -42,7 +43,8 @@ async fn main() -> anyhow::Result<()> {
     let result = agent
         .prompt("Calculate (3 + 5) / 9  = ?. Describe the result to me.")
         .max_turns(20)
-        .await?;
+        .await?
+        .output;
 
     println!("\n\nOpenAI Calculator Agent: {result}");
 

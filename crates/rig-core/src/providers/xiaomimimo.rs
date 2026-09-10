@@ -44,11 +44,10 @@ pub const MIMO_V2_5: &str = "mimo-v2.5";
 pub const MIMO_V2_5_PRO: &str = "mimo-v2.5-pro";
 
 impl_dual_dialect_provider!(
-    ext = XiaomiMimoExt,
-    builder = XiaomiMimoBuilder,
-    anthropic_ext = XiaomiMimoAnthropicExt,
-    anthropic_builder = XiaomiMimoAnthropicBuilder,
+    provider = XiaomiMimo,
+    anthropic_provider = XiaomiMimoAnthropic,
     client_input = client::BearerAuth,
+    name = "xiaomimimo",
     api_key_env = "XIAOMI_MIMO_API_KEY",
     base_url = API_BASE_URL,
     base_url_env = "XIAOMI_MIMO_API_BASE",
@@ -57,13 +56,32 @@ impl_dual_dialect_provider!(
     anthropic_base_url_env = "XIAOMI_MIMO_ANTHROPIC_API_BASE",
 );
 
-client::impl_capabilities!(
-    XiaomiMimoExt,
-    completion = super::openai::completion::GenericCompletionModel<XiaomiMimoExt, H>,
-    model_listing = XiaomiMimoModelLister<H>,
-);
+impl client::HasCompletion for XiaomiMimo {
+    type Model<H>
+        = super::openai::completion::GenericCompletionModel<XiaomiMimo, H>
+    where
+        H: client::ModelTransport;
 
-impl super::openai::completion::OpenAICompatibleProvider for XiaomiMimoExt {
+    fn completion_model<H: client::ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::openai::completion::GenericCompletionModel::new(client.clone(), model)
+    }
+}
+
+impl client::HasModelListing for XiaomiMimo {
+    type Lister<H>
+        = XiaomiMimoModelLister<H>
+    where
+        H: client::ModelTransport;
+
+    fn model_lister<H: client::ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        XiaomiMimoModelLister::new(client.clone())
+    }
+}
+
+impl super::openai::completion::OpenAICompatibleProvider for XiaomiMimo {
     const PROVIDER_NAME: &'static str = "xiaomimimo";
 
     type StreamingUsage = super::openai::Usage;
@@ -88,68 +106,4 @@ impl_model_lister!(
 );
 
 #[cfg(test)]
-mod tests {
-    use super::{ANTHROPIC_API_BASE_URL, ANTHROPIC_BASE_URLS, API_BASE_URL};
-
-    #[test]
-    fn test_client_initialization() {
-        let _client = crate::providers::xiaomimimo::Client::new_with(
-            "dummy-key",
-            crate::test_utils::RecordingHttpClient::new(""),
-        )
-        .expect("Client::new()");
-        let _client_from_builder = crate::providers::xiaomimimo::Client::builder()
-            .api_key("dummy-key")
-            .http_client(crate::test_utils::RecordingHttpClient::new(""))
-            .build()
-            .expect("Client::builder()");
-        let _anthropic_client = crate::providers::xiaomimimo::AnthropicClient::new_with(
-            "dummy-key",
-            crate::test_utils::RecordingHttpClient::new(""),
-        )
-        .expect("AnthropicClient::new()");
-        let _anthropic_client_from_builder =
-            crate::providers::xiaomimimo::AnthropicClient::builder()
-                .api_key("dummy-key")
-                .http_client(crate::test_utils::RecordingHttpClient::new(""))
-                .build()
-                .expect("AnthropicClient::builder()");
-    }
-
-    #[test]
-    fn normalize_openai_bases_to_anthropic_bases() {
-        assert_eq!(
-            ANTHROPIC_BASE_URLS.normalize(API_BASE_URL).as_deref(),
-            Some(ANTHROPIC_API_BASE_URL)
-        );
-        assert_eq!(
-            ANTHROPIC_BASE_URLS
-                .normalize("https://proxy.example.com/v1")
-                .as_deref(),
-            Some("https://proxy.example.com/anthropic/v1")
-        );
-    }
-
-    #[test]
-    fn normalize_preserves_existing_anthropic_base() {
-        assert_eq!(
-            ANTHROPIC_BASE_URLS
-                .normalize(ANTHROPIC_API_BASE_URL)
-                .as_deref(),
-            Some(ANTHROPIC_API_BASE_URL)
-        );
-    }
-
-    #[test]
-    fn anthropic_primary_override_wins() {
-        let override_url = ANTHROPIC_BASE_URLS.resolve(
-            Some("https://primary.example.com/anthropic/v1"),
-            Some(API_BASE_URL),
-        );
-
-        assert_eq!(
-            override_url.as_deref(),
-            Some("https://primary.example.com/anthropic/v1")
-        );
-    }
-}
+mod tests;

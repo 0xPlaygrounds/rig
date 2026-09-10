@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::completion::TypedPrompt;
 use rig::prelude::*;
 use rig::providers::xai;
 use rig::tool::Tool;
@@ -90,7 +89,8 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
 
             let response: WeatherResponse = agent
                 .prompt_typed("Hello, whats the weather in London?")
-                .await?;
+                .await?
+                .output;
 
             anyhow::ensure!(
                 call_count.load(Ordering::SeqCst) >= 1,

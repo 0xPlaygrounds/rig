@@ -1,5 +1,5 @@
 use rig::client::DefaultTransportClient as _;
-use rig::{completion::Prompt, prelude::*, providers::gemini};
+use rig::{prelude::*, providers::gemini};
 use rig_agent::test_utils::MockImageGeneratorTool;
 
 /// Verifies that Gemini can process an image returned by a classic tool call.
@@ -21,6 +21,9 @@ async fn test_gemini_agent_with_image_tool_result_e2e() -> anyhow::Result<()> {
         .prompt("Please generate a test image and tell me what color the pixel is.")
         .await?;
     println!("Response: {response_text}");
-    anyhow::ensure!(!response_text.is_empty(), "response should not be empty");
+    anyhow::ensure!(
+        !response_text.output.is_empty(),
+        "response should not be empty"
+    );
     Ok(())
 }

@@ -11,6 +11,7 @@ mod filter;
 pub use filter::{Filter, MilvusValue};
 
 use reqwest::StatusCode;
+// The same mapping this crate used to define for itself; see rig#2426's review.
 use rig_core::{
     Embed,
     embeddings::{Embedding, EmbeddingModel, EmbeddingModelHandle},
@@ -19,6 +20,7 @@ use rig_core::{
         request::{SearchFilter, VectorSearchRequest},
     },
 };
+use rig_reqwest::from_reqwest;
 use serde::{Deserialize, Serialize};
 
 /// Represents a vector store implementation using Milvus - <https://milvus.io/> as the backend.
@@ -34,16 +36,6 @@ pub struct MilvusVectorStore {
     database_name: String,
     collection_name: String,
     token: Option<String>,
-}
-
-/// Map a transport-level `reqwest::Error` onto rig's transport-agnostic
-/// [`rig_core::http_client::Error`]: a status-carrying failure keeps its status
-/// as `InvalidStatusCode`, a response-less one becomes `Instance`.
-fn from_reqwest(err: reqwest::Error) -> rig_core::http_client::Error {
-    err.status().map_or_else(
-        || rig_core::http_client::Error::instance(err),
-        rig_core::http_client::Error::InvalidStatusCode,
-    )
 }
 
 #[derive(Debug, Serialize, Deserialize)]

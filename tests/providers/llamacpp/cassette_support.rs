@@ -95,7 +95,7 @@ async fn llamacpp_cassette_on(
     // `cassette/error_matrix.rs`, which launches a server that requires it.
     let client = llamacpp::Client::from_url_with(
         &cassette.base_url(),
-        rig::http_client::ReqwestClient::default(),
+        rig::http_client::BoxedHttpClient::from(rig::http_client::ReqwestClient::default()),
     )
     .expect("client should build");
 

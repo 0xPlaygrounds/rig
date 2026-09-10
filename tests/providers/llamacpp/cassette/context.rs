@@ -1,6 +1,5 @@
 //! llama.cpp context smoke test.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use super::super::cassette_support::*;
@@ -23,7 +22,7 @@ async fn context_smoke() {
             .expect("context prompt should succeed");
 
         assert_contains_any_case_insensitive(
-            &response,
+            &response.output,
             &[
                 "ancient tool",
                 "farming tool",

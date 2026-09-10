@@ -21,7 +21,6 @@ use std::collections::HashSet;
 
 use anyhow::Result;
 use rig::agent::{AgentHook, HookContext, ToolCall as ToolCallEvent, ToolCallAction};
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::Tool;
@@ -174,7 +173,12 @@ async fn main() -> Result<()> {
 
     // The transfer of $5000 exceeds the $1000 policy limit, so it is denied and
     // the reason is handed to the model, which should explain rather than retry.
-    let response = agent.prompt(prompt).max_turns(10).add_hook(policy).await?;
+    let response = agent
+        .prompt(prompt)
+        .max_turns(10)
+        .add_hook(policy)
+        .await?
+        .output;
 
     println!("\nFinal response:\n{response}");
 

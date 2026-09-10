@@ -26,9 +26,8 @@ use rig_agent::{
     },
     completion::{
         CompletionError, CompletionModel, CompletionRequest, CompletionResponse, FinishReason,
-        Prompt, Usage,
+        Usage,
     },
-    streaming::StreamingPrompt,
     streaming::{RawStreamingChoice, StreamFinal, StreamingCompletionResponse},
 };
 use rig_core::message::AssistantContent;
@@ -181,6 +180,7 @@ async fn main() -> Result<()> {
     let mut stream = streaming_agent
         .stream_prompt("Explain Rig's finish reasons.")
         .max_turns(8)
+        .stream()
         .await;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(final_response) = item? {

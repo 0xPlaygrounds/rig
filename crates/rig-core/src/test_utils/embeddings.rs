@@ -2,7 +2,6 @@
 
 use crate::{
     Embed,
-    client::Nothing,
     embeddings::{
         Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse,
         embed::{EmbedError, TextEmbedder},
@@ -37,12 +36,6 @@ impl EmbeddingModel for MockEmbeddingModel {
                 .collect(),
             "mock",
         ))
-    }
-}
-
-impl crate::client::ConstructEmbeddingModel<Nothing> for MockEmbeddingModel {
-    fn construct(_: &Nothing, _: String, _: Option<usize>) -> Self {
-        Self
     }
 }
 

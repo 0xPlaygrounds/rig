@@ -11,10 +11,8 @@
 use std::sync::{Arc, Mutex};
 
 use rig::agent::{AgentHook, ToolCall as ToolCallEvent, ToolCallAction};
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use rig_agent::test_utils::validate_rewritten_arguments;
 use serde::Deserialize;
@@ -159,7 +157,8 @@ async fn tool_call_args_rewritten_by_hook_blocking() {
                 .prompt(WEATHER_PROMPT)
                 .max_turns(5)
                 .await
-                .expect("weather prompt should succeed");
+                .expect("weather prompt should succeed")
+                .output;
 
             assert!(!response.is_empty(), "agent should produce a final answer");
         },
@@ -184,7 +183,11 @@ async fn tool_call_args_rewritten_by_hook_streaming() {
                 .add_hook(PinUnitsToCelsius)
                 .build();
 
-            let mut stream = agent.stream_prompt(WEATHER_PROMPT).max_turns(5).await;
+            let mut stream = agent
+                .stream_prompt(WEATHER_PROMPT)
+                .max_turns(5)
+                .stream()
+                .await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming weather prompt should succeed");

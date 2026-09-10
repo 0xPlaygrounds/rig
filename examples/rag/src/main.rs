@@ -1,7 +1,7 @@
 use rig::prelude::*;
 use rig::providers::openai::Client;
 use rig::{
-    Embed, completion::Prompt, embeddings::EmbeddingsBuilder, providers::openai,
+    Embed, embeddings::EmbeddingsBuilder, providers::openai,
     vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::Serialize;
@@ -74,7 +74,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     // Prompt the agent and print the response
-    let response = rag_agent.prompt("What does \"glarb-glarb\" mean?").await?;
+    let response = rag_agent
+        .prompt("What does \"glarb-glarb\" mean?")
+        .await?
+        .output;
 
     println!("{response}");
 

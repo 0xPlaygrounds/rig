@@ -1,7 +1,6 @@
 //! Gemini structured output smoke test.
 
 use rig::agent::OutputMode;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
@@ -76,7 +75,7 @@ async fn structured_output_smoke() {
                 .await
                 .expect("structured output prompt should succeed");
             let structured: SmokeStructuredOutput =
-                decode_structured_output("gemini_structured_output_smoke", &response)
+                decode_structured_output("gemini_structured_output_smoke", &response.output)
                     .expect("structured output should deserialize");
 
             assert_smoke_structured_output(&structured);
@@ -108,7 +107,7 @@ async fn classic_invalid_output_recovers_through_gemini_generate_content() {
         .await
         .expect("classic Gemini output recovery should succeed");
     let structured: SmokeStructuredOutput =
-        decode_structured_output("gemini_classic_recovery", &response)
+        decode_structured_output("gemini_classic_recovery", &response.output)
             .expect("recovered output-tool arguments should deserialize");
     assert_smoke_structured_output(&structured);
 

@@ -3,7 +3,6 @@
 //! Run it to see a classifier agent choose which second prompt should run.
 
 use anyhow::{Result, bail};
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::Client;
@@ -37,9 +36,15 @@ fn follow_up_prompt(category: &str) -> Result<&'static str> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = Client::from_env()?;
-    let category = build_router_agent(&client).prompt(INPUT_PROMPT).await?;
+    let category = build_router_agent(&client)
+        .prompt(INPUT_PROMPT)
+        .await?
+        .output;
     let follow_up = follow_up_prompt(category.trim())?;
-    let response = build_response_agent(&client).prompt(follow_up).await?;
+    let response = build_response_agent(&client)
+        .prompt(follow_up)
+        .await?
+        .output;
 
     println!("Classifier chose: {}", category.trim());
     println!("Follow-up prompt: {follow_up}");

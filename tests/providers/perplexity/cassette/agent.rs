@@ -1,6 +1,5 @@
 //! Perplexity non-streaming completion cassette coverage.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::perplexity;
 
@@ -20,7 +19,8 @@ async fn completion_smoke() {
         let response = agent
             .prompt(BASIC_PROMPT)
             .await
-            .expect("completion should succeed");
+            .expect("completion should succeed")
+            .output;
 
         assert_nonempty_response(&response);
     })
@@ -44,7 +44,8 @@ async fn completion_with_perplexity_options() {
             let response = agent
                 .prompt("Name one notable recent development in Rust programming language tooling.")
                 .await
-                .expect("completion with Perplexity options should succeed");
+                .expect("completion with Perplexity options should succeed")
+                .output;
 
             assert_nonempty_response(&response);
         },

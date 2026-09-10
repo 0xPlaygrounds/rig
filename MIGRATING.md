@@ -10,8 +10,12 @@
 > the release material below the end marker. CI pins both its placement and its
 > contents.
 
+This file is edited only on the release PR (a `release-plz-*` branch or a PR
+labeled `release`). An ordinary PR puts its migration notes in the PR
+description under `## Migration`; CI rejects any other edit to this file.
+
 `MIGRATING.md` is an editorial synthesis, not the output of one generator. Use
-the public API diff as its exhaustive spine, the changelogs for release context,
+the public API diff as its exhaustive spine, the PR notes for release context,
 and the relevant pull requests for migration details. This is the process used
 to produce the guide in [#2216](https://github.com/0xPlaygrounds/rig/pull/2216).
 
@@ -48,11 +52,14 @@ to produce the guide in [#2216](https://github.com/0xPlaygrounds/rig/pull/2216).
    code. If a package exists at only one ref, inspect its complete public API and
    document the package-level addition or removal instead of expecting a range
    diff to work.
-3. Read the matching entries in the root and affected crate `CHANGELOG.md`
-   files. Use their breaking-change entries to explain intent and identify the
-   replacement API, but do not assume the changelogs are exhaustive.
+3. Run `scripts/release-notes.sh PREVIOUS_TAG` and read the `## Changelog` and
+   `## Migration` sections of every pull request merged since the previous tag
+   (`prs.md` in its output), together with the changelog section release-plz
+   generated for the release. Use their breaking-change entries to explain
+   intent and identify the replacement API, but do not assume they are
+   exhaustive.
 4. Inspect the pull request, commits, tests, and documentation for each change
-   found by the API diff or changelogs. Record the old form, the new form, and
+   found by the API diff or the PR notes. Record the old form, the new form, and
    the smallest useful migration example. Do not summarize every merged pull
    request; investigate the changes that affect downstream users.
 5. Review the release range for behavior changes that a public API diff cannot
@@ -70,7 +77,7 @@ to produce the guide in [#2216](https://github.com/0xPlaygrounds/rig/pull/2216).
    repeat the diffs for newly merged changes, and replace `next` with the final
    version number immediately before tagging.
 
-The public API diff finds compiler-visible changes; the changelogs and targeted
+The public API diff finds compiler-visible changes; the PR notes and targeted
 history explain why and how to migrate; the final behavior review catches the
 changes that still compile. All three inputs are required for each release.
 
@@ -357,7 +364,7 @@ association.
 rig-agent's driver recorded the advertised tools *after* the per-turn request
 assembly had already moved the definitions out of the registry snapshot, so
 `AgentRun::advertised_tools()` (and the serialized run's `turn_tools`) always
-held an empty list. With request preparation in `rig_run::prepare_request`
+held an empty list. With request preparation in `rig_agent::run::prepare::prepare_request`
 the driver advertises `PreparedRequest::tools` — the executable tools after
 any `active_tools` allow-list plus, in Tool output mode, the synthetic output
 tool — i.e. exactly what the provider received. Nothing on the wire changes.
@@ -806,6 +813,187 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### Ownership audit: relaxed generic bounds, fewer clones
+
+No caller-visible breakage — every public signature change is a relaxation.
+The OpenAI-compatible embeddings impls (`GenericEmbeddingModel` and its
+`ConstructEmbeddingModel` impl) no longer require `H: 'static` /
+`Ext: 'static`; code that compiled before still compiles. Internal clone
+reductions in the agent loop (tool-result assembly, run-spec application)
+change no behaviour and no wire bytes.
+
+### Compatibility shims are gone: `CompletionRequest::preamble`, retired model constants, `rig-candle` aliases, tolerant decoders
+
+Every remaining backwards-compatibility shim was removed in one sweep. None
+of them had a live producer in the tree; each existed only so that an older
+caller or an older persisted record kept working.
+
+- **`CompletionRequest::preamble` is removed.** `CompletionRequestBuilder::preamble`
+  has always emitted the preamble as the leading `Message::System` of
+  `chat_history` and left the field `None`; the field was read by every
+  provider anyway, so a hand-built request could carry a second system prompt
+  through a path the builder never used. Put the system prompt in
+  `chat_history` — `chat_history: vec![Message::system("…"), …]` — and use the
+  new `CompletionRequest::system_instructions()` (the leading system message's
+  text, `Option<&str>`) where you read it. `CompletionRequestBuilder::without_preamble`
+  is removed with the field; the agent-level `AgentBuilder::without_preamble`
+  and `AgentRunner::without_preamble` are unchanged. Telemetry
+  `gen_ai.system_instructions` is now populated from the leading system
+  message, so spans that previously recorded nothing for the preamble record it.
+- **Retired model-name constants are removed** rather than `#[deprecated]`:
+  `deepseek::{DEEPSEEK_CHAT, DEEPSEEK_REASONER}` (use `DEEPSEEK_V4_FLASH`),
+  `cohere::{COMMAND_R_PLUS, COMMAND_R, COMMAND, COMMAND_NIGHTLY, COMMAND_LIGHT,
+  COMMAND_LIGHT_NIGHTLY}` (use the dated `COMMAND_*_08_2024` / `COMMAND_A_*`
+  constants), and `mistral::{PIXTRAL_LARGE, PIXTRAL_SMALL, MISTRAL_SABA,
+  MISTRAL_NEMO, CODESTRAL_MAMBA}` (use `MISTRAL_SMALL` / `MISTRAL_MEDIUM` /
+  `MINISTRAL_3B` / `CODESTRAL`). Pass the literal string to
+  `completion_model(..)` if you still need to address one of the retired ids.
+- **`rig_candle::{LlamaModel, ModelFamily}` aliases are removed.** Use
+  `CandleModel` and `ConversationProtocol`, which they aliased.
+- **Persisted-record tolerances are removed.** `CompletionCall::usage` no
+  longer accepts `null` (the pre-monoid `Option` encoding) — a record must
+  carry a `Usage` object; OpenAI `UserContent::Audio` no longer accepts the
+  never-on-the-wire `"type": "audio"` tag (only `"input_audio"`); and an OpenAI
+  `ToolResultContent` part must carry its `"type"` tag (`"text"` /
+  `"image_url"`). Records written by any released rig already have these
+  shapes; re-encode anything older before loading it.
+
+### The bundled transport newtypes expose their inner client once, not three ways
+
+`ReqwestClient` and `ReqwestMiddlewareClient` each handed out the client they
+wrap through a public tuple field, a `Deref`, *and* `From`. `Deref` on a type
+that is not a smart pointer makes reqwest's whole inherent API look like the
+newtype's own, which it is not, and the public field made it redundant besides.
+Both now have a private field and two explicit accessors:
+
+```rust
+// Before
+let inner: &reqwest::Client = &client.0;
+let response = client.get(url).send().await?;   // via Deref
+
+// After
+let inner: &reqwest::Client = client.as_ref();
+let response = client.as_ref().get(url).send().await?;
+let owned: reqwest::Client = client.into_inner();
+```
+
+Construction is unchanged (`From`, `Default`, and now an explicit
+`ReqwestClient::new(..)`), so `ReqwestClient::default()`,
+`reqwest_client.into()` and `ClientBuilder::new(..).build().into()` all keep
+working.
+
+`ReqwestMiddlewareClient` gained the erasure `ReqwestClient` already had —
+`boxed()` and `impl From<ReqwestMiddlewareClient> for BoxedHttpClient` — so a
+host that erases its transport does not lose the option by having chosen
+middleware. It deliberately still has no `Default`: a middleware client with no
+middleware is a `reqwest::Client` with extra indirection.
+
+### `multipart_form` reports an unusable content type instead of dropping it
+
+`rig_reqwest::multipart_form` now returns
+`http_client::Result<reqwest::multipart::Form>`. It used to rebuild the part
+without its content type when reqwest rejected the MIME string and send the
+request anyway, so the provider saw a part with *no* content type and answered
+with something unrelated to the actual mistake.
+
+```rust
+// Before
+let form = rig_reqwest::multipart_form(parts);
+
+// After
+let form = rig_reqwest::multipart_form(parts)?;
+```
+
+Rig's own multipart parts carry a parsed `mime::Mime`, so in practice this
+fires only on a `mime`/`reqwest` version skew — the point is that it now fires
+at all rather than silently changing the request.
+
+### Websockets are transport-agnostic: the protocol moved to `rig-core`, the socket to `rig-tungstenite`
+
+The OpenAI Responses websocket mode used to live in `rig-reqwest`, because
+`tokio-tungstenite` did. That put OpenAI *protocol* — the event envelopes, the
+turn state machine, the `previous_response_id` chaining — inside the reqwest
+transport crate, forced a TLS feature axis onto it that had nothing to do with
+reqwest, and left the next provider's websocket support nowhere to go.
+
+It now follows the same split HTTP already had. `rig-core` states the contract
+and owns the protocol; a backend-named crate supplies the socket:
+
+| Was | Is |
+| --- | --- |
+| `rig_reqwest::openai_websocket::*` (protocol + session) | `rig_core::providers::openai::responses_api::websocket::*` |
+| `rig_reqwest::openai_websocket::ResponsesWebSocketExt` | `rig_core::…::websocket::ResponsesWebSocketExt` (backend-taking) and `rig_tungstenite::DefaultWebSocketClient` (bundled backend) |
+| — | `rig_core::ws_client` — `WebSocketClientExt`, `WebSocketConnection`, `Frame` |
+| `rig-reqwest` features `websocket`, `websocket-rustls`, `websocket-native-tls` | `rig-tungstenite` features `rustls` / `native-tls`; the facade keeps all three spellings, each usable on its own. A native-tls-**only** socket means depending on `rig-tungstenite` directly with `default-features = false` — through the facade, `websocket-native-tls` compiles rustls as well |
+
+**Through the `rig` facade the common path is unchanged.** With the `websocket`
+feature and `use rig::prelude::*`, this keeps working verbatim:
+
+```rust
+use rig::prelude::*;
+
+let client = rig::providers::openai::Client::from_env()?;
+let mut session = client.responses_websocket("gpt-5.4").await?;
+```
+
+The `responses_websocket(..)` / `builder().connect()` you were calling now come
+from `rig_tungstenite`'s `DefaultWebSocketClient` / `DefaultWebSocketBuilder`
+rather than from `rig-reqwest`, exactly as `from_env()` comes from
+`DefaultTransportClient`. Both are in `rig::prelude`.
+
+**If you named the old path directly**, update the import:
+
+```rust
+// Before
+use rig::rig_reqwest::openai_websocket::{ResponsesWebSocketEvent, ResponsesWebSocketExt as _};
+
+// After
+use rig::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
+use rig::prelude::*; // DefaultWebSocketClient
+```
+
+**If you depended on `rig-reqwest` directly for websockets**, depend on
+`rig-tungstenite` instead; `rig-reqwest` no longer has a `websocket` feature and
+no longer pulls in `tokio-tungstenite`.
+
+**To use a different websocket backend**, implement
+`rig_core::ws_client::WebSocketClientExt` and open the session with the
+backend-taking entry points, which name no backend:
+
+```rust
+use rig::providers::openai::responses_api::websocket::ResponsesWebSocketExt as _;
+
+let mut session = client.responses_websocket_with("gpt-5.4", &my_backend).await?;
+// or, with options:
+let mut session = client
+    .responses_websocket_builder("gpt-5.4")
+    .event_timeout(std::time::Duration::from_secs(30))
+    .connect_with(&my_backend)
+    .await?;
+```
+
+A session can also be built over an already-open connection with
+`ResponsesWebSocketSession::from_connection(model, connection, event_timeout)` —
+which is how the protocol is now tested, with no socket involved.
+
+Three smaller consequences:
+
+- **The connect-timeout error text changed.** The handshake deadline is the
+  backend's now (it owns the handshake), so a hung connect reports
+  `ProviderError: Http client error: timed out connecting the websocket after
+  30s` where it used to report `ProviderError: Timed out connecting to the
+  OpenAI websocket after 30s`. Both are `CompletionError::ProviderError`; only
+  code matching on the string is affected. The per-event timeout is unchanged —
+  it stays with the session, which is the only side that knows where a turn
+  ends.
+- `rig_core::http_client::Error::non_success_status()` and `non_success_body()`
+  are now public (they were `pub(crate)`). A websocket backend outside rig-core
+  builds a rejected upgrade into that error, and the provider layer reads the
+  status and body back off it.
+- `rig-core` gained a `websocket` feature, gating `ws_client` and the provider
+  session modules. It adds no dependency — rig-core still pulls in no tokio, no
+  reqwest and no tungstenite.
+
 ### Typed ids: `InternalCallId` is a counter, `ConversationId` is a newtype
 
 Two identifiers that were bare `String`s are now dedicated types in
@@ -819,8 +1007,8 @@ Two identifiers that were bare `String`s are now dedicated types in
   `StreamedAssistantContent::{ToolCall, ToolCallDelta}`,
   `StreamedUserContent::ToolResult`, `RawStreamingToolCall`,
   `MultiTurnStreamItem::ToolExecutionCommitted`,
-  `rig_run::PendingToolCall::internal_call_id`,
-  `rig_run::InvalidToolCallContext`, and the hook events
+  `rig_agent::run::PendingToolCall::internal_call_id`,
+  `rig_agent::run::policy::InvalidToolCallContext`, and the hook events
   (`ToolCall`/`ToolResultEvent`/`ToolCallDelta`, where it was `&'a str` and is
   now a by-value `InternalCallId`). Code that compared it to string literals
   should compare ids; code that displayed it still can (`Display` renders the
@@ -845,7 +1033,7 @@ Two identifiers that were bare `String`s are now dedicated types in
 Groundwork for stepping `AgentRun` from a host scheduler (the upcoming Bevy
 plugin), all additive or derive-only:
 
-- `rig_run::ModelTurn::from_response(resp, &PreparedRequest)` (and
+- `rig_agent::run::ModelTurn::from_response(resp, &PreparedRequest)` (and
   `from_response_parts`) is now the one blessed `CompletionResponse →
   ModelTurn` conversion; rig-agent's runner uses it, and any external driver
   must too — it settles the two inputs hand-assembly gets wrong (tool-name
@@ -899,7 +1087,7 @@ HTTP transport gained a middleware seam. What breaks:
   `BoxedHttpClient::with_middleware`). Behavior without middleware is
   unchanged. `BoxedHttpClient::ptr_eq` still compares the underlying transport
   only, so two handles differing only in middleware compare equal.
-- **`AgentRun` gained an append-only entry log** — `rig_run::RunEntry`
+- **`AgentRun` gained an append-only entry log** — `rig_agent::run::RunEntry`
   (`kind`/`turn`/`value`) with `append_entry`, `entries`, `entries_of`, and
   `last_entry_of` — plus `initial_prompt`, `rewrite_initial_prompt`, and
   `input_chat_history`. Runs serialized before this release deserialize
@@ -920,31 +1108,53 @@ rides the record travels, rewinds, and forks with the record. Also new: the
 between two unreleased PRs and was replaced by the entry log before release;
 `Scratchpad` remains as the in-process, non-serialized cross-hook channel.)
 
-### The run protocol is its own crate: `rig-run` (`rig::run`)
+### The run protocol is rig-agent's `run` layer; rig-core keeps only the message-model invariants
 
 `AgentRun` — the sans-IO, serializable state machine behind every agent run —
-and everything needed to step it now live in **`rig-run`**, which depends on
-`rig-core` only (no async runtime, no hooks, no tool registry; a guard test pins
-this). `rig-agent` is the futures driver over it; an ECS plugin can be another.
-Every old path still resolves through re-exports, so existing code compiles
-unchanged unless it names one of the items below:
+was briefly its own crate during this cycle (`rig-run`, never released). It is
+not. rig-core is the provider, tool, transport and message contract and knows
+nothing about agents; everything an agent loop *is* lives in one sans-IO layer
+of rig-agent.
 
-- Moved (re-exported at the old paths `rig_agent::agent::run::*`,
+- **rig-core keeps two things**, because they are properties of the message
+  model rather than of any loop: `rig_core::transcript::validate_canonical`
+  (+ `TranscriptError` — every assistant tool call answered in the next user
+  message, no orphan results; the shape providers require) and the tool-result
+  constructors `tool_result_output` / `tool_result_message` (a `ToolOutput`
+  becoming user-message content). Nothing else moved into rig-core.
+- **`rig_agent::run`** is the sans-IO layer — data and transitions only, a
+  source-level guard covers every file, all of it `Serialize + Deserialize +
+  Clone`: `AgentRun`, `AgentRunStep`, `ModelTurn`, `ModelTurnOutcome`,
+  `PendingToolCall`, `RunEntry`, `TurnTools`; `run::spec` (`RunSpec`,
+  `RunSpec::DEFAULT_OUTPUT_RETRIES`); `run::prepare` (`prepare_request`,
+  `PreparedRequest`, `PrepareError`); `run::output` (`OutputMode` and the
+  output-policy helpers `resolve_output_mode`, `pick_output_tool_name`,
+  `augment_preamble`, `allowed_tool_names_for_choice`, …); `run::patch`
+  (`RequestPatch`); `run::response` (`PromptResponse`, `CompletionCall`,
+  `PromptError`); `run::policy` (`InvalidToolCallAction`,
+  `InvalidToolCallContext`, `RetryRequest`); `run::streamed` (the streamed-turn
+  assembler); `run::transcript` (history threading, invalid-call feedback,
+  turn classification, plus re-exports of the rig-core invariants). `rig::run`
+  is this module and needs the `agent` feature.
+- **A second driver** (an ECS schedule, a job system) that steps `AgentRun`
+  itself depends on `rig-agent` with default features off: that graph is
+  rig-core plus the futures vocabulary — no async runtime, transport or MCP
+  client, pinned by `rig_agent_carries_no_runtime_or_mcp` — and
+  `tests/fixtures/agent_run_stepper` is that host in miniature. Because there
+  is exactly one `prepare_request`, every such driver sends the same bytes.
+- Every 0.42 path resolves unchanged: `rig_agent::agent::run::*`,
   `rig_agent::agent::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome,
-  PendingToolCall, OutputMode, PromptResponse, CompletionCall}`,
-  `rig_agent::completion::PromptError`,
-  `rig_agent::agent::hook::{InvalidToolCallAction, InvalidToolCallContext,
-  RetryRequest}`): `AgentRun`, `AgentRunStep`, `ModelTurn`, `ModelTurnOutcome`,
-  `PendingToolCall`, the streamed-turn assembler types, `OutputMode`,
-  `PromptResponse`, `CompletionCall`, `PromptError`, the three invalid-call /
-  retry data types, and the transcript helpers (`rig_run::transcript`).
-  The facade exposes the crate as `rig::run` independent of the `agent` feature.
+  PendingToolCall, OutputMode, PromptResponse, CompletionCall, RunSpec,
+  TurnTools}`, `rig_agent::completion::PromptError`,
+  `rig_agent::agent::hook::{RunEntry, RequestPatch, InvalidToolCallAction,
+  InvalidToolCallContext, RetryRequest}` (pinned by
+  `crates/rig-agent/tests/run_paths_stable.rs`).
 - `PromptError::prompt_cancelled(..)`, `PromptResponse::{with_output_tool_calls,
   output_tool_calls}` and the `AgentRun` driver methods
   (`set_output_tool_name`, `output_tool_name`, `accepted_turn_choice`,
   `ignore_invalid_tool_call`, …) were crate-private to rig-agent and are now
-  public on rig-run: they are the protocol's driver API.
-- `RunId` (`rig_core::id::RunId`, re-exported from `rig_run` and
+  public: they are the protocol's driver API.
+- `RunId` (`rig_core::id::RunId`, re-exported from `rig::run` and
   `rig_agent::agent::hook`) is now a `NonZeroU64` counter id — `Copy + Hash +
   Ord + Serialize`, `to_raw()`/`from_raw()`, decimal `Display`/`FromStr`,
   `Option<RunId>` is `u64`-sized — instead of an opaque `String` newtype.
@@ -953,30 +1163,30 @@ unchanged unless it names one of the items below:
 
 New, additive:
 
-- **`RunSpec`** (`rig_run::RunSpec`): the protocol-facing half of an agent
-  definition as plain `Serialize + Deserialize` data — preamble, static
-  context, sampling params, additional params, turn budget, tool choice,
-  structured-output policy. `AgentRun::from_spec(&spec, prompt, history)`;
-  `Agent::run_spec()` reads it off an agent; `AgentBuilder::apply_spec(&spec)`
-  layers one under imperative builder calls (model, tools, hooks, memory are
-  untouched).
+- **`RunSpec`** (`rig_agent::run::spec::RunSpec`): the protocol-facing
+  half of an agent definition as plain `Serialize + Deserialize` data —
+  preamble, static context, sampling params, additional params, turn budget,
+  tool choice, structured-output policy. `AgentRun::from_spec(&spec, prompt,
+  history)`; `Agent::run_spec()` reads it off an agent;
+  `AgentBuilder::apply_spec(&spec)` layers one under imperative builder calls
+  (model, tools, hooks, memory are untouched).
 - **`AgentRun::advertise_tools(turn, Vec<ToolDefinition>)` /
   `advertised_tools() -> Option<&TurnTools>`**: what the request offered the
   model, recorded as run data (serialized with the run) so a resumed run or a
   second driver can re-pair returned calls with the advertised set. rig-agent's
   driver records it before every model call.
-- **`rig_run::transcript::validate_canonical(&[Message])`** and
+- **`rig_core::transcript::validate_canonical(&[Message])`** and
   **`AgentRun::with_validated_history(..)`**: the canonical-transcript rules the
   protocol produces (no consecutive assistant messages; every assistant tool
   call answered in the next message; no orphan tool results), as a checkable
   function for histories that come from outside (memory, a resumed run).
   `with_history` stays unchecked.
 
-### The erased model and the erased tool set are rig-core; request preparation is rig-run
+### The erased model and the erased tool set are rig-core; request preparation is rig-agent's `run` layer
 
-The second step of "one protocol, two drivers". Everything a driver that does
-*not* depend on `rig-agent` needs is now in `rig-core` (handles, tools) and
-`rig-run` (the pure request step). Every old path still resolves through
+The second step of "one protocol, two drivers". The erased handles and the
+tool set are rig-core's; the pure request step is rig-agent's sans-IO `run`
+layer (a driver steps it via runtime-free rig-agent). Every old path still resolves through
 re-exports; behavior is unchanged (the recorded provider suites replay the same
 request bodies, and a golden test pins the driver's requests for a scripted
 tool turn). What moved, and what is new:
@@ -1016,7 +1226,7 @@ tool turn). What moved, and what is new:
   `move_to_end`, `catalog`. `ToolServer` / `ToolServerHandle` (retrieval
   indexes, managed remote tool sources, `get_tool_defs(prompt)`, the per-turn
   snapshot) stay in `rig-agent`, layered over these types.
-- **`rig_run::prepare_request`** (new): the pure `(RunSpec, ProviderCapabilities,
+- **`rig_agent::run::prepare::prepare_request`** (new): the pure `(RunSpec, ProviderCapabilities,
   history, tools, committed output tool, RequestPatch) -> PreparedRequest`
   step — preamble augmentation, static + extra context, output-mode resolution,
   synthetic output-tool synthesis and naming, `active_tools` narrowing,
@@ -1026,17 +1236,18 @@ tool turn). What moved, and what is new:
   `CompletionError::RequestError`. rig-agent's driver now does only the IO
   around it: retrieve the turn's tools, `prepare_request`, bind the selected
   model's builder.
-- **`RequestPatch`** (`rig_run::policy::RequestPatch`, was
+- **`RequestPatch`** (`rig_agent::run::patch::RequestPatch`, was
   `rig_agent::agent::hook::RequestPatch`; still at the old path and
   `rig_agent::agent::RequestPatch`): plain per-turn data, unchanged fields and
   builder methods; `is_empty()` and `merge(later)` are now public. The hook
   that produces it (`CompletionCallAction::patch`) stays in rig-agent.
 
-A driver over `rig-core` + `rig-run` alone can now erase a model, build a
-`ToolSet`/`ToolCatalog` from `PortableDynamicTool`s, construct an `AgentRun`
-from a `RunSpec`, `prepare_request`, and dispatch a tool by name — the guard
-`tests/core/core_run_driver.rs` runs exactly that fixture and checks its
-dependency graph has no `rig-agent`.
+A host that steps `AgentRun` itself can now erase a model, build a
+`ToolSet`/`ToolCatalog` from `PortableDynamicTool`s, construct a run from a
+`RunSpec`, `prepare_request`, and dispatch a tool by name with `rig-agent`
+(default features off) and `rig-core` alone — the guard
+`tests/core/agent_run_stepper.rs` runs exactly that fixture and checks its
+dependency graph carries no runtime, transport, MCP client or `rig` facade.
 
 ### `BoxedHttpClient`: an erased transport, and `Client<Ext>` now means `Client<Ext, BoxedHttpClient>`
 
@@ -1175,9 +1386,6 @@ rig-core. The transport lives in **`rig-reqwest`**:
 - `rig_reqwest::providers::*` — the familiar provider module tree with every
   transport-generic type aliased to `…<ReqwestClient>` for type position
   (`Agent<openai::CompletionModel>`, `let c: openai::Client = …`).
-- `rig_reqwest::openai_websocket` — the OpenAI Responses websocket mode
-  (feature `websocket`), with `ResponsesWebSocketExt` supplying
-  `client.responses_websocket(..)`.
 - It works without a tokio runtime (Bevy task pools, smol, `futures::executor`):
   reqwest futures are driven on a lazily started fallback runtime and the
   caller only ever polls runtime-agnostic futures.
@@ -4941,7 +5149,7 @@ Renamed or relocated items, for searching.
 | `rig_agent::agent::model::ModelHandle` | `rig_core::completion::ModelHandle` (re-exported at `rig_agent::ModelHandle` / `rig_agent::agent::ModelHandle`) | next |
 | `rig_agent::tool::{Tool, ToolEmbedding, ErasedTool, DynamicTool, ToolSet, tool_definition}` | `rig_core::tool::{..}` (module `rig_core::tool::contextual`; re-exported at the old paths and at `rig::tool::*` without the `agent` feature) | next |
 | `rig_agent::tool::server::ToolRegistrySnapshot` (struct) | `pub type ToolRegistrySnapshot = rig_core::tool::ToolCatalog` | next |
-| `rig_agent::agent::hook::RequestPatch` | `rig_run::policy::RequestPatch` (re-exported at the old path) | next |
+| `rig_agent::agent::hook::RequestPatch` | `rig_agent::run::patch::RequestPatch` (re-exported at the old path) | next |
 | `#[rig_tool]` contextual-tool expansion target `rig_agent::tool::Tool` | `rig_core::tool::Tool` (the macro's "contextual tools require `rig`/`rig-agent`" error is gone) | next |
 | `rig_core::OneOrMany<T>` (and the `one_or_many` module, both prelude re-exports) | `Vec<T>` — no replacement type; see the conversion table in "0.41 → next" | next |
 | `rig_core::EmptyListError` | none — use `message::require_non_empty` where you relied on the rejection | next |

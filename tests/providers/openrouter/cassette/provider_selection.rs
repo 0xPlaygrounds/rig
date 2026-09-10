@@ -1,6 +1,5 @@
 //! Cassette-backed OpenRouter provider selection scenarios.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openrouter::{MaxPrice, ProviderPreferences, ProviderSortStrategy};
 
@@ -56,7 +55,7 @@ async fn provider_selection_scenarios() {
                     .additional_params(params)
                     .build();
                 let response = agent.prompt(prompt).await.expect("prompt should succeed");
-                assert_nonempty_response(&response);
+                assert_nonempty_response(&response.output);
             }
         },
     )

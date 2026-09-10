@@ -186,13 +186,18 @@ impl Client {
 
     /// Create a client using environment variables for project, location, and credentials.
     ///
-    /// This is a convenience method that calls the `ProviderClient::from_env()` trait method.
     /// Reads from:
     /// - `GOOGLE_CLOUD_PROJECT` (required)
     /// - `GOOGLE_CLOUD_LOCATION` (optional, defaults to "global")
     /// - `GOOGLE_CLOUD_SERVICE_ACCOUNT` (optional, for service account impersonation)
     pub fn from_env() -> Result<Self, VertexAiClientError> {
-        <Self as ProviderClient>::from_env()
+        Client::new()
+    }
+
+    /// Vertex AI takes no explicit input: use [`Client::from_env`] or
+    /// [`ClientBuilder`].
+    pub fn from_val(_: Nothing) -> Result<Self, VertexAiClientError> {
+        Err(VertexAiClientError::InvalidInput)
     }
 
     pub fn project(&self) -> &str {
@@ -217,25 +222,6 @@ impl Client {
             .await
             .as_ref()
             .map_err(Clone::clone)
-    }
-}
-
-impl ProviderClient for Client {
-    type Input = Nothing;
-    type Error = VertexAiClientError;
-
-    fn from_env() -> Result<Self, Self::Error>
-    where
-        Self: Sized,
-    {
-        Client::new()
-    }
-
-    fn from_val(_: Self::Input) -> Result<Self, Self::Error>
-    where
-        Self: Sized,
-    {
-        Err(VertexAiClientError::InvalidInput)
     }
 }
 

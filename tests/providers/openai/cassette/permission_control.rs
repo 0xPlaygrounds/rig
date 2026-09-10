@@ -3,10 +3,8 @@ use rig::agent::{
     AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
     stream_to_stdout,
 };
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -245,6 +243,7 @@ async fn permission_control_streaming_example() -> Result<()> {
                 )
                 .max_turns(5)
                 .add_hook(hook)
+                .stream()
                 .await;
 
             let final_response = stream_to_stdout(&mut stream).await?;

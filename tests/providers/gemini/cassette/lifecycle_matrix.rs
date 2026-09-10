@@ -8,10 +8,8 @@
 //! the hook-level lifecycle claims. All assertions hold in both cassette
 //! modes: on replay the same code paths run against the replay server.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamingPrompt;
 
 use super::super::support::with_gemini_lifecycle_cassette;
 use crate::support::{
@@ -33,7 +31,7 @@ async fn middleware_phases_observe_a_unary_completion() {
                 .prompt(BASIC_PROMPT)
                 .await
                 .expect("completion should succeed");
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
         },
     )
     .await;
@@ -54,7 +52,7 @@ async fn middleware_response_phase_precedes_stream_consumption() {
                 .preamble(STREAMING_PREAMBLE)
                 .add_hook(settle_hook)
                 .build();
-            let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+            let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
             let (response, provider_final): (_, rig::streaming::StreamFinal) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await
@@ -92,7 +90,7 @@ async fn run_start_rewrite_reaches_the_provider() {
                 .await
                 .expect("completion should succeed");
             assert!(
-                response.to_uppercase().contains("PINEAPPLE"),
+                response.output.to_uppercase().contains("PINEAPPLE"),
                 "the provider answered the rewritten prompt, not the original: {response:?}"
             );
         },
@@ -119,6 +117,7 @@ async fn entry_log_orders_and_turn_stamps_across_a_streamed_tool_run() {
             let mut stream = agent
                 .stream_prompt("What is 9 + 16? Use the add tool, then reply with just the number.")
                 .max_turns(3)
+                .stream()
                 .await;
             let (response, _final): (_, rig::streaming::StreamFinal) =
                 collect_stream_final_response_and_provider_final(&mut stream)
@@ -156,7 +155,7 @@ async fn run_settles_once_across_a_multi_turn_tool_run_with_durable_state() {
                 .await
                 .expect("tool run should succeed");
             assert!(
-                response.contains("22"),
+                response.output.contains("22"),
                 "the tool result reached the final answer: {response:?}"
             );
         },

@@ -18,7 +18,7 @@ use rig::completion::{PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
+use rig::streaming::StreamedAssistantContent;
 use rig_agent::test_utils::{validate_cancelled_failure, validate_max_turns_failure};
 
 use super::super::agent_run_support::{
@@ -495,6 +495,7 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
             let mut stream = agent
                 .stream_prompt("What is 21 + 21? Use the add tool.")
                 .max_turns(2)
+                .stream()
                 .await;
 
             let mut prompt_error = None;
@@ -566,6 +567,7 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
                 .stream_prompt("What is 21 + 21? Use the add tool.")
                 .add_hook(CancelOnToolCall)
                 .max_turns(2)
+                .stream()
                 .await;
 
             let mut prompt_error = None;

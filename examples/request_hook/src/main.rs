@@ -25,7 +25,7 @@ use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent, HookContext,
     ObservationAction, RequestPatch,
 };
-use rig::completion::{Document, Message, Prompt};
+use rig::completion::{Document, Message};
 use rig::message::UserContent;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -73,7 +73,7 @@ impl AgentHook for LoggingHook {
             "[run {}] received response (usage: {:?}, message_id: {:?}): {:?}",
             ctx.run_id(),
             event.usage,
-            event.message_id,
+            event.identity.message_id,
             event.content
         );
         ObservationAction::continue_run()
@@ -166,7 +166,8 @@ async fn main() -> Result<()> {
         .add_hook(ContextHook)
         .add_hook(SamplingHook)
         .add_hook(TurnCounterHook)
-        .await?;
+        .await?
+        .output;
 
     println!("\nFinal response:\n{response}");
 

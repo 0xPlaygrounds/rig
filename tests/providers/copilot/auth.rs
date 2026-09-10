@@ -1,7 +1,6 @@
 //! Copilot OAuth and bootstrap smoke tests.
 
 use assert_fs::TempDir;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::copilot;
 use serde_json::json;
@@ -47,7 +46,7 @@ async fn api_key_completion_smoke() {
         .await
         .expect("api key-backed completion should succeed");
 
-    assert_nonempty_response(&response);
+    assert_nonempty_response(&response.output);
 }
 
 #[tokio::test]
@@ -70,7 +69,7 @@ async fn github_access_token_completion_smoke() {
         .await
         .expect("bootstrap-token-backed completion should succeed");
 
-    assert_nonempty_response(&response);
+    assert_nonempty_response(&response.output);
 }
 
 #[tokio::test]
@@ -110,7 +109,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
         .await
         .expect("authorized completion should succeed");
 
-    assert_nonempty_response(&response);
+    assert_nonempty_response(&response.output);
 
     let cached_client = oauth_builder_with_token_dir(token_dir)
         .build()
@@ -126,7 +125,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
         .await
         .expect("cached completion should succeed");
 
-    assert_nonempty_response(&cached_response);
+    assert_nonempty_response(&cached_response.output);
 }
 
 #[tokio::test]
@@ -191,5 +190,5 @@ async fn access_token_bootstrap_refresh_and_completion_smoke() {
         .await
         .expect("bootstrap-backed completion should succeed");
 
-    assert_nonempty_response(&response);
+    assert_nonempty_response(&response.output);
 }

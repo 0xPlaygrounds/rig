@@ -75,7 +75,6 @@ use rig::completion::{CompletionModel, NormalizeCompletionResponse};
 use rig::message::Message;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::StreamingPrompt;
 use rig::telemetry::ProviderResponseExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -183,7 +182,8 @@ async fn chat_blocking_agent_prompt_surfaces_refusal() {
             let response = agent
                 .prompt(REFUSED_PROMPT)
                 .await
-                .expect("an agent must deliver the refusal, not an empty-response error");
+                .expect("an agent must deliver the refusal, not an empty-response error")
+                .output;
 
             assert_nonempty_response(&response);
         },
@@ -305,7 +305,7 @@ async fn chat_streaming_agent_surfaces_refusal() {
                 .additional_params(chat_response_format())
                 .build();
 
-            let mut stream = agent.stream_prompt(REFUSED_PROMPT).await;
+            let mut stream = agent.stream_prompt(REFUSED_PROMPT).stream().await;
             let observed = collect_stream_observation(&mut stream).await;
 
             assert!(observed.errors.is_empty(), "{:?}", observed.errors);
@@ -442,7 +442,8 @@ async fn chat_refusal_turn_survives_into_history() {
             let refusal = agent
                 .chat(REFUSED_PROMPT, &mut history)
                 .await
-                .expect("refusal turn");
+                .expect("refusal turn")
+                .output;
             assert_nonempty_response(&refusal);
             assert!(
                 history.len() >= 2,
@@ -452,7 +453,8 @@ async fn chat_refusal_turn_survives_into_history() {
             let followup = agent
                 .chat(ANSWERABLE_PROMPT, &mut history)
                 .await
-                .expect("a follow-up over a history containing a refusal must be accepted");
+                .expect("a follow-up over a history containing a refusal must be accepted")
+                .output;
             assert_nonempty_response(&followup);
         },
     )
@@ -638,7 +640,11 @@ async fn responses_agent_blocking_refusal_surfaces() {
                 .additional_params(responses_text_format())
                 .build();
 
-            let response = agent.prompt(REFUSED_PROMPT).await.expect("refusal turn");
+            let response = agent
+                .prompt(REFUSED_PROMPT)
+                .await
+                .expect("refusal turn")
+                .output;
 
             assert_nonempty_response(&response);
         },
@@ -660,7 +666,7 @@ async fn responses_agent_streaming_refusal_surfaces() {
                 .additional_params(responses_text_format())
                 .build();
 
-            let mut stream = agent.stream_prompt(REFUSED_PROMPT).await;
+            let mut stream = agent.stream_prompt(REFUSED_PROMPT).stream().await;
             let observed = collect_stream_observation(&mut stream).await;
 
             assert!(observed.errors.is_empty(), "{:?}", observed.errors);

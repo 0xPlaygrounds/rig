@@ -2,7 +2,6 @@
 
 use rig::prelude::*;
 use rig::providers::ollama;
-use rig::streaming::StreamingPrompt;
 
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
 
@@ -18,6 +17,7 @@ async fn example_streaming_prompt() {
 
     let mut stream = agent
         .stream_prompt("When and where and what type is the next solar eclipse?")
+        .stream()
         .await;
     let response = collect_stream_final_response(&mut stream)
         .await

@@ -10,12 +10,12 @@
 //! (`/v1/batches`) with a JSONL upload.
 //!
 //! Set `DOUBLEWORD_API_KEY` (and optionally `DOUBLEWORD_BASE_URL`) to use
-//! [`ProviderClient::from_env`](crate::client::ProviderClient::from_env).
+//! `Client::from_env` (via `rig-reqwest`'s `DefaultTransportClient`).
 //!
 //! # Example
 //! ```ignore
 //! use rig_core::{
-//!     client::{CompletionClient, ProviderClient},
+//!     client::CompletionClient,
 //!     completion::CompletionModel,
 //!     providers::doubleword,
 //! };

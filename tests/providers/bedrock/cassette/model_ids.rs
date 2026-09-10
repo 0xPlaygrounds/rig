@@ -126,7 +126,8 @@ async fn claude_profile_constant_completes() {
             let response = agent
                 .prompt("Reply with the single word: ready.")
                 .await
-                .expect("Claude completion should succeed");
+                .expect("Claude completion should succeed")
+                .output;
 
             assert_nonempty_response(&response);
         },

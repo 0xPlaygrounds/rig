@@ -1,7 +1,9 @@
-//! This module provides high-level abstractions for extracting structured data from text using LLMs.
+//! Typed extraction: an [`Agent`] configured to answer through a `submit`
+//! tool whose arguments are the value to extract, run as a
+//! [`TypedRun`].
 //!
-//! Note: The target structure must implement the `serde::Deserialize`, `serde::Serialize`,
-//! and `schemars::JsonSchema` traits. Those can be easily derived using the `derive` macro.
+//! The target type must implement `serde::Deserialize`, `serde::Serialize`,
+//! and `schemars::JsonSchema`; all three derive.
 //!
 //! # Example
 //! ```no_run
@@ -10,10 +12,8 @@
 //! use rig_reqwest::prelude::*;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // Initialize the OpenAI client
 //! let openai = openai::Client::new("your-open-ai-api-key")?;
 //!
-//! // Define the structure of the data you want to extract
 //! #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 //! struct Person {
 //!    name: Option<String>,
@@ -21,12 +21,10 @@
 //!    profession: Option<String>,
 //! }
 //!
-//! // Create the extractor
-//! let extractor = openai.extractor::<Person>(openai::GPT_4O)
-//!     .build();
+//! let extractor = openai.extractor::<Person>(openai::GPT_4O).retries(2).build();
 //!
-//! // Extract structured data from text
-//! let person = extractor.extract("John Doe is a 30 year old doctor.").await?;
+//! // `.await` gives a `TypedPromptResponse<Person>`; `.output` is the value.
+//! let person = extractor.extract("John Doe is a 30 year old doctor.").await?.output;
 //! # Ok(())
 //! # }
 //! ```
@@ -43,287 +41,57 @@ use rig_core::{
 };
 
 use crate::{
-    agent::{Agent, AgentBuilder, AgentHook, ModelHandle, OutputMode},
-    completion::{CompletionError, CompletionModel, PromptError, Usage},
+    agent::{Agent, AgentBuilder, AgentHook, ModelHandle, OutputMode, TypedRun},
+    completion::CompletionModel,
 };
 
 const SUBMIT_TOOL_NAME: &str = "submit";
 
-/// Response from an extraction operation containing the extracted data and usage information.
-#[derive(Debug, Clone)]
-pub struct ExtractionResponse<T> {
-    /// The extracted structured data
-    pub data: T,
-    /// Accumulated token usage across all attempts (including retries)
-    pub usage: Usage,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum ExtractionError {
-    #[error("No data extracted")]
-    NoData,
-
-    #[error("Failed to deserialize the extracted data: {0}")]
-    DeserializationError(#[from] serde_json::Error),
-
-    #[error("CompletionError: {0}")]
-    CompletionError(#[from] CompletionError),
-
-    #[error("PromptError: {0}")]
-    PromptError(#[from] PromptError),
-}
-
-/// Extractor for structured data from text
+/// An agent configured for structured extraction: every [`extract`](Self::extract)
+/// is a one-call [`TypedRun`] in output-tool mode with this extractor's retry
+/// budget.
 pub struct Extractor<T>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
     agent: Agent,
-    _t: PhantomData<T>,
     retries: u64,
-}
-
-/// A single extraction run with an overridden default model.
-///
-/// The model is the default candidate for every retry in this run;
-/// model-selection hooks may replace it before each attempt. The originating
-/// [`Extractor`]'s default model is unchanged.
-#[must_use = "an extraction override does nothing until an extract method is awaited"]
-pub struct ExtractorRun<'a, T>
-where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
-{
-    extractor: &'a Extractor<T>,
-    model: Option<ModelHandle>,
-}
-
-/// Generate the `Extractor` methods that delegate to the same-named
-/// [`ExtractorRun`] method on [`Extractor::default_run`], appending the
-/// retry-semantics doc paragraphs shared by all of them. Methods marked
-/// `=> usage` also carry the shared usage-accounting paragraph.
-macro_rules! forward_default_run {
-    (@usage_doc usage) => {
-        "\nUsage accumulates across all retry attempts, including attempts that received\n\
-         a billed response but failed extraction (e.g. the model never called `submit`).\n\
-         Attempts whose completion call itself returned an error (e.g. network failures\n\
-         or unparseable provider responses) contribute no usage, and when every attempt\n\
-         fails the returned error carries no usage information at all."
-    };
-    ($( $(#[$attr:meta])* $name:ident ( $($arg:ident : $ty:ty),* ) -> $ret:ty
-        $(=> $usage:ident)?; )+) => {$(
-        $(#[$attr])*
-        ///
-        /// The function will retry the extraction if the initial attempt fails or
-        /// if the model does not call the `submit` tool.
-        ///
-        /// The number of retries is determined by the `retries` field on the Extractor struct.
-        $(#[doc = forward_default_run!(@usage_doc $usage)])?
-        pub async fn $name(
-            &self,
-            text: impl Into<Message> + WasmCompatSend,
-            $($arg: $ty),*
-        ) -> Result<$ret, ExtractionError> {
-            self.default_run().$name(text $(, $arg)*).await
-        }
-    )+};
+    _t: PhantomData<T>,
 }
 
 impl<T> Extractor<T>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
 {
-    /// Set a different default model for this extractor's subsequent attempts.
+    /// Set a different default model for this extractor's subsequent runs.
     pub fn with_model_handle(mut self, model: ModelHandle) -> Self {
         self.agent.set_model_handle(model);
         self
     }
 
-    /// Set one extraction run's default model without changing this extractor.
+    /// The agent behind this extractor.
+    pub fn agent(&self) -> &Agent {
+        &self.agent
+    }
+
+    /// Extract structured data from `text`.
     ///
-    /// The handle is the default candidate for every retry of the run — not a
-    /// hard pin: model-selection hooks may replace it before each attempt.
-    pub fn using_model(&self, model: ModelHandle) -> ExtractorRun<'_, T> {
-        ExtractorRun {
-            extractor: self,
-            model: Some(model),
-        }
-    }
-
-    /// A run with no model override: the extractor's own default model.
-    fn default_run(&self) -> ExtractorRun<'_, T> {
-        ExtractorRun {
-            extractor: self,
-            model: None,
-        }
-    }
-
-    /// Erase and set a typed default model for one extraction run.
-    pub fn using_model_value<M>(&self, model: M) -> ExtractorRun<'_, T>
-    where
-        M: CompletionModel + 'static,
-    {
-        self.using_model(ModelHandle::new(model))
-    }
-
-    forward_default_run! {
-        /// Attempts to extract data from the given text with a number of retries.
-        extract() -> T;
-
-        /// Attempts to extract data from the given text with a number of retries.
-        extract_with_chat_history(chat_history: Vec<Message>) -> T;
-
-        /// Attempts to extract data from the given text with a number of retries,
-        /// returning both the extracted data and accumulated token usage.
-        extract_with_usage() -> ExtractionResponse<T> => usage;
-
-        /// Attempts to extract data from the given text with a number of retries,
-        /// providing chat history context, and returning both the extracted data
-        /// and accumulated token usage.
-        extract_with_chat_history_with_usage(chat_history: Vec<Message>) -> ExtractionResponse<T>
-            => usage;
-    }
-
-    /// Runs the extraction with the retry semantics shared by all public
-    /// `extract*` methods, returning the extracted data and the token usage
-    /// accumulated across all attempts, including failed ones. The accumulated
-    /// usage is only observable on success: when every attempt fails, the
-    /// returned error cannot carry it.
-    async fn retry_extract(
-        &self,
-        text: Message,
-        chat_history: Vec<Message>,
-        model: Option<&ModelHandle>,
-    ) -> Result<(T, Usage), ExtractionError> {
-        let mut last_error = None;
-        let mut usage = Usage::new();
-
-        for i in 0..=self.retries {
-            tracing::debug!(
-                "Attempting to extract JSON. Retries left: {retries}",
-                retries = self.retries - i
-            );
-            let (result, attempt_usage) = self
-                .extract_json_with_usage(&text, &chat_history, model)
-                .await;
-            usage += attempt_usage;
-            match result {
-                Ok(data) => return Ok((data, usage)),
-                Err(e) => {
-                    let suffix = if i < self.retries { " Retrying..." } else { "" };
-                    tracing::warn!("Attempt {i} to extract JSON failed: {e:?}.{suffix}");
-                    last_error = Some(e);
-                }
-            }
-        }
-
-        // If the loop finishes without a successful extraction, return the last error encountered.
-        Err(last_error.unwrap_or(ExtractionError::NoData))
-    }
-
-    /// Performs a single extraction attempt, returning its outcome alongside
-    /// the token usage it consumed. Usage is reported even when the attempt
-    /// fails after a billed completion (e.g. the model never called `submit`);
-    /// it is zero whenever the completion call itself returns an error, since
-    /// `CompletionError` carries no usage — even if the provider billed the
-    /// request (e.g. an unparseable response body).
-    async fn extract_json_with_usage(
-        &self,
-        text: &Message,
-        messages: &[Message],
-        model: Option<&ModelHandle>,
-    ) -> (Result<T, ExtractionError>, Usage) {
-        let mut runner = self
-            .agent
-            .runner(text.clone())
-            .history(messages.iter().cloned());
-        // A run-local model is the default candidate for THIS attempt only;
-        // model-selection hooks may still replace it per retry.
-        if let Some(model) = model {
-            runner = runner.using_model(model.clone());
-        }
-        let (result, error_usage) = runner
-            .max_turns(1)
-            .output_tool(
-                SUBMIT_TOOL_NAME,
-                "Submit the structured data you extracted from the provided text.",
-                false,
-            )
-            .ignore_unhandled_invalid_tool_calls()
-            .run_with_error_usage()
-            .await;
-        let response = match result {
-            Ok(response) => response,
-            Err(PromptError::CompletionError(e)) => {
-                return (Err(ExtractionError::CompletionError(e)), error_usage);
-            }
-            Err(e) => return (Err(e.into()), error_usage),
-        };
-        let usage = response.usage;
-
-        let submissions = response.output_tool_calls();
-        if submissions == 0 {
-            tracing::warn!(
-                "The submit tool was not called. If this happens more than once, please ensure the model you are using is powerful enough to reliably call tools."
-            );
-            return (Err(ExtractionError::NoData), usage);
-        }
-        if submissions > 1 {
-            tracing::warn!(
-                "Multiple submit calls detected, using the first one. Providers / agents should only ensure one submit call."
-            );
-        }
-
-        (
-            serde_json::from_str(&response.output).map_err(ExtractionError::from),
-            usage,
-        )
-    }
-}
-
-impl<T> ExtractorRun<'_, T>
-where
-    T: JsonSchema + DeserializeOwned + WasmCompatSend + WasmCompatSync,
-{
-    /// Extract structured data with the run-local model.
-    pub async fn extract(
-        &self,
-        text: impl Into<Message> + WasmCompatSend,
-    ) -> Result<T, ExtractionError> {
-        Ok(self.extract_with_usage(text).await?.data)
-    }
-
-    /// Extract structured data with chat history and the run-local model.
-    pub async fn extract_with_chat_history(
-        &self,
-        text: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
-    ) -> Result<T, ExtractionError> {
-        Ok(self
-            .extract_with_chat_history_with_usage(text, chat_history)
-            .await?
-            .data)
-    }
-
-    /// Extract structured data and usage with the run-local model.
-    pub async fn extract_with_usage(
-        &self,
-        text: impl Into<Message> + WasmCompatSend,
-    ) -> Result<ExtractionResponse<T>, ExtractionError> {
-        self.extract_with_chat_history_with_usage(text, vec![])
-            .await
-    }
-
-    /// Extract structured data with chat history and usage using the run-local model.
-    pub async fn extract_with_chat_history_with_usage(
-        &self,
-        text: impl Into<Message> + WasmCompatSend,
-        chat_history: Vec<Message>,
-    ) -> Result<ExtractionResponse<T>, ExtractionError> {
-        let (data, usage) = self
-            .extractor
-            .retry_extract(text.into(), chat_history, self.model.as_ref())
-            .await?;
-        Ok(ExtractionResponse { data, usage })
+    /// The returned run can be configured further — `.history(..)` for chat
+    /// context, `.using_model(..)` for a per-run default model, `.retries(..)`
+    /// to override the extractor's budget — and `.await`ed for a
+    /// [`TypedPromptResponse<T>`](crate::agent::TypedPromptResponse). The
+    /// model must call the `submit` tool; a run in which it does not is an
+    /// empty response and, within the retry budget, is retried from scratch.
+    /// Usage accumulates across attempts, including attempts that received a
+    /// billed response but failed extraction; attempts whose completion call
+    /// itself errored contribute no usage.
+    pub fn extract(&self, text: impl Into<Message>) -> TypedRun<T> {
+        let runner = self.agent.runner(text).max_turns(1).output_tool(
+            SUBMIT_TOOL_NAME,
+            "Submit the structured data you extracted from the provided text.",
+            false,
+        );
+        TypedRun::output_tool(runner).retries(self.retries)
     }
 }
 
@@ -412,7 +180,7 @@ where
         /// Add a provider-independent lifecycle hook to every extraction attempt.
         ///
         /// Completion-response hooks receive canonical Rig content, usage, prompt,
-        /// and message ID fields, just like hooks attached directly to an agent.
+        /// and identity fields, just like hooks attached directly to an agent.
         add_hook[H: AgentHook + 'static](hook: H);
     }
 
@@ -433,590 +201,4 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::{
-        Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
-    };
-
-    use serde_json::json;
-
-    use super::*;
-    use crate::agent::{CompletionResponseEvent, HookContext, ModelTurnAction, ObservationAction};
-    use crate::test_utils::{MockCompletionModel, MockTurn};
-    use rig_core::message::{AssistantContent, ToolCall, ToolFunction};
-    use rig_core::vector_store::{
-        VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter,
-    };
-    use serde::Deserialize;
-
-    #[derive(Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
-    struct Person {
-        name: String,
-    }
-
-    fn usage(total_tokens: u64) -> Usage {
-        Usage {
-            total_tokens,
-            ..Usage::new()
-        }
-    }
-
-    fn extractor(model: MockCompletionModel, retries: u64) -> Extractor<Person> {
-        ExtractorBuilder::new(model).retries(retries).build()
-    }
-
-    fn submit_turn(name: &str) -> MockTurn {
-        MockTurn::tool_call("id1", SUBMIT_TOOL_NAME, json!({ "name": name }))
-    }
-
-    fn tool_call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantContent {
-        AssistantContent::ToolCall(ToolCall::from_wire(
-            id,
-            ToolFunction::new(name.to_string(), arguments),
-        ))
-    }
-
-    #[derive(Clone, Default)]
-    struct LifecycleCounts {
-        completion_calls: Arc<AtomicUsize>,
-        completion_responses: Arc<AtomicUsize>,
-        model_turns: Arc<AtomicUsize>,
-        invalid_tool_calls: Arc<AtomicUsize>,
-    }
-
-    impl AgentHook for LifecycleCounts {
-        async fn on_completion_call(
-            &self,
-            _ctx: &HookContext,
-            _event: crate::agent::CompletionCallEvent<'_>,
-        ) -> crate::agent::CompletionCallAction {
-            self.completion_calls.fetch_add(1, Ordering::SeqCst);
-            crate::agent::CompletionCallAction::Continue
-        }
-
-        async fn on_completion_response(
-            &self,
-            _ctx: &HookContext,
-            _event: CompletionResponseEvent<'_>,
-        ) -> ObservationAction {
-            self.completion_responses.fetch_add(1, Ordering::SeqCst);
-            ObservationAction::Continue
-        }
-
-        async fn on_model_turn_finished(
-            &self,
-            _ctx: &HookContext,
-            _event: crate::agent::ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            self.model_turns.fetch_add(1, Ordering::SeqCst);
-            ModelTurnAction::Continue
-        }
-
-        async fn on_invalid_tool_call(
-            &self,
-            _ctx: &HookContext,
-            _event: &crate::agent::InvalidToolCallContext,
-        ) -> Option<crate::agent::InvalidToolCallAction> {
-            self.invalid_tool_calls.fetch_add(1, Ordering::SeqCst);
-            None
-        }
-    }
-
-    type ExtractorResponseSnapshot = (Message, Vec<AssistantContent>, Usage, Option<String>);
-
-    #[derive(Clone, Default)]
-    struct ExtractorResponseCapture {
-        snapshot: Arc<Mutex<Option<ExtractorResponseSnapshot>>>,
-    }
-
-    impl AgentHook for ExtractorResponseCapture {
-        async fn on_completion_response(
-            &self,
-            _ctx: &HookContext,
-            event: CompletionResponseEvent<'_>,
-        ) -> ObservationAction {
-            *self.snapshot.lock().expect("extractor response snapshot") = Some((
-                event.prompt.clone(),
-                event.content.clone(),
-                event.usage,
-                event.message_id.map(str::to_owned),
-            ));
-            ObservationAction::continue_run()
-        }
-    }
-
-    struct StopBeforeCompletion;
-
-    impl AgentHook for StopBeforeCompletion {
-        async fn on_completion_call(
-            &self,
-            _ctx: &HookContext,
-            _event: crate::agent::CompletionCallEvent<'_>,
-        ) -> crate::agent::CompletionCallAction {
-            crate::agent::CompletionCallAction::stop("extractor stopped")
-        }
-    }
-
-    struct ExtractorContextIndex {
-        queries: Arc<Mutex<Vec<(String, u64)>>>,
-    }
-
-    impl VectorStoreIndex for ExtractorContextIndex {
-        type Filter = Filter<serde_json::Value>;
-
-        async fn top_n<T: DeserializeOwned + WasmCompatSend>(
-            &self,
-            req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-            self.queries
-                .lock()
-                .expect("extractor query recorder")
-                .push((req.query().to_string(), req.samples()));
-            let value = serde_json::from_value(json!({ "question": "retrieved" }))?;
-            Ok(vec![(1.0, "extractor-context".to_string(), value)])
-        }
-
-        async fn top_n_ids(
-            &self,
-            _req: VectorSearchRequest,
-        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-            Ok(vec![(1.0, "extractor-context".to_string())])
-        }
-    }
-
-    #[derive(Clone, Copy)]
-    enum StopFirstBilledResponseAt {
-        CompletionResponse,
-        ModelTurnFinished,
-    }
-
-    #[derive(Clone)]
-    struct StopFirstBilledResponse {
-        phase: StopFirstBilledResponseAt,
-        calls: Arc<AtomicUsize>,
-    }
-
-    impl AgentHook for StopFirstBilledResponse {
-        async fn on_completion_response(
-            &self,
-            _ctx: &HookContext,
-            _event: CompletionResponseEvent<'_>,
-        ) -> ObservationAction {
-            if matches!(self.phase, StopFirstBilledResponseAt::CompletionResponse)
-                && self.calls.fetch_add(1, Ordering::SeqCst) == 0
-            {
-                ObservationAction::stop("stop first billed response")
-            } else {
-                ObservationAction::continue_run()
-            }
-        }
-
-        async fn on_model_turn_finished(
-            &self,
-            _ctx: &HookContext,
-            _event: crate::agent::ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            if matches!(self.phase, StopFirstBilledResponseAt::ModelTurnFinished)
-                && self.calls.fetch_add(1, Ordering::SeqCst) == 0
-            {
-                ModelTurnAction::stop("stop first billed model turn")
-            } else {
-                ModelTurnAction::continue_run()
-            }
-        }
-    }
-
-    struct StopOnInvalidToolCall;
-
-    impl AgentHook for StopOnInvalidToolCall {
-        async fn on_invalid_tool_call(
-            &self,
-            _ctx: &HookContext,
-            _event: &crate::agent::InvalidToolCallContext,
-        ) -> Option<crate::agent::InvalidToolCallAction> {
-            Some(crate::agent::InvalidToolCallAction::stop(
-                "unexpected extractor tool call",
-            ))
-        }
-    }
-
-    struct RepairUnexpectedAsSubmit;
-
-    impl AgentHook for RepairUnexpectedAsSubmit {
-        async fn on_invalid_tool_call(
-            &self,
-            _ctx: &HookContext,
-            _event: &crate::agent::InvalidToolCallContext,
-        ) -> Option<crate::agent::InvalidToolCallAction> {
-            Some(crate::agent::InvalidToolCallAction::repair(
-                SUBMIT_TOOL_NAME,
-            ))
-        }
-    }
-
-    struct SkipUnexpected;
-
-    impl AgentHook for SkipUnexpected {
-        async fn on_invalid_tool_call(
-            &self,
-            _ctx: &HookContext,
-            _event: &crate::agent::InvalidToolCallContext,
-        ) -> Option<crate::agent::InvalidToolCallAction> {
-            Some(crate::agent::InvalidToolCallAction::skip(
-                "ignored by extractor hook",
-            ))
-        }
-    }
-
-    #[tokio::test]
-    async fn extractor_runs_through_full_response_lifecycle() {
-        let model = MockCompletionModel::new([submit_turn("John")]);
-        let counts = LifecycleCounts::default();
-        let response = ExtractorBuilder::<Person>::new(model.clone())
-            .add_hook(counts.clone())
-            .build()
-            .extract("John")
-            .await
-            .expect("extraction should succeed");
-
-        assert_eq!(response.name, "John");
-        assert_eq!(model.request_count(), 1);
-        assert_eq!(counts.completion_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(counts.completion_responses.load(Ordering::SeqCst), 1);
-        assert_eq!(counts.model_turns.load(Ordering::SeqCst), 1);
-    }
-
-    #[tokio::test]
-    async fn extractor_hook_receives_canonical_response_fields() {
-        let capture = ExtractorResponseCapture::default();
-        let expected_usage = usage(23);
-        let response =
-            ExtractorBuilder::<Person>::new(MockCompletionModel::new([submit_turn("John")
-                .with_usage(expected_usage)
-                .with_message_id("extractor-message")]))
-            .add_hook(capture.clone())
-            .build()
-            .extract("John")
-            .await
-            .expect("extraction should succeed");
-        assert_eq!(response.name, "John");
-
-        let (prompt, content, observed_usage, message_id) = capture
-            .snapshot
-            .lock()
-            .expect("extractor response snapshot")
-            .clone()
-            .expect("extractor response hook should fire");
-        assert_eq!(prompt, Message::user("John"));
-        assert_eq!(observed_usage, expected_usage);
-        assert_eq!(message_id.as_deref(), Some("extractor-message"));
-        assert!(matches!(
-            content.as_slice(),
-            [AssistantContent::ToolCall(tool_call)]
-                if tool_call.function.name == SUBMIT_TOOL_NAME
-                    && tool_call.function.arguments == json!({"name": "John"})
-        ));
-    }
-
-    #[tokio::test]
-    async fn extractor_dynamic_context_uses_the_agent_hook_lifecycle() {
-        let model = MockCompletionModel::new([submit_turn("John")]);
-        let probe = model.clone();
-        let queries = Arc::new(Mutex::new(Vec::new()));
-        let response = ExtractorBuilder::<Person>::new(model)
-            .dynamic_context(
-                2,
-                ExtractorContextIndex {
-                    queries: queries.clone(),
-                },
-            )
-            .build()
-            .extract("John")
-            .await
-            .expect("extraction should succeed");
-
-        assert_eq!(response.name, "John");
-        assert_eq!(
-            *queries.lock().expect("extractor queries"),
-            vec![("John".to_string(), 2)]
-        );
-        let requests = probe.requests();
-        let request = requests.first().expect("one extractor request");
-        assert!(
-            request
-                .documents
-                .iter()
-                .any(|document| document.id == "extractor-context"
-                    && document.text == "{\n  \"question\": \"retrieved\"\n}")
-        );
-    }
-
-    #[tokio::test]
-    async fn extractor_completion_call_stop_prevents_provider_io() {
-        let model = MockCompletionModel::new([submit_turn("John")]);
-        let error = ExtractorBuilder::<Person>::new(model.clone())
-            .add_hook(StopBeforeCompletion)
-            .build()
-            .extract("John")
-            .await
-            .expect_err("terminating hook should cancel extraction");
-
-        assert!(matches!(
-            error,
-            ExtractionError::PromptError(PromptError::PromptCancelled { reason, .. })
-                if reason == "extractor stopped"
-        ));
-        assert_eq!(model.request_count(), 0);
-    }
-
-    #[tokio::test]
-    async fn usage_accumulates_across_failed_attempts() {
-        let model = MockCompletionModel::new([
-            MockTurn::text("no submit call").with_usage(usage(10)),
-            submit_turn("John").with_usage(usage(5)),
-        ]);
-
-        let response = extractor(model, 1)
-            .extract_with_usage("John")
-            .await
-            .expect("second attempt should succeed");
-
-        assert_eq!(
-            response.data,
-            Person {
-                name: "John".to_string()
-            }
-        );
-        assert_eq!(response.usage.total_tokens, 15);
-    }
-
-    async fn assert_billed_hook_termination_usage(phase: StopFirstBilledResponseAt) {
-        let model = MockCompletionModel::new([
-            submit_turn("ignored").with_usage(usage(10)),
-            submit_turn("John").with_usage(usage(5)),
-        ]);
-        let response = ExtractorBuilder::<Person>::new(model)
-            .retries(1)
-            .add_hook(StopFirstBilledResponse {
-                phase,
-                calls: Arc::new(AtomicUsize::new(0)),
-            })
-            .build()
-            .extract_with_usage("John")
-            .await
-            .expect("second attempt should succeed");
-
-        assert_eq!(response.data.name, "John");
-        assert_eq!(response.usage.total_tokens, 15);
-    }
-
-    #[tokio::test]
-    async fn completion_response_hook_termination_preserves_billed_usage() {
-        assert_billed_hook_termination_usage(StopFirstBilledResponseAt::CompletionResponse).await;
-    }
-
-    #[tokio::test]
-    async fn model_turn_finished_hook_termination_preserves_billed_usage() {
-        assert_billed_hook_termination_usage(StopFirstBilledResponseAt::ModelTurnFinished).await;
-    }
-
-    #[tokio::test]
-    async fn unexpected_tool_call_preserves_usage_and_retries() {
-        let model = MockCompletionModel::new([
-            MockTurn::tool_call("unknown", "unexpected", json!({})).with_usage(usage(10)),
-            submit_turn("John").with_usage(usage(5)),
-        ]);
-
-        let response = extractor(model, 1)
-            .extract_with_usage("John")
-            .await
-            .expect("second attempt should succeed");
-
-        assert_eq!(response.data.name, "John");
-        assert_eq!(response.usage.total_tokens, 15);
-    }
-
-    #[tokio::test]
-    async fn unexpected_tool_call_runs_hooks_before_extractor_fallback() {
-        let model = MockCompletionModel::new([
-            MockTurn::tool_call("unknown", "unexpected", json!({})).with_usage(usage(10)),
-            submit_turn("John").with_usage(usage(5)),
-        ]);
-        let counts = LifecycleCounts::default();
-
-        let response = ExtractorBuilder::<Person>::new(model)
-            .retries(1)
-            .add_hook(counts.clone())
-            .build()
-            .extract_with_usage("John")
-            .await
-            .expect("deferred invalid call should use extractor fallback");
-
-        assert_eq!(response.data.name, "John");
-        assert_eq!(response.usage.total_tokens, 15);
-        assert_eq!(counts.invalid_tool_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(counts.completion_responses.load(Ordering::SeqCst), 2);
-        assert_eq!(counts.model_turns.load(Ordering::SeqCst), 2);
-    }
-
-    #[tokio::test]
-    async fn unexpected_tool_call_hook_can_stop_extraction() {
-        let model =
-            MockCompletionModel::new([MockTurn::tool_call("unknown", "unexpected", json!({}))]);
-
-        let error = ExtractorBuilder::<Person>::new(model)
-            .add_hook(StopOnInvalidToolCall)
-            .build()
-            .extract("John")
-            .await
-            .expect_err("invalid-tool hook should retain control");
-
-        assert!(matches!(
-            error,
-            ExtractionError::PromptError(PromptError::PromptCancelled { reason, .. })
-                if reason == "unexpected extractor tool call"
-        ));
-    }
-
-    #[tokio::test]
-    async fn unexpected_tool_call_hook_can_repair_to_submit() {
-        let model = MockCompletionModel::new([MockTurn::tool_call(
-            "unknown",
-            "unexpected",
-            json!({ "name": "John" }),
-        )]);
-
-        let response = ExtractorBuilder::<Person>::new(model)
-            .add_hook(RepairUnexpectedAsSubmit)
-            .build()
-            .extract("John")
-            .await
-            .expect("repaired output-tool call should finalize extraction");
-
-        assert_eq!(response.name, "John");
-    }
-
-    #[tokio::test]
-    async fn skip_hook_preserves_valid_submit_sibling() {
-        let turn = MockTurn::from_contents([
-            tool_call("unknown", "unexpected", json!({})),
-            tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
-        ]);
-        let model = MockCompletionModel::new([turn]);
-
-        let response = ExtractorBuilder::<Person>::new(model)
-            .add_hook(SkipUnexpected)
-            .build()
-            .extract("John")
-            .await
-            .expect("skipping an invalid sibling should preserve submit");
-
-        assert_eq!(response.name, "John");
-    }
-
-    #[tokio::test]
-    async fn submit_call_wins_over_unexpected_sibling_call() {
-        let turn = MockTurn::from_contents([
-            tool_call("unknown", "unexpected", json!({})),
-            tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
-        ])
-        .with_usage(usage(7));
-        let model = MockCompletionModel::new([turn]);
-
-        let response = extractor(model, 0)
-            .extract_with_usage("John")
-            .await
-            .expect("submit should remain authoritative");
-
-        assert_eq!(response.data.name, "John");
-        assert_eq!(response.usage.total_tokens, 7);
-    }
-
-    #[tokio::test]
-    async fn submit_call_wins_before_unexpected_sibling_call() {
-        let turn = MockTurn::from_contents([
-            tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
-            tool_call("unknown", "unexpected", json!({})),
-        ]);
-
-        let response = extractor(MockCompletionModel::new([turn]), 0)
-            .extract("John")
-            .await
-            .expect("an earlier submit should remain authoritative");
-
-        assert_eq!(response.name, "John");
-    }
-
-    #[tokio::test]
-    async fn multiple_unexpected_calls_surrounding_submit_are_ignored() {
-        let turn = MockTurn::from_contents([
-            tool_call("unknown-before", "unexpected_before", json!({})),
-            tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
-            tool_call("unknown-after", "unexpected_after", json!({})),
-        ]);
-
-        let response = extractor(MockCompletionModel::new([turn]), 0)
-            .extract("John")
-            .await
-            .expect("unexpected siblings should not displace submit");
-
-        assert_eq!(response.name, "John");
-    }
-
-    #[tokio::test]
-    async fn transport_errors_contribute_no_usage() {
-        let model = MockCompletionModel::new([
-            MockTurn::error("boom"),
-            submit_turn("John").with_usage(usage(5)),
-        ]);
-
-        let response = extractor(model, 1)
-            .extract_with_usage("John")
-            .await
-            .expect("second attempt should succeed");
-
-        assert_eq!(response.usage.total_tokens, 5);
-    }
-
-    #[tokio::test]
-    async fn single_successful_attempt_reports_its_own_usage() {
-        let model = MockCompletionModel::new([submit_turn("John").with_usage(usage(7))]);
-
-        let response = extractor(model, 0)
-            .extract_with_usage("John")
-            .await
-            .expect("extraction should succeed");
-
-        assert_eq!(response.usage.total_tokens, 7);
-    }
-
-    #[tokio::test]
-    async fn exhausted_retries_return_last_error() {
-        let model =
-            MockCompletionModel::new([MockTurn::text("no submit call").with_usage(usage(10))]);
-
-        let err = extractor(model, 0)
-            .extract("John")
-            .await
-            .expect_err("extraction should fail");
-
-        assert!(matches!(err, ExtractionError::NoData));
-    }
-
-    #[tokio::test]
-    async fn exhausted_retries_return_error_from_final_attempt() {
-        let model = MockCompletionModel::new([MockTurn::error("first"), MockTurn::error("second")]);
-
-        let err = extractor(model, 1)
-            .extract("John")
-            .await
-            .expect_err("extraction should fail");
-
-        assert!(matches!(
-            err,
-            ExtractionError::CompletionError(CompletionError::ProviderError(message))
-                if message == "second"
-        ));
-    }
-}
+mod tests;

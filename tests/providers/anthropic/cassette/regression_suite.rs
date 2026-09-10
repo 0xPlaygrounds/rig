@@ -9,7 +9,6 @@
 use rig::completion::FinishReason;
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::StreamingPrompt;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{
@@ -36,6 +35,7 @@ async fn max_tokens_truncation_surfaces_as_length() {
 
         let mut stream = agent
             .stream_prompt("Write a detailed five paragraph essay about the ocean.")
+            .stream()
             .await;
         let (_response, provider_final): (_, rig::streaming::StreamFinal) =
             collect_stream_final_response_and_provider_final(&mut stream)
@@ -65,7 +65,7 @@ async fn natural_stop_surfaces_as_stop() {
             .max_tokens(512)
             .build();
 
-        let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+        let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
         let (_response, provider_final): (_, rig::streaming::StreamFinal) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await
@@ -123,6 +123,7 @@ async fn cache_hit_turn_reports_uncached_remainder_not_prompt_size() {
                     .build();
                 let mut stream = agent
                     .stream_prompt("Reply with exactly: cache probe ready")
+                    .stream()
                     .await;
                 let (_text, provider_final): (_, rig::streaming::StreamFinal) =
                     collect_stream_final_response_and_provider_final(&mut stream)

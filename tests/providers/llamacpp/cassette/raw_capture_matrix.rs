@@ -4,7 +4,7 @@
 //! # The feature
 //!
 //! Capture is always on. llama.cpp is driven by the shared OpenAI Chat
-//! Completions model (`openai::GenericCompletionModel<LlamacppExt>`), whose
+//! Completions model (`openai::GenericCompletionModel<Llamacpp>`), whose
 //! wire type for this provider is [`llamacpp::CompletionResponse`] — OpenAI's
 //! payload plus llama.cpp's `timings`. Every completion the seam returns
 //! therefore carries `raw`: the value

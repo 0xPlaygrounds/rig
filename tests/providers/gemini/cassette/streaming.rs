@@ -8,7 +8,7 @@ use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
-use rig::streaming::{StreamFinal, StreamedAssistantContent, StreamingPrompt};
+use rig::streaming::{StreamFinal, StreamedAssistantContent};
 
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
@@ -37,7 +37,7 @@ async fn streaming_smoke() {
             )
             .build();
 
-        let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+        let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
         let (response, provider_final): (_, StreamFinal) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await
@@ -72,6 +72,7 @@ async fn example_streaming_prompt() {
 
             let mut stream = agent
                 .stream_prompt("When and where and what type is the next solar eclipse?")
+                .stream()
                 .await;
             let response = collect_stream_final_response(&mut stream)
                 .await

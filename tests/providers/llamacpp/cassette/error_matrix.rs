@@ -363,7 +363,7 @@ async fn the_api_key_the_provider_sends_is_accepted() {
 
 /// `verify()` on a keyed server distinguishes a good credential from a bad one.
 ///
-/// This is why `LlamacppExt::VERIFY_PATH` is `/props` rather than the
+/// This is why `Llamacpp::VERIFY_PATH` is `/props` rather than the
 /// `/models` its predecessor used: `GET /v1/models` and `GET /health` are the
 /// only two routes llama.cpp serves *without* the API-key check, so verifying
 /// against `/models` returns 200 for every key including a wrong one, which is

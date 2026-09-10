@@ -1,3 +1,4 @@
+use super::{Client, ModelTransport, Provider};
 use crate::Embed;
 use crate::embeddings::{EmbeddingModel, EmbeddingsBuilder};
 
@@ -99,20 +100,44 @@ pub trait EmbeddingsClient {
     }
 }
 
-/// Construction hook for the blanket [`EmbeddingsClient`] implementation over
-/// [`crate::client::Client`] — the embedding twin of
-/// [`crate::client::ConstructCompletionModel`].
-///
-/// Public for the same reason: an out-of-tree provider extension built on the
-/// generic `Client<Ext, H>` cannot implement [`EmbeddingsClient`] for that foreign
-/// type (orphan rule), so it implements this trait on its own model type and
-/// the blanket implementation supplies the constructor. Providers with their
-/// own client type implement [`EmbeddingsClient`] directly and never need this.
-pub trait ConstructEmbeddingModel<C>: Sized {
-    /// Build this model from its provider client and a model identifier.
+/// A [`Provider`] that offers embedding models. Implementing this is what
+/// makes [`EmbeddingsClient`] available on `Client<Self, H>`.
+pub trait HasEmbeddings: Provider {
+    /// The concrete embedding model built over transport `H`.
+    type Model<H>: EmbeddingModel
+    where
+        H: ModelTransport;
+
+    /// Build the embedding model `model` from `client`.
     ///
     /// `ndims` is the caller-requested dimension count from
     /// [`EmbeddingsClient::embedding_model_with_ndims`], or `None` for the
     /// model's default.
-    fn construct(client: &C, model: String, ndims: Option<usize>) -> Self;
+    fn embedding_model<H>(
+        client: &Client<Self, H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self::Model<H>
+    where
+        H: ModelTransport;
+}
+
+impl<P, H> EmbeddingsClient for Client<P, H>
+where
+    P: HasEmbeddings,
+    H: ModelTransport,
+{
+    type EmbeddingModel = P::Model<H>;
+
+    fn embedding_model(&self, model: impl Into<String>) -> Self::EmbeddingModel {
+        P::embedding_model(self, model.into(), None)
+    }
+
+    fn embedding_model_with_ndims(
+        &self,
+        model: impl Into<String>,
+        ndims: usize,
+    ) -> Self::EmbeddingModel {
+        P::embedding_model(self, model.into(), Some(ndims))
+    }
 }

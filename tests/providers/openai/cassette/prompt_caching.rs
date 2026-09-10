@@ -269,7 +269,6 @@ async fn chat_completions_agent_loop_keeps_hitting_across_tool_turns() {
                 .build()
                 .prompt(AGENT_CACHE_PROMPT)
                 .max_turns(6)
-                .extended_details()
                 .await
                 .expect("openai agent cache probe should complete");
 
@@ -308,7 +307,6 @@ async fn responses_agent_loop_keeps_hitting_across_tool_turns() {
                 .build()
                 .prompt(AGENT_CACHE_PROMPT)
                 .max_turns(6)
-                .extended_details()
                 .await
                 .expect("openai responses agent cache probe should complete");
 

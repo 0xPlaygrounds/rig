@@ -6,7 +6,6 @@
 use rig::completion::FinishReason;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::StreamingPrompt;
 
 use super::super::support::with_openai_completions_cassette;
 use crate::support::{
@@ -38,6 +37,7 @@ async fn chat_completions_streaming_surfaces_finish_reason() {
 
             let mut stream = agent
                 .stream_prompt("Write a detailed five paragraph essay about the ocean.")
+                .stream()
                 .await;
             let (_response, provider_final): (_, rig::streaming::StreamFinal) =
                 collect_stream_final_response_and_provider_final(&mut stream)
@@ -66,7 +66,7 @@ async fn chat_completions_streaming_surfaces_finish_reason() {
                 .max_tokens(512)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+            let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
             let (_response, provider_final): (_, rig::streaming::StreamFinal) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await

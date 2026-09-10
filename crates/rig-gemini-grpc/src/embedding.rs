@@ -122,12 +122,6 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
     }
 }
 
-impl rig_core::client::ConstructEmbeddingModel<super::Client> for EmbeddingModel {
-    fn construct(client: &super::Client, model: String, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model, dims)
-    }
-}
-
 // Map a failed gRPC call into an `EmbeddingError` that preserves the provider's
 // error payload verbatim. gRPC is a non-HTTP transport, so there is no
 // `http::StatusCode`; the body is preserved via `from_provider_body` (status:
@@ -141,19 +135,4 @@ fn rpc_error(status: &tonic::Status) -> EmbeddingError {
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rpc_error_preserves_status_text_without_http_status() {
-        let status = tonic::Status::unavailable("boom");
-        let expected = status.to_string();
-
-        let err = rpc_error(&status);
-
-        // The raw provider error text is preserved verbatim, and there is no
-        // HTTP status because gRPC is a non-HTTP transport.
-        assert_eq!(err.provider_response_body(), Some(expected.as_str()));
-        assert_eq!(err.provider_response_status(), None);
-    }
-}
+mod tests;

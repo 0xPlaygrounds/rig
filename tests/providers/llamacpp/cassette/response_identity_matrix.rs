@@ -16,7 +16,7 @@
 //!
 //! # `provider_request_id` is `None`, and that is a measurement
 //!
-//! `LlamacppExt` leaves `OpenAICompatibleProvider::REQUEST_ID_HEADER` at its
+//! `Llamacpp` leaves `OpenAICompatibleProvider::REQUEST_ID_HEADER` at its
 //! `None` default, so rig never looks for a transport id. Declaring a contract
 //! it does not have would reclassify every non-success status from `HttpError`
 //! to `ProviderResponse` provider-wide, so "no contract" needs to be right

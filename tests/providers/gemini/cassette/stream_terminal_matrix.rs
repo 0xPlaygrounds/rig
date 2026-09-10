@@ -82,7 +82,7 @@ use rig::completion::{CompletionModel, FinishReason};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
+use rig::streaming::StreamedAssistantContent;
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -282,7 +282,7 @@ async fn two_terminal_stream_agent_prompt_keeps_the_answer() {
                 .additional_params(code_execution_params())
                 .build();
 
-            let mut stream = agent.stream_prompt(TWO_ROUND_PROMPT).await;
+            let mut stream = agent.stream_prompt(TWO_ROUND_PROMPT).stream().await;
             let mut answer = String::new();
             while let Some(item) = stream.next().await {
                 if let rig::agent::MultiTurnStreamItem::StreamAssistantItem(

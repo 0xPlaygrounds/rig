@@ -18,7 +18,7 @@ use rig::completion::{self, CompletionModel};
 use rig::message::{
     AssistantContent, Message, Reasoning, ReasoningContent, ToolResultContent, UserContent,
 };
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
+use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
@@ -118,6 +118,7 @@ pub(crate) async fn run_reasoning_delta_hook_streaming<M>(
     let mut stream = agent
         .stream_prompt(REASONING_DELTA_HOOK_PROMPT)
         .add_hook(hook)
+        .stream()
         .await;
     let mut final_text = None;
 
@@ -254,8 +255,10 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     };
 
     let request = completion::CompletionRequest {
-        preamble: Some(agent.preamble.clone()),
-        chat_history: vec![turn1_prompt.clone()],
+        chat_history: vec![
+            Message::system(agent.preamble.clone()),
+            turn1_prompt.clone(),
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -336,8 +339,12 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     };
 
     let request2 = completion::CompletionRequest {
-        preamble: Some(agent.preamble.clone()),
-        chat_history: vec![turn1_prompt, turn1_assistant, turn2_prompt],
+        chat_history: vec![
+            Message::system(agent.preamble.clone()),
+            turn1_prompt,
+            turn1_assistant,
+            turn2_prompt,
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -387,8 +394,10 @@ where
     };
 
     let request = completion::CompletionRequest {
-        preamble: Some(agent.preamble.clone()),
-        chat_history: vec![turn1_prompt.clone()],
+        chat_history: vec![
+            Message::system(agent.preamble.clone()),
+            turn1_prompt.clone(),
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -433,8 +442,12 @@ where
     };
 
     let request2 = completion::CompletionRequest {
-        preamble: Some(agent.preamble.clone()),
-        chat_history: vec![turn1_prompt, turn1_assistant, turn2_prompt],
+        chat_history: vec![
+            Message::system(agent.preamble.clone()),
+            turn1_prompt,
+            turn1_assistant,
+            turn2_prompt,
+        ],
         documents: vec![],
         tools: vec![],
         temperature: None,

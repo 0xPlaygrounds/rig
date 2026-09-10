@@ -22,13 +22,10 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use rig::completion::{
-    Chat, CompletionModel, Message, NormalizeCompletionResponse, ToolDefinition,
-};
+use rig::completion::{CompletionModel, Message, NormalizeCompletionResponse, ToolDefinition};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::deepseek;
-use rig::streaming::StreamingChat;
 use serde_json::{Value, json};
 
 use super::support::{collect_raw_stream_outcome, with_deepseek_block_order_cassette_result};
@@ -483,7 +480,7 @@ async fn agent_streaming_reasoner_roundtrip_streams_reasoning_first() {
             let mut stream = agent
                 .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
                 .max_turns(3)
-                .await;
+                .stream().await;
             let observation = collect_stream_observation(&mut stream).await;
 
             let reasoning_at = observation

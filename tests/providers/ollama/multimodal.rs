@@ -1,7 +1,6 @@
 //! Migrated from `examples/image_ollama.rs`.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::completion::Prompt;
 use rig::completion::message::Image;
 use rig::message::DocumentSourceKind;
 use rig::message::ImageMediaType;
@@ -30,6 +29,6 @@ async fn multimodal_image_prompt() {
     };
     let response = agent.prompt(image).await.expect("prompt should succeed");
 
-    assert_nonempty_response(&response);
-    assert_contains_any_case_insensitive(&response, &["ant", "insect"]);
+    assert_nonempty_response(&response.output);
+    assert_contains_any_case_insensitive(&response.output, &["ant", "insect"]);
 }

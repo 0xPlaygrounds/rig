@@ -29,15 +29,27 @@ static RUNTIME: LazyLock<Result<Runtime, RuntimeUnavailable>> = LazyLock::new(||
 });
 
 /// The fallback tokio runtime could not be started.
+///
+/// Private: this module is private, so a `pub` here was unnameable by callers
+/// anyway. The failure reaches them as the `Error::Instance` this is boxed
+/// into, whose `Display` carries the message. `rig-tungstenite` keeps the same
+/// type private for the same reason.
 #[derive(Debug, Clone, thiserror::Error)]
 #[error("rig-reqwest: failed to start the fallback tokio runtime: {0}")]
-pub struct RuntimeUnavailable(String);
+struct RuntimeUnavailable(String);
 
 fn runtime() -> Result<&'static Runtime, Error> {
     RUNTIME.as_ref().map_err(|err| Error::instance(err.clone()))
 }
 
 /// Whether the current task already runs inside a tokio runtime.
+///
+/// A caveat: a `current_thread` runtime built without
+/// `enable_io()`/`enable_time()` answers `true` here, and reqwest then panics
+/// with "there is no reactor running". `Handle::try_current()` cannot
+/// distinguish a runtime with the I/O driver from one without it, so a host
+/// that builds its own runtime must enable I/O. `rig-tungstenite`'s backend
+/// shares the caveat and documents it in the same place.
 pub(crate) fn in_tokio() -> bool {
     Handle::try_current().is_ok()
 }

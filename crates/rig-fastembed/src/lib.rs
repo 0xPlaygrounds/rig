@@ -224,14 +224,3 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         .await
     }
 }
-
-impl rig_core::client::ConstructEmbeddingModel<Client> for EmbeddingModel {
-    fn construct(_: &Client, _: String, _: Option<usize>) -> Self {
-        Self {
-            embedder: None,
-            init_error: Some(FastembedError::UnsupportedMake),
-            model: FastembedModel::AllMiniLML6V2Q,
-            ndims: 0,
-        }
-    }
-}

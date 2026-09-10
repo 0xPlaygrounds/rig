@@ -1,6 +1,5 @@
 //! Perplexity context/document cassette coverage.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::perplexity;
 
@@ -25,7 +24,8 @@ async fn context_smoke() {
         let response = agent
             .prompt(CONTEXT_PROMPT)
             .await
-            .expect("context prompt should succeed");
+            .expect("context prompt should succeed")
+            .output;
 
         assert_contains_any_case_insensitive(
             &response,

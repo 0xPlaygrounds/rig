@@ -443,7 +443,6 @@ fn additional_params_wins_over_the_typed_field_it_collides_with() {
 
     let request = rig::completion::CompletionRequest {
         model: None,
-        preamble: None,
         chat_history: vec![rig::message::Message::User {
             content: vec![rig::message::UserContent::text("hi")],
         }],
@@ -457,7 +456,7 @@ fn additional_params_wins_over_the_typed_field_it_collides_with() {
         record_telemetry_content: false,
     };
 
-    let typed = rig::providers::llamacpp::LlamacppExt
+    let typed = rig::providers::llamacpp::Llamacpp
         .build_completion_request("m".to_string(), request, Default::default())
         .expect("the request should build");
     let body = serde_json::to_value(&typed).expect("the request should serialize");

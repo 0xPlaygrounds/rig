@@ -2,7 +2,7 @@ use anyhow::Result;
 use rig::agent::stream_to_stdout;
 use rig::prelude::*;
 
-use rig::{providers, streaming::StreamingPrompt, tool::Tool};
+use rig::{providers, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -149,7 +149,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .name("Bob")
         .build();
 
-    let mut stream = calculator_agent.stream_prompt("Calculate 2 - 5").await;
+    let mut stream = calculator_agent
+        .stream_prompt("Calculate 2 - 5")
+        .stream()
+        .await;
 
     let res = stream_to_stdout(&mut stream).await?;
 

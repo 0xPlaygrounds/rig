@@ -35,7 +35,6 @@ use rig::message::{
     UserContent,
 };
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 use serde_json::{Value, json};
 
 use crate::cassettes::{
@@ -201,6 +200,7 @@ async fn unicode_split_across_stream_chunks_reassembles() {
                     "{NO_THINK}Write exactly this line and nothing else: \
                  🌍こんにちは世界🎉안녕하세요🚀Здравствуйте🌸"
                 ))
+                .stream()
                 .await;
             let answer = collect_stream_final_response(&mut stream)
                 .await

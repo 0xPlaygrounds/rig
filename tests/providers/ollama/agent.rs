@@ -1,7 +1,6 @@
 //! Migrated from `examples/agent_with_ollama.rs`.
 
 use rig::client::Nothing;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::ollama;
 
@@ -21,5 +20,5 @@ async fn completion_smoke() {
         .await
         .expect("prompt should succeed");
 
-    assert_nonempty_response(&response);
+    assert_nonempty_response(&response.output);
 }

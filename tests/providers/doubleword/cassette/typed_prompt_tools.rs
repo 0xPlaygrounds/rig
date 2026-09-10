@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::Result;
-use rig::completion::TypedPrompt;
 use rig::prelude::*;
 use rig::tool::Tool;
 use schemars::JsonSchema;
@@ -77,8 +76,10 @@ async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
                 })
                 .default_max_turns(2)
                 .build();
-            let response: WeatherResponse =
-                agent.prompt_typed("What is the weather in London?").await?;
+            let response: WeatherResponse = agent
+                .prompt_typed("What is the weather in London?")
+                .await?
+                .output;
             anyhow::ensure!(call_count.load(Ordering::SeqCst) >= 1);
             assert_weather_tool_roundtrip_response(&response.city, &response.weather, "London");
             Ok(())

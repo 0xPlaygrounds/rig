@@ -8,7 +8,7 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::{CompletionModel, FinishReason, Prompt};
+use rig::completion::{CompletionModel, FinishReason};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::gemini;
@@ -114,8 +114,8 @@ async fn structured_output_nested_arrays_and_optional_fields() {
                 )
                 .await
                 .expect("structured output prompt should succeed");
-            let record: EventRecord =
-                serde_json::from_str(&response).expect("structured output should deserialize");
+            let record: EventRecord = serde_json::from_str(&response.output)
+                .expect("structured output should deserialize");
 
             assert!(!record.title.trim().is_empty(), "title should be populated");
             assert_eq!(

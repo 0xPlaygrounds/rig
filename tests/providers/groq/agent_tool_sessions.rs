@@ -10,11 +10,11 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use futures::StreamExt;
 use rig::completion::NormalizeCompletionResponse;
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
 use rig::providers::{groq, openai};
-use rig::streaming::{StreamedAssistantContent, StreamingChat, StreamingPrompt};
+use rig::streaming::StreamedAssistantContent;
 use rig::tool::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -552,7 +552,7 @@ async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
             let response = agent.chat(COMPLEX_SESSION_PROMPT, &mut history).await?;
 
             assert_contains_all_case_insensitive(
-                &response,
+                &response.output,
                 &[
                     "EMPTY-OK",
                     "MANIFEST-OK",
@@ -600,6 +600,7 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
             let mut stream = agent
                 .stream_chat(COMPLEX_SESSION_PROMPT, Vec::<Message>::new())
                 .max_turns(10)
+                .stream()
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 
@@ -664,7 +665,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
             let response = agent.chat(TWO_TOOL_STREAM_PROMPT, &mut history).await?;
 
             assert_contains_all_case_insensitive(
-                &response,
+                &response.output,
                 &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
             );
             let calls = history_tool_calls(&history);
@@ -709,6 +710,7 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
             let mut stream = agent
                 .stream_prompt(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(5)
+                .stream()
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 

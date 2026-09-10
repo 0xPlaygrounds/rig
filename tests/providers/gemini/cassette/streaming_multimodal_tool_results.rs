@@ -10,7 +10,6 @@ use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
 };
-use rig::streaming::StreamingPrompt;
 use rig::tool::{Tool, ToolOutput};
 use serde_json::json;
 
@@ -87,6 +86,7 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
         )
         .history(empty_history)
         .max_turns(4)
+        .stream()
         .await;
 
     let mut final_response = None;

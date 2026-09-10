@@ -138,9 +138,3 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         .await
     }
 }
-
-impl rig_core::client::ConstructEmbeddingModel<Client> for EmbeddingModel {
-    fn construct(client: &Client, model: String, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model, dims)
-    }
-}

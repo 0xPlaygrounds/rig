@@ -4,7 +4,6 @@ use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::streaming::StreamingCompletionChunk;
-use rig::streaming::StreamingPrompt;
 
 use serde::Deserialize;
 
@@ -96,7 +95,7 @@ async fn streaming_tools_smoke() {
                 .default_max_turns(2)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");
@@ -122,7 +121,7 @@ async fn example_streaming_with_tools() {
             .default_max_turns(2)
             .build();
 
-        let mut stream = agent.stream_prompt("Calculate 2 - 5").await;
+        let mut stream = agent.stream_prompt("Calculate 2 - 5").stream().await;
         let response = collect_stream_final_response(&mut stream)
             .await
             .expect("streaming tools prompt should succeed");
@@ -145,6 +144,7 @@ async fn responses_stream_preserves_tool_result_flow() {
             let mut stream = agent
                 .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
                 .max_turns(5)
+                .stream()
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 

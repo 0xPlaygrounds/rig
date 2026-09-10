@@ -72,12 +72,11 @@
 
 use rig::completion::{
     CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason,
-    NormalizeCompletionResponse, Prompt, ToolDefinition,
+    NormalizeCompletionResponse, ToolDefinition,
 };
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::{CompletionResponse, Content, Usage};
-use rig::streaming::StreamingPrompt;
 use serde_json::json;
 
 use super::super::support::{recorded_response_body, with_anthropic_empty_stop_cassette};
@@ -242,7 +241,8 @@ async fn agent_prompt_empty_stop_sequence() {
             let response = agent
                 .prompt(IMMEDIATE_PROMPT)
                 .await
-                .expect("agent prompt must not fail on a completed empty turn");
+                .expect("agent prompt must not fail on a completed empty turn")
+                .output;
             assert!(
                 response.trim().is_empty(),
                 "the turn produced no text: {response:?}"
@@ -304,7 +304,7 @@ async fn agent_stream_empty_stop_sequence() {
                 .additional_params(json!({ "stop_sequences": ["alpha"] }))
                 .build();
 
-            let mut stream = agent.stream_prompt(IMMEDIATE_PROMPT).await;
+            let mut stream = agent.stream_prompt(IMMEDIATE_PROMPT).stream().await;
             let mut errors = Vec::new();
             let mut final_output = None;
             let mut completion_finish = None;

@@ -1,6 +1,6 @@
 use futures::StreamExt;
 use rig::client::DefaultTransportClient as _;
-use rig::{completion::Message, prelude::*, providers::openai, streaming::StreamingChat};
+use rig::{completion::Message, prelude::*, providers::openai};
 use rig_agent::test_utils::MockExampleTool;
 
 #[tokio::test]
@@ -21,6 +21,7 @@ async fn test_openai_streaming_tools_reasoning() {
     let mut stream = agent
         .stream_chat("Call my example tool", &chat_history)
         .max_turns(5)
+        .stream()
         .await;
 
     while let Some(item) = stream.next().await {

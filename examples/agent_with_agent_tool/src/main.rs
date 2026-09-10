@@ -1,6 +1,6 @@
 use anyhow::Result;
 use rig::prelude::*;
-use rig::{completion::Prompt, providers, tool::Tool};
+use rig::{providers, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -129,7 +129,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     println!(
         "OpenAI Agent-Using Agent: {}",
-        agent_using_agent.prompt("Calculate 2 - 5").await?
+        agent_using_agent.prompt("Calculate 2 - 5").await?.output
     );
 
     Ok(())

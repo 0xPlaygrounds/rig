@@ -15,6 +15,8 @@ Contributions are always encouraged and welcome. Before creating a pull request,
 
 PRs should be small and focused and should avoid interacting with multiple facets of the library. This may result in a larger PR being split into two or more smaller PRs. Commit messages should follow the [Conventional Commit](https://conventionalcommits.org/en/v1.0.0) format (prefixing with `feat`, `fix`, etc.) as this integrates into our auto-releases via a [release-plz](https://github.com/MarcoIeni/release-plz) Github action.
 
+Do not edit `CHANGELOG.md`, `crates/*/CHANGELOG.md` or `MIGRATING.md` in a pull request; CI fails the PR if you do. Put changelog bullets and migration notes in the PR description under `## Changelog` and `## Migration` (the PR template has both). The repository squash-merges, so those sections become the merge commit body, and the release PR regenerates both files from them via `scripts/release-notes.sh`.
+
 Unless the PR is for something minor (ie a typo), please ensure that an issue has been opened for the feature or work you would like to contribute beforehand. By opening an issue, a discussion can be held beforehand on scoping the work effectively and ensuring that the work is in line with the vision for Rig. Without any linked issues, your PR may be liable to be closed if we (the maintainers) do not feel that your PR is within scope for the library.
 
 It is also highly suggested to comment on issues you're interested in working on. By doing so, it allows others to see that something is being worked on and therefore avoids frustrating situations, such as multiple contributors opening a PR for the same issue. In such a case, any duplicate PRs will be closed unless it is clear that the original contributor is unable to continue the work.
@@ -54,16 +56,14 @@ expectations:
   `finalize_request_body`) — not in a hand-rolled `CompletionModel`, request
   struct, or `TryFrom<message::Message>` conversion. The same applies to
   Anthropic-shaped APIs via `AnthropicCompatibleProvider`.
-- `Client` and `ClientBuilder` public aliases use the correct generic types;
-  the `ClientBuilder` API-key generic must match `ProviderBuilder::ApiKey`.
-- Provider extension and builder types are defined and wired through the
-  `Provider` implementation.
-- `Capabilities` declares each supported capability with `Capable<T>` and each
-  unsupported capability with `Nothing`.
-- `ProviderBuilder` sets the correct base URL, API-key type, and provider
-  extension construction behavior.
-- `ProviderClient::{from_env, from_val}` use the correct environment variable
-  and input type.
+- `Client<H = BoxedHttpClient>` and `ClientBuilder<H = Missing>` public aliases
+  point at `client::Client<Provider, H>` / `client::ClientBuilder<Provider, H>`.
+- One provider value type implements `Provider` with the correct `BASE_URL`,
+  `VERIFY_PATH`, `ApiKey`, `Config`, and `EnvInput`; `from_env` / `from_val`
+  use the correct environment variables and input type.
+- Each supported capability is a `Has*` impl (`HasCompletion`, `HasEmbeddings`,
+  …) naming the concrete model type; unsupported capabilities are simply not
+  implemented.
 - API-key marker/auth types are explicit, insert the intended headers, and keep
   credential-bearing debug output redacted.
 - Model constants are added where they are useful and are current with the
@@ -111,6 +111,7 @@ Rig is split up into multiple crates in a monorepo structure:
 - `crates/rig-derive`: derive macros.
 - `crates/rig-*`: first-party provider, vector-store, memory, and companion integration crates.
 - `examples/*`: workspace example packages.
+- `xtask/`: workspace maintenance tasks, run as `cargo xtask <task>`. This is where source-tree checks that need a real parser rather than a grep live. Today: `cargo xtask check-test-layout`, which fails on any inline `#[cfg(test)] mod x { }` (test modules are sibling files). Not a default workspace member, so it is not built by `cargo test`.
 - `tests/*.rs`: root integration test targets.
 - `tests/providers/<provider>/`: provider-specific test modules.
 - `tests/cassettes/<provider>/`: committed HTTP cassette fixtures for replayable provider tests.

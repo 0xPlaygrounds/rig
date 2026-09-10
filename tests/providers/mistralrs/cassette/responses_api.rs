@@ -1,7 +1,7 @@
 //! Cassette coverage for mistral.rs through Rig's OpenAI Responses API client.
 
+use rig::completion::CompletionModel;
 use rig::completion::NormalizeCompletionResponse;
-use rig::completion::{Chat, CompletionModel, Prompt};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 
@@ -24,7 +24,8 @@ async fn responses_api_no_think_returns_text() {
             let response = agent
                 .prompt("/no_think Explain token usage reporting in one sentence.")
                 .await
-                .expect("Responses API /no_think prompt should succeed");
+                .expect("Responses API /no_think prompt should succeed")
+                .output;
 
             assert_nonempty_response(&response);
         },
@@ -104,7 +105,8 @@ async fn responses_api_multi_turn_replays_history() {
             let second = agent
                 .chat("/no_think Reply with exactly: OK", &mut history)
                 .await
-                .expect("second multi-turn Responses API chat should succeed");
+                .expect("second multi-turn Responses API chat should succeed")
+                .output;
 
             assert!(
                 first_history_len > 0 && history.len() > first_history_len,

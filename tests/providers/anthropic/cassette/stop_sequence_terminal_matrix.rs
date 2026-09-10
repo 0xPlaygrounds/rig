@@ -71,7 +71,7 @@ use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
-use rig::streaming::{RawStreamingChoice, StreamingPrompt};
+use rig::streaming::RawStreamingChoice;
 use serde_json::json;
 
 use super::super::support::with_anthropic_stop_sequence_cassette;
@@ -837,7 +837,7 @@ async fn agent_stream_single_sequence() {
                 .additional_params(json!({ "stop_sequences": ["charlie"] }))
                 .build();
 
-            let mut stream = agent.stream_prompt(LIST_PROMPT).await;
+            let mut stream = agent.stream_prompt(LIST_PROMPT).stream().await;
             let (_response, provider_final): (_, rig::streaming::StreamFinal) =
                 crate::support::collect_stream_final_response_and_provider_final(&mut stream)
                     .await

@@ -3,13 +3,12 @@
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local OpenAI-compatible llama.cpp-family server (see `cassette_support`).
 
-use rig::completion::{Chat, Message};
+use rig::completion::Message;
 use rig::prelude::*;
 
 use super::super::cassette_support::*;
 
 use crate::support::{Adder, STREAMING_TOOLS_PREAMBLE, Subtract, assert_mentions_expected_number};
-use rig::completion::Prompt;
 
 #[tokio::test]
 async fn tools_roundtrip() {
@@ -27,7 +26,7 @@ async fn tools_roundtrip() {
             .await
             .expect("tool round-trip should succeed");
 
-        assert_mentions_expected_number(&response, -3);
+        assert_mentions_expected_number(&response.output, -3);
     })
     .await;
 }
@@ -52,7 +51,7 @@ async fn tools_smoke() {
             .await
             .expect("tool prompt should succeed");
 
-        assert_mentions_expected_number(&response, -3);
+        assert_mentions_expected_number(&response.output, -3);
     })
     .await;
 }

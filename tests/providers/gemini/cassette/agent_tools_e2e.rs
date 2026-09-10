@@ -3,10 +3,8 @@
 //! `agent.stream_prompt()`, pinning the wire contract of the handrolled tool
 //! pipeline ahead of the rmcp migration.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamingPrompt;
 use rig_agent::test_utils::{parallel_tools, tool_output_serialization, zero_argument_tool};
 
 use super::super::agent_run_support::is_tool_result_user_message;
@@ -38,7 +36,6 @@ async fn nonstreaming_multi_turn_executes_tools_and_reports_usage() {
             let response = agent
                 .prompt(CHAINED_PROMPT)
                 .max_turns(5)
-                .extended_details()
                 .await
                 .expect("multi-turn tool prompt should succeed");
 
@@ -89,7 +86,11 @@ async fn streaming_multi_turn_executes_tools_via_builtin_driver() {
                 .tool(subtract)
                 .build();
 
-            let mut stream = agent.stream_prompt(CHAINED_PROMPT).max_turns(5).await;
+            let mut stream = agent
+                .stream_prompt(CHAINED_PROMPT)
+                .max_turns(5)
+                .stream()
+                .await;
             let observation = crate::support::collect_stream_observation(&mut stream).await;
 
             assert!(

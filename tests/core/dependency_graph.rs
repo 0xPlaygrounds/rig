@@ -55,48 +55,53 @@ fn rig_core_is_runtime_and_transport_free() {
     assert_absent("rig-core", &["--all-features"], &["tokio", "reqwest"]);
 }
 
+/// With default features on, and — the shape a host that steps `AgentRun`
+/// itself depends on — with them off: rig-agent is a runtime-free crate.
 #[test]
 fn rig_agent_carries_no_runtime_or_mcp() {
     assert_absent("rig-agent", &[], &["tokio", "rmcp"]);
-}
-
-/// The protocol crate is data and transitions only: no runtime, no transport,
-/// no futures, no hooks (which live in rig-agent). A second driver — an ECS
-/// plugin — depends on it precisely because of this.
-#[test]
-fn rig_run_is_pure_protocol() {
     assert_absent(
-        "rig-run",
-        &[],
-        // `futures`/`async-stream` are not listed: rig-core itself depends on
-        // them (stream and boxed-future vocabulary), so they are in every
-        // rig-run tree; the source-level check below is what keeps the
-        // protocol itself from awaiting.
-        &["tokio", "reqwest", "rig-agent"],
+        "rig-agent",
+        &["--no-default-features"],
+        &["tokio", "rmcp", "reqwest"],
     );
 }
 
-/// Same invariant from the inside: the protocol never awaits.
+/// rig-agent's `run` layer and rig-core's transcript invariants never await:
+/// they are data and transitions only, so a futures loop and an ECS schedule
+/// can step the same code. Checked at the source level because both crates
+/// legitimately depend on `futures` elsewhere.
 #[test]
-fn rig_run_sources_contain_no_async() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/rig-run/src");
+fn run_vocabulary_sources_contain_no_async() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let sources = [
+        "crates/rig-core/src/transcript.rs",
+        "crates/rig-agent/src/run/mod.rs",
+        "crates/rig-agent/src/run/output.rs",
+        "crates/rig-agent/src/run/patch.rs",
+        "crates/rig-agent/src/run/policy.rs",
+        "crates/rig-agent/src/run/prepare.rs",
+        "crates/rig-agent/src/run/response.rs",
+        "crates/rig-agent/src/run/spec.rs",
+        "crates/rig-agent/src/run/streamed.rs",
+        "crates/rig-agent/src/run/transcript.rs",
+    ];
     let mut offenders = Vec::new();
-    for entry in std::fs::read_dir(&root).expect("rig-run/src is readable") {
-        let path = entry.expect("dir entry").path();
-        if path.extension().is_some_and(|e| e == "rs") {
-            let text = std::fs::read_to_string(&path).expect("source is utf-8");
-            if text.contains("async fn")
-                || text.contains(".await")
-                || text.contains("async_stream")
-                || text.contains("futures::")
-            {
-                offenders.push(path.display().to_string());
-            }
+    for relative in sources {
+        let path = root.join(relative);
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("{relative} is readable: {err}"));
+        if text.contains("async fn")
+            || text.contains(".await")
+            || text.contains("async_stream")
+            || text.contains("futures::")
+        {
+            offenders.push(relative);
         }
     }
     assert!(
         offenders.is_empty(),
-        "rig-run must stay sans-IO (no `async fn`/`.await`/`async_stream`/`futures::`); found in: {offenders:?}"
+        "the run vocabulary and AgentRun must stay sans-IO (no `async fn`/`.await`/`async_stream`/`futures::`); found in: {offenders:?}"
     );
 }
 

@@ -36,7 +36,6 @@ use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, RequestPatch,
     ToolResultAction, ToolResultEvent,
 };
-use rig::completion::Prompt;
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::openai;
@@ -343,7 +342,8 @@ async fn main() -> Result<()> {
         .add_hook(ForceSystemProbeOnFirstTurn)
         .add_hook(FailureRecorder)
         .add_hook(FatalFailurePolicy)
-        .await?;
+        .await?
+        .output;
     println!("\nFinal response:\n{response}");
     Ok(())
 }

@@ -66,7 +66,6 @@ use rig::completion::CompletionModel;
 use rig::extractor::ExtractorBuilder;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::StreamingPrompt;
 use serde_json::json;
 
 use super::super::support::with_openai_max_tokens_cassette;
@@ -187,7 +186,8 @@ async fn reasoning_gpt5_nano_agent_blocking_cap() {
             let response = agent
                 .prompt(PROMPT)
                 .await
-                .expect("an agent-level cap must reach a reasoning model");
+                .expect("an agent-level cap must reach a reasoning model")
+                .output;
 
             assert_nonempty_response(&response);
         },
@@ -207,7 +207,7 @@ async fn reasoning_gpt5_nano_agent_streaming_cap() {
                 .max_tokens(CAP)
                 .build();
 
-            let mut stream = agent.stream_prompt(PROMPT).await;
+            let mut stream = agent.stream_prompt(PROMPT).stream().await;
             let observed = collect_stream_observation(&mut stream).await;
 
             assert!(observed.errors.is_empty(), "{:?}", observed.errors);
@@ -234,7 +234,8 @@ async fn reasoning_gpt5_nano_tool_turn_cap() {
                 .prompt("What is 3 + 4?")
                 .max_turns(3)
                 .await
-                .expect("a capped tool-calling turn must be accepted");
+                .expect("a capped tool-calling turn must be accepted")
+                .output;
 
             assert!(response.contains('7'), "{response}");
         },
@@ -255,7 +256,11 @@ async fn reasoning_gpt5_nano_tool_turn_streaming_cap() {
                 .tool(Adder)
                 .build();
 
-            let mut stream = agent.stream_prompt("What is 3 + 4?").max_turns(3).await;
+            let mut stream = agent
+                .stream_prompt("What is 3 + 4?")
+                .max_turns(3)
+                .stream()
+                .await;
             let observed = collect_stream_observation(&mut stream).await;
 
             assert!(observed.errors.is_empty(), "{:?}", observed.errors);
@@ -565,7 +570,8 @@ async fn capped_extractor_turn_on_reasoning_model() {
             let person = extractor
                 .extract("Ada Lovelace works as a mathematician.")
                 .await
-                .expect("a capped extraction must be accepted");
+                .expect("a capped extraction must be accepted")
+                .output;
 
             assert_eq!(person.first_name.as_deref(), Some("Ada"));
         },

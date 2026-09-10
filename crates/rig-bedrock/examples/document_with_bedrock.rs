@@ -7,7 +7,6 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_agent::prelude::*;
 use rig_bedrock::client::Client;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
-use rig_core::client::ProviderClient;
 use tracing::info;
 
 const DOCUMENT_URL: &str = "https://bitcoin.org/bitcoin.pdf";
@@ -43,7 +42,7 @@ async fn main() -> Result<(), anyhow::Error> {
         additional_params: None,
     };
 
-    let response = agent.prompt(document).await?;
+    let response = agent.prompt(document).await?.output;
     info!("{}", response);
 
     Ok(())

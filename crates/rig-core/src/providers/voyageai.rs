@@ -1,7 +1,9 @@
-use crate::client::{self, BearerAuth, DebugExt, Provider};
+use crate::client::{
+    self, BearerAuth, HasEmbeddings, HasRerank, ModelTransport, Provider, ProviderClientResult,
+};
 use crate::embeddings;
 use crate::embeddings::EmbeddingError;
-use crate::http_client::HttpClientExt;
+use crate::http_client::{self, HttpClientExt};
 use crate::rerank;
 use crate::rerank::RerankError;
 use bytes::Bytes;
@@ -14,39 +16,60 @@ use serde_json::json;
 const VOYAGEAI_API_BASE_URL: &str = "https://api.voyageai.com/v1";
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct VoyageExt;
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct VoyageBuilder;
+pub struct VoyageAi;
 
 type VoyageApiKey = BearerAuth;
 
-impl Provider for VoyageExt {
-    type Builder = VoyageBuilder;
-
+impl Provider for VoyageAi {
+    const NAME: &'static str = "voyageai";
+    const BASE_URL: &'static str = VOYAGEAI_API_BASE_URL;
     /// There is currently no way to verify a Voyage api key without consuming tokens
     const VERIFY_PATH: &'static str = "";
+    type ApiKey = VoyageApiKey;
+    type Config = ();
+    type EnvInput = String;
+
+    fn build(_: (), _: &VoyageApiKey) -> http_client::Result<Self> {
+        Ok(VoyageAi)
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        Client::from_env_api_key("VOYAGE_API_KEY", None, http)
+    }
+
+    fn from_val<H: HttpClientExt>(input: String, http: H) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
+    }
 }
 
-client::impl_capabilities!(
-    VoyageExt,
-    embeddings = EmbeddingModel<H>,
-    rerank = RerankModel<H>,
-);
+impl HasEmbeddings for VoyageAi {
+    type Model<H>
+        = EmbeddingModel<H>
+    where
+        H: ModelTransport;
 
-impl DebugExt for VoyageExt {}
+    fn embedding_model<H: ModelTransport>(
+        client: &Client<H>,
+        model: String,
+        ndims: Option<usize>,
+    ) -> Self::Model<H> {
+        EmbeddingModel::make(client, model, ndims)
+    }
+}
 
-client::impl_default_provider_builder!(
-    VoyageBuilder => VoyageExt,
-    api_key = VoyageApiKey,
-    base_url = VOYAGEAI_API_BASE_URL,
-);
+impl HasRerank for VoyageAi {
+    type Model<H>
+        = RerankModel<H>
+    where
+        H: ModelTransport;
 
-pub type Client<H> = client::Client<VoyageExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<VoyageBuilder, VoyageApiKey, H>;
+    fn rerank_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        RerankModel::new(client.clone(), model)
+    }
+}
 
-client::impl_provider_from_env!(VoyageExt, input = String, api_key_env = "VOYAGE_API_KEY");
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<VoyageAi, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<VoyageAi, H>;
 
 impl<T> EmbeddingModel<T> {
     pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
@@ -211,7 +234,7 @@ pub struct EmbeddingOptions {
 }
 
 #[derive(Clone)]
-pub struct EmbeddingModel<T> {
+pub struct EmbeddingModel<T = crate::http_client::BoxedHttpClient> {
     client: Client<T>,
     pub model: String,
     ndims: usize,
@@ -334,11 +357,13 @@ where
     }
 }
 
-impl<T> crate::client::ConstructEmbeddingModel<Client<T>> for EmbeddingModel<T>
+impl<T> EmbeddingModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    fn construct(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
+    /// Build the model, defaulting `ndims` from the model identifier when the
+    /// caller gave none — the body behind `EmbeddingsClient::embedding_model`.
+    pub fn make(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
         let dims = dims
             .or(model_dimensions_from_identifier(&model))
             .unwrap_or_default();
@@ -407,7 +432,7 @@ pub struct RerankApiData {
 }
 
 #[derive(Clone)]
-pub struct RerankModel<T> {
+pub struct RerankModel<T = crate::http_client::BoxedHttpClient> {
     client: Client<T>,
     pub model: String,
     pub top_k: Option<usize>,
@@ -542,162 +567,5 @@ where
     }
 }
 
-impl<T> crate::client::ConstructRerankModel<Client<T>> for RerankModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    fn construct(client: &Client<T>, model: String) -> Self {
-        Self::new(client.clone(), model)
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn test_client_initialization() {
-        let _client = crate::providers::voyageai::Client::new_with(
-            "dummy-key",
-            crate::test_utils::RecordingHttpClient::new(""),
-        )
-        .expect("Client::new() failed");
-        let _client_from_builder = crate::providers::voyageai::Client::builder()
-            .api_key("dummy-key")
-            .http_client(crate::test_utils::RecordingHttpClient::new(""))
-            .build()
-            .expect("Client::builder() failed");
-    }
-
-    #[tokio::test]
-    async fn rerank_non_success_preserves_status_and_body() {
-        use crate::client::RerankingClient;
-        use crate::rerank::{RerankError, RerankModel as _};
-        use crate::test_utils::RecordingHttpClient;
-
-        let body = r#"{"error":{"message":"boom"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = super::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.rerank_model(super::RERANK_2_5);
-
-        let error = model
-            .rerank("query", vec!["doc one".to_string(), "doc two".to_string()])
-            .await
-            .expect_err("rerank should fail with non-success status");
-
-        assert!(matches!(error, RerankError::HttpError(_)));
-        assert_eq!(
-            error.provider_response_status(),
-            Some(http::StatusCode::SERVICE_UNAVAILABLE)
-        );
-        assert_eq!(error.provider_response_body(), Some(body));
-    }
-
-    #[tokio::test]
-    async fn rerank_2xx_error_envelope_preserves_status_and_body() {
-        use crate::client::RerankingClient;
-        use crate::rerank::{RerankError, RerankModel as _};
-        use crate::test_utils::RecordingHttpClient;
-
-        let body = r#"{"message":"boom"}"#;
-        let http_client = RecordingHttpClient::new(body); // 200 OK
-        let client = super::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.rerank_model(super::RERANK_2_5);
-
-        let error = model
-            .rerank("query", vec!["doc one".to_string(), "doc two".to_string()])
-            .await
-            .expect_err("rerank should fail with provider error envelope");
-
-        match &error {
-            RerankError::ProviderResponse(stored) => {
-                assert_eq!(stored.body, body);
-                assert_eq!(stored.status, Some(http::StatusCode::OK));
-            }
-            other => panic!("expected ProviderResponse, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn embedding_request_includes_options_when_set() {
-        use crate::client::EmbeddingsClient;
-        use crate::embeddings::EmbeddingModel as _;
-        use crate::test_utils::RecordingHttpClient;
-
-        let response_body = r#"{
-            "object": "list",
-            "data": [{"object": "embedding", "embedding": [0.1, 0.2, 0.3], "index": 0}],
-            "model": "voyage-3-large",
-            "usage": {"total_tokens": 7}
-        }"#;
-        let http_client = RecordingHttpClient::new(response_body);
-        let client = super::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client.clone())
-            .build()
-            .expect("build client");
-        let model = client.embedding_model(super::VOYAGE_3_LARGE);
-
-        model
-            .with_options(super::EmbeddingOptions {
-                input_type: Some("document".to_string()),
-                truncation: Some(true),
-                output_dimension: Some(256),
-            })
-            .embed_texts_response(vec!["doc".to_string()])
-            .await
-            .expect("embed should succeed");
-
-        let captured = http_client.requests();
-        assert_eq!(captured.len(), 1);
-        let body: serde_json::Value =
-            serde_json::from_slice(&captured[0].body).expect("request body is valid JSON");
-        assert_eq!(body["model"], super::VOYAGE_3_LARGE);
-        assert_eq!(body["input_type"], "document");
-        assert_eq!(body["truncation"], true);
-        assert_eq!(body["output_dimension"], serde_json::json!(256));
-        assert_eq!(body.get("output_dtype"), None);
-    }
-
-    #[tokio::test]
-    async fn embedding_request_omits_options_when_unset() {
-        use crate::client::EmbeddingsClient;
-        use crate::embeddings::EmbeddingModel as _;
-        use crate::test_utils::RecordingHttpClient;
-
-        let response_body = r#"{
-            "object": "list",
-            "data": [{"object": "embedding", "embedding": [0.1, 0.2, 0.3], "index": 0}],
-            "model": "voyage-3-large",
-            "usage": {"total_tokens": 7}
-        }"#;
-        let http_client = RecordingHttpClient::new(response_body);
-        let client = super::Client::builder()
-            .api_key("test-key")
-            .http_client(http_client.clone())
-            .build()
-            .expect("build client");
-        let model = client.embedding_model(super::VOYAGE_3_LARGE);
-
-        model
-            .embed_texts_response(vec!["doc".to_string()])
-            .await
-            .expect("embed should succeed");
-
-        let captured = http_client.requests();
-        assert_eq!(captured.len(), 1);
-        let body: serde_json::Value =
-            serde_json::from_slice(&captured[0].body).expect("request body is valid JSON");
-        assert_eq!(body["model"], super::VOYAGE_3_LARGE);
-        assert_eq!(body.get("input_type"), None);
-        assert_eq!(body.get("truncation"), None);
-        assert_eq!(body.get("output_dimension"), None);
-    }
-}
+mod tests;

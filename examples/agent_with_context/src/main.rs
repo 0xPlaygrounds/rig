@@ -4,7 +4,6 @@
 
 use anyhow::Result;
 use rig::agent::AgentBuilder;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::cohere::{self, COMMAND_A_03_2025};
 
@@ -28,7 +27,7 @@ async fn main() -> Result<()> {
         })
         .build();
 
-    let response = agent.prompt(CONTEXT_PROMPT).await?;
+    let response = agent.prompt(CONTEXT_PROMPT).await?.output;
     println!("{response}");
 
     Ok(())

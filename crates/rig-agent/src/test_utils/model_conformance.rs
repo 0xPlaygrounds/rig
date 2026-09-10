@@ -26,10 +26,8 @@ use crate::{
         run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
     },
     completion::{
-        AssistantContent, CompletionError, CompletionModel, Message, Prompt, PromptError,
-        ToolDefinition,
+        AssistantContent, CompletionError, CompletionModel, Message, PromptError, ToolDefinition,
     },
-    streaming::StreamingPrompt,
     tool::{Tool, ToolContext},
 };
 use rig_core::message::{ToolChoice, UserContent};
@@ -51,7 +49,7 @@ pub enum ScenarioError {
     Json(#[from] serde_json::Error),
     /// Rig's structured extractor failed.
     #[error(transparent)]
-    Extraction(#[from] crate::extractor::ExtractionError),
+    Extraction(#[from] crate::completion::StructuredOutputError),
     /// The model or agent violated the portable behavioral contract.
     #[error("{scenario} conformance failed: {details}")]
     Contract {
@@ -1013,13 +1011,8 @@ where
         .build();
     let request = agent.prompt(PARALLEL_PROMPT).max_turns(3);
     let response = match tool_concurrency {
-        Some(concurrency) => {
-            request
-                .tool_concurrency(concurrency)
-                .extended_details()
-                .await?
-        }
-        None => request.extended_details().await?,
+        Some(concurrency) => request.tool_concurrency(concurrency).await?,
+        None => request.await?,
     };
     let scenario = if tool_concurrency == Some(1) {
         "parallel_tools_serial_execution"
@@ -1105,7 +1098,6 @@ where
     let response = agent
         .prompt("Call the ping tool, then report the exact marker it returns.")
         .max_turns(2)
-        .extended_details()
         .await?;
     let values = correlated_result_values(SCENARIO, &response)?;
     if calls.load(Ordering::SeqCst) != 1
@@ -1150,7 +1142,6 @@ where
     let response = agent
         .prompt("Call fetch_motto and fetch_config, then summarize both outputs in one sentence.")
         .max_turns(3)
-        .extended_details()
         .await?;
     let values = correlated_result_values(SCENARIO, &response)?;
     let expected_config = serde_json::to_value(ConfigOutput {
@@ -1218,7 +1209,6 @@ where
             "Call store_profile with profile.name exactly `Zoë \\\"Z\\\"`, profile.tags exactly [`rust`, `東京`], mode `careful`, note containing the two lines `line one` and `line two` separated by a newline, and quote exactly `path C:\\\\tmp and \\\"quoted\\\"`. Then confirm it was stored.",
         )
         .max_turns(3)
-        .extended_details()
         .await?;
     let observed = lock_recover(&captured).clone();
     if calls.load(Ordering::SeqCst) != 1 || observed.as_ref() != Some(&expected) {
@@ -1326,13 +1316,13 @@ where
         .max_tokens(384)
         .retries(0)
         .build()
-        .extract_with_usage(INPUT)
+        .extract(INPUT)
         .await?;
     validate_extraction_fields(
         SCENARIO,
-        response.data.first_name.as_deref(),
-        response.data.last_name.as_deref(),
-        response.data.job.as_deref(),
+        response.output.first_name.as_deref(),
+        response.output.last_name.as_deref(),
+        response.output.job.as_deref(),
         response.usage,
     )?;
     Ok(ScenarioReport {
@@ -1344,9 +1334,9 @@ where
         duration: started.elapsed(),
         response: format!(
             "{} {} — {}",
-            response.data.first_name.as_deref().unwrap_or_default(),
-            response.data.last_name.as_deref().unwrap_or_default(),
-            response.data.job.as_deref().unwrap_or_default()
+            response.output.first_name.as_deref().unwrap_or_default(),
+            response.output.last_name.as_deref().unwrap_or_default(),
+            response.output.job.as_deref().unwrap_or_default()
         ),
     })
 }
@@ -1414,7 +1404,7 @@ where
             event: CompletionResponseEvent<'_>,
         ) -> ObservationAction {
             *lock_recover(&self.0) = Some(ModelTurn::new(
-                event.message_id.map(str::to_owned),
+                event.identity.message_id.clone(),
                 event.content.clone(),
                 event.usage,
                 BTreeSet::new(),
@@ -1613,7 +1603,6 @@ where
         .add_hook(observed)
         .add_hook(ReplaceResult("portable-redacted"))
         .add_hook(WrapResult)
-        .extended_details()
         .await?;
     let observations = lock_recover(&observed_probe.0).clone();
     validate_rewritten_arguments(
@@ -1747,7 +1736,6 @@ where
         .prompt(
             "Use the repeat_text tool to repeat the word \"banana\" 3 times, then show me the exact result.",
         )
-        .extended_details()
         .await?;
     let response = result.output.clone();
     let tool_calls = calls.load(Ordering::SeqCst);
@@ -1784,7 +1772,6 @@ where
         .prompt(
             "Compute (4 + 6) * 2. First call the add tool, then call the multiply tool on the result. Tell me the final number.",
         )
-        .extended_details()
         .await?;
     let response = result.output.clone();
     let add = add_calls.load(Ordering::SeqCst);
@@ -1818,6 +1805,7 @@ where
     let mut stream = agent
         .stream_prompt("Use add to calculate 17 + 25, then state the final number.")
         .max_turns(4)
+        .stream()
         .await;
     let mut final_response = None;
     let mut final_count = 0_usize;
@@ -1918,7 +1906,6 @@ where
         .build();
     let result = agent
         .prompt("Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.")
-        .extended_details()
         .await?;
     let response = result.output.clone();
     let parsed: ArithmeticResult = serde_json::from_str(&response)?;
@@ -2066,6 +2053,7 @@ where
             "Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.",
         )
         .max_turns(5)
+        .stream()
         .await;
     let mut final_response = None;
     let mut final_count = 0_usize;
@@ -2105,222 +2093,4 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{
-        completion::Usage,
-        test_utils::{MockCompletionModel, MockStreamEvent, MockTurn, mock_final},
-    };
-    use rig_core::message::{ToolCall, ToolFunction};
-
-    fn tool_call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantContent {
-        AssistantContent::ToolCall(ToolCall::from_wire(
-            id,
-            ToolFunction::new(name.to_string(), arguments),
-        ))
-    }
-
-    fn usage(input: u64, output: u64) -> Usage {
-        Usage {
-            input_tokens: input,
-            output_tokens: output,
-            total_tokens: input + output,
-            ..Usage::new()
-        }
-    }
-
-    fn fixture_contract(condition: bool, details: &str) -> Result<(), ScenarioError> {
-        if condition {
-            Ok(())
-        } else {
-            Err(ScenarioError::contract("test_fixture", details))
-        }
-    }
-
-    #[tokio::test]
-    async fn parallel_contract_validates_batch_and_correlation() -> Result<(), ScenarioError> {
-        let first = MockTurn::from_contents([
-            tool_call("call_add", "add", serde_json::json!({"x": 3, "y": 4})),
-            tool_call(
-                "call_subtract",
-                "subtract",
-                serde_json::json!({"x": 10, "y": 2}),
-            ),
-        ]);
-        let report = parallel_tools(
-            MockCompletionModel::new([first, MockTurn::text("7 and 8")]),
-            |builder| builder,
-            Some(1),
-        )
-        .await?;
-        fixture_contract(report.tool_calls == 2, "parallel tool-call count")?;
-        fixture_contract(report.history_messages >= 4, "parallel history length")?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn zero_argument_and_output_serialization_contracts_pass() -> Result<(), ScenarioError> {
-        let zero = zero_argument_tool(
-            MockCompletionModel::new([
-                MockTurn::tool_call("ping_call", "ping", serde_json::json!({})),
-                MockTurn::text(PING_OUTPUT),
-            ]),
-            |builder| builder,
-        )
-        .await?;
-        fixture_contract(zero.tool_calls == 1, "zero-argument call count")?;
-
-        let first = MockTurn::from_contents([
-            tool_call("motto_call", "fetch_motto", serde_json::json!({})),
-            tool_call("config_call", "fetch_config", serde_json::json!({})),
-        ]);
-        let serialized = tool_output_serialization(
-            MockCompletionModel::new([first, MockTurn::text("summary")]),
-            |builder| builder,
-        )
-        .await?;
-        fixture_contract(serialized.tool_calls == 2, "serialized-output call count")?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn complex_arguments_preserve_nested_unicode_and_escapes() -> Result<(), ScenarioError> {
-        let arguments = serde_json::json!({
-            "profile": {"name": "Zoë \"Z\"", "tags": ["rust", "東京"]},
-            "mode": "careful",
-            "note": "line one\nline two",
-            "quote": "path C:\\tmp and \"quoted\""
-        });
-        let report = complex_tool_arguments(
-            MockCompletionModel::new([
-                MockTurn::tool_call("profile_call", "store_profile", arguments),
-                MockTurn::text("stored"),
-            ]),
-            |builder| builder,
-        )
-        .await?;
-        fixture_contract(report.tool_calls == 1, "complex-argument call count")?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn extraction_contract_requires_fields_and_usage() -> Result<(), ScenarioError> {
-        let report = structured_extraction(MockCompletionModel::new([MockTurn::tool_call(
-            "submit_call",
-            "submit",
-            serde_json::json!({
-                "first_name": "Ada",
-                "last_name": "Lovelace",
-                "job": "mathematician"
-            }),
-        )
-        .with_usage(usage(20, 5))]))
-        .await?;
-        fixture_contract(report.prompt_tokens == 20, "extraction input usage")?;
-        fixture_contract(report.generated_tokens == 5, "extraction output usage")?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn streaming_contract_checks_events_history_and_usage() -> Result<(), ScenarioError> {
-        let model = MockCompletionModel::from_stream_turns([
-            vec![
-                MockStreamEvent::tool_call(
-                    "add_call",
-                    "add",
-                    serde_json::json!({"a": 17, "b": 25}),
-                ),
-                MockStreamEvent::FinalResponse(mock_final(usage(10, 2))),
-            ],
-            vec![
-                MockStreamEvent::text("42"),
-                MockStreamEvent::FinalResponse(mock_final(usage(14, 1))),
-            ],
-        ]);
-        let report = streaming_tool(model, |builder| builder).await?;
-        fixture_contract(report.prompt_tokens == 24, "streaming input usage")?;
-        fixture_contract(report.generated_tokens == 3, "streaming output usage")?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn invalid_recovery_paths_do_not_execute_tools() -> Result<(), ScenarioError> {
-        let report = invalid_tool_recovery(
-            MockCompletionModel::new([MockTurn::tool_call(
-                "invalid-add",
-                "add",
-                serde_json::json!({ "x": 2, "y": 3 }),
-            )]),
-            |builder| builder,
-        )
-        .await?;
-        fixture_contract(report.tool_calls == 1, "recovery source call count")?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn hook_rewrites_chain_and_request_patch_is_turn_local() -> Result<(), ScenarioError> {
-        let report = hook_rewrites_and_request_patch(
-            MockCompletionModel::new([
-                MockTurn::tool_call("hook-add", "add", serde_json::json!({ "x": 1, "y": 1 })),
-                MockTurn::text("[portable-redacted]"),
-            ]),
-            |builder| builder,
-        )
-        .await?;
-        fixture_contract(report.tool_calls == 1, "hook execution count")?;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn cancellation_and_max_turn_controls_retain_diagnostics() -> Result<(), ScenarioError> {
-        let report = cancellation_and_max_turns(
-            MockCompletionModel::new([
-                MockTurn::tool_call("cancel-add", "add", serde_json::json!({ "x": 20, "y": 22 })),
-                MockTurn::tool_call("budget-add", "add", serde_json::json!({ "x": 20, "y": 22 })),
-            ]),
-            |builder| builder,
-        )
-        .await?;
-        fixture_contract(report.tool_calls == 2, "run-control execution count")?;
-        Ok(())
-    }
-
-    #[test]
-    fn typed_validators_reject_bad_structured_output_and_protocol_leaks() {
-        let invalid = decode_structured_output::<ConfigOutput>("invalid_json", "not json");
-        assert!(matches!(invalid, Err(ScenarioError::Contract { .. })));
-
-        let messages = vec![Message::Assistant {
-            id: None,
-            content: vec![AssistantContent::text("visible <tool_call>")],
-        }];
-        let hygiene = validate_protocol_hygiene(
-            "protocol_hygiene",
-            "visible <tool_call>",
-            &messages,
-            &["<tool_call>"],
-        );
-        assert!(matches!(hygiene, Err(ScenarioError::Contract { .. })));
-    }
-
-    #[test]
-    fn invalid_tool_diagnostics_require_rejected_call_history() {
-        let history = vec![Message::Assistant {
-            id: None,
-            content: vec![tool_call(
-                "bad_call",
-                "missing",
-                serde_json::json!({"value": 1}),
-            )],
-        }];
-        let error = PromptError::UnknownToolCall {
-            tool_name: "missing".to_string(),
-            available_tools: vec!["add".to_string()],
-            allowed_tools: Vec::new(),
-            chat_history: Box::new(history),
-        };
-        assert!(validate_unknown_tool_failure(&error, "missing", &[]).is_ok());
-        assert!(validate_unknown_tool_failure(&error, "other", &[]).is_err());
-    }
-}
+mod tests;

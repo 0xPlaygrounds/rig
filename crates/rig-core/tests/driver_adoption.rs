@@ -279,6 +279,66 @@ fn shipped_portion(source: &str) -> String {
     shipped
 }
 
+/// Whether `text` contains a `mod <name>;` declaration (any visibility) as a
+/// whole line, ignoring surrounding whitespace.
+fn declares_module(text: &str, name: &str) -> bool {
+    text.lines().any(|line| {
+        let line = line.trim();
+        let line = line.strip_prefix("pub").map_or(line, |rest| {
+            // `pub(crate)`, `pub(super)`, `pub(in path)`.
+            let rest = rest.trim_start();
+            rest.strip_prefix('(')
+                .and_then(|r| r.split_once(')'))
+                .map_or(rest, |(_, after)| after)
+                .trim_start()
+        });
+        line.strip_prefix("mod ")
+            .and_then(|rest| rest.trim_start().strip_suffix(';'))
+            .is_some_and(|declared| declared.trim() == name)
+    })
+}
+
+/// Whether the file at `path` is a module reachable only through a
+/// `#[cfg(test)]`-gated `mod <name>;` declaration in its parent module file.
+///
+/// Sibling-file test modules (`foo.rs` declaring `#[cfg(test)] mod tests;` with
+/// the body in `foo/tests.rs`) are the same thing as an inline test module
+/// that [`shipped_portion`] blanks out; they are not shipped source. The parent
+/// is found the way rustc finds it: `dir/mod.rs`, `dir.rs` beside the
+/// directory, or the crate root (`lib.rs`/`main.rs`) when the directory is
+/// `src`. A file whose parent names it outside any test gate, or whose parent
+/// cannot be located, is treated as shipped.
+fn is_test_only_module(path: &std::path::Path) -> bool {
+    let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+        return false;
+    };
+    let Some(dir) = path.parent() else {
+        return false;
+    };
+    // `dir/mod.rs` is declared as `mod <dir>;` by *its* parent.
+    let (name, dir) = if stem == "mod" {
+        match (dir.file_name().and_then(|s| s.to_str()), dir.parent()) {
+            (Some(name), Some(parent)) => (name.to_owned(), parent),
+            _ => return false,
+        }
+    } else {
+        (stem.to_owned(), dir)
+    };
+
+    let mut candidates = vec![dir.join("mod.rs"), dir.with_extension("rs")];
+    if dir.file_name().is_some_and(|d| d == "src") {
+        candidates.push(dir.join("lib.rs"));
+        candidates.push(dir.join("main.rs"));
+    }
+    candidates.into_iter().any(|parent| {
+        let Ok(source) = std::fs::read_to_string(&parent) else {
+            return false;
+        };
+        let masked = mask_literals_and_comments(&source);
+        declares_module(&masked, &name) && !declares_module(&shipped_portion(&source), &name)
+    })
+}
+
 /// Walks every `.rs` file under the workspace `crates/` directory (skipping
 /// [`SKIPPED_DIRS`]) and calls `visit(path, shipped_source)`, where
 /// `shipped_source` is the file content with `#[cfg(test)]`-gated items blanked
@@ -305,6 +365,10 @@ fn for_each_shipped_source(mut visit: impl FnMut(&std::path::Path, &str)) {
             }
 
             if path.extension().is_none_or(|ext| ext != "rs") {
+                continue;
+            }
+
+            if is_test_only_module(&path) {
                 continue;
             }
 
@@ -1099,6 +1163,69 @@ fn shipped_code() { let _ = WireEvent::Unknown; }
 /// helper, and everything after it is scanned again. This is the
 /// `providers/openrouter/completion.rs` shape (a gated `final_request_body`
 /// followed by thousands of shipped lines) that a truncating scanner hid.
+#[test]
+fn declares_module_matches_whole_line_declarations_only() {
+    assert!(declares_module("mod tests;\n", "tests"));
+    assert!(declares_module("    pub(crate) mod tests;\n", "tests"));
+    assert!(declares_module("pub mod tests ;\n", "tests"));
+    assert!(!declares_module("mod tests {\n", "tests"));
+    assert!(!declares_module("mod tests_extra;\n", "tests"));
+    assert!(!declares_module("// mod tests;\n", "tests"));
+}
+
+/// A sibling-file module is test-only exactly when every path rustc would take
+/// to its parent declares it under `#[cfg(test)]`: `dir/mod.rs`, `dir.rs`, or
+/// the crate root for `src/`. An ungated declaration, or no parent at all,
+/// keeps the file in the shipped walk.
+#[test]
+fn is_test_only_module_follows_the_parent_declaration() {
+    let root = std::env::temp_dir().join(format!(
+        "rig-driver-adoption-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock after epoch")
+            .as_nanos()
+    ));
+    let src = root.join("src");
+    std::fs::create_dir_all(src.join("gated")).expect("temp tree");
+    std::fs::create_dir_all(src.join("open")).expect("temp tree");
+
+    // `src/gated.rs` declares its sibling under a gate; `src/open.rs` does not.
+    std::fs::write(
+        src.join("gated.rs"),
+        "pub fn shipped() {}\n\n#[cfg(test)]\nmod tests;\n",
+    )
+    .expect("write");
+    std::fs::write(src.join("gated").join("tests.rs"), "use super::*;\n").expect("write");
+    std::fs::write(
+        src.join("open.rs"),
+        "mod helpers;\n#[cfg(test)]\nmod tests;\n",
+    )
+    .expect("write");
+    std::fs::write(src.join("open").join("helpers.rs"), "").expect("write");
+    std::fs::write(src.join("open").join("tests.rs"), "").expect("write");
+    // Crate root: `src/lib.rs` gating `src/tests.rs`, and a comment mention
+    // that must not count as a declaration.
+    std::fs::write(
+        src.join("lib.rs"),
+        "// mod imaginary;\nmod open;\nmod gated;\n#[cfg(test)]\nmod tests;\n",
+    )
+    .expect("write");
+    std::fs::write(src.join("tests.rs"), "").expect("write");
+    std::fs::write(src.join("orphan.rs"), "").expect("write");
+
+    assert!(is_test_only_module(&src.join("gated").join("tests.rs")));
+    assert!(is_test_only_module(&src.join("open").join("tests.rs")));
+    assert!(!is_test_only_module(&src.join("open").join("helpers.rs")));
+    assert!(is_test_only_module(&src.join("tests.rs")));
+    assert!(!is_test_only_module(&src.join("open.rs")));
+    assert!(!is_test_only_module(&src.join("gated.rs")));
+    assert!(!is_test_only_module(&src.join("orphan.rs")));
+
+    std::fs::remove_dir_all(&root).expect("cleanup");
+}
+
 #[test]
 fn shipped_portion_is_item_scoped() {
     let source = "\

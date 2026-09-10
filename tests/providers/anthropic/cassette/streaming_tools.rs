@@ -5,7 +5,7 @@ use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
 use rig::message::{Message, ToolCallId, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
+use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;
@@ -34,7 +34,7 @@ async fn streaming_tools_smoke() {
                 .default_max_turns(2)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");
@@ -60,6 +60,7 @@ async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message()
             let mut stream = agent
                 .stream_prompt(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(8)
+                .stream()
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 
@@ -123,6 +124,7 @@ async fn streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_s
             .stream_prompt(TWO_TOOL_STREAM_PROMPT)
             .max_turns(8)
             .tool_concurrency(2)
+            .stream()
             .await;
         let observation = tokio::time::timeout(
             std::time::Duration::from_secs(5),

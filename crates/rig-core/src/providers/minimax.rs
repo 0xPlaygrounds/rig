@@ -51,11 +51,10 @@ pub const MINIMAX_M2_1_HIGHSPEED: &str = "MiniMax-M2.1-highspeed";
 pub const MINIMAX_M2: &str = "MiniMax-M2";
 
 impl_dual_dialect_provider!(
-    ext = MiniMaxExt,
-    builder = MiniMaxBuilder,
-    anthropic_ext = MiniMaxAnthropicExt,
-    anthropic_builder = MiniMaxAnthropicBuilder,
+    provider = MiniMax,
+    anthropic_provider = MiniMaxAnthropic,
     client_input = client::BearerAuth,
+    name = "minimax",
     api_key_env = "MINIMAX_API_KEY",
     base_url = GLOBAL_API_BASE_URL,
     base_url_env = "MINIMAX_API_BASE",
@@ -64,11 +63,30 @@ impl_dual_dialect_provider!(
     anthropic_base_url_env = "MINIMAX_ANTHROPIC_API_BASE",
 );
 
-client::impl_capabilities!(
-    MiniMaxExt,
-    completion = super::openai::completion::GenericCompletionModel<MiniMaxExt, H>,
-    model_listing = MiniMaxModelLister<H>,
-);
+impl client::HasCompletion for MiniMax {
+    type Model<H>
+        = super::openai::completion::GenericCompletionModel<MiniMax, H>
+    where
+        H: client::ModelTransport;
+
+    fn completion_model<H: client::ModelTransport>(
+        client: &Client<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::openai::completion::GenericCompletionModel::new(client.clone(), model)
+    }
+}
+
+impl client::HasModelListing for MiniMax {
+    type Lister<H>
+        = MiniMaxModelLister<H>
+    where
+        H: client::ModelTransport;
+
+    fn model_lister<H: client::ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
+        MiniMaxModelLister::new(client.clone())
+    }
+}
 
 crate::providers::internal::model_listing::impl_model_lister!(
     /// [`ModelLister`](crate::client::ModelLister) implementation for the
@@ -83,7 +101,7 @@ crate::providers::internal::model_listing::impl_model_lister!(
     "/models"
 );
 
-impl super::openai::completion::OpenAICompatibleProvider for MiniMaxExt {
+impl super::openai::completion::OpenAICompatibleProvider for MiniMax {
     const PROVIDER_NAME: &'static str = "minimax";
 
     type StreamingUsage = super::openai::Usage;
@@ -121,76 +139,4 @@ impl<H> AnthropicClientBuilder<H> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        ANTHROPIC_BASE_URLS, CHINA_ANTHROPIC_API_BASE_URL, CHINA_API_BASE_URL,
-        GLOBAL_ANTHROPIC_API_BASE_URL, GLOBAL_API_BASE_URL,
-    };
-
-    #[test]
-    fn test_client_initialization() {
-        let _client = crate::providers::minimax::Client::new_with(
-            "dummy-key",
-            crate::test_utils::RecordingHttpClient::new(""),
-        )
-        .expect("Client::new()");
-        let _client_from_builder = crate::providers::minimax::Client::builder()
-            .api_key("dummy-key")
-            .http_client(crate::test_utils::RecordingHttpClient::new(""))
-            .build()
-            .expect("Client::builder()");
-        let _anthropic_client = crate::providers::minimax::AnthropicClient::new_with(
-            "dummy-key",
-            crate::test_utils::RecordingHttpClient::new(""),
-        )
-        .expect("AnthropicClient::new()");
-        let _anthropic_client_from_builder = crate::providers::minimax::AnthropicClient::builder()
-            .api_key("dummy-key")
-            .http_client(crate::test_utils::RecordingHttpClient::new(""))
-            .build()
-            .expect("AnthropicClient::builder()");
-    }
-
-    #[test]
-    fn normalize_openai_bases_to_anthropic_bases() {
-        assert_eq!(
-            ANTHROPIC_BASE_URLS
-                .normalize(GLOBAL_API_BASE_URL)
-                .as_deref(),
-            Some(GLOBAL_ANTHROPIC_API_BASE_URL)
-        );
-        assert_eq!(
-            ANTHROPIC_BASE_URLS.normalize(CHINA_API_BASE_URL).as_deref(),
-            Some(CHINA_ANTHROPIC_API_BASE_URL)
-        );
-        assert_eq!(
-            ANTHROPIC_BASE_URLS
-                .normalize("https://proxy.example.com/v1")
-                .as_deref(),
-            Some("https://proxy.example.com/anthropic")
-        );
-    }
-
-    #[test]
-    fn normalize_preserves_existing_anthropic_base() {
-        assert_eq!(
-            ANTHROPIC_BASE_URLS
-                .normalize(CHINA_ANTHROPIC_API_BASE_URL)
-                .as_deref(),
-            Some(CHINA_ANTHROPIC_API_BASE_URL)
-        );
-    }
-
-    #[test]
-    fn anthropic_primary_override_wins() {
-        let override_url = ANTHROPIC_BASE_URLS.resolve(
-            Some("https://primary.example.com/anthropic"),
-            Some(CHINA_API_BASE_URL),
-        );
-
-        assert_eq!(
-            override_url.as_deref(),
-            Some("https://primary.example.com/anthropic")
-        );
-    }
-}
+mod tests;

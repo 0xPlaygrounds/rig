@@ -18,16 +18,6 @@ providers/internal/openai_chat_completions_compatible.rs | serde_json::from_valu
 providers/anthropic/streaming.rs | citation: serde_json::from_value(citation) | Field decode inside the content-delta Deserialize impl: converts the `citation` value of an already-tag-matched `citations_delta` into its typed form; failure is a serde::de error and unrecognized tags fall to Self::Unknown, so no frame is triaged here.
 providers/anthropic/streaming.rs | serde_json::from_str(&server_tool_use.input_json) | Assembles the accumulated server_tool_use partial_json fragments into the raw-content value; malformed input surfaces as a CompletionError, no frame is triaged here.
 
-# --- openai Responses websocket: websocket-only envelope pre-dispatch ------
-# `error` and `response.done` are transport envelopes outside the modeled
-# Responses event set; parse_server_event dispatches exactly those two and
-# routes every other frame through classify_responses_frame + triage_frame.
-rig-reqwest/src/openai_websocket.rs | serde_json::from_str::<EventType>(payload) | Reads only the `type` tag to dispatch the two websocket-only envelopes; a corrupt payload errors, never skips.
-rig-reqwest/src/openai_websocket.rs | "error" => serde_json::from_str(payload) | Decodes the websocket-only `error` envelope (outside the modeled Responses set); decode failure is a CompletionError.
-rig-reqwest/src/openai_websocket.rs | "response.done" => serde_json::from_str(payload) | Decodes the websocket-only `response.done` envelope (outside the modeled Responses set); decode failure is a CompletionError.
-rig-reqwest/src/openai_websocket.rs | serde_json::from_value(status) | Reads the optional `status` field of an already-decoded `response.done` payload for turn-state bookkeeping; absence/mismatch falls into an explicit handled arm.
-rig-reqwest/src/openai_websocket.rs | serde_json::from_value(self.response.clone()) | Attempts the full CompletionResponse view of an already-decoded `response.done` payload; the None case is handled with an explicit provider error, not a skip.
-
 # --- openai Responses SSE: classifier-adjacent helpers ---------------------
 providers/openai/responses_api/streaming.rs | let value = serde_json::from_str::<serde_json::Value>(data).ok()?; | provider_response_from_responses_sse_data peeks at the `type` tag to build the provider-error body; classification already happened.
 providers/openai/responses_api/streaming.rs | serde_json::from_str::<StreamingCompletionChunk>(data) | parse_sse_completion_body: unary (non-stream) replay of an SSE body into a CompletionResponse; terminal extraction, not per-frame triage.
@@ -45,3 +35,16 @@ providers/ollama.rs | #[serde(untagged)] | The `Think` request-option value (`tr
 providers/openai/responses_api/streaming.rs | #[serde(untagged)] | Two sites, neither a triage fallback: `StreamingCompletionChunk` is the envelope union (response chunk vs item delta) decoded AFTER `classify_responses_frame` recognized the frame; `ContentPartChunkPart::Unknown` is untagged on the SERIALIZE side only — its Deserialize is the hand-written tag dispatch documented beside it, so a known tag with a defective payload still errors.
 providers/openai/completion/streaming.rs | #[serde(untagged)] | `FinishReason::Other(String)` preserves an unrecognized finish-reason token verbatim (surfacing gateway-invented reasons instead of misreading them as a stop); a scalar vocabulary field, not frame policy.
 providers/copilot/mod.rs | #[serde(untagged)] | `ChatApiResponse<T>` distinguishes a success body from Copilot's error envelope on a UNARY response (no stream frame involved).
+
+# --- openai responses websocket: envelope dispatch, not frame triage -------
+# The websocket carries the SAME Responses events the SSE path carries, and
+# `parse_server_event` routes every one of them through `classify_responses_frame`.
+# What it decodes itself is only the two envelopes the websocket adds around
+# that shared set: the transport-level `error` event and the terminal
+# `response.done`. Neither exists on the SSE wire, so neither has a classifier
+# to route to.
+providers/openai/responses_api/websocket.rs | serde_json::from_str::<EventType>(payload) | Reads only the `type` tag to decide whether the frame is one of the two websocket-only envelopes; every other frame is handed to classify_responses_frame untouched, so this dispatches rather than triages.
+providers/openai/responses_api/websocket.rs | "error" => serde_json::from_str(payload) | Decodes the websocket-only `error` envelope, which has no SSE counterpart and therefore no classifier; a decode failure is returned as a CompletionError, never skipped.
+providers/openai/responses_api/websocket.rs | "response.done" => serde_json::from_str(payload) | Decodes the websocket-only `response.done` envelope, which has no SSE counterpart and therefore no classifier; a decode failure is returned as a CompletionError, never skipped.
+providers/openai/responses_api/websocket.rs | serde_json::from_value(status) | Reads the `status` field of an already-decoded `response.done` payload to update the session's previous_response_id bookkeeping; it decides no frame's fate.
+providers/openai/responses_api/websocket.rs | serde_json::from_value(self.response.clone()) | Converts an already-decoded `response.done` payload into the typed terminal response; `None` falls back to the session's explicit no-terminal-body error rather than skipping anything.

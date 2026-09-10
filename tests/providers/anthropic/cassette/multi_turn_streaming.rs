@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::Deserialize;
@@ -183,6 +182,7 @@ async fn multi_turn_streaming_tools() {
             let mut stream = agent
                 .stream_prompt(MULTI_TURN_STREAMING_PROMPT)
                 .max_turns(10)
+                .stream()
                 .await;
             let observation = collect_stream_observation(&mut stream).await;
 

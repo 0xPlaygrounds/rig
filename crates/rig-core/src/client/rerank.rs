@@ -1,3 +1,4 @@
+use super::{Client, ModelTransport, Provider};
 use crate::rerank::RerankModel;
 
 /// A provider client with reranking capabilities.
@@ -9,16 +10,28 @@ pub trait RerankingClient {
     fn rerank_model(&self, model: impl Into<String>) -> Self::RerankModel;
 }
 
-/// Construction hook for the blanket [`RerankingClient`] implementation over
-/// [`crate::client::Client`] — the rerank twin of
-/// [`crate::client::ConstructCompletionModel`].
-///
-/// Public for the same reason: an out-of-tree provider extension built on the
-/// generic `Client<Ext, H>` cannot implement [`RerankingClient`] for that foreign
-/// type (orphan rule), so it implements this trait on its own model type and
-/// the blanket implementation supplies the constructor. Providers with their
-/// own client type implement [`RerankingClient`] directly and never need this.
-pub trait ConstructRerankModel<C>: Sized {
-    /// Build this model from its provider client and a model identifier.
-    fn construct(client: &C, model: String) -> Self;
+/// A [`Provider`] that offers rerank models. Implementing this is what makes
+/// [`RerankingClient`] available on `Client<Self, H>`.
+pub trait HasRerank: Provider {
+    /// The concrete rerank model built over transport `H`.
+    type Model<H>: RerankModel
+    where
+        H: ModelTransport;
+
+    /// Build the rerank model `model` from `client`.
+    fn rerank_model<H>(client: &Client<Self, H>, model: String) -> Self::Model<H>
+    where
+        H: ModelTransport;
+}
+
+impl<P, H> RerankingClient for Client<P, H>
+where
+    P: HasRerank,
+    H: ModelTransport,
+{
+    type RerankModel = P::Model<H>;
+
+    fn rerank_model(&self, model: impl Into<String>) -> Self::RerankModel {
+        P::rerank_model(self, model.into())
+    }
 }

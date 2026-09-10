@@ -235,7 +235,7 @@ use tokenizers::{
 use web_time::{Duration, Instant};
 
 use crate::loader::{LoadedModel, LoadedWeights};
-use crate::profile::ModelFamily;
+use crate::profile::ConversationProtocol;
 use crate::runtime::{CancellationSignal, check_cancellation};
 use crate::types::{CandleCompletionResponse, FinishReason};
 
@@ -601,7 +601,7 @@ pub(crate) fn stream_generate(
     cancellation: &CancellationSignal,
     mut emit: impl FnMut(RawStreamingChoice<CandleCompletionResponse>) -> Result<(), CandleError>,
 ) -> Result<CandleCompletionResponse, CandleError> {
-    if loaded.profile.definition.protocol != ModelFamily::Qwen3 {
+    if loaded.profile.definition.protocol != ConversationProtocol::Qwen3 {
         return generate(loaded, request, cancellation, |fragment| {
             emit(RawStreamingChoice::Message(fragment))
         });

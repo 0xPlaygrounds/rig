@@ -3,7 +3,6 @@
 //! Run it to see one agent produce a value that the next agent transforms.
 
 use anyhow::Result;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::Client;
@@ -25,8 +24,8 @@ fn build_adder_agent(client: &Client) -> rig::agent::Agent {
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = Client::from_env()?;
-    let seed = build_rng_agent(&client).prompt(INPUT_PROMPT).await?;
-    let response = build_adder_agent(&client).prompt(seed.trim()).await?;
+    let seed = build_rng_agent(&client).prompt(INPUT_PROMPT).await?.output;
+    let response = build_adder_agent(&client).prompt(seed.trim()).await?.output;
 
     println!("First agent returned: {}", seed.trim());
     println!("Second agent returned: {}", response.trim());

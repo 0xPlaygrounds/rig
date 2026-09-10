@@ -3,7 +3,6 @@
 
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use opentelemetry::trace::TracerProvider as _;
@@ -50,7 +49,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .preamble("You are a helpful assistant")
         .build();
 
-    let res = agent.prompt("Hello world!").await?;
+    let res = agent.prompt("Hello world!").await?.output;
 
     println!("GPT-4o: {res}");
 

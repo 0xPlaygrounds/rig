@@ -49,7 +49,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let specification = classify_agent.extract("
         Write a product description for a new eco-friendly water bottle.
         The target_audience is environmentally conscious millennials and key product features are: plastic-free, insulated, lifetime warranty
-        ").await?;
+        ").await?.output;
 
     let content_agent = openai_client
         .extractor::<TaskResults>(openai::GPT_4)
@@ -65,7 +65,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let mut vec: Vec<TaskResults> = Vec::new();
     for task in specification.tasks {
         let results = content_agent
-            .extract(&format!(
+            .extract(format!(
                 "
             Task: {},
             Style: {},
@@ -73,7 +73,8 @@ async fn main() -> Result<(), anyhow::Error> {
             ",
                 task.original_task, task.style, task.guidelines
             ))
-            .await?;
+            .await?
+            .output;
         vec.push(results);
     }
 
@@ -89,7 +90,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let task_results_raw_json = serde_json::to_string_pretty(&vec)?;
-    let results = judge_agent.extract(&task_results_raw_json).await?;
+    let results = judge_agent.extract(&task_results_raw_json).await?.output;
 
     println!("Results: {results:?}");
 

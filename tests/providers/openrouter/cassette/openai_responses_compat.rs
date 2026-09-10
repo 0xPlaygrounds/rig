@@ -1,8 +1,7 @@
 //! Cassette-backed OpenRouter compatibility coverage through Rig's OpenAI Responses provider.
 
-use rig::completion::{CompletionModel, Prompt};
+use rig::completion::CompletionModel;
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
 
@@ -65,7 +64,7 @@ async fn openai_responses_agent_prompt_against_openrouter_completes() {
                 .await
                 .expect("agent.prompt should not fail on OpenRouter service_tier metadata");
 
-            assert_nonempty_response(&response);
+            assert_nonempty_response(&response.output);
         },
     )
     .await;
@@ -84,6 +83,7 @@ async fn openai_responses_stream_against_openrouter_completes() {
 
             let mut stream = agent
                 .stream_prompt("In one sentence, confirm this streaming response works.")
+                .stream()
                 .await;
             let response = collect_stream_final_response(&mut stream)
                 .await

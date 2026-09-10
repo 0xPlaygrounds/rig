@@ -6,7 +6,7 @@ use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::streaming::{ItemChunkKind, ResponseChunkKind};
-use rig::rig_reqwest::openai_websocket::ResponsesWebSocketEvent;
+use rig::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
 
 use crate::support::assert_nonempty_response;
 

@@ -22,7 +22,6 @@
 
 use anyhow::Result;
 use rig::agent::{AgentHook, HookContext, ToolCall as ToolCallEvent, ToolCallAction};
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::Tool;
@@ -253,7 +252,8 @@ async fn main() -> Result<()> {
         .prompt(prompt)
         .max_turns(10)
         .add_hook(ApprovalHook)
-        .await?;
+        .await?
+        .output;
 
     println!("\nFinal response:\n{response}");
 

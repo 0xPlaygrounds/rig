@@ -1,6 +1,5 @@
 //! Cassette-backed Doubleword completion coverage.
 
-use rig::completion::Prompt;
 use rig::prelude::*;
 
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
@@ -14,7 +13,7 @@ async fn completion_smoke() {
             .prompt(BASIC_PROMPT)
             .await
             .expect("completion should succeed");
-        assert_nonempty_response(&response);
+        assert_nonempty_response(&response.output);
     })
     .await;
 }

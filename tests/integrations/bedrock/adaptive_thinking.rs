@@ -2,7 +2,6 @@
 
 use futures::StreamExt;
 use rig::agent::AgentBuilder;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::streaming::StreamedAssistantContent;
 use serde_json::json;
@@ -39,7 +38,8 @@ async fn adaptive_thinking_prompt_caching_tool_roundtrip_regression() {
     let response = agent
         .prompt("Call `lookup_harbor_label` exactly once, then answer with the exact tool output.")
         .await
-        .expect("adaptive-thinking prompt-caching tool roundtrip should succeed");
+        .expect("adaptive-thinking prompt-caching tool roundtrip should succeed")
+        .output;
 
     assert_contains_all_case_insensitive(&response, &[ALPHA_SIGNAL_OUTPUT]);
 }

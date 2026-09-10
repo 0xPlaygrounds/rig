@@ -1,7 +1,6 @@
 //! Cassette-backed Venice streaming tool coverage.
 
 use rig::prelude::*;
-use rig::streaming::StreamingPrompt;
 
 use super::super::{TOOL_MODEL, support::with_venice_cassette};
 use crate::support::{
@@ -21,7 +20,7 @@ async fn streaming_tools_smoke() {
                 .tool(Subtract)
                 .default_max_turns(2)
                 .build();
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).await;
+            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");

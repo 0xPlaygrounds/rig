@@ -1,7 +1,7 @@
 //! Cassette-backed Cohere tool-calling coverage.
 
 use rig::completion::{
-    AssistantContent, CompletionModel, FinishReason, Prompt, ToolDefinition, message::ToolChoice,
+    AssistantContent, CompletionModel, FinishReason, ToolDefinition, message::ToolChoice,
 };
 use rig::prelude::*;
 
@@ -27,7 +27,7 @@ async fn tool_call_roundtrip() {
             .await
             .expect("tool prompt should succeed");
 
-        assert_mentions_expected_number(&response, -3);
+        assert_mentions_expected_number(&response.output, -3);
     })
     .await;
 }

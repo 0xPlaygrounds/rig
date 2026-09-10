@@ -4,6 +4,7 @@ use crate::image_generation;
 use crate::image_generation::{
     ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
 };
+use crate::wasm_compat::WasmCompatSend;
 use serde_json::json;
 
 #[allow(non_upper_case_globals)]
@@ -33,7 +34,7 @@ impl NormalizeImageGenerationResponse for ImageGenerationResponse {
 }
 
 #[derive(Clone)]
-pub struct ImageGenerationModel<T> {
+pub struct ImageGenerationModel<T = crate::http_client::BoxedHttpClient> {
     client: Client<T>,
     pub model: String,
 }
@@ -49,7 +50,7 @@ impl<T> ImageGenerationModel<T> {
 
 impl<T> ImageGenerationModel<T>
 where
-    T: HttpClientExt + Send + Clone + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
     /// Perform the generation and return the provider's native response (the
     /// image bytes) instead of the normalized
@@ -102,7 +103,7 @@ where
 
 impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
 where
-    T: HttpClientExt + Send + Clone + 'static,
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
 {
     async fn image_generation(
         &self,
@@ -124,49 +125,5 @@ where
     }
 }
 
-impl<T> crate::client::ConstructImageGenerationModel<Client<T>> for ImageGenerationModel<T>
-where
-    T: HttpClientExt + Send + Clone + 'static,
-{
-    fn construct(client: &Client<T>, model: String) -> Self {
-        Self::new(client.clone(), model)
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::client::image_generation::ImageGenerationClient;
-    use crate::image_generation::ImageGenerationModel as _;
-    use crate::test_utils::RecordingHttpClient;
-
-    #[tokio::test]
-    async fn image_generation_non_success_preserves_status_and_body() {
-        let body = r#"{"error":{"message":"boom"}}"#;
-        let http_client =
-            RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        let model = client.image_generation_model(Flux1);
-
-        let request = model
-            .image_generation_request()
-            .prompt("draw a cat")
-            .build();
-
-        let error = model
-            .image_generation(request)
-            .await
-            .expect_err("should fail with non-success status");
-
-        assert!(matches!(error, ImageGenerationError::HttpError(_)));
-        assert_eq!(
-            error.provider_response_status(),
-            Some(http::StatusCode::SERVICE_UNAVAILABLE)
-        );
-        assert_eq!(error.provider_response_body(), Some(body));
-    }
-}
+mod tests;

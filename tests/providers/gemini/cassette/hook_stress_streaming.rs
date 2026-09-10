@@ -1,15 +1,15 @@
 //! Hook-system stress suite: streaming lifecycle and blocking-vs-streaming
-//! parity — `TextDelta` / `StreamResponseFinish` / `ModelTurnFinished` on the
-//! streaming surface, `ToolResultAction::Rewrite` redaction reaching the `FinalResponse`,
+//! parity — `TextDelta` / `CompletionResponse` / `ModelTurnFinished` on the
+//! streaming surface (`CompletionResponse` fires once per accepted turn on
+//! both drivers, tool-only turns included), `ToolResultAction::Rewrite`
+//! redaction reaching the `FinalResponse`,
 //! `active_tools` narrowing and `Skip` on the streaming driver, and the same
 //! workflow producing the same answer on both surfaces. Recorded against real
 //! Gemini.
 
 use rig::agent::RequestPatch;
-use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamingPrompt;
 
 use super::super::hook_stress_support::{
     ApplyPatch, CHAIN_PREAMBLE, EventTap, ResultRewrite, RewriteToolResult,
@@ -39,6 +39,7 @@ async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
                 .stream_prompt("In one short sentence, describe the color of a clear daytime sky.")
                 .add_hook(tap)
                 .max_turns(2)
+                .stream()
                 .await;
 
             let final_text = collect_stream_final_response(&mut stream)
@@ -52,12 +53,17 @@ async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
                 "a streamed text turn must emit TextDelta events"
             );
             assert!(
-                probe.count("StreamResponseFinish") >= 1,
-                "a streamed text turn must emit StreamResponseFinish"
+                probe.count("CompletionResponse") >= 1,
+                "a streamed text turn must emit CompletionResponse once the stream is assembled"
             );
             assert!(
                 probe.count("ModelTurnFinished") >= 1,
                 "ModelTurnFinished must fire on the streaming surface"
+            );
+            assert_eq!(
+                probe.count("CompletionResponse"),
+                probe.count("ModelTurnFinished"),
+                "CompletionResponse and ModelTurnFinished fire once per accepted turn"
             );
         },
     )
@@ -90,6 +96,7 @@ async fn streaming_tool_turns_fire_model_turn_finished() {
                 )
                 .add_hook(tap)
                 .max_turns(6)
+                .stream()
                 .await;
 
             let final_text = collect_stream_final_response(&mut stream)
@@ -106,6 +113,12 @@ async fn streaming_tool_turns_fire_model_turn_finished() {
                 probe.count("ModelTurnFinished") >= 2,
                 "ModelTurnFinished must fire once per accepted turn on the streaming surface, \
                  including tool turns"
+            );
+            assert_eq!(
+                probe.count("CompletionResponse"),
+                probe.count("ModelTurnFinished"),
+                "CompletionResponse fires once per accepted turn on the streaming surface, \
+                 tool-only turns included"
             );
         },
     )
@@ -139,6 +152,7 @@ async fn streaming_result_redaction_reaches_final_response() {
                     rewrite: ResultRewrite::Replace("STREAM-REDACTED-Q3"),
                 })
                 .max_turns(4)
+                .stream()
                 .await;
 
             let final_text = collect_stream_final_response(&mut stream)
@@ -184,6 +198,7 @@ async fn streaming_active_tools_narrowing_filters_a_tool() {
                     RequestPatch::new().active_tools(["add"]).temperature(0.0),
                 ))
                 .max_turns(5)
+                .stream()
                 .await;
 
             let final_text = collect_stream_final_response(&mut stream)
@@ -232,6 +247,7 @@ async fn streaming_skip_leaves_tool_unexecuted() {
                     reason: "the subtract tool is offline; continue without it",
                 })
                 .max_turns(5)
+                .stream()
                 .await;
 
             let final_text = collect_stream_final_response(&mut stream)
@@ -273,7 +289,7 @@ async fn blocking_and_streaming_produce_same_final_answer() {
                 .max_turns(6)
                 .await
                 .expect("blocking parity run should succeed");
-            assert_mentions_expected_number(&response, EXPECTED);
+            assert_mentions_expected_number(&response.output, EXPECTED);
         },
     )
     .await;
@@ -292,7 +308,7 @@ async fn blocking_and_streaming_produce_same_final_answer() {
                 .tool(add_s)
                 .tool(sub_s)
                 .build();
-            let mut stream = agent.stream_prompt(PROMPT).max_turns(6).await;
+            let mut stream = agent.stream_prompt(PROMPT).max_turns(6).stream().await;
             let final_text = collect_stream_final_response(&mut stream)
                 .await
                 .expect("a final response");

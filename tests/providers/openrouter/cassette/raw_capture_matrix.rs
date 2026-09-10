@@ -26,7 +26,7 @@
 //! comparing them with the re-normalized `raw`, so a recording that stopped
 //! carrying a usage block or a finish reason fails loudly instead of covering
 //! nothing. OpenRouter contracts no request-id header
-//! (`OpenRouterExt::REQUEST_ID_HEADER` is `None`), so `provider_request_id`
+//! (`OpenRouter::REQUEST_ID_HEADER` is `None`), so `provider_request_id`
 //! is `None` on every turn here — a documented outcome, pinned as such.
 
 use rig::completion::{

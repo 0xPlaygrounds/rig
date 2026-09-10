@@ -4,7 +4,7 @@ use rig::prelude::*;
 use rig::providers::openai;
 use rig::{
     agent::{Agent, AgentBuilder},
-    completion::{Chat, Message},
+    completion::Message,
     providers::openai::Client as OpenAIClient,
     tool::Tool,
 };
@@ -57,8 +57,8 @@ impl Tool for TranslatorTool {
         let mut empty_history = Vec::<Message>::new();
         match self.0.chat(&args.prompt, &mut empty_history).await {
             Ok(response) => {
-                println!("Translated prompt: {response}");
-                Ok(response)
+                println!("Translated prompt: {}", response.output);
+                Ok(response.output)
             }
             Err(e) => Err(e),
         }

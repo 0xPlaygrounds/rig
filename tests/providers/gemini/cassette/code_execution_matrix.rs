@@ -64,11 +64,11 @@
 //! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig --all-features --test gemini code_execution_matrix -- --test-threads=1`
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel, Prompt};
+use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message};
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
+use rig::streaming::StreamedAssistantContent;
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -304,7 +304,7 @@ async fn blocking_agent_prompt_answers_after_code_execution() {
                 .expect("agent prompt must survive code-execution parts");
 
             assert!(
-                states(&answer, "1048576"),
+                states(&answer.output, "1048576"),
                 "agent answer should carry the computed value, got {answer:?}"
             );
         },
@@ -331,6 +331,7 @@ async fn streaming_agent_prompt_answers_after_code_execution() {
 
             let mut stream = agent
                 .stream_prompt("Use the code execution tool to compute 2 to the power of 20. State the number in your answer.")
+                .stream()
                 .await;
 
             let mut answer = String::new();
@@ -932,7 +933,7 @@ async fn blocking_code_execution_replayed_in_chat_history() {
                 .await
                 .expect("first code-execution turn should convert");
             assert!(
-                states(&first, "169"),
+                states(&first.output, "169"),
                 "first answer should carry 169, got {first:?}"
             );
 
@@ -940,14 +941,14 @@ async fn blocking_code_execution_replayed_in_chat_history() {
                 Message::user(
                     "Use the code execution tool to compute 13 times 13. State the number.",
                 ),
-                Message::assistant(first),
+                Message::assistant(first.output),
             ];
             let second = agent
                 .chat("Now double that number and state the result.", &mut history)
                 .await
                 .expect("history replay after a code-execution turn should succeed");
             assert!(
-                states(&second, "338"),
+                states(&second.output, "338"),
                 "second answer should carry the doubled value, got {second:?}"
             );
         },

@@ -7,7 +7,6 @@ use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamingPrompt;
 use rig::tool::Tool;
 use schemars::{JsonSchema, schema_for};
 use serde::Deserialize;
@@ -39,6 +38,7 @@ async fn runner_driven_multi_turn_streaming_loop() {
             let mut stream = agent
                 .stream_prompt(MULTI_TURN_STREAMING_PROMPT)
                 .max_turns(10)
+                .stream()
                 .await;
             let mut response = None;
             while let Some(item) = stream.next().await {

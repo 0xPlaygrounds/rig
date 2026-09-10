@@ -1,21 +1,71 @@
-//! Default-transport conveniences: construct any rig-core provider client
-//! with the bundled [`crate::ReqwestClient`] without naming a transport.
+//! Construction of a provider client with the bundled [`crate::ReqwestClient`]
+//! behind the erased default transport.
 //!
-//! rig-core deliberately has no default transport — every constructor there
-//! takes an `H: HttpClientExt`. These two traits are implemented exactly once,
-//! for `Client<Ext, crate::ReqwestClient>`, which is what lets
-//! `rig::providers::openai::Client::from_env()` infer `H` at the call site
-//! (a single applicable impl). Bring them into scope with `use rig::prelude::*`
-//! or `use rig_reqwest::prelude::*`.
+//! rig-core's provider types default to
+//! [`BoxedHttpClient`], the erased
+//! transport, so `openai::Client` names a concrete type in every
+//! configuration; but rig-core deliberately depends on no transport, so it
+//! cannot build one. These two traits are that value: implemented exactly once,
+//! for the erased client, they construct it over a fresh `ReqwestClient`. That
+//! single applicable impl is what lets `openai::Client::new(key)` infer the
+//! transport in expression position, where a type alias default does not
+//! apply. An inherent method could do the same, but only from inside rig-core,
+//! which would have to know reqwest; a trait in this crate is the
+//! orphan-rule-legal seam.
+//!
+//! Bring them into scope with `use rig::prelude::*` or
+//! `use rig_reqwest::prelude::*`. To keep the concrete transport in the type
+//! instead, use rig-core's `Client::new_with(key, ReqwestClient::default())`
+//! or `.http_client(ReqwestClient::default()).build()`.
 
-use rig_core::client::{
-    Client, ClientBuilder, Provider, ProviderBuilder, ProviderClientError, ProviderFromEnv,
-};
-use rig_core::http_client;
+use rig_core::client::{Client, ClientBuilder, Provider, ProviderClientError};
+use rig_core::http_client::{self, BoxedHttpClient};
 use rig_core::markers::Missing;
 
-/// One-argument construction of a provider client over the bundled
-/// `crate::ReqwestClient`: `new(api_key)`, `from_env()`, `from_val(input)`.
+/// The bundled transport, built fallibly. `reqwest::Client::new()` (and so
+/// `ReqwestClient::default()`) panics when the client cannot be built — on a
+/// host with no CA store, for one — while every constructor below promises
+/// a `Result`. Build through the builder and hand the failure back as the
+/// `Http` variant the rest of the client-construction path already uses.
+fn bundled() -> Result<BoxedHttpClient, ProviderClientError> {
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|error| http_client::Error::Instance(Box::new(TransportBuildError(error))))?;
+    Ok(BoxedHttpClient::from(crate::ReqwestClient::new(client)))
+}
+
+/// The bundled reqwest transport could not be built. `reqwest::Error`
+/// displays as just "builder error" and keeps the reason (no CA store, a
+/// bad proxy, ..) in its source chain, so this flattens the chain into the
+/// message a caller prints, while `source()` still exposes the original.
+#[derive(Debug)]
+struct TransportBuildError(reqwest::Error);
+
+impl std::fmt::Display for TransportBuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "could not build the bundled reqwest transport: {}",
+            self.0
+        )?;
+        let mut source = std::error::Error::source(&self.0);
+        while let Some(cause) = source {
+            write!(f, ": {cause}")?;
+            source = cause.source();
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for TransportBuildError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
+}
+
+/// One-argument construction of a provider client over the erased default
+/// transport, backed by the bundled `crate::ReqwestClient`: `new(api_key)`,
+/// `from_env()`, `from_val(input)`.
 ///
 /// `builder()` needs no trait — rig-core's `Client::builder()` already infers
 /// its `Missing` transport slot; pair it with [`DefaultTransportBuilder`] to
@@ -26,41 +76,41 @@ pub trait DefaultTransportClient: Sized {
     /// The provider's explicit-input type for [`Self::from_val`].
     type Input;
 
-    /// Construct a provider client with the bundled `crate::ReqwestClient`.
-    fn new(api_key: impl Into<Self::ApiKey>) -> http_client::Result<Self>;
+    /// Construct a provider client over the bundled transport.
+    fn new(api_key: impl Into<Self::ApiKey>) -> Result<Self, ProviderClientError>;
 
-    /// Construct a provider client from the process's environment with the
-    /// bundled `crate::ReqwestClient`.
+    /// Construct a provider client from the process's environment over the
+    /// bundled transport.
     fn from_env() -> Result<Self, ProviderClientError>;
 
     /// Construct a provider client from an explicit provider-specific input
-    /// with the bundled `crate::ReqwestClient`.
+    /// over the bundled transport.
     fn from_val(input: Self::Input) -> Result<Self, ProviderClientError>;
 }
 
-impl<Ext> DefaultTransportClient for Client<Ext, crate::ReqwestClient>
+impl<P> DefaultTransportClient for Client<P, BoxedHttpClient>
 where
-    Ext: ProviderFromEnv,
-    Ext::Builder: ProviderBuilder<Extension<crate::ReqwestClient> = Ext> + Default,
+    P: Provider,
 {
-    type ApiKey = <Ext::Builder as ProviderBuilder>::ApiKey;
-    type Input = Ext::Input;
+    type ApiKey = P::ApiKey;
+    type Input = P::EnvInput;
 
-    fn new(api_key: impl Into<Self::ApiKey>) -> http_client::Result<Self> {
-        Client::new_with(api_key, crate::ReqwestClient::default())
+    fn new(api_key: impl Into<Self::ApiKey>) -> Result<Self, ProviderClientError> {
+        Client::new_with(api_key, bundled()?)
     }
 
     fn from_env() -> Result<Self, ProviderClientError> {
-        Ext::from_env_with(crate::ReqwestClient::default())
+        P::from_env(bundled()?)
     }
 
     fn from_val(input: Self::Input) -> Result<Self, ProviderClientError> {
-        Ext::from_val_with(input, crate::ReqwestClient::default())
+        P::from_val(input, bundled()?)
     }
 }
 
 /// `build()` for a [`ClientBuilder`] whose transport slot is still
-/// [`Missing`]: substitutes the bundled `crate::ReqwestClient`.
+/// [`Missing`]: substitutes the erased default backed by the bundled
+/// `crate::ReqwestClient`.
 ///
 /// rig-core's own `build()` exists only once `.http_client(..)` has been
 /// called, so this trait is what makes
@@ -69,19 +119,44 @@ pub trait DefaultTransportBuilder {
     /// The built client type.
     type Client;
 
-    /// Build the client with the bundled `crate::ReqwestClient`.
-    fn build(self) -> http_client::Result<Self::Client>;
+    /// Build the client over the bundled transport.
+    fn build(self) -> Result<Self::Client, ProviderClientError>;
 }
 
-impl<ExtBuilder, Key> DefaultTransportBuilder for ClientBuilder<ExtBuilder, Key, Missing>
+impl<P> DefaultTransportBuilder for ClientBuilder<P, Missing>
 where
-    ExtBuilder: ProviderBuilder<ApiKey = Key>,
-    Key: rig_core::client::ApiKey,
-    ExtBuilder::Extension<crate::ReqwestClient>: Provider,
+    P: Provider,
 {
-    type Client = Client<ExtBuilder::Extension<crate::ReqwestClient>, crate::ReqwestClient>;
+    type Client = Client<P, BoxedHttpClient>;
 
-    fn build(self) -> http_client::Result<Self::Client> {
-        self.http_client(crate::ReqwestClient::default()).build()
+    fn build(self) -> Result<Self::Client, ProviderClientError> {
+        self.http_client(bundled()?).build()
     }
 }
+
+/// The construction spellings resolve with only the prelude and the
+/// provider module in scope, and the transport-less ones all name the same
+/// type; `new_with` keeps the concrete transport in the type.
+///
+/// ```no_run
+/// use rig_core::providers::openai;
+/// use rig_reqwest::prelude::*;
+/// use rig_reqwest::ReqwestClient;
+///
+/// fn takes(_: openai::Client) {}
+/// fn takes_reqwest(_: openai::Client<ReqwestClient>) {}
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let a: openai::Client = openai::Client::new("k")?;
+/// let b = openai::Client::from_env()?;
+/// let c = openai::Client::builder().api_key("k").build()?;
+/// let d = openai::Client::new_with("k", ReqwestClient::default())?;
+/// takes(a);
+/// takes(b);
+/// takes(c);
+/// takes_reqwest(d);
+/// # Ok(())
+/// # }
+/// ```
+#[cfg(doc)]
+const _CONSTRUCTION_SPELLINGS: () = ();

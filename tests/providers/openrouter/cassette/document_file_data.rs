@@ -1,14 +1,12 @@
 //! Cassette-backed OpenRouter coverage for PDF `file_data` document messages.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::completion::{Chat, Prompt};
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message as RigMessage, Text,
     UserContent as RigUserContent,
 };
 use rig::prelude::*;
 use rig::providers::openrouter::Message as OpenRouterMessage;
-use rig::streaming::StreamingPrompt;
 use serde_json::Value;
 
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
@@ -213,7 +211,7 @@ async fn document_file_data_roundtrip_live() {
                 .chat(direct_message, &mut history)
                 .await
                 .expect("OpenRouter should read PDF file_data document");
-            assert_verifier_response(&response, PAGE_TWO_VERIFIER);
+            assert_verifier_response(&response.output, PAGE_TWO_VERIFIER);
             assert_history_preserves_single_file_data_document(&history);
 
             let follow_up = agent
@@ -223,7 +221,7 @@ async fn document_file_data_roundtrip_live() {
                 )
                 .await
                 .expect("OpenRouter should reuse PDF file_data document from chat history");
-            assert_verifier_response(&follow_up, PAGE_THREE_VERIFIER);
+            assert_verifier_response(&follow_up.output, PAGE_THREE_VERIFIER);
             assert_history_preserves_single_file_data_document(&history);
 
             let direct_prompt = document_question(1);
@@ -233,7 +231,7 @@ async fn document_file_data_roundtrip_live() {
                 .prompt(direct_prompt)
                 .await
                 .expect("OpenRouter should read direct generic PDF file_data document");
-            assert_verifier_response(&direct_response, PAGE_ONE_VERIFIER);
+            assert_verifier_response(&direct_response.output, PAGE_ONE_VERIFIER);
         },
     )
     .await;
@@ -253,7 +251,7 @@ async fn streaming_document_file_data_roundtrip_live() {
             assert_no_verifier_leaked_into_prompt(&stream_prompt);
             assert_openrouter_wire_file_data(stream_prompt.clone());
 
-            let mut stream = agent.stream_prompt(stream_prompt).await;
+            let mut stream = agent.stream_prompt(stream_prompt).stream().await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("OpenRouter streaming should read PDF file_data document");

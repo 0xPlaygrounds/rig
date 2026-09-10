@@ -12,7 +12,7 @@
 //!
 //! ```ignore
 //! use rig_core::{
-//!     client::{CompletionClient, ProviderClient},
+//!     client::CompletionClient,
 //!     completion::CompletionModel,
 //!     providers::openai,
 //! };

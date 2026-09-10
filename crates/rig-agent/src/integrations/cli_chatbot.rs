@@ -5,9 +5,36 @@ use rig_core::{
 
 use crate::{
     agent::{Agent, MultiTurnStreamItem, Text},
-    completion::{Chat, CompletionError, PromptError, Usage},
-    streaming::{StreamedAssistantContent, StreamingPrompt},
+    completion::{CompletionError, PromptError, Usage},
+    streaming::StreamedAssistantContent,
 };
+use rig_core::wasm_compat::WasmCompatSend;
+
+/// One chat turn against caller-owned history, as the CLI chatbot drives it.
+///
+/// [`Agent`] implements it through [`Agent::chat`]; implement it on your own
+/// type to put something other than an agent behind
+/// [`ChatBotBuilder::chat`].
+pub trait Chat {
+    /// Execute one turn and append only committed messages to `history`.
+    fn chat(
+        &self,
+        prompt: impl Into<Message> + WasmCompatSend,
+        history: &mut Vec<Message>,
+    ) -> impl Future<Output = Result<String, PromptError>> + WasmCompatSend;
+}
+
+impl Chat for Agent {
+    async fn chat(
+        &self,
+        prompt: impl Into<Message> + WasmCompatSend,
+        history: &mut Vec<Message>,
+    ) -> Result<String, PromptError> {
+        Agent::chat(self, prompt, history)
+            .await
+            .map(|response| response.output)
+    }
+}
 use futures::StreamExt;
 use std::io::{self, Write};
 
@@ -71,6 +98,7 @@ impl CliChat for AgentImpl {
             .stream_prompt(prompt)
             .history(history.clone())
             .max_turns(self.max_turns)
+            .stream()
             .await;
 
         let mut acc = String::new();
