@@ -579,12 +579,15 @@ where
         let body: Vec<u8> = serde_json::to_vec(&body)?;
 
         // See the note in completion.rs: `mut` is only used when signing is compiled in.
-        #[cfg_attr(not(feature = "sigv4"), allow(unused_mut))]
+        #[cfg_attr(
+            not(all(feature = "sigv4", not(target_arch = "wasm32"))),
+            allow(unused_mut)
+        )]
         let mut builder = self.client.post("/v1/messages")?;
 
         // Same as the non-streaming path in completion.rs, and it must be duplicated because the
         // two paths build their requests independently. Signed after the body is final.
-        #[cfg(feature = "sigv4")]
+        #[cfg(all(feature = "sigv4", not(target_arch = "wasm32")))]
         if let Some(region) = self.client.provider().sigv4_region() {
             let uri = builder
                 .uri_ref()
@@ -594,10 +597,14 @@ where
                 builder = builder.header(name, value);
             }
         }
-        #[cfg(not(feature = "sigv4"))]
+        // See completion.rs: two ways to reach this, and the message names both.
+        #[cfg(not(all(feature = "sigv4", not(target_arch = "wasm32"))))]
         if self.client.provider().sigv4_region().is_some() {
             return Err(CompletionError::RequestError(
-                "SigV4 auth was selected but rig-core was built without the `sigv4` feature".into(),
+                "SigV4 auth was selected but request signing is not available in this build: \
+                 either the `sigv4` feature is disabled, or the target is wasm, where it is \
+                 unsupported"
+                    .into(),
             ));
         }
 

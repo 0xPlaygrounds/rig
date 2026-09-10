@@ -26,15 +26,6 @@ doctest = true
 [dependencies]
 as-any = { workspace = true }
 async-stream = { workspace = true }
-aws-config = { workspace = true, optional = true }
-aws-credential-types = { workspace = true, optional = true }
-aws-sigv4 = { workspace = true, optional = true }
-# Only for `tokio::sync::OnceCell`, which caches the resolved SdkConfig so the credential chain is
-# walked once rather than per request. `std::sync::OnceLock` cannot replace it: initialisation is
-# `async` (it awaits `load_defaults`), and OnceLock has no async initialiser. Optional and
-# feature-gated because rig-core carries tokio only as a dev-dependency — a default build must not
-# gain a tokio dependency from this.
-tokio = { workspace = true, features = ["sync"], optional = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
 epub = { workspace = true, optional = true }
@@ -62,6 +53,26 @@ pin-project-lite = { workspace = true }
 futures-timer = { workspace = true }
 mime = { workspace = true }
 # futures-timer's default backend uses a background timer thread, which cannot
+# The `sigv4` dependency set, declared per-target because it cannot exist on wasm.
+# `aws-config/default-https-client` reaches tokio's `net` feature through
+# hyper-util, and both `mio` and `socket2` carry a hard `compile_error!` for
+# wasm32 — so an `--all-features` wasm build (which CI runs for this package)
+# fails to compile if these are declared target-agnostically. Dropping
+# `default-https-client` instead would only move the failure to runtime, where
+# `load_defaults` reports "a http_client is required": there is no socket for
+# the credential chain to use on wasm either way. Declaring them here keeps
+# `--all-features` compiling on wasm and leaves every native target unchanged.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+aws-config = { workspace = true, optional = true }
+aws-credential-types = { workspace = true, optional = true }
+aws-sigv4 = { workspace = true, optional = true }
+# Only for `tokio::sync::OnceCell`, which caches the resolved SdkConfig so the credential chain is
+# walked once rather than per request. `std::sync::OnceLock` cannot replace it: initialisation is
+# `async` (it awaits `load_defaults`), and OnceLock has no async initialiser. Optional and
+# feature-gated because rig-core carries tokio only as a dev-dependency — a default build must not
+# gain a tokio dependency from this.
+tokio = { workspace = true, features = ["sync"], optional = true }
+
 # drive timers on wasm. Pull in its wasm-bindgen (setTimeout) backend whenever
 # the target is browser wasm — regardless of feature flags — so
 # `wasm_compat::timeout` and the SSE retry backoff actually fire instead of
@@ -113,7 +124,9 @@ epub = ["dep:epub", "dep:quick-xml"]
 rayon = ["dep:rayon"]
 # AWS SigV4 request signing, for Anthropic-compatible endpoints fronted by AWS. Default-OFF on
 # purpose: it pulls the AWS credential chain, which has no place in a `wasm` build and no place in
-# builds that only ever talk to api.anthropic.com.
+# builds that only ever talk to api.anthropic.com. Native-only: the dependencies live in a
+# `cfg(not(target_arch = "wasm32"))` table, so selecting SigV4 in a wasm build is a compile-time
+# error from the provider rather than a link-time or runtime surprise.
 # The two aws-config features are required, not cosmetic. The workspace pins aws-config with
 # default-features = false (rig-bedrock supplies its own), and `load_defaults` walks the full
 # credential chain, which needs both of these. Each failure is a runtime panic at first credential
