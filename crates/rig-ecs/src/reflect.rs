@@ -123,7 +123,7 @@ pub fn install_reflect(world: &mut World) {
             agent::Runs,
             agent::RunSeq,
             agent::RunCounter,
-            agent::Streamed,
+            agent::RunStreaming,
             agent::Cursor,
             agent::Assembling,
             agent::AwaitingModel,

@@ -19,7 +19,7 @@ pub fn agent_emitter() -> Emitter {
 }
 
 /// Install the runtime's observers on `world`.
-pub fn install(world: &mut World) {
+pub(super) fn install(world: &mut World) {
     world.add_observer(observe_settled);
     world.add_observer(observe_failed);
     world.add_observer(observe_run_despawned);
@@ -45,7 +45,7 @@ fn observe_settled(
 }
 
 /// The ending's code and detail, by the failure's variant.
-pub fn ending_of(failure: &Failure) -> Reason {
+fn ending_of(failure: &Failure) -> Reason {
     match failure {
         Failure::MaxTurns { limit } => Reason::with_detail(
             "max_turns",

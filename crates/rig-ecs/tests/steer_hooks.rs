@@ -34,10 +34,10 @@ use rig_core::{
 use rig_ecs::{
     agent::{
         Cancelled, Cursor, DocumentId, DocumentText, Failed, Failure, InvalidCall, Order,
-        RequestPatch, Resolution, Retry, Route, RunResult, Settled, UsesModel,
-        scene::{load_world, save_world},
+        RequestPatch, Resolution, Retry, Route, RunResult, Settled, UsesModel, scene::WorldScene,
     },
     bus::{EffectLogResource, Handlers, PendingEffect, RigSchedule},
+    commands::{Agent, CommandFailures, Prompt, RigCommands},
     replay::required_row,
     systems::{Fresh, RigSet, spawn_run},
 };
@@ -131,24 +131,27 @@ fn cancelled_in_patch_leaves_no_record() {
 
 fn patch_the_turn(fresh: Query<Entity, Added<Fresh>>, mut commands: Commands) {
     for turn in &fresh {
-        commands.entity(turn).insert(RequestPatch {
-            preamble: Some("You are a pirate.".to_owned()),
-            extra_context: vec![rig_core::completion::Document {
-                id: "extra".to_owned(),
-                text: "a glarb-glarb".to_owned(),
-                additional_props: Default::default(),
-            }],
-            history: Some(
-                [
-                    Message::user("My name is Ada."),
-                    Message::assistant("Hello, Ada."),
-                ]
-                .iter()
-                .filter_map(rig_ecs::agent::MessageParts::from_message)
-                .collect(),
-            ),
-            ..RequestPatch::default()
-        });
+        commands.patch_turn(
+            turn,
+            RequestPatch {
+                preamble: Some("You are a pirate.".to_owned()),
+                extra_context: vec![rig_core::completion::Document {
+                    id: "extra".to_owned(),
+                    text: "a glarb-glarb".to_owned(),
+                    additional_props: Default::default(),
+                }],
+                history: Some(
+                    [
+                        Message::user("My name is Ada."),
+                        Message::assistant("Hello, Ada."),
+                    ]
+                    .iter()
+                    .filter_map(rig_ecs::agent::MessageParts::from_message)
+                    .collect(),
+                ),
+                ..RequestPatch::default()
+            },
+        );
     }
 }
 
@@ -207,9 +210,7 @@ fn demand_done(
 ) {
     for (turn, outs) in &turns {
         if outs.done && !rig_ecs::policy::answer_text(&outs.content).contains("DONE") {
-            commands.entity(turn).insert(Retry {
-                feedback: Some("End with DONE.".to_owned()),
-            });
+            commands.retry_turn(turn, Retry::default().feedback("End with DONE."));
         }
     }
 }
@@ -225,16 +226,23 @@ fn a_retry_with_feedback_asks_again() {
         ],
     );
     let model = register(&mut app, MODEL, model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
-    app.world_mut()
-        .entity_mut(agent)
-        .insert(rig_ecs::agent::MaxTurns(3));
+    let agent = Agent::new(model)
+        .owner("t")
+        .preamble("You are terse.")
+        .max_turns(3)
+        .spawn(app.world_mut())
+        .unwrap();
     add_system(&mut app, demand_done.in_set(RigSet::Judge));
-    let run = spawn_run(app.world_mut(), agent, &[], "say it", false, None);
+    let run = Prompt::new(agent, "say it").spawn(app.world_mut()).unwrap();
     ended(&mut app, run, "answered");
     assert_eq!(
         app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
         Some("second DONE")
+    );
+    assert!(
+        app.world()
+            .get_resource::<CommandFailures>()
+            .is_none_or(|failures| failures.iter().next().is_none())
     );
     let requests = requests.lock().unwrap();
     assert_eq!(requests.len(), 2);
@@ -328,7 +336,7 @@ fn a_retry_written_before_a_save_is_read_after_the_load() {
     first.world_mut().entity_mut(turn).insert(Retry {
         feedback: Some("End with DONE.".to_owned()),
     });
-    let scene = save_world(first.world_mut()).expect("serializes");
+    let scene = WorldScene::save(first.world_mut()).expect("serializes");
     let json = serde_json::to_string(&scene).expect("serde");
     assert!(
         json.contains("End with DONE."),
@@ -339,7 +347,7 @@ fn a_retry_written_before_a_save_is_read_after_the_load() {
     let mut app = app();
     let (model, _) = Capturing::new(MODEL, "again");
     register(&mut app, MODEL, model);
-    let loaded = load_world(
+    let loaded = WorldScene::load(
         &serde_json::from_str(&json).expect("serde"),
         app.world_mut(),
     )
@@ -403,8 +411,8 @@ fn reload(
     let mut app = app();
     let (model, requests) = Capturing::new(MODEL, "again");
     register(&mut app, MODEL, model);
-    let loaded =
-        load_world(&serde_json::from_str(json).expect("serde"), app.world_mut()).expect("loads");
+    let loaded = WorldScene::load(&serde_json::from_str(json).expect("serde"), app.world_mut())
+        .expect("loads");
     let find = |is: fn(&World, Entity) -> bool| {
         loaded
             .graph
@@ -443,7 +451,7 @@ fn a_patch_and_a_resolution_written_before_a_save_are_read_after_the_load() {
         resolution.clone(),
         ChildOf(turn),
     ));
-    let scene = save_world(first.world_mut()).expect("serializes");
+    let scene = WorldScene::save(first.world_mut()).expect("serializes");
     let json = serde_json::to_string(&scene).expect("serde");
     for decision in ["You are a pirate.", "no tool named multiply"] {
         assert!(
@@ -484,7 +492,7 @@ fn scene_preserves_invalid_call_identity_namespaces() {
             ChildOf(turn),
         ));
     }
-    let scene = save_world(first.world_mut()).unwrap();
+    let scene = WorldScene::save(first.world_mut()).unwrap();
     let json = serde_json::to_string(&scene).unwrap();
     drop(first);
     let (restored, _, turn, _) = reload(&json);
@@ -526,7 +534,8 @@ fn scene_preserves_invalid_call_identity_namespaces() {
             label: MODEL.into(),
         },
     );
-    let error = load_world(&legacy, destination.world_mut())
+    let error = legacy
+        .load(destination.world_mut())
         .expect_err("legacy component identities must fail load");
     assert!(error.message.contains("invalid_call"), "{error:?}");
     assert!(error.message.contains("invalid type"), "{error:?}");
@@ -542,7 +551,7 @@ fn a_cancel_written_before_a_save_is_the_ending_after_the_load() {
         .world_mut()
         .entity_mut(run)
         .insert(Cancelled("stopped before the save".to_owned()));
-    let scene = save_world(first.world_mut()).expect("serializes");
+    let scene = WorldScene::save(first.world_mut()).expect("serializes");
     let json = serde_json::to_string(&scene).expect("serde");
     assert!(
         json.contains("stopped before the save"),

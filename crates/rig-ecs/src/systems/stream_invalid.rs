@@ -47,7 +47,7 @@ pub(super) fn completed_call_id(events: &[StreamEvent], offset: usize) -> Option
     clippy::type_complexity,
     reason = "separate native graph accesses"
 )]
-pub fn discover_streamed_invalid_calls(
+pub(super) fn discover_streamed_invalid_calls(
     mut commands: Commands,
     effects: Query<(&ChildOf, &BusStreamed), NotRetrieval>,
     mut turns: Query<(&ChildOf, &mut Outputs), (With<Turn>, Without<Materialised>)>,

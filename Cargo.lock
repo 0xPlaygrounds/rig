@@ -10599,10 +10599,12 @@ dependencies = [
  "bevy_tasks",
  "futures",
  "log",
+ "nix",
  "rig-core",
  "rig-effect-log",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "wasm-bindgen-test",
 ]
 

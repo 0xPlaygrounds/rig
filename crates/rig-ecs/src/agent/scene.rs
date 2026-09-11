@@ -4,7 +4,7 @@
 //! graph exactly and the driver re-issues what has no outcome. Saved
 //! beside the bus module's `Scene`, which carries the effects: the pair is
 //! [`WorldScene`], and an effect `ChildOf` a turn keeps that parent across
-//! the two by index ([`save_world`], [`load_world`]).
+//! the two by index ([`WorldScene::save`], [`WorldScene::load`]).
 
 use bevy_ecs::prelude::*;
 use rig_core::effect::HandlerKey;
@@ -19,7 +19,7 @@ use super::{
     MemoryAppendScheduled, Order, OrderCounter, Output, OutputRetries, OutputToolConfig,
     OutputToolName, Outputs, Owner, Parts, Preamble, Remembered, Remembering, Remembers, Reprompt,
     RequestPatch, Resolution, ResolvingTools, Retrievable, Retrieval, Retrieves, Retrieving, Retry,
-    Role, Route, Run, RunCounter, RunOf, RunResult, RunSeq, Settled, Streamed, Temperature,
+    Role, Route, Run, RunCounter, RunOf, RunResult, RunSeq, RunStreaming, Settled, Temperature,
     ToolAccess, ToolCallSlot, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Usage, UsesModel,
     Utterance,
 };
@@ -217,7 +217,7 @@ fn extension_error(message: impl Into<String>) -> rig_core::error::ErrorReport {
     rig_core::error::ErrorReport::new(rig_core::error::ErrorKind::Request, message)
 }
 
-/// What [`load_world`] spawned, by scene index.
+/// What [`WorldScene::load`] spawned, by scene index.
 #[derive(Debug, Clone, Default)]
 pub struct Loaded {
     /// The graph's entities, by [`RunScene::entities`] index.
@@ -226,183 +226,181 @@ pub struct Loaded {
     pub effects: Vec<Entity>,
 }
 
-/// Save the graph and the effects of `world` as one [`WorldScene`].
-pub fn save_world(world: &mut World) -> Result<WorldScene, rig_core::error::ErrorReport> {
-    let (graph, entities) = RunScene::take(world)?;
-    let mut extensions = BTreeMap::<usize, BTreeMap<String, serde_json::Value>>::new();
-    if let Some(registry) = world.get_resource::<SceneExtensions>() {
-        for (index, entity) in entities.iter().enumerate() {
-            for (name, codec) in &registry.components {
-                if let Some(value) = (codec.save)(world, *entity)
-                    .map_err(|error| extension_error(format!("extension {name}: {error}")))?
-                {
-                    extensions
-                        .entry(index)
-                        .or_default()
-                        .insert(name.clone(), value);
+impl WorldScene {
+    /// Save the graph and the effects of `world` as one [`WorldScene`].
+    pub fn save(world: &mut World) -> Result<Self, rig_core::error::ErrorReport> {
+        let (graph, entities) = RunScene::take(world)?;
+        let mut extensions = BTreeMap::<usize, BTreeMap<String, serde_json::Value>>::new();
+        if let Some(registry) = world.get_resource::<SceneExtensions>() {
+            for (index, entity) in entities.iter().enumerate() {
+                for (name, codec) in &registry.components {
+                    if let Some(value) = (codec.save)(world, *entity)
+                        .map_err(|error| extension_error(format!("extension {name}: {error}")))?
+                    {
+                        extensions
+                            .entry(index)
+                            .or_default()
+                            .insert(name.clone(), value);
+                    }
                 }
             }
         }
+        let effects = crate::bus::Scene::save_with(world, |parent| {
+            entities.iter().position(|entity| *entity == parent)
+        });
+        // The effects in the scene's order, to pair each tool effect's slot.
+        let mut rows: Vec<(Entity, crate::bus::Seq)> = world
+            .query::<(Entity, &crate::bus::Seq, &crate::bus::PendingEffect)>()
+            .iter(world)
+            .map(|(entity, seq, _)| (entity, *seq))
+            .collect();
+        rows.sort_by_key(|(_, seq)| *seq);
+        let slots = rows
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (entity, _))| {
+                world
+                    .get::<ToolCallSlot>(*entity)
+                    .map(|slot| (index, slot.clone()))
+            })
+            .collect();
+        let retrievals = rows
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (entity, _))| {
+                world
+                    .get::<Retrieval>(*entity)
+                    .map(|retrieval| (index, *retrieval))
+            })
+            .collect();
+        let batch_held = rows
+            .iter()
+            .enumerate()
+            .filter_map(|(index, (entity, _))| {
+                world
+                    .get::<crate::systems::BatchHeld>(*entity)
+                    .map(|_| index)
+            })
+            .collect();
+        Ok(WorldScene {
+            batch_held,
+            graph,
+            effects,
+            slots,
+            retrievals,
+            extensions,
+        })
     }
-    let effects = crate::bus::Scene::save_with(world, |parent| {
-        entities.iter().position(|entity| *entity == parent)
-    });
-    // The effects in the scene's order, to pair each tool effect's slot.
-    let mut rows: Vec<(Entity, crate::bus::Seq)> = world
-        .query::<(Entity, &crate::bus::Seq, &crate::bus::PendingEffect)>()
-        .iter(world)
-        .map(|(entity, seq, _)| (entity, *seq))
-        .collect();
-    rows.sort_by_key(|(_, seq)| *seq);
-    let slots = rows
-        .iter()
-        .enumerate()
-        .filter_map(|(index, (entity, _))| {
-            world
-                .get::<ToolCallSlot>(*entity)
-                .map(|slot| (index, slot.clone()))
-        })
-        .collect();
-    let retrievals = rows
-        .iter()
-        .enumerate()
-        .filter_map(|(index, (entity, _))| {
-            world
-                .get::<Retrieval>(*entity)
-                .map(|retrieval| (index, *retrieval))
-        })
-        .collect();
-    let batch_held = rows
-        .iter()
-        .enumerate()
-        .filter_map(|(index, (entity, _))| {
-            world
-                .get::<crate::systems::BatchHeld>(*entity)
-                .map(|_| index)
-        })
-        .collect();
-    Ok(WorldScene {
-        batch_held,
-        graph,
-        effects,
-        slots,
-        retrievals,
-        extensions,
-    })
-}
 
-/// Load `scene` into `world`: the graph first, then the effects, each
-/// effect `ChildOf` the graph entity its `parent_ref` names. Handlers are
-/// the host's to bind first, as for [`RunScene::load`].
-/// Parent ancestry and scene indices are validated before spawning anything.
-/// Registered extensions are validated before spawning and inserted after the
-/// graph and effects have loaded. Install application observers after loading:
-/// insertion observers can otherwise see a partially restored entity. Loading
-/// is not transactional if a graph error, extension insertion/deserialization
-/// or application observer fails.
-pub fn load_world(
-    scene: &WorldScene,
-    world: &mut World,
-) -> Result<Loaded, rig_core::error::ErrorReport> {
-    scene.effects.validate_resume()?;
-    scene.graph.validate_structure()?;
-    for effect in &scene.effects.effects {
-        if effect
-            .parent_ref
-            .is_some_and(|index| index >= scene.graph.entities.len())
+    /// Load this scene into `world`: the graph first, then the effects, each
+    /// effect `ChildOf` the graph entity its `parent_ref` names. Handlers are
+    /// the host's to bind first, as for [`RunScene::load`].
+    /// Parent ancestry and scene indices are validated before spawning anything.
+    /// Registered extensions are validated before spawning and inserted after the
+    /// graph and effects have loaded. Install application observers after loading:
+    /// insertion observers can otherwise see a partially restored entity. Loading
+    /// is not transactional if a graph error, extension insertion/deserialization
+    /// or application observer fails.
+    pub fn load(&self, world: &mut World) -> Result<Loaded, rig_core::error::ErrorReport> {
+        self.effects.validate_resume()?;
+        self.graph.validate_structure()?;
+        for effect in &self.effects.effects {
+            if effect
+                .parent_ref
+                .is_some_and(|index| index >= self.graph.entities.len())
+            {
+                return Err(extension_error(
+                    "effect parent refers to a missing graph entity",
+                ));
+            }
+        }
+        for index in self
+            .slots
+            .iter()
+            .map(|(index, _)| index)
+            .chain(self.retrievals.iter().map(|(index, _)| index))
         {
-            return Err(extension_error(
-                "effect parent refers to a missing graph entity",
-            ));
+            if *index >= self.effects.effects.len() {
+                return Err(extension_error(
+                    "effect metadata refers to a missing effect",
+                ));
+            }
         }
-    }
-    for index in scene
-        .slots
-        .iter()
-        .map(|(index, _)| index)
-        .chain(scene.retrievals.iter().map(|(index, _)| index))
-    {
-        if *index >= scene.effects.effects.len() {
-            return Err(extension_error(
-                "effect metadata refers to a missing effect",
-            ));
-        }
-    }
-    for (index, effect) in scene.effects.effects.iter().enumerate() {
-        if effect
-            .hold_owners
-            .as_ref()
-            .is_some_and(|owners| owners.owners().any(|owner| owner.name == "rig-ecs/batch"))
-            && !scene.batch_held.contains(&index)
-        {
-            return Err(extension_error(
-                "batch owner is missing its runtime hold marker",
-            ));
-        }
-    }
-    for index in &scene.batch_held {
-        let Some(effect) = scene.effects.effects.get(*index) else {
-            return Err(extension_error("batch hold refers to a missing effect"));
-        };
-        if !effect.held
-            || !effect
+        for (index, effect) in self.effects.effects.iter().enumerate() {
+            if effect
                 .hold_owners
                 .as_ref()
                 .is_some_and(|owners| owners.owners().any(|owner| owner.name == "rig-ecs/batch"))
-            || !scene.slots.iter().any(|(slot, _)| slot == index)
-        {
-            return Err(extension_error(
-                "batch hold is missing its barrier, owner or tool slot",
-            ));
+                && !self.batch_held.contains(&index)
+            {
+                return Err(extension_error(
+                    "batch owner is missing its runtime hold marker",
+                ));
+            }
         }
-    }
-    let registry = world
-        .get_resource::<SceneExtensions>()
-        .cloned()
-        .unwrap_or_default();
-    for (index, components) in &scene.extensions {
-        if *index >= scene.graph.entities.len() {
-            return Err(extension_error("extension graph index is out of bounds"));
+        for index in &self.batch_held {
+            let Some(effect) = self.effects.effects.get(*index) else {
+                return Err(extension_error("batch hold refers to a missing effect"));
+            };
+            if !effect.held
+                || !effect.hold_owners.as_ref().is_some_and(|owners| {
+                    owners.owners().any(|owner| owner.name == "rig-ecs/batch")
+                })
+                || !self.slots.iter().any(|(slot, _)| slot == index)
+            {
+                return Err(extension_error(
+                    "batch hold is missing its barrier, owner or tool slot",
+                ));
+            }
         }
-        for (name, value) in components {
-            let codec = registry
-                .components
-                .get(name)
-                .ok_or_else(|| extension_error(format!("unregistered scene extension {name}")))?;
-            (codec.validate)(value.clone())
-                .map_err(|error| extension_error(format!("extension {name}: {error}")))?;
-        }
-    }
-    let graph = scene.graph.load(world)?;
-    let effects = scene
-        .effects
-        .load_with(world, |index| graph.get(index).copied())?;
-    for (index, slot) in &scene.slots {
-        if let Some(effect) = effects.get(*index).copied() {
-            world.entity_mut(effect).insert(slot.clone());
-        }
-    }
-    for index in &scene.batch_held {
-        if let Some(effect) = effects.get(*index).copied() {
-            world.entity_mut(effect).insert(crate::systems::BatchHeld);
-        }
-    }
-    for (index, retrieval) in &scene.retrievals {
-        if let Some(effect) = effects.get(*index).copied() {
-            world.entity_mut(effect).insert(*retrieval);
-        }
-    }
-    for (index, components) in &scene.extensions {
-        if let Some(entity) = graph.get(*index).copied() {
+        let registry = world
+            .get_resource::<SceneExtensions>()
+            .cloned()
+            .unwrap_or_default();
+        for (index, components) in &self.extensions {
+            if *index >= self.graph.entities.len() {
+                return Err(extension_error("extension graph index is out of bounds"));
+            }
             for (name, value) in components {
-                if let Some(codec) = registry.components.get(name) {
-                    (codec.load)(world, entity, value.clone())
-                        .map_err(|error| extension_error(format!("extension {name}: {error}")))?;
+                let codec = registry.components.get(name).ok_or_else(|| {
+                    extension_error(format!("unregistered scene extension {name}"))
+                })?;
+                (codec.validate)(value.clone())
+                    .map_err(|error| extension_error(format!("extension {name}: {error}")))?;
+            }
+        }
+        let graph = self.graph.load(world)?;
+        let effects = self
+            .effects
+            .load_with(world, |index| graph.get(index).copied())?;
+        for (index, slot) in &self.slots {
+            if let Some(effect) = effects.get(*index).copied() {
+                world.entity_mut(effect).insert(slot.clone());
+            }
+        }
+        for index in &self.batch_held {
+            if let Some(effect) = effects.get(*index).copied() {
+                world.entity_mut(effect).insert(crate::systems::BatchHeld);
+            }
+        }
+        for (index, retrieval) in &self.retrievals {
+            if let Some(effect) = effects.get(*index).copied() {
+                world.entity_mut(effect).insert(*retrieval);
+            }
+        }
+        for (index, components) in &self.extensions {
+            if let Some(entity) = graph.get(*index).copied() {
+                for (name, value) in components {
+                    if let Some(codec) = registry.components.get(name) {
+                        (codec.load)(world, entity, value.clone()).map_err(|error| {
+                            extension_error(format!("extension {name}: {error}"))
+                        })?;
+                    }
                 }
             }
         }
+        Ok(Loaded { graph, effects })
     }
-    Ok(Loaded { graph, effects })
 }
 
 impl RunScene {
@@ -414,7 +412,7 @@ impl RunScene {
     }
 
     /// [`RunScene::save`], with the entity each scene index was taken from.
-    pub fn take(world: &mut World) -> Result<(Self, Vec<Entity>), rig_core::error::ErrorReport> {
+    fn take(world: &mut World) -> Result<(Self, Vec<Entity>), rig_core::error::ErrorReport> {
         let mut order: Vec<(u8, Entity)> = Vec::new();
         for (entity, _) in world.query::<(Entity, &Owner)>().iter(world) {
             order.push((0, entity));
@@ -480,7 +478,7 @@ impl RunScene {
                 DocumentId => "document_id", DocumentText => "document_text",
                 DocumentProps => "document_props", Order => "order",
                 Utterance => "utterance", Role => "role", Parts => "parts",
-                Run => "run", RunSeq => "run_seq", Streamed => "streamed", Cursor => "cursor",
+                Run => "run", RunSeq => "run_seq", RunStreaming => "streamed", Cursor => "cursor",
                 Assembling => "assembling", AwaitingModel => "awaiting_model",
                 Settled => "settled", Failed => "failed", RunResult => "run_result",
                 Usage => "usage", OutputRetries => "output_retries",
@@ -640,7 +638,7 @@ impl RunScene {
                 DocumentId => "document_id", DocumentText => "document_text",
                 DocumentProps => "document_props", Order => "order",
                 Utterance => "utterance", Role => "role", Parts => "parts",
-                Run => "run", RunSeq => "run_seq", Streamed => "streamed", Cursor => "cursor",
+                Run => "run", RunSeq => "run_seq", RunStreaming => "streamed", Cursor => "cursor",
                 Assembling => "assembling", AwaitingModel => "awaiting_model",
                 Settled => "settled", Failed => "failed", RunResult => "run_result",
                 Usage => "usage", OutputRetries => "output_retries",

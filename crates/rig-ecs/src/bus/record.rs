@@ -104,10 +104,10 @@ impl Recording {
 /// The current delivery batch. Advances once per schedule pass, including
 /// passes run directly by a host rather than through the Update runner.
 #[derive(Resource, Default)]
-pub struct DeliveryBatch(pub u64);
+pub(super) struct DeliveryBatch(pub u64);
 
 /// Begin the next pass's observation group.
-pub fn begin_delivery_pass(
+pub(super) fn begin_delivery_pass(
     mut batch: ResMut<DeliveryBatch>,
     mut budget: ResMut<super::collect::CollectionBudget>,
 ) {
@@ -119,7 +119,7 @@ pub fn begin_delivery_pass(
 
 /// Record visibility when the outcome is inserted, not later when a query
 /// happens to visit it. This also captures answers from world-served handlers.
-pub fn record_outcome(
+pub(super) fn record_outcome(
     added: On<Add, EffectOutcome>,
     issued: Query<(&Issued, Has<super::collect::CollectedOutcome>), With<InFlight>>,
     recording: Option<Res<Recording>>,
@@ -141,13 +141,13 @@ pub fn record_outcome(
 /// world — and whether a layer discarded the dispatch before any handler
 /// served it. Never serialized: in-flight state.
 #[derive(Component, Clone, Default)]
-pub struct Observed(pub Arc<ObservedState>);
+pub(super) struct Observed(pub Arc<ObservedState>);
 
 /// The dispatch's replacement slot (`Dispatch::replaced_by`): the layer
 /// whose verdict the consumer's answer is from, once one said so. Runtime-
 /// only; removed with the in-flight markers at collection.
 #[derive(Component)]
-pub struct ReplacedBy(pub Arc<std::sync::Mutex<Option<String>>>);
+pub(super) struct ReplacedBy(pub Arc<std::sync::Mutex<Option<String>>>);
 
 impl ReplacedBy {
     /// The layer named, if any.
@@ -161,7 +161,7 @@ impl ReplacedBy {
 
 /// The observer's slots.
 #[derive(Default)]
-pub struct ObservedState {
+pub(super) struct ObservedState {
     state: std::sync::Mutex<Observation>,
 }
 
@@ -203,7 +203,7 @@ impl ObservedState {
 /// (`Observe::discard`, `Observe::patch`), and the events and the outcome
 /// it is told are the innermost handler's — what the record holds,
 /// whatever verdict the outer reply carries to the world.
-pub struct WorldObserver {
+pub(super) struct WorldObserver {
     /// Explicit host operation, already bound to this dispatch's subject.
     pub adapter: Option<rig_core::observe::AdapterContext>,
     /// Tool output shared with the caller, read without consuming it.
@@ -337,7 +337,7 @@ impl rig_core::serve::Observe for WorldObserver {
 }
 
 /// State needed to record cancellation and any output published before it.
-pub type CancellationView = (
+pub(super) type CancellationView = (
     &'static Issued,
     Option<&'static EffectOutcome>,
     Option<&'static super::effect::Publishing>,
@@ -348,7 +348,7 @@ pub type CancellationView = (
 /// An in-flight effect losing `InFlight` without an outcome — a despawn,
 /// its own or an ancestor's — is a cancelled dispatch: the record says so,
 /// as it does when a consumer drops its `Pending` on rig-bus.
-pub fn record_cancelled(
+pub(super) fn record_cancelled(
     removed: On<Remove, InFlight>,
     effects: Query<CancellationView>,
     recording: Option<Res<Recording>>,
@@ -383,7 +383,7 @@ pub fn record_cancelled(
 
 /// An in-flight effect losing `InFlight` without an outcome, seen by the
 /// witness: a cancelled dispatch, whether or not a record is kept.
-pub fn witness_cancelled(
+pub(super) fn witness_cancelled(
     removed: On<Remove, InFlight>,
     effects: Query<(Has<EffectOutcome>, Option<&Observed>), With<Issued>>,
     subjects: super::witness::Subjects,
@@ -413,7 +413,7 @@ pub fn witness_cancelled(
 /// A handler bound (or re-bound) while recording: described to the
 /// recorder, as a driver describes each handler installed after recording
 /// started.
-pub fn record_bound(
+pub(super) fn record_bound(
     inserted: On<Insert, Bound>,
     bound: Query<&Bound>,
     recording: Option<Res<Recording>>,

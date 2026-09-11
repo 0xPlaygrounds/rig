@@ -28,7 +28,7 @@ use bevy_ecs::prelude::*;
 use bus_support::*;
 use rig_core::{
     completion::CompletionRequest,
-    effect::{EffectFamily, EffectKind, HandlerKey, Key, Outcome, family},
+    effect::{EffectFamily, EffectKind, HandlerKey, Outcome, family},
     serve::Serve,
 };
 use rig_ecs::bus::{
@@ -269,12 +269,9 @@ fn three_goldens_replay_through_a_world_by_id() {
     ] {
         let log = golden(name);
         let mut app = serial_app();
-        Handlers::with(app.world_mut(), |handlers| {
-            Replay::default()
-                .register(handlers, &log)
-                .expect("the golden registers")
-        })
-        .expect("a bus");
+        Replay::default()
+            .register_in(app.world_mut(), &log)
+            .expect("the golden registers");
         EffectLogResource::install(app.world_mut(), EffectLogRecorder::keeping_stream_events());
         let entities = Replay::load(app.world_mut(), &log);
         assert_eq!(entities.len(), log.records.len(), "{name}");
@@ -404,14 +401,17 @@ fn ask_through_the_typed_key(
 fn a_typed_key_dispatches_across_ticks() {
     let counters = Arc::new(Counters::default());
     let mut app = app();
-    let key: Key<family::Completion> = Handlers::with(app.world_mut(), |handlers| {
+    let key = Handlers::with(app.world_mut(), |handlers| {
         handlers
-            .register_typed::<family::Completion>("model", MockModel::new(&counters))
+            .register_typed("model", MockModel::new(&counters))
             .expect("the family is proven")
     })
     .expect("a bus");
     let wrong = Handlers::with(app.world_mut(), |handlers| {
-        handlers.register_typed::<family::Tool>("model", MockModel::new(&counters))
+        handlers.register_erased_typed::<family::Tool>(
+            "model",
+            rig_core::serve::ErasedHandler::new(MockModel::new(&counters)),
+        )
     })
     .expect("a bus");
     assert!(wrong.is_err(), "a completion handler is not a tool");
@@ -439,6 +439,39 @@ fn a_typed_key_dispatches_across_ticks() {
             .expect("a completion");
         assert_eq!(response.provider, "mock");
     }
+}
+
+#[test]
+fn inferred_registration_checks_runtime_metadata_before_binding() {
+    struct Inconsistent(MockModel);
+
+    impl Serve for Inconsistent {
+        type Family = family::Tool;
+
+        fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+            self.0.descriptor()
+        }
+
+        async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> rig_core::serve::Reply {
+            self.0.serve(kind, dispatch).await
+        }
+    }
+
+    let counters = Arc::new(Counters::default());
+    let mut app = app();
+    Handlers::with(app.world_mut(), |handlers| {
+        let result = handlers.register_typed("model", Inconsistent(MockModel::new(&counters)));
+        assert!(
+            result.is_err(),
+            "a typed handler must describe its own family"
+        );
+        // Failure must not reserve the key under the inconsistent family.
+        let key = handlers
+            .register_typed("model", MockModel::new(&counters))
+            .expect("valid registration after refusal");
+        assert!(Typed(key).pending(request()).is_ok());
+    })
+    .expect("a bus");
 }
 
 /// A tool handler, to try binding over a completion key.
@@ -988,4 +1021,70 @@ fn malformed_scene_identity_and_ancestry_are_refused_before_world_mutation() {
         );
         assert_eq!(restored.world().resource::<rig_ecs::bus::IdCounter>().0, 5);
     }
+}
+
+#[test]
+fn typed_registration_binds_the_descriptor_it_validated() {
+    struct Changing {
+        model: MockModel,
+        reads: Arc<std::sync::atomic::AtomicUsize>,
+    }
+    impl Serve for Changing {
+        type Family = family::Completion;
+
+        fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+            let mut descriptor = self.model.descriptor();
+            if self.reads.fetch_add(1, Ordering::SeqCst) != 0 {
+                descriptor.family = rig_core::effect::FamilyDescriptor::Custom {
+                    kind: "different".into(),
+                };
+            }
+            descriptor
+        }
+
+        async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> rig_core::serve::Reply {
+            self.model.serve(kind, dispatch).await
+        }
+    }
+    let counters = Arc::new(Counters::default());
+    let reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut app = app();
+    Handlers::with(app.world_mut(), |handlers| {
+        handlers
+            .register_typed(
+                "renamed",
+                Changing {
+                    model: MockModel::new(&counters),
+                    reads: reads.clone(),
+                },
+            )
+            .expect("first descriptor is valid")
+    })
+    .expect("bus");
+    assert_eq!(reads.load(Ordering::SeqCst), 1);
+    Handlers::with(app.world_mut(), |handlers| {
+        let descriptor = handlers
+            .descriptor(&HandlerKey::from("renamed"))
+            .expect("bound");
+        assert_eq!(descriptor.family.family(), EffectFamily::Completion);
+        assert_eq!(descriptor.key, HandlerKey::from("renamed"));
+    })
+    .expect("bus");
+    let pending_reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    Handlers::with(app.world_mut(), |handlers| {
+        handlers
+            .register_typed(
+                "pending",
+                Changing {
+                    model: MockModel::new(&counters),
+                    reads: pending_reads.clone(),
+                },
+            )
+            .expect("pending binding");
+        handlers
+            .register_typed("pending", MockModel::new(&counters))
+            .expect("same-borrow replacement uses the validated pending descriptor");
+    })
+    .expect("bus");
+    assert_eq!(pending_reads.load(Ordering::SeqCst), 1);
 }

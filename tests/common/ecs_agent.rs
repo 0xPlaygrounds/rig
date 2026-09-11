@@ -1,6 +1,6 @@
 //! Native ECS execution for provider cassette comparisons.
 //!
-//! This support owns a World and drives its public plugins. It does not use
+//! This support owns a World and drives its public schedule. It does not use
 //! rig-agent's builder, runner, policy, or recorded effect answers.
 
 #[path = "ecs_agent/tests.rs"]
@@ -20,12 +20,10 @@ use rig_core::{
     tool::Tool,
 };
 use rig_ecs::{
-    agent::{
-        DefaultMaxTurns, Failed, Failure, Grant, MaxTurns, Order, Owner, Preamble, RunResult,
-        Settled, UsesModel,
-    },
-    bus::{Handlers, Recording, install_bus, run_to_quiescence},
-    systems::{install_agent, spawn_run},
+    agent::{DefaultMaxTurns, Failed, Failure, RunResult, Settled},
+    bus::{Handlers, Recording, run_to_quiescence},
+    commands::{Agent, Prompt, install},
+    lifecycle::grant_tool,
 };
 use rig_effect_log::EffectLogRecorder;
 
@@ -110,8 +108,7 @@ impl EcsAgent {
         setup: impl FnOnce(&mut World),
     ) -> Self {
         let mut app = App::new();
-        install_bus(app.world_mut(), ServingPolicy::default());
-        install_agent(app.world_mut());
+        install(app.world_mut(), ServingPolicy::default()).expect("fresh runtime");
         app.add_systems(Update, run_to_quiescence);
         app.finish();
         app.cleanup();
@@ -122,34 +119,35 @@ impl EcsAgent {
         };
         Recording::install(app.world_mut(), recorder.clone());
         setup(app.world_mut());
-        let model = Handlers::with(app.world_mut(), |handlers| {
-            handlers.register(
-                if golden_identity {
-                    "golden/model:default"
-                } else {
-                    "parity/model"
-                },
-                RuntimeHandler {
-                    inner: Arc::new(CompletionAdapter::new(
-                        if golden_identity { "default" } else { "parity" },
-                        model,
-                    )),
-                    runtime: tokio::runtime::Handle::current(),
-                },
-            )
-        })
-        .expect("bus installed")
+        let model = Handlers::register_in(
+            app.world_mut(),
+            if golden_identity {
+                "golden/model:default"
+            } else {
+                "parity/model"
+            },
+            RuntimeHandler {
+                inner: Arc::new(CompletionAdapter::new(
+                    if golden_identity { "default" } else { "parity" },
+                    model,
+                )),
+                runtime: tokio::runtime::Handle::current(),
+            },
+        )
         .expect("fresh model key");
-        let agent = app
-            .world_mut()
-            .spawn((
-                Owner(if golden_identity { "golden" } else { "parity" }.into()),
-                Preamble(Some(preamble.into())),
-                DefaultMaxTurns(if golden_identity { None } else { Some(turns) }),
-                MaxTurns(turns),
-                UsesModel(model),
-            ))
-            .id();
+        let agent = Agent::new(model)
+            .owner(if golden_identity { "golden" } else { "parity" })
+            .preamble(preamble)
+            .max_turns(turns)
+            .spawn(app.world_mut())
+            .expect("registered model");
+        if golden_identity {
+            // Legacy corpus identity distinguishes an absent declared default
+            // from the runtime's effective one-turn budget.
+            app.world_mut()
+                .entity_mut(agent)
+                .insert(DefaultMaxTurns(None));
+        }
         Self {
             app,
             agent,
@@ -163,28 +161,24 @@ impl EcsAgent {
 
     pub fn tool<T: Tool + 'static>(&mut self, tool: T) {
         let order = self.tool_count;
-        let handler = Handlers::with(self.app.world_mut(), |handlers| {
-            handlers.register(
-                if self.golden_identity {
-                    format!("golden/tool:{}#{order}", T::NAME)
-                } else {
-                    format!("parity/tool#{order}")
-                },
-                RuntimeHandler {
-                    inner: Arc::new(ToolAdapter::new(tool)),
-                    runtime: tokio::runtime::Handle::current(),
-                },
-            )
-        })
-        .expect("bus installed")
+        let handler = Handlers::register_in(
+            self.app.world_mut(),
+            if self.golden_identity {
+                format!("golden/tool:{}#{order}", T::NAME)
+            } else {
+                format!("parity/tool#{order}")
+            },
+            RuntimeHandler {
+                inner: Arc::new(ToolAdapter::new(tool)),
+                runtime: tokio::runtime::Handle::current(),
+            },
+        )
         .expect("fresh tool key");
-        self.app
-            .world_mut()
-            .spawn((Grant(handler), Order(order), ChildOf(self.agent)));
+        grant_tool(self.app.world_mut(), self.agent, handler).expect("live agent and tool");
         self.tool_count += 1;
     }
 
-    /// Execute with ordinary plugin defaults, yielding to transport IO between
+    /// Execute with ordinary runtime defaults, yielding to transport IO between
     /// updates. The deadline is a failing test guard, never a successful ending.
     pub async fn prompt(&mut self, prompt: &str, streamed: bool) -> String {
         self.prompt_with_max_turns(prompt, streamed, None).await
@@ -197,14 +191,14 @@ impl EcsAgent {
         streamed: bool,
         max_turns: Option<usize>,
     ) -> String {
-        let run = spawn_run(
-            self.app.world_mut(),
-            self.agent,
-            &[],
-            prompt,
-            streamed,
-            max_turns,
-        );
+        let mut request = Prompt::new(self.agent, prompt);
+        if streamed {
+            request = request.streaming();
+        }
+        if let Some(limit) = max_turns {
+            request = request.max_turns(limit);
+        }
+        let run = request.spawn(self.app.world_mut()).expect("live agent");
         self.wait_for_success(run).await
     }
 

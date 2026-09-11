@@ -317,6 +317,24 @@ pub(super) fn all() -> Vec<Check> {
         }
         checks.push(check(&format!("wasm-{package}"), steps));
     }
+    checks.push(check(
+        "wasm-rig-ecs-lib",
+        vec![
+            cargo(&[
+                "test",
+                "--locked",
+                "--package",
+                "rig-ecs",
+                "--target",
+                "wasm32-unknown-unknown",
+                "--lib",
+            ])
+            .env(
+                "CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER",
+                "wasm-bindgen-test-runner",
+            ),
+        ],
+    ));
     for (package, test) in [
         ("rig-agent", "bus_wasm"),
         ("rig-ecs", "bus_wasm"),

@@ -1,40 +1,28 @@
-//! Best of n: one prompt, three runs, the judge picks — `agent::fork`
-//! clones the run entity and its subtree, so the three runs share the
-//! prompt and nothing after it; a system judges when all three settled.
-//! In rig's root examples this is `agent_parallelization`'s shape with
-//! one agent; here the runs are entities and the judge is a query.
-
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::panic,
-    clippy::type_complexity,
-    reason = "an example: user code, thirty lines, a mock behind it"
-)]
+//! Fork one prompt into three independent runs and select the longest successful
+//! answer. Length is only a deterministic demonstration score, not a quality
+//! metric. The judge watches this cohort; unrelated runs do not delay it.
 
 mod support;
 
-use bevy_app::{AppExit, Startup, Update};
+use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Update};
 use bevy_ecs::prelude::*;
-use rig_core::message::AssistantContent;
+use rig_core::{message::AssistantContent, serve::ServingPolicy};
 use rig_ecs::{
-    agent::{Run, fork},
-    bus::Handlers,
-    prelude::*,
-    systems::spawn_run,
+    bus::{Handlers, run_to_quiescence},
+    commands::{Agent, Prompt, install},
+    inspect::RunView,
+    lifecycle::fork,
 };
 
-const N: usize = 3;
+#[derive(Resource)]
+struct Cohort(Vec<Entity>);
 
-fn main() {
-    support::app()
-        .add_systems(Startup, ask)
-        .add_systems(Update, judge)
-        .run();
-}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut app = App::new();
+    install(app.world_mut(), ServingPolicy::default())?;
+    app.add_plugins(ScheduleRunnerPlugin::default())
+        .add_systems(Update, (run_to_quiescence, judge).chain());
 
-fn ask(mut handlers: Handlers, mut commands: Commands) {
     let model = support::Scripted::new(vec![
         vec![AssistantContent::text("Rust is a systems language.")],
         vec![AssistantContent::text(
@@ -42,32 +30,45 @@ fn ask(mut handlers: Handlers, mut commands: Commands) {
         )],
         vec![AssistantContent::text("Rust: fast, safe.")],
     ]);
-    let (model, _) = support::register(&mut handlers, model, Vec::new());
-    let agent = support::agent(&mut commands, model, "You are concise.", 1);
-    commands.queue(move |world: &mut World| {
-        let run = spawn_run(
-            world,
-            agent,
-            &[],
-            "What is Rust, in one sentence?",
-            false,
-            None,
-        );
-        for _ in 1..N {
-            fork(world, run);
-        }
-    });
+    let world = app.world_mut();
+    let model = Handlers::register_in(world, support::MODEL, model)?;
+    let agent = Agent::new(model)
+        .preamble("You are concise.")
+        .spawn(world)?;
+    let first = Prompt::new(agent, "What is Rust, in one sentence?").spawn(world)?;
+    let second = fork(world, first)?;
+    let third = fork(world, first)?;
+    app.insert_resource(Cohort(vec![first, second, third]));
+
+    if app.run().is_success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::other("no successful candidate").into())
+    }
 }
 
-/// When every run settled, the longest answer wins.
-fn judge(runs: Query<(&RunResult, Has<Settled>), With<Run>>, mut exit: MessageWriter<AppExit>) {
-    if runs.iter().count() < N || runs.iter().any(|(_, settled)| !settled) {
-        return;
+fn judge(cohort: Res<Cohort>, runs: Query<RunView>, mut exit: MessageWriter<AppExit>) {
+    let mut best: Option<&str> = None;
+    for entity in &cohort.0 {
+        let Ok(run) = runs.get(*entity) else {
+            eprintln!("candidate {entity:?} was removed");
+            continue;
+        };
+        if !run.is_finished() {
+            return;
+        }
+        if let Some(answer) = run.answer() {
+            if best.is_none_or(|current| answer.len() > current.len()) {
+                best = Some(answer);
+            }
+        } else if let Some(failure) = run.failure {
+            eprintln!("candidate {entity:?} failed: {:?}", failure.0);
+        }
     }
-    let best = runs
-        .iter()
-        .map(|(result, _)| &result.0)
-        .max_by_key(|answer| answer.len());
-    println!("best of {N}: {}", best.map_or("", String::as_str));
-    exit.write(AppExit::Success);
+    if let Some(answer) = best {
+        println!("best of {}: {answer}", cohort.0.len());
+        exit.write(AppExit::Success);
+    } else {
+        exit.write(AppExit::error());
+    }
 }

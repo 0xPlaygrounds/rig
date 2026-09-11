@@ -167,7 +167,8 @@ pub fn turn_is_empty(content: &[AssistantContent]) -> bool {
 }
 
 /// What the fold reads: the graph, gathered by `Assemble` in order. Borrows
-/// the world's data; owns nothing.
+/// utterances, descriptors, and settings from the world. Owns the ordered
+/// reference lists and materialized documents used by this fold.
 pub struct RequestGraph<'a> {
     /// The preamble, if the program has one.
     pub preamble: Option<&'a str>,

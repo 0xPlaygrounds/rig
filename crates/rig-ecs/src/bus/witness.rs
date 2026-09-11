@@ -127,14 +127,14 @@ impl Witnessing {
 /// pre-flight outcome observer leaves it to the driver's own emission.
 /// Runtime-only; a scene does not save it.
 #[derive(Component, Debug, Clone, Copy, Default)]
-pub struct Refused;
+pub(super) struct Refused;
 
 /// What the world saw for a settled effect, written by `settle` when a
 /// witness is installed: the outcome after any layer verdict, as its
 /// summary and a fingerprint of its whole value, so a later `Judge` insert
 /// is observed as a replacement even within one family. Runtime-only.
 #[derive(Component, Debug, Clone)]
-pub struct SeenOutcome {
+pub(super) struct SeenOutcome {
     /// The outcome, in brief.
     pub summary: OutcomeSummary,
     /// [`fingerprint`] of the whole outcome.
@@ -153,7 +153,7 @@ impl SeenOutcome {
 
 /// A 64-bit FNV-1a hash of a value's serde form, for in-process equality
 /// of two outcomes without keeping either. Not a stable cross-process id.
-pub fn fingerprint<T: serde::Serialize>(value: &T) -> u64 {
+pub(super) fn fingerprint<T: serde::Serialize>(value: &T) -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     if let Ok(bytes) = serde_json::to_vec(value) {
         for byte in bytes {
@@ -168,13 +168,13 @@ pub fn fingerprint<T: serde::Serialize>(value: &T) -> u64 {
 /// removes is not observed as a release. Only held entities enter, and the
 /// release observer removes them, so the set is empty between despawns.
 #[derive(Resource, Debug, Default)]
-pub struct Despawning(std::collections::HashSet<Entity>);
+struct Despawning(std::collections::HashSet<Entity>);
 
 /// The dispatcher's view of the witness: the sink and the subjects.
 /// One system parameter, so the
 /// dispatch system stays within Bevy's parameter limit.
 #[derive(bevy_ecs::system::SystemParam)]
-pub struct DispatchWitness<'w, 's> {
+pub(super) struct DispatchWitness<'w, 's> {
     /// The sink, when installed.
     pub witness: Option<Res<'w, Witnessing>>,
     /// Subjects of effect entities.
@@ -365,7 +365,7 @@ fn observe_hold_transition(
 
 /// What the pre-flight outcome observer reads: the outcome, whether the
 /// intent was issued, whether the driver refused it itself.
-pub type PreflightView = (&'static EffectOutcome, Has<Issued>, Has<Refused>);
+pub(super) type PreflightView = (&'static EffectOutcome, Has<Issued>, Has<Refused>);
 
 /// An outcome landed on an intent never issued: a `Gate` denial (or a
 /// driver refusal, which the driver emitted itself and marked `Refused`).
@@ -464,3 +464,6 @@ fn observe_pending_despawned(
         },
     );
 }
+
+#[cfg(test)]
+mod tests;

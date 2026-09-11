@@ -10,7 +10,7 @@ use rig::{prelude::*, providers::openai, tool::Tool};
 use rig_ecs::{
     agent::{AdditionalParams, Failure, MaxTokens, ToolCallSlot},
     bus::{PendingEffect, Streamed},
-    systems::spawn_run,
+    commands::Prompt,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -119,14 +119,11 @@ async fn run_cell(client: openai::Client, cell: Cell, observed: SharedObservatio
         }
     }
     let streamed = cell.transport == Transport::Streaming;
-    let run = spawn_run(
-        ecs.app.world_mut(),
-        ecs.agent,
-        &[],
-        prompt(cell.shape),
-        streamed,
-        streamed.then_some(1),
-    );
+    let mut request = Prompt::new(ecs.agent, prompt(cell.shape));
+    if streamed {
+        request = request.streaming().max_turns(1);
+    }
+    let run = request.spawn(ecs.app.world_mut())?;
     let failure = ecs
         .wait_for_outcome(run)
         .await

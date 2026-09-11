@@ -21,16 +21,21 @@ use super::{
 #[derive(ScheduleLabel, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RigSchedule;
 
-/// The four sets of one pass of [`RigSchedule`], in this order.
+/// The five sets of one pass of [`RigSchedule`], in this order.
 ///
 /// | set | true before | written during |
 /// |---|---|---|
+/// | `Begin` | the previous delivery group is complete | advance the group; reset collection allowance only when outside the quiescence runner |
 /// | `Gate` | pending effects are as spawned | a user system patches a `PendingEffect`, denies one (`EffectOutcome(Err(..))`), or holds one (`Held`) |
 /// | `Dispatch` | every un-held, un-answered `PendingEffect` is a candidate | the plugin takes them in `Seq` order: `Issued`, `InFlight`, `Serving`/`Streaming`/`Asked`; a record opens |
 /// | `Collect` | handlers may have finished or streamed | the plugin writes `Streamed`, `EffectOutcome`; the record closes; `InFlight` goes |
 /// | `Judge` | outcomes of this pass have landed and are recorded | a user system may rewrite an `EffectOutcome` before anything after `Judge` reads it |
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BusSet {
+    /// Advance the delivery group. Direct schedule calls also reset collection
+    /// allowance; the quiescence runner retains its shared per-tick budget.
+    /// Hosts can apply lifecycle input before this boundary with `before(Begin)`.
+    Begin,
     /// Before dispatch: patch, deny, hold.
     Gate,
     /// The plugin takes pending effects.
@@ -61,7 +66,7 @@ impl Progress {
 /// [`ServingPolicy::command_capacity`]: the per-tick intake bound. Reset by
 /// the runner at the start of every tick.
 #[derive(Resource, Debug, Default, Clone, Copy)]
-pub struct Intake(pub usize);
+pub(super) struct Intake(pub usize);
 
 /// Passes of [`RigSchedule`] one tick may run before the runner stops and
 /// warns: a diagnostic, never a hang.
@@ -142,6 +147,7 @@ impl Bus {
         });
         schedule.configure_sets(
             (
+                BusSet::Begin,
                 BusSet::Gate,
                 BusSet::Dispatch,
                 BusSet::Collect,
@@ -150,7 +156,7 @@ impl Bus {
                 .chain(),
         );
         schedule.add_systems(dispatch.in_set(BusSet::Dispatch));
-        schedule.add_systems(begin_delivery_pass.before(BusSet::Gate));
+        schedule.add_systems(begin_delivery_pass.in_set(BusSet::Begin));
         #[cfg(feature = "replay")]
         schedule.add_systems(
             super::delivery::collect_replayed

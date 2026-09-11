@@ -1,12 +1,13 @@
 #![allow(clippy::unwrap_used)]
 use super::*;
 use rig_core::{effect::EffectId, streaming::UnknownPayload};
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
-};
+use std::sync::Arc;
+#[cfg(not(target_family = "wasm"))]
+use std::sync::atomic::{AtomicUsize, Ordering};
 
+#[cfg(not(target_family = "wasm"))]
 struct Dropped(Arc<AtomicUsize>);
+#[cfg(not(target_family = "wasm"))]
 impl Drop for Dropped {
     fn drop(&mut self) {
         self.0.fetch_add(1, Ordering::SeqCst);
@@ -19,6 +20,7 @@ fn item() -> Result<StreamEvent, rig_core::error::ErrorReport> {
     )))
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn tracked_stream(
     pending: usize,
     polls: Arc<AtomicUsize>,

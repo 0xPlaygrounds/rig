@@ -21,10 +21,7 @@ use bevy_ecs::{prelude::*, reflect::AppTypeRegistry};
 use bevy_reflect::{ReflectDeserialize, ReflectSerialize};
 use rig_core::message::AssistantContent;
 use rig_ecs::{
-    agent::{
-        Grant, Order, Settled,
-        scene::{load_world, save_world},
-    },
+    agent::{Grant, Order, Settled, scene::WorldScene},
     bus::IdCounter,
     reflect::ReflectedScene,
     systems::spawn_run,
@@ -71,7 +68,7 @@ fn json(app: &mut bevy_app::App) -> serde_json::Value {
 fn a_world_and_its_loaded_scene_reflect_alike() {
     let mut first = ran();
     let before = json(&mut first);
-    let saved = save_world(first.world_mut()).expect("serializes");
+    let saved = WorldScene::save(first.world_mut()).expect("serializes");
     let saved: rig_ecs::agent::scene::WorldScene =
         serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
     drop(first);
@@ -81,7 +78,9 @@ fn a_world_and_its_loaded_scene_reflect_alike() {
     let (model, _) = Scripted::new(MODEL, Vec::new());
     register(&mut second, MODEL, model);
     register(&mut second, ADD, Adder::new(ADD));
-    load_world(&saved, second.world_mut()).expect("the handlers are bound");
+    saved
+        .load(second.world_mut())
+        .expect("the handlers are bound");
     let after = json(&mut second);
     assert_eq!(
         before,

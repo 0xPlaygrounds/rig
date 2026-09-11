@@ -33,7 +33,7 @@ use crate::{
         OutputRetries, OutputToolConfig, OutputToolName, Outputs, Parts, Preamble, Remembered,
         Remembering, Remembers, Reprompt, RequestPatch, Resolution, ResolvingTools, Retrievable,
         Retrieval, RetrievalKind, Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunResult,
-        RunSeq, Settled, Streamed, Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec,
+        RunSeq, RunStreaming, Settled, Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec,
         ToolContextSpec, ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
     },
     bus::{
@@ -45,7 +45,7 @@ use crate::{
 
 mod stream_invalid;
 pub mod witness;
-pub use stream_invalid::discover_streamed_invalid_calls;
+use stream_invalid::discover_streamed_invalid_calls;
 
 /// The agent's sets, in order, around the bus module's.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -71,80 +71,84 @@ pub enum RigSet {
 }
 
 /// A run that wants a turn: `Assembling`, not failed.
-pub type Wanting = (With<Assembling>, Without<Failed>);
+type Wanting = (With<Assembling>, Without<Failed>);
 /// A run with no model of its own yet.
-pub type Unselected = (With<Run>, Without<UsesModel>);
+type Unselected = (With<Run>, Without<UsesModel>);
 /// What `Fold` reads of an effect.
-pub type EffectView = (
+type EffectView = (
     &'static ChildOf,
     Option<&'static BusStreamed>,
     Option<&'static EffectOutcome>,
 );
 /// An invalid call nothing resolved.
-pub type Unresolved = (With<InvalidCall>, Without<Resolution>);
+type Unresolved = (With<InvalidCall>, Without<Resolution>);
 /// A turn `Materialise` has not read.
-pub type Unread = (With<Turn>, Without<Materialised>);
+type Unread = (With<Turn>, Without<Materialised>);
 /// What `assemble` reads of a run.
-pub type AssemblingView = (
-    &'static RunOf,
-    &'static RunSeq,
-    &'static Streamed,
-    Option<&'static UsesModel>,
-    &'static OutputToolName,
-);
+#[derive(bevy_ecs::query::QueryData)]
+struct AssemblingRun {
+    agent: &'static RunOf,
+    sequence: &'static RunSeq,
+    streaming: &'static RunStreaming,
+    model: Option<&'static UsesModel>,
+    output_tool: &'static OutputToolName,
+}
 /// The request settings `assemble` resolves, the run's over the agent's.
 #[derive(bevy_ecs::system::SystemParam)]
-pub struct Settings<'w, 's> {
+struct Settings<'w, 's> {
     /// The preamble.
-    pub preambles: Query<'w, 's, &'static Preamble>,
+    preambles: Query<'w, 's, &'static Preamble>,
     /// The temperature.
-    pub temperatures: Query<'w, 's, &'static Temperature>,
+    temperatures: Query<'w, 's, &'static Temperature>,
     /// The token budget.
-    pub max_tokens: Query<'w, 's, &'static MaxTokens>,
+    max_tokens: Query<'w, 's, &'static MaxTokens>,
     /// The provider's extra parameters.
-    pub params: Query<'w, 's, &'static AdditionalParams>,
+    params: Query<'w, 's, &'static AdditionalParams>,
     /// The tool choice.
-    pub choices: Query<'w, 's, &'static ToolChoiceSpec>,
+    choices: Query<'w, 's, &'static ToolChoiceSpec>,
     /// The output mode.
-    pub outputs: Query<'w, 's, &'static Output>,
+    outputs: Query<'w, 's, &'static Output>,
     /// The output tool's reserved name, description and preamble behavior.
-    pub output_tools: Query<'w, 's, &'static OutputToolConfig>,
+    output_tools: Query<'w, 's, &'static OutputToolConfig>,
     /// Execution bindings and permissions, separate from advertisements.
-    pub tool_access: Query<'w, 's, &'static ToolAccess>,
+    tool_access: Query<'w, 's, &'static ToolAccess>,
 }
 /// What `assemble` reads of a fresh turn: its run, its patch, whether it
 /// is retrieving.
-pub type FreshView = (
-    Entity,
-    &'static ChildOf,
-    Option<&'static RequestPatch>,
-    Has<Retrieving>,
-);
+#[derive(bevy_ecs::query::QueryData)]
+struct FreshTurn {
+    entity: Entity,
+    parent: &'static ChildOf,
+    patch: Option<&'static RequestPatch>,
+    retrieving: Has<Retrieving>,
+}
 /// A fresh turn whose retrievals are out.
-pub type RetrievingTurn = (With<Fresh>, With<Retrieving>);
+type RetrievingTurn = (With<Fresh>, With<Retrieving>);
 /// A remembering run whose persisted finalization has not scheduled an append.
-pub type NeedsMemoryAppend = (
+type NeedsMemoryAppend = (
     With<Settled>,
     With<Remembering>,
     Without<MemoryAppendScheduled>,
 );
 /// A completion effect: any effect of a turn that is not a retrieval.
-pub type NotRetrieval = (With<PendingEffect>, Without<Retrieval>);
-/// What `materialise` reads of a run awaiting its model.
-pub type AwaitingView = (
-    &'static RunOf,
-    &'static Cursor,
-    &'static OutputRetries,
-    &'static InvalidRetries,
-    &'static OutputToolName,
-    &'static Usage,
-);
+type NotRetrieval = (With<PendingEffect>, Without<Retrieval>);
+/// The state needed to consume a model answer, with its stable ordering key.
+#[derive(bevy_ecs::query::QueryData)]
+struct AwaitingRun {
+    agent: &'static RunOf,
+    cursor: &'static Cursor,
+    output_retries: &'static OutputRetries,
+    invalid_retries: &'static InvalidRetries,
+    output_tool: &'static OutputToolName,
+    usage: &'static Usage,
+    sequence: &'static RunSeq,
+}
 /// What the cancel observer reads of a run: awaiting its model, resolving
 /// its tools, already ended.
-pub type RunPhase = (Has<AwaitingModel>, Has<ResolvingTools>, Has<Failed>);
+type RunPhase = (Has<AwaitingModel>, Has<ResolvingTools>, Has<Failed>);
 /// What the cancel observer reads of a turn: its run, whether it was
 /// read, whether its batch is out.
-pub type TurnState = (&'static ChildOf, Has<Materialised>, Has<Batch>);
+type TurnState = (&'static ChildOf, Has<Materialised>, Has<Batch>);
 
 /// A fresh turn: spawned by `Advance`, not yet folded by `Assemble`.
 #[derive(Component, Debug, Clone, Copy, Default)]
@@ -161,10 +165,25 @@ pub struct Folded(pub OutputKind);
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Materialised;
 
+/// Installation identity remains available while RigSchedule is executing.
+#[derive(Resource)]
+pub(crate) struct AgentRuntimeInstalled;
+
 /// Install the agent runtime into `world`: the bus must be installed first
 /// (it owns the schedule); this adds the sets, the counters, the observers
 /// and the systems.
 pub fn install_agent(world: &mut World) {
+    assert!(
+        !world.contains_resource::<AgentRuntimeInstalled>(),
+        "the agent runtime is already installed"
+    );
+    assert!(
+        world
+            .get_resource::<Schedules>()
+            .is_some_and(|s| s.contains(RigSchedule)),
+        "install_agent needs the bus schedule installed first"
+    );
+
     assert!(
         world.contains_resource::<crate::bus::Policy>(),
         "install_agent needs the bus installed first: it runs in the bus's RigSchedule"
@@ -199,6 +218,11 @@ pub fn install_agent(world: &mut World) {
             .chain()
             .after(BusSet::Judge),
     );
+    schedule.add_systems(
+        crate::approval::guard
+            .after(BusSet::Gate)
+            .before(BusSet::Dispatch),
+    );
     schedule.add_systems((
         advance.in_set(RigSet::Advance),
         attach_retrieved
@@ -220,10 +244,13 @@ pub fn install_agent(world: &mut World) {
             .in_set(RigSet::Materialise),
         append_memory.in_set(RigSet::Settle),
     ));
+    world.insert_resource(AgentRuntimeInstalled);
 }
 
 /// Spawn a run of `agent` with `prompt` as its first utterance, after
-/// `history`: the host's one entry point. Returns the run entity.
+/// `history`. This advanced graph primitive returns the allocated identity even
+/// if an application observer removes it. Use [`crate::commands::Prompt`] for
+/// named options, validation, and structured construction failures.
 pub fn spawn_run(
     world: &mut World,
     agent: Entity,
@@ -232,10 +259,44 @@ pub fn spawn_run(
     streamed: bool,
     max_turns: Option<usize>,
 ) -> Entity {
+    let run = world.spawn_empty().id();
+    if let Err(error) = spawn_run_into(world, run, agent, history, prompt, streamed, max_turns) {
+        log::warn!("raw run construction stopped: {error}");
+    }
+    run
+}
+
+/// Initialize an already reserved entity with the ordinary run graph.
+pub(crate) fn spawn_run_into(
+    world: &mut World,
+    run: Entity,
+    agent: Entity,
+    history: &[MessageParts],
+    prompt: &str,
+    streamed: bool,
+    max_turns: Option<usize>,
+) -> Result<(), crate::commands::OperationError> {
+    let result = initialize_run_into(world, run, agent, history, prompt, streamed, max_turns);
+    crate::commands::finish_construction(world, run, result)
+}
+
+fn initialize_run_into(
+    world: &mut World,
+    run: Entity,
+    agent: Entity,
+    history: &[MessageParts],
+    prompt: &str,
+    streamed: bool,
+    max_turns: Option<usize>,
+) -> Result<(), crate::commands::OperationError> {
+    use crate::commands::{child, entity, order};
     let seq = {
         let mut counter = world.resource_mut::<RunCounter>();
         let seq = counter.0;
-        counter.0 += 1;
+        counter.0 = counter
+            .0
+            .checked_add(1)
+            .ok_or(crate::commands::OperationError::SequenceExhausted)?;
         seq
     };
     let owner = world
@@ -251,15 +312,18 @@ pub fn spawn_run(
             let conversation = world
                 .get::<Conversation>(agent)
                 .map(|conversation| conversation.0.clone())?;
-            let key = world.get::<Bound>(handler).map(|bound| bound.key.clone())?;
+            let key = world
+                .get::<Bound>(handler)
+                .map(|bound| bound.key.clone())
+                .or_else(|| crate::bus::handlers::registered_key(world, handler))?;
             Some((key, conversation))
         })
         .flatten();
-    let mut run = world.spawn((
+    entity(world, run)?.insert((
         Run,
         RunOf(agent),
         RunSeq(seq),
-        Streamed(streamed),
+        RunStreaming(streamed),
         Cursor::default(),
         OutputRetries::default(),
         crate::agent::InvalidRetries::default(),
@@ -268,23 +332,25 @@ pub fn spawn_run(
         Scope(format!("{owner}/run#{seq}")),
     ));
     if let Some(limit) = max_turns {
-        run.insert(MaxTurns(limit));
+        entity(world, run)?.insert(MaxTurns(limit));
     }
     match &memory {
         Some((_, conversation)) => {
-            run.insert((
+            entity(world, run)?.insert((
                 LoadingMemory,
                 Remembering,
                 Conversation(conversation.clone()),
             ));
         }
         None => {
-            run.insert(Assembling);
+            entity(world, run)?.insert(Assembling);
         }
     }
-    let run = run.id();
+    entity(world, run)?;
     if let Some((key, conversation)) = memory {
-        world.spawn((
+        child(
+            world,
+            run,
             PendingEffect::new(
                 key,
                 EffectKind::Memory {
@@ -293,20 +359,19 @@ pub fn spawn_run(
                     },
                 },
             ),
-            ChildOf(run),
-        ));
+        )?;
     }
-    for parts in history {
-        spawn_utterance(world, run, parts.clone());
-    }
-    spawn_utterance(
-        world,
-        run,
-        MessageParts::User {
+    for parts in history
+        .iter()
+        .cloned()
+        .chain(std::iter::once(MessageParts::User {
             content: vec![UserContent::text(prompt)],
-        },
-    );
-    run
+        }))
+    {
+        let order = order(world)?;
+        child(world, run, (Utterance, parts.role(), Parts(parts), order))?;
+    }
+    Ok(())
 }
 
 /// Spawn one utterance `ChildOf` `run`, next in order.
@@ -325,7 +390,7 @@ pub fn next_order(world: &mut World) -> Order {
     order
 }
 
-pub fn next_order_in(counter: &mut OrderCounter) -> Order {
+pub(crate) fn next_order_in(counter: &mut OrderCounter) -> Order {
     let order = Order(counter.0);
     counter.0 += 1;
     order
@@ -364,7 +429,7 @@ fn links_in_order<'a, L: Component, F: bevy_ecs::query::QueryFilter>(
     clippy::too_many_arguments,
     reason = "one system, one pass: every parameter is a distinct world access it needs"
 )]
-pub fn advance(
+fn advance(
     mut commands: Commands,
     runs: Query<(Entity, &RunOf, &Cursor, &RunSeq), Wanting>,
     fresh: Query<&ChildOf, With<Fresh>>,
@@ -431,7 +496,7 @@ pub fn advance(
     clippy::too_many_arguments,
     reason = "one system, one pass: every parameter is a distinct world access it needs"
 )]
-pub fn attach_retrieved(
+fn attach_retrieved(
     mut commands: Commands,
     turns: Query<(Entity, &ChildOf), RetrievingTurn>,
     runs: Query<&RunOf>,
@@ -567,7 +632,7 @@ pub fn attach_retrieved(
 /// the loaded messages become utterances before the prompt, each
 /// `Remembered`, and the run is `Assembling`; a failed load fails the run
 /// (CONTRACT §11).
-pub fn land_memory(
+fn land_memory(
     mut commands: Commands,
     runs: Query<Entity, (With<LoadingMemory>, Without<Failed>)>,
     children: Query<&Children>,
@@ -660,7 +725,7 @@ pub fn land_memory(
 /// said — every utterance not `Remembered`, in order — when it settles
 /// (CONTRACT §11). The persisted marker distinguishes new work from scene
 /// rehydration; Bevy change-detection ticks are not durable transitions.
-pub fn append_memory(
+fn append_memory(
     mut commands: Commands,
     settled: Query<(Entity, &RunOf, &Conversation), NeedsMemoryAppend>,
     memories: Query<&Remembers>,
@@ -710,7 +775,7 @@ pub fn append_memory(
 
 /// `RigSet::Select`: a run without a model of its own takes its agent's.
 /// A routing system before this one gives the run another.
-pub fn select(
+fn select(
     mut commands: Commands,
     runs: Query<(Entity, &RunOf), Unselected>,
     models: Query<&UsesModel>,
@@ -734,10 +799,10 @@ pub fn select(
     clippy::too_many_arguments,
     reason = "one system, one pass: every parameter is a distinct world access it needs"
 )]
-pub fn assemble(
+fn assemble(
     mut commands: Commands,
-    fresh: Query<FreshView, With<Fresh>>,
-    runs: Query<AssemblingView, (With<Run>, Without<Failed>)>,
+    fresh: Query<FreshTurn, With<Fresh>>,
+    runs: Query<AssemblingRun, (With<Run>, Without<Failed>)>,
     children: Query<&Children>,
     utterances: Query<(&Parts, &Order), With<Utterance>>,
     retrievals: Query<(&Retrieves, &Order, &Retrieval)>,
@@ -761,17 +826,30 @@ pub fn assemble(
     } = settings;
     let mut turns: Vec<(Entity, Entity, RunSeq, Option<&RequestPatch>, bool)> = fresh
         .iter()
-        .filter_map(|(turn, child_of, patch, retrieving)| {
-            let run = child_of.parent();
-            runs.get(run)
-                .ok()
-                .map(|(_, seq, _, _, _)| (turn, run, *seq, patch, retrieving))
+        .filter_map(|turn| {
+            let run = turn.parent.parent();
+            runs.get(run).ok().map(|run_view| {
+                (
+                    turn.entity,
+                    run,
+                    *run_view.sequence,
+                    turn.patch,
+                    turn.retrieving,
+                )
+            })
         })
         .collect();
     turns.sort_by_key(|(_, _, seq, _, _)| *seq);
 
     for (turn, run, _, patch, is_retrieving) in turns {
-        let Ok((RunOf(agent), _, Streamed(stream), model, minted)) = runs.get(run) else {
+        let Ok(AssemblingRunItem {
+            agent: RunOf(agent),
+            streaming: RunStreaming(stream),
+            model,
+            output_tool: minted,
+            ..
+        }) = runs.get(run)
+        else {
             continue;
         };
         let agent = *agent;
@@ -1093,7 +1171,7 @@ pub fn assemble(
 /// `RigSet::Fold`: the turn's outputs from its effect — the text so far
 /// while it streams (`Changed<Outputs>` is the delta signal), the folded
 /// answer when it lands.
-pub fn fold(
+fn fold(
     effects: Query<EffectView, NotRetrieval>,
     mut turns: Query<&mut Outputs, With<Turn>>,
     mut progress: ResMut<Progress>,
@@ -1133,7 +1211,7 @@ pub fn fold(
 /// The default policy for an invalid call nothing resolved: the run's
 /// `InvalidCalls.unhandled`, written at the head of `Materialise`'s chain
 /// (after `land_memory`), so a user system before the set wins.
-pub fn resolve_invalid_defaults(
+fn resolve_invalid_defaults(
     mut commands: Commands,
     calls: Query<(Entity, &ChildOf), Unresolved>,
     turns: Query<&ChildOf, With<Turn>>,
@@ -1158,7 +1236,7 @@ pub fn resolve_invalid_defaults(
 
 /// What `Fold` reads of a tool child of a turn: which call it is, whether
 /// it was issued, its outcome, whether the batch's own hold is on it.
-pub type ToolChildView = (
+type ToolChildView = (
     Entity,
     &'static ToolCallSlot,
     Option<&'static Issued>,
@@ -1215,7 +1293,7 @@ fn batch_children<'a>(
 /// policy releases it. Once a landed outcome is one the run fails on,
 /// nothing more is released (fail-fast: in-flight calls drain, unstarted
 /// ones never start).
-pub fn release_batch(
+fn release_batch(
     mut commands: Commands,
     turns: Query<(Entity, &ChildOf), With<Batch>>,
     runs: Query<&RunOf>,
@@ -1273,7 +1351,7 @@ pub fn release_batch(
     clippy::too_many_arguments,
     reason = "one system, one pass: every parameter is a distinct world access it needs"
 )]
-pub fn land_batch(
+fn land_batch(
     mut commands: Commands,
     turns: Query<(Entity, &ChildOf, &Batch, &Outputs)>,
     runs: Query<(&OutputToolName, &RunSeq), With<ResolvingTools>>,
@@ -1426,11 +1504,11 @@ fn invalid_verdict(pending: &[(Entity, InvalidCall, Resolution)]) -> InvalidVerd
     clippy::too_many_arguments,
     reason = "one system, one pass: every parameter is a distinct world access it needs"
 )]
-pub fn materialise(
+fn materialise(
     mut commands: Commands,
     mut turns: Query<(Entity, &ChildOf, &mut Outputs, &Folded, Option<&Retry>), Unread>,
     effects: Query<(&ChildOf, &EffectOutcome, Option<&BusStreamed>), NotRetrieval>,
-    runs: Query<(AwaitingView, &RunSeq), With<AwaitingModel>>,
+    runs: Query<AwaitingRun, With<AwaitingModel>>,
     children: Query<&Children>,
     adverts: Query<(&Advert, &Order)>,
     bound: Query<&Bound>,
@@ -1446,15 +1524,20 @@ pub fn materialise(
 ) {
     let (choices, access) = access_and_choices;
     let mut turns: Vec<_> = turns.iter_mut().collect();
-    turns.sort_by_key(|(_, turn_of, _, _, _)| runs.get(turn_of.parent()).map(|(_, seq)| *seq).ok());
+    turns.sort_by_key(|(_, turn_of, _, _, _)| {
+        runs.get(turn_of.parent()).map(|run| *run.sequence).ok()
+    });
     for (turn, turn_of, mut outs, Folded(mode), retry) in turns {
         let run = turn_of.parent();
-        let Ok(((RunOf(agent), cursor, retries, invalid_retries, minted, usage), _)) =
-            runs.get(run)
-        else {
+        let Ok(state) = runs.get(run) else {
             continue;
         };
-        let agent = *agent;
+        let agent = state.agent.0;
+        let cursor = state.cursor;
+        let retries = state.output_retries;
+        let invalid_retries = state.invalid_retries;
+        let minted = state.output_tool;
+        let usage = state.usage;
         let tool_choice = setting(run, agent, &choices).and_then(|c| c.0.clone());
 
         // The tools this turn advertised, by name, with their keys.
@@ -1954,7 +2037,7 @@ pub fn materialise(
 /// An effect despawned while its turn was unread — a system in `Patch`
 /// stopping the run, a host cancelling — ends the run `Cancelled`: the
 /// record says so (the bus's cancel observer), and so does the run.
-pub fn effect_cancelled(
+fn effect_cancelled(
     removed: On<bevy_ecs::lifecycle::Remove, PendingEffect>,
     effects: Query<(&ChildOf, Has<ToolCallSlot>), With<PendingEffect>>,
     turns: Query<TurnState, With<Turn>>,
@@ -2002,7 +2085,7 @@ pub fn effect_cancelled(
 /// dispatched, a tool child held or pending, a hook's own dispatch — is
 /// despawned before the bus sees it (no record). An effect in flight is
 /// left to its handler: the record is the handler's.
-pub fn run_cancelled(
+fn run_cancelled(
     added: On<Add, Cancelled>,
     reasons: Query<(&Cancelled, Has<Settled>, Has<Failed>)>,
     children: Query<&Children>,

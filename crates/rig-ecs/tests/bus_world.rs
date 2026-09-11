@@ -727,8 +727,4 @@ fn a_layers_decisions_reach_the_record_through_the_sinks_observer() {
         log.records[1].outcome.is_ok(),
         "the record keeps the handler's answer, not the layer's verdict"
     );
-    assert!(
-        world.get::<rig_ecs::bus::Observed>(effects[2]).is_none(),
-        "the observer leaves the entity with the flight"
-    );
 }

@@ -1,4 +1,4 @@
-//! `agent::fork` (design §3.4): a run forked n − 1 times is n runs on one
+//! `lifecycle::fork` (design §3.4): a run forked n − 1 times is n runs on one
 //! agent, each with the prompt and its own number and scope, each
 //! settling to its own answer.
 //!
@@ -18,8 +18,9 @@ mod run_support;
 use bevy_ecs::prelude::*;
 use rig_core::message::AssistantContent;
 use rig_ecs::{
-    agent::{Run, RunResult, RunSeq, Runs, Settled, Utterance, fork},
+    agent::{Run, RunResult, RunSeq, Runs, Settled, Utterance},
     bus::Scope,
+    lifecycle::fork,
     systems::spawn_run,
 };
 use run_support::*;
@@ -38,8 +39,8 @@ fn a_forked_run_settles_beside_the_original() {
     let model = register(&mut app, "t/model:default", model);
     let agent = spawn_agent(app.world_mut(), "t", model);
     let run = spawn_run(app.world_mut(), agent, &[], "go", false, None);
-    let second = fork(app.world_mut(), run);
-    let third = fork(app.world_mut(), run);
+    let second = fork(app.world_mut(), run).expect("safe fork");
+    let third = fork(app.world_mut(), run).expect("safe fork");
     let world = app.world_mut();
     assert_eq!(world.get::<RunSeq>(second).map(|s| s.0), Some(1));
     assert_eq!(world.get::<RunSeq>(third).map(|s| s.0), Some(2));

@@ -1,7 +1,7 @@
 //! Handlers are entities: a [`Bound`] component (the key and the
 //! descriptor, serde) on an entity, and the erased handler in the world's
-//! [`HandlerTable`], keyed by that entity. The registry is a query over
-//! `Bound`; registration spawns, deregistration despawns.
+//! private registry, keyed by that entity. Registration and deregistration
+//! queue structural changes; applied bindings can be queried through `Bound`.
 
 use std::{
     any::TypeId,
@@ -45,7 +45,7 @@ impl Bound {
 }
 
 /// How a bound key is served.
-pub enum Served {
+pub(super) enum Served {
     /// By a [`Serve`] future on the task pool: the common case, every
     /// adapter and every replayer.
     Task(ErasedHandler),
@@ -60,11 +60,7 @@ pub enum Served {
 /// entity when `Dispatch` takes it. A plain function pointer, so the table
 /// holds no closure and no `E`.
 #[derive(Clone)]
-pub struct WorldServe {
-    /// What the key is bound as: the family a same-borrow re-registration
-    /// is checked against (boxed: a descriptor is large next to the task
-    /// arm's pointer).
-    pub family: Box<FamilyDescriptor>,
+pub(super) struct WorldServe {
     /// What the dispatch lands as: for a [`WorldHandler`], deserialize the
     /// payload and insert `Asked<E>` on the effect entity (or say why the
     /// payload is not an `E`); for an open key, nothing — the effect
@@ -99,13 +95,8 @@ impl<E: WorldEffect> WorldHandler<E> {
     }
 
     /// How it is served.
-    pub fn served() -> Served {
-        Served::World(WorldServe {
-            family: Box::new(FamilyDescriptor::Custom {
-                kind: E::KIND.to_owned(),
-            }),
-            ask: ask::<E>,
-        })
+    pub(super) fn served() -> Served {
+        Served::World(WorldServe { ask: ask::<E> })
     }
 }
 
@@ -149,7 +140,7 @@ fn ask<E: WorldEffect>(
 
 /// A system's answer becomes the outcome: the observer installed once per
 /// `E` by [`Handlers::register_world`].
-pub fn answered<E: WorldEffect>(
+pub(super) fn answered<E: WorldEffect>(
     added: On<Add, Answer<E>>,
     answers: Query<&Answer<E>, With<Asked<E>>>,
     mut commands: Commands,
@@ -181,7 +172,7 @@ pub fn answered<E: WorldEffect>(
 /// beats a fork. Systems that dispatch or register therefore run on the
 /// main thread; nothing else needs the table.
 #[derive(Default)]
-pub struct HandlerTable {
+pub(super) struct HandlerTable {
     served: HashMap<Entity, Served>,
     /// The `E`s whose answer observer is installed.
     world_kinds: HashSet<TypeId>,
@@ -192,22 +183,14 @@ pub struct HandlerTable {
     /// Removed logically, but still visible to queries until deferred
     /// despawns run. These entities must never be rebound or removed twice.
     pending_despawns: HashSet<Entity>,
+    /// Initial bindings awaiting command application, consumed at most once.
+    pending_bindings: HashMap<Entity, Bound>,
 }
 
 impl HandlerTable {
     /// How the handler entity `entity` is served, if it is bound.
     pub fn served(&self, entity: Entity) -> Option<&Served> {
         self.served.get(&entity)
-    }
-
-    /// Bound handler entities.
-    pub fn len(&self) -> usize {
-        self.served.len()
-    }
-
-    /// Whether nothing is bound.
-    pub fn is_empty(&self) -> bool {
-        self.served.is_empty()
     }
 
     /// Forget `entity`'s handler: the `Bound` removal observer's call.
@@ -219,7 +202,7 @@ impl HandlerTable {
 
 /// A `Bound` component removed — a deregistration, a despawn — takes the
 /// handler out of the table with it.
-pub fn unbound(
+pub(super) fn unbound(
     removed: On<Remove, Bound>,
     mut table: NonSendMut<HandlerTable>,
     mut commands: Commands,
@@ -238,10 +221,12 @@ pub fn unbound(
 }
 
 /// Register and deregister handlers from a system: the registry API over
-/// handler entities. Main-thread only ([`HandlerTable`] is `NonSend`).
+/// handler entities. Main-thread only: the private erased-handler registry is
+/// non-Send to support browser provider clients.
 #[derive(SystemParam)]
 pub struct Handlers<'w, 's> {
     commands: Commands<'w, 's>,
+    allocator: &'w bevy_ecs::entity::EntityAllocator,
     table: NonSendMut<'w, HandlerTable>,
     bound: Query<'w, 's, (Entity, &'static Bound)>,
 }
@@ -283,10 +268,25 @@ impl Handlers<'_, '_> {
         Ok(out)
     }
 
+    /// Register from a host holding the World, applying the binding immediately.
+    /// Expected installation or registration failures use a single result.
+    pub fn register_in(
+        world: &mut World,
+        key: impl Into<HandlerKey>,
+        handler: impl Serve + 'static,
+    ) -> Result<Entity, ErrorReport> {
+        Self::with(world, |handlers| handlers.register(key, handler))?
+    }
+
     /// Register `handler` under `key`: a new handler entity, or — when the
     /// key is bound to a handler of the same family — the bound entity
     /// re-served. A key never changes family while bound; a handler of
     /// another family is refused, as the bus refuses it.
+    ///
+    /// The returned entity can be used by [`crate::commands::RigCommands`] in
+    /// this system, including when its command buffer precedes `Handlers`.
+    /// Binding components and the inspection methods [`Self::descriptor`],
+    /// [`Self::keys`], and [`Self::descriptors`] reflect applied commands only.
     pub fn register(
         &mut self,
         key: impl Into<HandlerKey>,
@@ -311,15 +311,28 @@ impl Handlers<'_, '_> {
         self.bind(key, descriptor, Served::Task(handler))
     }
 
-    /// [`register`](Self::register), returning a [`Key`] carrying the
-    /// family the handler proved by its descriptor.
-    pub fn register_typed<F: Family>(
+    /// Register a concrete handler, inferring the key's family from its type.
+    /// The runtime descriptor must agree with that effect family. Custom kind
+    /// labels and payload compatibility remain the custom handler's contract.
+    pub fn register_typed<H: Serve + 'static>(
         &mut self,
         key: impl Into<HandlerKey>,
-        handler: impl Serve + 'static,
+        handler: H,
+    ) -> Result<Key<H::Family>, ErrorReport>
+    where
+        H::Family: Family,
+    {
+        self.register_erased_typed(key, ErasedHandler::new(handler))
+    }
+
+    /// Register an erased handler as the requested family after checking its
+    /// descriptor. Use [`Self::register_typed`] for concrete typed handlers.
+    pub fn register_erased_typed<F: Family>(
+        &mut self,
+        key: impl Into<HandlerKey>,
+        handler: ErasedHandler,
     ) -> Result<Key<F>, ErrorReport> {
         let key = key.into();
-        let handler = ErasedHandler::new(handler);
         let descriptor = handler.descriptor();
         if descriptor.family.family() != F::FAMILY {
             return Err(ErrorReport::new(
@@ -331,7 +344,11 @@ impl Handlers<'_, '_> {
                 ),
             ));
         }
-        self.register_erased(key.clone(), handler)?;
+        let descriptor = HandlerDescriptor {
+            key: key.clone(),
+            ..descriptor
+        };
+        self.bind(key.clone(), descriptor, Served::Task(handler))?;
         Ok(Key::new_unchecked(key))
     }
 
@@ -366,17 +383,10 @@ impl Handlers<'_, '_> {
         let key = key.into();
         let descriptor = HandlerDescriptor {
             key: key.clone(),
-            family: family.clone(),
+            family,
             layers: Vec::new(),
         };
-        self.bind(
-            key,
-            descriptor,
-            Served::World(WorldServe {
-                family: Box::new(family),
-                ask: open,
-            }),
-        )
+        self.bind(key, descriptor, Served::World(WorldServe { ask: open }))
     }
 
     fn bind(
@@ -409,30 +419,25 @@ impl Handlers<'_, '_> {
         // can see: the table knows its entity and its family.
         let known = known.or_else(|| {
             self.table.keys.get(&key).copied().and_then(|entity| {
-                self.table.served.get(&entity).map(|served| {
-                    let family = match served {
-                        Served::Task(handler) => handler.descriptor().family,
-                        Served::World(world) => (*world.family).clone(),
-                    };
-                    (
-                        entity,
-                        Bound {
-                            key: key.clone(),
-                            descriptor: HandlerDescriptor {
-                                key: key.clone(),
-                                family,
-                                layers: Vec::new(),
-                            },
-                        },
-                    )
-                })
+                self.table
+                    .pending_bindings
+                    .get(&entity)
+                    .cloned()
+                    .map(|bound| (entity, bound))
             })
         });
         let entity = match known {
             Some((entity, bound)) if bound.family() == family => {
-                self.commands.entity(entity).insert(Bound {
+                let binding = Bound {
                     key: key.clone(),
                     descriptor,
+                };
+                self.commands.queue(move |world: &mut World| {
+                    // Explicit removal in another buffer cancels the pending
+                    // replacement rather than resurrecting its old entity.
+                    if let Ok(mut target) = world.get_entity_mut(entity) {
+                        target.insert(binding);
+                    }
                 });
                 entity
             }
@@ -445,13 +450,19 @@ impl Handlers<'_, '_> {
                     ),
                 ));
             }
-            None => self
-                .commands
-                .spawn(Bound {
-                    key: key.clone(),
-                    descriptor,
-                })
-                .id(),
+            None => {
+                let entity = self.allocator.alloc();
+                self.table.pending_bindings.insert(
+                    entity,
+                    Bound {
+                        key: key.clone(),
+                        descriptor,
+                    },
+                );
+                self.commands
+                    .queue(move |world: &mut World| materialize_registration(world, entity));
+                entity
+            }
         };
         self.table.keys.insert(key, entity);
         self.table.served.insert(entity, served);
@@ -480,7 +491,8 @@ impl Handlers<'_, '_> {
         }
     }
 
-    /// The descriptor bound to `key`.
+    /// The applied descriptor bound to `key`. Pending registration, replacement,
+    /// and deregistration become visible after deferred commands apply.
     pub fn descriptor(&self, key: &HandlerKey) -> Option<HandlerDescriptor> {
         self.bound
             .iter()
@@ -488,7 +500,8 @@ impl Handlers<'_, '_> {
             .map(|(_, bound)| bound.descriptor.clone())
     }
 
-    /// Every bound key.
+    /// Every applied bound key, sorted. See [`Self::descriptor`] for visibility
+    /// before deferred commands apply.
     pub fn keys(&self) -> Vec<HandlerKey> {
         let mut keys: Vec<HandlerKey> = self
             .bound
@@ -499,7 +512,8 @@ impl Handlers<'_, '_> {
         keys
     }
 
-    /// Every bound descriptor, by key.
+    /// Every applied bound descriptor, sorted by key. See [`Self::descriptor`]
+    /// for visibility before deferred commands apply.
     pub fn descriptors(&self) -> Vec<HandlerDescriptor> {
         let mut described: Vec<HandlerDescriptor> = self
             .bound
@@ -509,4 +523,49 @@ impl Handlers<'_, '_> {
         described.sort_by(|a, b| a.key.cmp(&b.key));
         described
     }
+}
+
+/// The effective family, including registration commands not yet applied.
+/// This permits graph construction in another command buffer in the same system.
+pub(crate) fn registered_family(
+    world: &World,
+    entity: Entity,
+) -> Option<rig_core::effect::EffectFamily> {
+    let table = world.get_non_send::<HandlerTable>()?;
+    table.served.get(&entity)?;
+    world
+        .get::<Bound>(entity)
+        .or_else(|| table.pending_bindings.get(&entity))
+        .map(Bound::family)
+}
+
+/// The key of a live registration, including its deferred binding.
+pub(crate) fn registered_key(world: &World, entity: Entity) -> Option<HandlerKey> {
+    let table = world.get_non_send::<HandlerTable>()?;
+    table.served.get(&entity)?;
+    world
+        .get::<Bound>(entity)
+        .or_else(|| table.pending_bindings.get(&entity))
+        .map(|bound| bound.key.clone())
+}
+
+/// Apply the initial binding once, before another command buffer constructs a
+/// relationship to this handler. Later registration commands see it applied;
+/// a handler removed in the meantime is never recreated.
+pub(crate) fn materialize_registration(
+    world: &mut World,
+    entity: Entity,
+) -> Result<(), ErrorReport> {
+    let binding = world
+        .get_non_send_mut::<HandlerTable>()
+        .and_then(|mut table| table.pending_bindings.remove(&entity));
+    if let Some(binding) = binding {
+        world.spawn_at(entity, binding).map_err(|error| {
+            ErrorReport::new(
+                ErrorKind::Internal,
+                format!("cannot spawn handler {entity:?}: {error}"),
+            )
+        })?;
+    }
+    Ok(())
 }

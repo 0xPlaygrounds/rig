@@ -14,10 +14,7 @@ use std::time::Instant;
 
 use bevy_ecs::prelude::*;
 use rig_ecs::{
-    agent::{
-        Assembling, Cursor, Failed, MessageParts, Run, RunOf, Settled,
-        scene::{WorldScene, load_world, save_world},
-    },
+    agent::{Assembling, Cursor, Failed, MessageParts, Run, RunOf, Settled, scene::WorldScene},
     bus::{EffectLogResource, EffectOutcome, IdCounter, RigSchedule},
     replay::{stamp_header, stamp_run},
     systems::{Fresh, spawn_run},
@@ -129,7 +126,7 @@ pub fn world_resume_reproduces(
         program.fixture
     );
     let next_id = app.world().resource::<IdCounter>().0;
-    let scene = save_world(app.world_mut()).expect("every component serializes");
+    let scene = WorldScene::save(app.world_mut()).expect("every component serializes");
     let head = app.world().resource::<EffectLogResource>().log();
     drop(app);
 
@@ -179,7 +176,7 @@ pub fn world_resume_reproduces(
     } = open(program, &continuation, check);
     let world = app.world_mut();
     world.resource_mut::<IdCounter>().0 = next_id;
-    let loaded = load_world(&scene, world).expect("the scene's handlers are bound");
+    let loaded = scene.load(world).expect("the scene's handlers are bound");
     let run = loaded
         .graph
         .iter()

@@ -1,5 +1,5 @@
-//! The bus module executed on `wasm32-unknown-unknown`, once: every other
-//! wasm claim about the crate is `cargo check`. A bare `World` and the
+//! Public bus contracts executed on `wasm32-unknown-unknown`. Private worker
+//! ownership is also executed with `--lib`; run contracts use `run_wasm`. A bare World and the
 //! plugin's schedule, driven by the test — `bevy_app`'s runner on wasm is
 //! frame-scheduled by the browser, so the app runner is not what a test
 //! ticks — with a scripted handler on the single-threaded pool; a unary
@@ -277,96 +277,6 @@ fn the_components_are_send_sync_on_wasm_too() {
     assert_send_sync::<EffectOutcome>();
     assert_send_sync::<Streamed>();
     assert_send_sync::<InFlight>();
-}
-
-#[wasm_bindgen_test]
-async fn local_streams_drop_on_marker_removal_scheduled_despawn_replacement_and_shutdown() {
-    use rig_ecs::bus::effect::{Executions, Streaming};
-    struct Local(Rc<Cell<usize>>);
-    impl Drop for Local {
-        fn drop(&mut self) {
-            self.0.set(self.0.get() + 1);
-        }
-    }
-    let drops = Rc::new(Cell::new(0));
-    let stream = || {
-        let local = Local(drops.clone());
-        Box::pin(futures::stream::poll_fn(move |_| {
-            let _local = &local;
-            std::task::Poll::Pending
-        })) as rig_core::streaming::StreamEvents
-    };
-    let mut world = World::new();
-    Bus::default().install(&mut world);
-    async fn dropped(drops: &Cell<usize>, expected: usize) {
-        for _ in 0..1000 {
-            if drops.get() == expected {
-                return;
-            }
-            // Yield to the browser event loop, not only this Rust test task.
-            rig_core::wasm_compat::sleep(std::time::Duration::from_millis(1)).await;
-        }
-        assert_eq!(
-            drops.get(),
-            expected,
-            "cancelled local worker was not dropped"
-        );
-    }
-    let (streaming, task) = Streaming::spawn(stream(), 1);
-    let entity = world
-        .spawn((
-            InFlight {
-                key: "local".into(),
-            },
-            streaming,
-        ))
-        .id();
-    world
-        .non_send_mut::<Executions>()
-        .streams
-        .insert(entity, task);
-    let (streaming, task) = Streaming::spawn(stream(), 1);
-    world.entity_mut(entity).insert(streaming);
-    world
-        .non_send_mut::<Executions>()
-        .streams
-        .insert(entity, task);
-    dropped(&drops, 1).await;
-    world.entity_mut(entity).remove::<InFlight>();
-    dropped(&drops, 2).await;
-    let (streaming, task) = Streaming::spawn(stream(), 1);
-    world.entity_mut(entity).insert((
-        InFlight {
-            key: "local".into(),
-        },
-        streaming,
-    ));
-    world
-        .non_send_mut::<Executions>()
-        .streams
-        .insert(entity, task);
-    let mut schedule = Schedule::default();
-    schedule.add_systems(move |mut commands: Commands| {
-        commands.entity(entity).despawn();
-    });
-    schedule.run(&mut world);
-    dropped(&drops, 3).await;
-    assert!(world.non_send::<Executions>().streams.is_empty());
-    let (streaming, task) = Streaming::spawn(stream(), 1);
-    let entity = world
-        .spawn((
-            InFlight {
-                key: "local".into(),
-            },
-            streaming,
-        ))
-        .id();
-    world
-        .non_send_mut::<Executions>()
-        .streams
-        .insert(entity, task);
-    drop(world);
-    dropped(&drops, 4).await;
 }
 
 #[wasm_bindgen_test]

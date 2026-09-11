@@ -30,6 +30,7 @@ use rig_ecs::{
 pub const GUARD: Duration = Duration::from_secs(10);
 
 /// A model that keeps every request it is asked and answers a fixed text.
+#[derive(Clone)]
 pub struct Capturing {
     pub label: String,
     pub requests: Arc<Mutex<Vec<CompletionRequest>>>,

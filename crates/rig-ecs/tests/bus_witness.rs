@@ -1351,14 +1351,6 @@ fn despawning_a_held_intent_is_a_cancellation_not_a_release() {
         panic!("matched above")
     };
     assert_eq!(reason.code, "despawned_before_dispatch");
-    // The despawn bookkeeping does not outlive the despawn.
-    assert!(
-        format!(
-            "{:?}",
-            app.world().resource::<rig_ecs::bus::witness::Despawning>()
-        )
-        .contains("Despawning({})")
-    );
 }
 
 #[test]

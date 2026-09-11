@@ -35,7 +35,7 @@ use rig_ecs::{
         Cancelled, Conversation, Failed, Failure, InvalidCall, LoadingMemory,
         MemoryAppendScheduled, MessageParts, Remembered, Remembering, Reprompt, RequestPatch,
         Resolution, Retrievable, Retrieval, RetrievalKind, Retrieves, Retrieving, Retry, Route,
-        Streamed as RunStreamed, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Utterance,
+        RunStreaming as RunStreamed, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Utterance,
     },
     bus::{EffectOutcome, Held, IdCounter, PendingEffect, Reserved, Streamed},
     systems::spawn_run,

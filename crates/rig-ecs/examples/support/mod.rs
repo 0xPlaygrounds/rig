@@ -1,8 +1,8 @@
 //! The mocks the examples run against, so no provider feature and no key:
 //! a scripted model (each request pops the next answer), a streaming
 //! scripted model (each request streams the next answer, a word at a
-//! time), a few tools, and an app with both plugins that exits when a run
-//! ends. A real `CompletionAdapter` and real tools register under the same
+//! time), a few tools, and result-printing observers. Setup stays visible
+//! in each example. A real `CompletionAdapter` and real tools register under the same
 //! keys with the same `Serve` trait.
 
 #![allow(
@@ -13,25 +13,18 @@
 use rig_core::serve::Dispatch;
 use std::sync::Mutex;
 
-use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Update};
+use bevy_app::AppExit;
 use bevy_ecs::prelude::*;
 use rig_core::{
     completion::{CompletionResponse, ModelRef, ProviderCapabilities, Usage},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
-    serve::{Reply, Serve, ServingPolicy},
+    serve::{Reply, Serve},
     streaming::StreamFinal,
     tool::{ToolOutput, ToolResult},
 };
-use rig_ecs::{
-    agent::{
-        AdditionalParams, DefaultMaxTurns, Failed, InvalidCalls, MaxTokens, MaxTurns, Output,
-        Owner, Preamble, RunResult, Settled, Temperature, ToolChoiceSpec, UsesModel,
-    },
-    bus::{Handlers, install_bus, run_to_quiescence},
-    systems::install_agent,
-};
+use rig_ecs::agent::{Failed, RunResult, Settled};
 
 pub const MODEL: &str = "demo/model:default";
 
@@ -50,7 +43,7 @@ impl Scripted {
     fn next(&self) -> Vec<AssistantContent> {
         self.turns
             .lock()
-            .expect("turns")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .pop_front()
             .unwrap_or_else(|| vec![AssistantContent::text("(the script is over)")])
     }
@@ -190,7 +183,15 @@ pub fn add() -> Tool {
         description: "Add x and y",
         parameters: xy(),
         run: |args| {
-            serde_json::json!(args["x"].as_i64().unwrap_or(0) + args["y"].as_i64().unwrap_or(0))
+            serde_json::json!(
+                args.get("x")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0)
+                    + args
+                        .get("y")
+                        .and_then(serde_json::Value::as_i64)
+                        .unwrap_or(0)
+            )
         },
     }
 }
@@ -202,7 +203,15 @@ pub fn subtract() -> Tool {
         description: "Subtract y from x",
         parameters: xy(),
         run: |args| {
-            serde_json::json!(args["x"].as_i64().unwrap_or(0) - args["y"].as_i64().unwrap_or(0))
+            serde_json::json!(
+                args.get("x")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0)
+                    - args
+                        .get("y")
+                        .and_then(serde_json::Value::as_i64)
+                        .unwrap_or(0)
+            )
         },
     }
 }
@@ -213,57 +222,15 @@ pub fn send_email() -> Tool {
         name: "send_email",
         description: "Send an email to a recipient.",
         parameters: serde_json::json!({"type": "object", "properties": {"to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}, "required": ["to", "subject", "body"]}),
-        run: |args| serde_json::json!(format!("sent to {}", args["to"].as_str().unwrap_or("?"))),
+        run: |args| {
+            serde_json::json!(format!(
+                "sent to {}",
+                args.get("to")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("?")
+            ))
+        },
     }
-}
-
-/// An app with the bus and the agent installed and the runner in
-/// `Update`; an example adds its own exit.
-pub fn app() -> App {
-    let mut app = App::new();
-    app.add_plugins(ScheduleRunnerPlugin::default());
-    install_bus(app.world_mut(), ServingPolicy::default());
-    install_agent(app.world_mut());
-    app.add_systems(Update, run_to_quiescence);
-    app.add_observer(exit_when_failed);
-    app
-}
-
-/// Register the model and the tools from a startup system: the model's
-/// handler entity and the tools', in order.
-pub fn register(
-    handlers: &mut Handlers,
-    model: Scripted,
-    tools: Vec<Tool>,
-) -> (Entity, Vec<Entity>) {
-    let model = handlers.register(MODEL, model).expect("a fresh key");
-    let tools = tools
-        .into_iter()
-        .map(|tool| {
-            let key = tool.key.clone();
-            handlers.register(key.as_str(), tool).expect("a fresh key")
-        })
-        .collect();
-    (model, tools)
-}
-
-/// An agent over `model`: the preamble, the defaults, `max_turns` turns.
-pub fn agent(commands: &mut Commands, model: Entity, preamble: &str, max_turns: usize) -> Entity {
-    commands
-        .spawn((
-            Owner("demo".to_owned()),
-            Preamble(Some(preamble.to_owned())),
-            Temperature(None),
-            MaxTokens(Some(1024)),
-            AdditionalParams(None),
-            ToolChoiceSpec(None),
-            Output::default(),
-            DefaultMaxTurns(Some(max_turns)),
-            MaxTurns(max_turns),
-            InvalidCalls::default(),
-            UsesModel(model),
-        ))
-        .id()
 }
 
 /// An observer: the first run to settle prints its answer and the app exits.

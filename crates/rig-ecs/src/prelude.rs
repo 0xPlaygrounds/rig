@@ -8,5 +8,8 @@ pub use crate::{
         Retry, RunResult, Settled, Usage, UsesModel,
     },
     bus::{BusSet, EffectOutcome, Held, Streamed},
+    commands::{Agent, CommandFailures, OperationError, Prompt, RigCommands},
+    inspect::{RunStatus, RunView, inspect},
+    stream::StreamText,
     systems::RigSet,
 };

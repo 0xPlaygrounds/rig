@@ -6,7 +6,50 @@ see the [ECS consumer harness in rigcoder](https://github.com/gold-silver-copper
 producer runs through this runtime; the existing cross-runtime corpus remains
 separate evidence with its own applicability limits.
 
-rig inside a Bevy `World`. Two layers: `rig_ecs::bus`, the effect bus in the native shape — effects are entities, handlers are entities, the driver is a system, an outcome is a component, causality is `ChildOf`, a scene is a checkpoint — and the agent runtime over it (`agent`, `policy`, `systems`, `replay`): the run as a graph, the request as its fold. Nothing awaits, nothing blocks, nothing is probed; rig-agent is not in the graph; nothing is copied from rig-agent.
+rig inside a Bevy `World`. Two layers: `rig_ecs::bus`, the effect bus in the native shape — effects are entities, handlers are entities, the driver is a system, an outcome is a component, causality is `ChildOf`, a scene is a checkpoint — and the agent runtime over it (`agent`, `policy`, `systems`, `replay`): the run as a graph, the request as its fold. Bus-owned tasks drive handler futures while host systems inspect components. The host retains scheduling control; rig-agent is not in the graph.
+
+## Start with an agent and a prompt
+
+Use `commands::install` to install the runtime in your world and add
+`bus::run_to_quiescence` to the host's update schedule. Register a handler with
+`Handlers::register_in(world, key, handler)`, then submit work with owned values:
+
+```rust
+let agent = Agent::new(model)
+    .preamble("Be concise.")
+    .tools([lookup])
+    .max_turns(3)
+    .spawn(world)?;
+let run = Prompt::new(agent, "Find the answer").spawn(world)?;
+```
+
+`model` and `lookup` are registered completion and tool handler entities. The
+[complete offline example](examples/agent_with_tools.rs) shows imports,
+registration, installation, ticking and error handling. The
+[provider construction example](examples/provider_construction.rs) configures a
+real Gemini provider with an explicit in-memory HTTP transport; it exercises
+provider conversion without credentials or network access. Agent and Prompt create
+the native graph; they retain no separate runtime configuration store.
+
+Inside a system, import `RigCommands` and use `commands.spawn_agent(...)` and
+`commands.prompt(...)`. Ordinary `Commands`, `Handlers` and `Query<RunView>`
+parameters need no handwritten lifetimes. Returned IDs are reserved immediately;
+components appear when deferred commands apply. Drain `CommandFailures` for
+expected failures. Its entity can identify an existing lifecycle target, so a
+failure is not permission to delete it.
+
+Use `inspect(world, run)` or `Query<RunView>` to read run state, `StreamText` for
+incremental display, and `lifecycle::{cancel, fork, grant_tool, revoke_tool,
+retry_turn, patch_turn}` for checked operations. Host systems still control
+scheduling. Direct components and graph helpers remain available for advanced
+policies, scene reconstruction and runtime tests.
+
+Advanced producer/replay hosts can use `bus::execution_status(world, effect)`
+to inspect whether initial or stream workers are still running, without access
+to task handles. Finished workers can still have uncollected output; this is not
+a completion or quiescence check. Order lifecycle input before `BusSet::Begin`
+when it must precede delivery-group advancement. Collection allowance remains
+shared across passes inside `run_to_quiescence`.
 
 ## The run as a graph
 
@@ -54,7 +97,7 @@ The request the model sees is derived, never authored: a run entity, utterances 
 | Agent | `Owner`, `Preamble`, `Temperature`, `MaxTokens`, `AdditionalParams`, `ToolChoiceSpec`, `Output { mode, schema }`, `OutputToolConfig`, `MaxTurns`, `DefaultMaxTurns`, `InvalidCalls`; `UsesModel` → the model's handler entity; `Grant` link entities → tool handler entities; `Context` link entities → documents |
 | Document | `DocumentId`, `DocumentText`, `DocumentProps`; attached to a turn by an `Attachment` link |
 | Utterance | `Utterance`, `Role`, `Parts` (the message's parts, verbatim), `Order`; `ChildOf` the run |
-| Run | `Run`, `RunOf` → agent, `RunSeq`, `Streamed`, `Cursor`, a phase (`Assembling`, `AwaitingModel`, `Settled`, `Failed(Failure)`), `RunResult`, `Usage`, `OutputRetries`, `OutputToolName`, the run's own overrides of the agent's settings, the bus's `Scope` |
+| Run | `Run`, `RunOf` → agent, `RunSeq`, `RunStreaming`, `Cursor`, a phase (`Assembling`, `AwaitingModel`, `Settled`, `Failed(Failure)`), `RunResult`, `Usage`, `OutputRetries`, `OutputToolName`, the run's own overrides of the agent's settings, the bus's `Scope` |
 | Turn | `Turn`, `ChildOf` the run, `Order`; `Advert` links → the tools it advertised; `Attachment` links → its documents; `Outputs` (per tick for a stream); `Reprompt`; `Batch` while its tool calls are out; `systems::{Fresh, Folded, Materialised}` |
 | Effect | the bus module's, `ChildOf` the turn: the completion, then one per call to a granted tool (`ToolCallSlot` says which call; the bus's `ToolInputs` carries the run's `ToolContextSpec`) — the batch is the turn's children, `ToolPolicy { concurrency }` on the run or the agent says how many fly at once |
 | Invalid call | `InvalidCall` + `Resolution`, `ChildOf` the turn |
@@ -168,18 +211,18 @@ still publish tool output before reaching `EffectOutcome` and shared settlement.
 | a program's scope | `Scope(String)` on an ancestor; read into the record |
 | a tool call's context (format 5: beside the effect, never in it) | `ToolInputs(ToolContext)` on the effect entity, attached to the handler's `Dispatch` context; what the tool published lands as `ToolOutputs(ToolContext)` when the outcome does (`Publishing` holds the slot in flight) |
 | a handler | an entity with `Bound { key, descriptor }`; the erased handler in the `NonSend` `HandlerTable` |
-| the registry | `Handlers` (a `SystemParam`): `register`, `register_erased`, `register_typed`, `register_world`, `register_open`, `deregister`, `descriptor`, `keys`, `descriptors`; `Handlers::with(world, ..)` outside a system |
+| the registry | `Handlers` (a `SystemParam`): `register`, `register_erased`, `register_typed` (inferred family), `register_erased_typed` (checked dynamic family), `register_world`, `register_open`, `deregister`, `descriptor`, `keys`, `descriptors`; `Handlers::register_in(world, key, handler)` for immediate registration; `Handlers::with(world, ..)` for other host operations |
 | a typed view | `Typed<F>(Key<F>)`, wherever a system wants it |
 | the driver | `dispatch` in `BusSet::Dispatch`; `collect_tasks`, `collect_streams`, `settle` in `BusSet::Collect` |
 | interception | user systems in `BusSet::Gate` (patch, deny, hold) and `BusSet::Judge` (replace) |
-| the record | `Recording` (any `rig_core::serve::Recorder`); `EffectLogResource` under `replay`; for every task-served handler, `Dispatch` installs a recording observer (`WorldObserver`, its slots in `Observed`) so a layer's `discard` and `patch` reach the record and the record keeps the innermost handler's answer |
+| the record | `Recording` (any `rig_core::serve::Recorder`); `EffectLogResource` under `replay`; for every task-served handler, `Dispatch` installs a recording observer (private per-effect observer state) so a layer's `discard` and `patch` reach the record and the record keeps the innermost handler's answer |
 | a scene | `Scene::{save, load, first_gap}` |
 | replay | `Replay::{register, load}`, by id |
 | the policy | `Policy(ServingPolicy)`: intake per tick and serial keys; `stream_capacity` bounds driver delivery queues |
 
 ## The schedule
 
-`Bus::install` (or `install_bus`) adds `RigSchedule` with four sets in order to a `World`; the host runs it to quiescence by calling `run_to_quiescence` once per tick from the schedule or loop it owns (while a bus system marks `Progress`, at most `QUIESCENCE_CAP` passes). The base bus uses `bevy_ecs`, `bevy_tasks` and a private `futures` delivery queue; it does not require an `App`. Users add their systems to `RigSchedule`, ordered against the sets, never beside the runner.
+`Bus::install` (or `install_bus`) adds `RigSchedule` with five sets in order to a `World`; the host runs it to quiescence by calling `run_to_quiescence` once per tick from the schedule or loop it owns (while a bus system marks `Progress`, at most `QUIESCENCE_CAP` passes). The base bus uses `bevy_ecs`, `bevy_tasks` and a private `futures` delivery queue; it does not require an `App`. Users add their systems to `RigSchedule`, ordered against the sets, never beside the runner.
 
 | set | true before | written during |
 |---|---|---|
@@ -233,7 +276,7 @@ The Bevy host fixture's fourteen proofs and the eight unproven behaviours of `ri
 
 ## What it deliberately does not have
 
-No hook trait, no history vector, no step enum, no run struct copied from anywhere, no batch machine (the batch is the turn's children and a query): steering is a system between sets. Program identity is data: `replay::stamp_run` writes the run's scope into `LogHeader::programs` and `replay::check_replayable` refuses a foreign log by policy or by row (`tests/run_identity.rs`). Memory is the graph and retrieval attaches (`tests/memory_graph.rs`); two runs on one agent are two `spawn_run`s; resume is a scene load (`agent::scene::{save_world, load_world}`, every resume and checkpoint row of the corpus as a world cell, CONTRACT §13). The `bus` module still has no agent-shaped item and its suite is agent-free (the guard checks). No streaming answers from a system yet (a later PR). `Scene` is the crate's own serde form and stores what this module owns; a host's other components are its own to save. No `Now`, no `Random`: nondeterminism is an effect a host registers, and the guard refuses a clock or a random draw in this crate.
+No hook trait, no history vector, no step enum, no run struct copied from anywhere, no batch machine (the batch is the turn's children and a query): steering is a system between sets. Program identity is data: `replay::stamp_run` writes the run's scope into `LogHeader::programs` and `replay::check_replayable` refuses a foreign log by policy or by row (`tests/run_identity.rs`). Memory is the graph and retrieval attaches (`tests/memory_graph.rs`); two runs on one agent are two `Prompt::new(agent, text).spawn(world)` calls; resume is a scene load (`agent::scene::{WorldScene}`, every resume and checkpoint row of the corpus as a world cell, CONTRACT §13). The `bus` module still has no agent-shaped item and its suite is agent-free (the guard checks). No streaming answers from a system yet (a later PR). `Scene` is the crate's own serde form and stores what this module owns; a host's other components are its own to save. No `Now`, no `Random`: nondeterminism is an effect a host registers, and the guard refuses a clock or a random draw in this crate.
 
 ## The witness: decisions beside the record
 
@@ -368,19 +411,35 @@ them during restoration.
 
 ## The prelude and the features
 
-`rig_ecs::prelude` names what a user's systems need and nothing else: the sets (`RigSet`, `BusSet`), the components a user writes (`Cancelled`, `RequestPatch`, `Retry`, `Resolution`, `Held`, `UsesModel`, `Grant`, `Context`, `Remembers`, `Retrieves`) and the components a user reads (`Streamed`, `Outputs`, `EffectOutcome`, `RunResult`, `Settled`, `Failed`, `Usage`).
+`rig_ecs::prelude` includes `Agent`, `Prompt`, `RigCommands`, deferred errors, `RunView`, `RunStatus`, `inspect` and `StreamText`, alongside the sets (`RigSet`, `BusSet`), the components a user writes (`Cancelled`, `RequestPatch`, `Retry`, `Resolution`, `Held`, `UsesModel`, `Grant`, `Context`, `Remembers`, `Retrieves`) and the components a user reads (`Streamed`, `Outputs`, `EffectOutcome`, `RunResult`, `Settled`, `Failed`, `Usage`).
 
-`reflect` (off by default): every component of the bus and the graph derives `Reflect`, the rig-core values they hold reflect through opaque remote wrappers (`bus::reflect`, `agent::reflect` — serialized as their wire form, so an inspector shows an effect entity's payload as the log would), `reflect::install_reflect` registers them all, and `reflect::ReflectedScene` is the world as reflected data beside the serde scene: canonical (entities ordered by content, an `Entity` in a component as its index in the scene, a relationship target's indexes sorted), so a world and the world its `WorldScene` loads into export the same JSON (`tests/reflect_scene.rs`); every component round-trips through `ReflectSerializer` / `ReflectDeserializer` / `FromReflect` by value (`tests/reflect_roundtrip.rs`). The runtime-only components (`Serving`, `Streaming`, `Publishing`, `Observed`, `Asked`, `Answer`, `Typed`, and the asset handles) reflect nothing. rig-core takes no Bevy dependency.
+`reflect` (off by default) exposes the supported persistent graph and bus components to Bevy reflection. `reflect::install_reflect` registers them; rig-core values use opaque remote wrappers and keep their wire representation. `ReflectedScene` produces a canonical inspection view, tested against a scene-restored world in `tests/reflect_scene.rs`. This is distinct from resumable `WorldScene` serialization. Runtime tasks, typed execution state, transient approval requests and asset handles are not reflected persistence. The registered component round trips are tested in `tests/reflect_roundtrip.rs`; rig-core takes no Bevy dependency.
 
 `assets` (off by default; the one feature that takes `bevy_app`, because `bevy_asset` is built on it): `assets::Prompt` (a `.md` / `.txt` file) and `assets::ToolDefinitions` (a `.json` array of `{ name, description, parameters }`) are `bevy_asset` assets with loaders; `PromptHandle` / `ToolsHandle` on an agent become its `Preamble` and its `Grant`s — one per definition, in file order, to the bound handler whose descriptor is the tool of that name; a definition nothing serves is not granted — the tick the asset loads, once (`Applied<A>`). `assets::AssetsPlugin` after `bevy_asset::AssetPlugin`, and the host orders `run_to_quiescence` after `assets::AssetsSet`. `tests/assets_prompt.rs`, `examples/prompt_from_assets.rs` (an in-memory source; a directory with the default one).
 
 ## The examples, side by side
 
-The same programs as rig's root examples, each a page of user code over a scripted mock (`examples/support`) — 49 to 102 lines each with their comments, not the thirty the design hoped for — so the translation is shown: `agent_with_tools` (`Grant` links and a run entity for `dynamic_tools` and `prompt`), `human_in_the_loop` (a system in `BusSet::Gate` reading stdin for `AgentHook::on_dispatch`: approve, deny with an `EffectOutcome`, abort with `Cancelled`), `best_of_n` (`agent::fork` n − 1 times, a judging system over the settled runs, for a parallel fan-out), `streaming_ui` (a streamed run and a system after `RigSet::Fold` on `Changed<Streamed>` for a polled stream), `prompt_from_assets` (the `assets` feature). `cargo run -p rig-ecs --example <name>` — none needs a key.
+Each example shows installation, registration, construction, and schedule driving explicitly. Shared support contains mocks and printing, not hidden application setup. Run `cargo run -p rig-ecs --example <name>`; the scripts need no credentials.
+
+- `provider_construction`: a real Gemini adapter with explicit offline HTTP responses.
+- `hello_model`: the advanced bus-only path, with a request builder and direct effect submission.
+- `agent_with_tools`: owned Agent configuration and named Prompt submission.
+- `best_of_n`: checked forks and results scoped to the submitted cohort.
+- `streaming_ui`: a per-effect Unicode text cursor and selected-run completion.
+- `prompt_from_assets`: asset application followed by deferred submission, including command-failure reporting (requires `--features assets`).
+- `human_in_the_loop`: approval tickets and a host loop that keeps ticking while input waits. Unix input uses readiness polling; `-- --decision approve|deny|cancel` supplies scripted decisions on native platforms.
+
+### Approval decisions
+
+Insert `approval::ApprovalRequired(Emitter::named("app/reviewer"))` on selected tool effects in `BusSet::Gate`. The agent runtime checks these effects after Gate and before Dispatch, captures an `ApprovalRequest`, and acquires the workflow's named hold. Query requests whose `is_pending()` is true and display their tool name and exact arguments. Return the displayed ticket with `approval::decide(world, ticket, choice)`; do not substitute a newer ticket when delayed input arrives.
+
+Changing the handler key, tool name, arguments, owning run, or reviewer invalidates the ticket. The guard requires a new decision before dispatch. Finish proposal edits in Gate; do not schedule mutations between the guard and Dispatch. Approval releases only its owner's hold, denial publishes a denied tool result, and cancellation retains the run's normal issued-work semantics. Exact repeats acknowledge the prior decision if the proposal is unchanged; conflicting decisions, stale tickets, and late input return structured errors. Failed preparation is retained as `ApprovalError` on the effect and prevents dispatch.
+
+This UI state has no expiration and is not a saved authorization token. Reapply the approval policy when restoring work; the existing scene extension mechanism is needed for application state. Handlers must still validate external source-state preconditions. The library owns no terminal input, UI service, or approval executor.
 
 ## On wasm
 
-Everything a system holds is `Send + Sync` on every target. The erased handler lives in a `NonSend` resource on every target, one spelling, so a system that registers or dispatches runs on the main thread. `tests/bus_wasm.rs` drives the schedule by hand: `bevy_app`'s runner on the web is frame-scheduled by the browser.
+Everything a system holds is `Send + Sync` on every target. The erased handler lives in a `NonSend` resource on every target, one spelling, so a system that registers or dispatches runs on the main thread. `tests/bus_wasm.rs` and `tests/run_wasm.rs` drive the schedule by hand; `cargo xtask verify --check wasm-rig-ecs-lib` also executes private worker ownership tests. `bevy_app`'s runner on the web is frame-scheduled by the browser.
 
 Cancellation after an original handler answer has been observed records a
 `DeliveryKind::Cancelled` boundary instead of an outcome delivery. This preserves

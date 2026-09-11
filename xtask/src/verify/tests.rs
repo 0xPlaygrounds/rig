@@ -91,6 +91,7 @@ fn pr_preserves_required_platform_and_default_guarantees() {
         "default-tests",
         "wasm-rig-ecs",
         "wasm-rig-ecs-run_wasm",
+        "wasm-rig-ecs-lib",
         "native-only-rig-rmcp",
         "loom",
         "doctests",

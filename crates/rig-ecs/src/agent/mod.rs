@@ -568,7 +568,7 @@ pub struct RunCounter(pub u64);
 /// Whether the model is asked for a stream.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
-pub struct Streamed(pub bool);
+pub struct RunStreaming(pub bool);
 
 /// Where the run is: the turn it is on.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -752,11 +752,20 @@ pub struct Cancelled(pub String);
 /// `Materialise` reads it (CONTRACT §9.4): with feedback, the turn and the
 /// feedback become history and another turn begins; without, nothing
 /// becomes history and another turn begins.
-#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Retry {
     /// What the model is told, if anything.
     pub feedback: Option<String>,
+}
+
+impl Retry {
+    /// Include the current answer and this feedback in the next request's history.
+    /// The default retry omits both.
+    pub fn feedback(mut self, feedback: impl Into<String>) -> Self {
+        self.feedback = Some(feedback.into());
+        self
+    }
 }
 
 /// A per-turn patch of the request, written on the fresh turn before
@@ -910,44 +919,3 @@ const _: () = {
     assert_serde::<Conversation>();
     assert_serde::<Retrieval>();
 };
-
-/// Fork `run`: a clone of the run entity and its graph (the utterances,
-/// the turns — `ChildOf` is linked, so the clone is deep) under the next
-/// run number and its own scope, on the same agent. The effects are not
-/// carried: an effect's identity (`Seq`, `Issued`, its answer) belongs to
-/// the one dispatch it was, so the clone's turn children hold no effect
-/// — a turn already read needs none, and a fresh one folds its own.
-/// Best-of-n is `fork` n − 1 times and a system that judges the settled
-/// runs (design §3.4). Fork a run at rest — between turns — so no turn
-/// is waiting on an effect the clone does not have.
-pub fn fork(world: &mut World, run: Entity) -> Entity {
-    let seq = {
-        let mut counter = world.resource_mut::<RunCounter>();
-        let seq = counter.0;
-        counter.0 += 1;
-        seq
-    };
-    let owner = world
-        .get::<RunOf>(run)
-        .and_then(|run_of| world.get::<Owner>(run_of.0))
-        .map(|owner| owner.0.clone())
-        .unwrap_or_default();
-    let clone = world
-        .entity_mut(run)
-        .clone_and_spawn_with_opt_out(|builder| {
-            builder.linked_cloning(true).deny::<(
-                crate::bus::PendingEffect,
-                crate::bus::Seq,
-                crate::bus::Issued,
-                crate::bus::Reserved,
-                crate::bus::EffectOutcome,
-                crate::bus::ToolInputs,
-                crate::bus::ToolOutputs,
-                ToolCallSlot,
-            )>();
-        });
-    world
-        .entity_mut(clone)
-        .insert((RunSeq(seq), crate::bus::Scope(format!("{owner}/run#{seq}"))));
-    clone
-}

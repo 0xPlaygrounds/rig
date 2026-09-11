@@ -27,7 +27,7 @@ use rig_ecs::{
         AdditionalParams, Assembling, Cursor, DefaultMaxTurns, InvalidCalls, MaxTokens, MaxTurns,
         Output, OutputKind, Owner, Preamble, RunResult, Settled, Temperature, ToolChoiceSpec,
         UsesModel, Utterance,
-        scene::{RunScene, WorldScene, load_world, save_world},
+        scene::{RunScene, WorldScene},
     },
     bus::{
         Bus, EffectLogResource, Handlers, IdCounter, InFlight, Issued, PendingEffect, Replay,
@@ -266,7 +266,7 @@ fn a_run_saved_with_its_effect_in_flight_resumes_and_the_effect_is_answered_ther
             .next()
             .is_some()
     });
-    let saved = save_world(app.world_mut()).expect("every component serializes");
+    let saved = WorldScene::save(app.world_mut()).expect("every component serializes");
     assert_eq!(saved.effects.effects.len(), 1);
     let effect = &saved.effects.effects[0];
     assert_eq!(
@@ -291,14 +291,11 @@ fn a_run_saved_with_its_effect_in_flight_resumes_and_the_effect_is_answered_ther
     // from the record, and the run settles on the golden's answer.
     let saved: WorldScene = serde_json::from_str(&json).expect("serde");
     let mut app = run_support::app();
-    Handlers::with(app.world_mut(), |handlers| {
-        Replay::default()
-            .register(handlers, &log)
-            .expect("the golden's replayers")
-    })
-    .expect("a bus");
+    Replay::default()
+        .register_in(app.world_mut(), &log)
+        .expect("the golden's replayers");
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
-    let loaded = load_world(&saved, app.world_mut()).expect("the model is bound");
+    let loaded = saved.load(app.world_mut()).expect("the model is bound");
     let run = loaded
         .graph
         .iter()
@@ -429,7 +426,7 @@ fn a_run_saved_while_retrieving_resumes_and_attaches() {
             .count()
             == 1
     );
-    let saved = rig_ecs::agent::scene::save_world(app.world_mut()).expect("serializes");
+    let saved = rig_ecs::agent::scene::WorldScene::save(app.world_mut()).expect("serializes");
     assert_eq!(
         saved.retrievals.len(),
         1,
@@ -440,7 +437,7 @@ fn a_run_saved_while_retrieving_resumes_and_attaches() {
 
     let (mut app, _, _) = world(true);
     let saved: rig_ecs::agent::scene::WorldScene = serde_json::from_str(&json).expect("serde");
-    let loaded = rig_ecs::agent::scene::load_world(&saved, app.world_mut()).expect("bound");
+    let loaded = saved.load(app.world_mut()).expect("bound");
     let run = loaded
         .graph
         .iter()
@@ -498,7 +495,7 @@ fn contradictory_effect_ids_refuse_the_paired_graph_before_spawning() {
             },
             ..WorldScene::default()
         };
-        assert!(load_world(&world_scene, restored.world_mut()).is_err());
+        assert!(world_scene.load(restored.world_mut()).is_err());
         assert_eq!(
             restored.world().entities().len(),
             before,
@@ -563,6 +560,6 @@ fn paired_scene_missing_graph_parent_is_rejected_before_spawning() {
     destination.init_resource::<rig_ecs::bus::SeqCounter>();
     destination.init_resource::<IdCounter>();
     let initial = destination.entities().len();
-    assert!(load_world(&scene, &mut destination).is_err());
+    assert!(scene.load(&mut destination).is_err());
     assert_eq!(destination.entities().len(), initial);
 }

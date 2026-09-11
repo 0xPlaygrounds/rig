@@ -16,8 +16,8 @@ default = ["replay"]
 # `Replay` and the `EffectLog` resource: record a world's effects into a
 # log and replay a log through a world.
 replay = ["dep:rig-effect-log"]
-# The inspector's view: `Reflect` on every component (remote wrappers for
-# the rig-core types they hold), `reflect::ReflectPlugin` registering
+# The inspector's view: `Reflect` on supported graph components (remote wrappers for
+# the rig-core types they hold), `reflect::install_reflect` registering
 # them, `reflect::ReflectedScene` — the graph as reflected data beside the
 # serde scene. rig-core takes no Bevy dependency: the wrappers live here.
 reflect = ["dep:bevy_reflect", "bevy_ecs/bevy_reflect"]
@@ -42,6 +42,7 @@ bevy_reflect = { workspace = true, optional = true }
 bevy_asset = { workspace = true, optional = true }
 bevy_app = { workspace = true, optional = true }
 log = { workspace = true }
+thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
@@ -56,6 +57,10 @@ rig-core = { path = "../rig-core", version = "0.42.0", features = ["test-utils"]
 # Tests and examples drive the bus from an `App`'s `Update`; the library
 # does not.
 bevy_app = { workspace = true }
+
+# Only the Unix CLI example uses OS readiness polling; the library has no input dependency.
+[target.'cfg(unix)'.dev-dependencies]
+nix = { version = "0.31", default-features = false, features = ["poll"] }
 
 # The module executed on `wasm32-unknown-unknown` (`tests/bus_wasm.rs`),
 # under `wasm-bindgen-test-runner`, as rig-agent's `tests/bus_wasm.rs` is.

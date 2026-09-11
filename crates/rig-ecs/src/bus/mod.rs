@@ -15,7 +15,7 @@
 //!   `On<Add, EffectOutcome>` observer).
 //! - **A handler is an entity.** [`Handlers::register`] spawns one with a
 //!   [`Bound`] component (the key and the descriptor, serde) and puts the
-//!   erased handler in the world's [`HandlerTable`]. The registry is a
+//!   erased handler in the world's private registry. Applied bindings form a
 //!   query; deregistration is a despawn.
 //! - **The driver is two systems.** [`BusSet::Dispatch`] takes pending
 //!   effects in [`Seq`] order and spawns each handler's future on the task
@@ -114,24 +114,17 @@ pub mod witness;
 #[cfg(feature = "replay")]
 pub mod replay;
 
-pub use collect::{Landed, StreamingView, collect_streams, collect_tasks, settle};
-pub use dispatch::{Candidate, CandidateView, dispatch, handler_unavailable, reentrant};
 pub use effect::{
-    Answer, Asked, EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing,
-    Reserved, Scope, Seq, SeqCounter, Serving, Streamed, Streaming, ToolInputs, ToolOutputs, Typed,
-    WorldEffect, WorldOutcome,
+    Answer, Asked, EffectOutcome, ExecutionStatus, Held, IdCounter, InFlight, Issued,
+    PendingEffect, Publishing, Reserved, Scope, Seq, SeqCounter, Serving, Streamed, Streaming,
+    ToolInputs, ToolOutputs, Typed, WorldEffect, WorldOutcome, execution_status,
 };
-pub use handlers::{
-    Bound, HandlerTable, Handlers, Served, WorldHandler, WorldServe, answered, unbound,
-};
+pub use handlers::{Bound, Handlers, WorldHandler};
 pub use hold::{HoldOwners, acquire_hold, release_hold};
 pub use plugin::{
-    Bus, BusSet, Intake, Policy, Progress, QUIESCENCE_CAP, RigSchedule, install_bus,
-    run_to_quiescence,
+    Bus, BusSet, Policy, Progress, QUIESCENCE_CAP, RigSchedule, install_bus, run_to_quiescence,
 };
-pub use record::{
-    Observed, ObservedState, Recording, WorldObserver, record_bound, record_cancelled,
-};
+pub use record::Recording;
 pub use scene::{Scene, SceneEffect};
 pub use witness::{AdapterOperation, BUS_EMITTER, SubjectWalk, Subjects, Witnessing, bus_emitter};
 

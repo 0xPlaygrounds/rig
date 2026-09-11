@@ -1,0 +1,224 @@
+[
+  {
+    "path": "crates/rig-ecs/examples/agent_with_tools.rs",
+    "purpose": "agent_with_tools",
+    "status": "migrated to explicit installation, register_in, Agent and Prompt",
+    "verification": "all-feature compile and bounded offline execution passed; stdout exactly -3, exit 0; rebuilt and re-executed after shared setup removal",
+    "features": [],
+    "execution_mode": "offline scripted mock",
+    "public_operations": [
+      "install",
+      "Handlers::register_in",
+      "Agent::tools",
+      "Prompt",
+      "inspect",
+      "run_to_quiescence"
+    ],
+    "hidden_setup": "none; the example owns installation, registration and schedule driving"
+  },
+  {
+    "path": "crates/rig-ecs/examples/best_of_n.rs",
+    "purpose": "best_of_n",
+    "status": "migrated to explicit setup, checked fork, and cohort-scoped RunView selection",
+    "verification": "all-feature compile and bounded offline execution passed; exact expected best-of-three answer, exit 0; rebuilt and re-executed after shared setup removal",
+    "features": [],
+    "execution_mode": "offline scripted mock",
+    "public_operations": [
+      "install",
+      "Handlers::register_in",
+      "Agent",
+      "Prompt",
+      "lifecycle::fork",
+      "Query<RunView>"
+    ],
+    "hidden_setup": "none; the example owns installation, registration and schedule driving"
+  },
+  {
+    "path": "crates/rig-ecs/examples/hello_model.rs",
+    "purpose": "hello_model",
+    "status": "retained deliberate bus-only effect lesson; migrated immediate registration and request builder, removed misleading setup-size claims",
+    "verification": "all-feature build and bounded offline execution passed; exact expected greeting, exit 0",
+    "features": [],
+    "execution_mode": "offline scripted mock",
+    "public_operations": [
+      "Bus::install",
+      "Handlers::register_in",
+      "PendingEffect",
+      "EffectOutcome",
+      "run_to_quiescence"
+    ],
+    "hidden_setup": "none; the example owns installation, registration and schedule driving"
+  },
+  {
+    "path": "crates/rig-ecs/examples/human_in_the_loop.rs",
+    "purpose": "human_in_the_loop",
+    "status": "migrated to explicit Agent/Prompt setup, typed approval tickets and owned nonblocking host input",
+    "verification": "all-feature build; bounded stdin approve/deny/cancel/EOF, scripted choices, delayed and partial input all passed with expected exits",
+    "features": [],
+    "execution_mode": "Unix polled stdin or native scripted decisions; mocks only",
+    "public_operations": [
+      "install",
+      "Handlers::register_in",
+      "Agent",
+      "Prompt",
+      "ApprovalRequired",
+      "ApprovalRequest",
+      "decide"
+    ],
+    "hidden_setup": "none; the example owns installation, registration and schedule driving"
+  },
+  {
+    "path": "crates/rig-ecs/examples/prompt_from_assets.rs",
+    "purpose": "prompt_from_assets",
+    "status": "migrated to explicit setup, Agent and deferred Prompt; local submission marker and failure draining",
+    "verification": "all-feature compile and bounded offline execution passed; exact grant count 1 and answer -3, exit 0; rebuilt and re-executed after shared setup removal",
+    "features": [
+      "assets"
+    ],
+    "execution_mode": "offline scripted mock",
+    "public_operations": [
+      "install",
+      "AssetsPlugin",
+      "Agent",
+      "RigCommands::prompt",
+      "Applied",
+      "CommandFailures"
+    ],
+    "hidden_setup": "none; the example owns installation, registration and schedule driving"
+  },
+  {
+    "path": "crates/rig-ecs/examples/streaming_ui.rs",
+    "purpose": "streaming_ui",
+    "status": "migrated to explicit setup, Prompt streaming option, StreamText per-effect cursor and selected-run completion",
+    "verification": "all-feature compile and bounded offline execution passed; exact expected Unicode answer, exit 0; rebuilt and re-executed after shared setup removal",
+    "features": [],
+    "execution_mode": "offline scripted mock",
+    "public_operations": [
+      "install",
+      "Handlers::register_in",
+      "Agent",
+      "Prompt::streaming",
+      "StreamText",
+      "Query<RunView>"
+    ],
+    "hidden_setup": "none; the example owns installation, registration and schedule driving"
+  },
+  {
+    "path": "crates/rig-ecs/examples/support/mod.rs",
+    "purpose": "shared mocks and setup",
+    "status": "removed hidden app, agent and registration setup; mocks and printing only",
+    "verification": "all six examples built and executed after removal",
+    "features": [],
+    "execution_mode": "shared fixtures and printing",
+    "public_operations": [
+      "Serve (scripted fixture)",
+      "Outcome (printing)"
+    ],
+    "hidden_setup": "fixture/input implementation only; no hidden runtime setup"
+  },
+  {
+    "path": "crates/rig-ecs/examples/human_in_the_loop/input.rs",
+    "purpose": "owned CLI input bridge",
+    "status": "bounded readiness polling, no background thread or shutdown join",
+    "features": [
+      "Unix dev-only nix/poll"
+    ],
+    "execution_mode": "polled host input",
+    "verification": "approval_input tests cover absent/partial input, final unterminated line, EOF and idle reader drop; CLI delayed-input execution passed",
+    "public_operations": [
+      "Input::poll (example-private)"
+    ],
+    "hidden_setup": "fixture/input implementation only; no hidden runtime setup"
+  },
+  {
+    "path": "crates/rig-ecs/examples/provider_construction.rs",
+    "purpose": "real Gemini provider construction with in-memory transport",
+    "status": "new complete public setup example; no hidden setup helpers",
+    "public_operations": [
+      "install",
+      "Handlers::register_in",
+      "Agent",
+      "Prompt",
+      "inspect",
+      "run_to_quiescence"
+    ],
+    "hidden_setup": "none; RecordingHttpClient is explicitly an in-memory response fixture",
+    "features": [],
+    "execution_mode": "offline provider conversion; no genuine provider capture or live call",
+    "verification": "cargo run -p rig-ecs --example provider_construction passed; exact Hello from Gemini. and exit 0, 5,000-tick completion bound"
+  },
+  {
+    "path": "crates/rig-ecs/src/lib.rs",
+    "purpose": "two compiled rustdoc snippets: immediate startup and normal system/helper",
+    "public_operations": [
+      "install",
+      "register_in",
+      "Agent",
+      "Prompt",
+      "RigCommands",
+      "RunView"
+    ],
+    "hidden_setup": "generic Serve value supplied by caller; host ticking described immediately below",
+    "features": [],
+    "execution_mode": "compiled doctests; no provider call",
+    "status": "rewritten",
+    "verification": "two doctests passed; complete gate results in the PR description"
+  },
+  {
+    "path": "crates/rig-ecs/README.md",
+    "purpose": "brief Agent/Prompt introduction",
+    "public_operations": [
+      "Agent",
+      "Prompt"
+    ],
+    "hidden_setup": "imports and registered entities explained and linked to complete agent_with_tools example",
+    "features": [],
+    "execution_mode": "illustrative excerpt of executed example",
+    "status": "rewritten",
+    "verification": "source checked against compiled example; not claimed as standalone executable"
+  },
+  {
+    "path": "tests/common/ecs_agent.rs",
+    "purpose": "shared recorded provider consumer setup",
+    "public_operations": [
+      "install",
+      "register_in",
+      "Agent",
+      "Prompt",
+      "grant_tool"
+    ],
+    "hidden_setup": "intentional test harness: transport runtime entry and captured fixture loading; legacy default turn metadata preserved",
+    "features": [
+      "provider features"
+    ],
+    "execution_mode": "offline recorded cassette replay",
+    "status": "migrated alongside OpenAI ECS tool lifecycle call sites; direct provider graph tests retained where testing graph construction",
+    "verification": "12 OpenAI lifecycle cases and 2 Anthropic golden comparisons passed"
+  },
+  {
+    "path": "crates/rig-ecs/tests/commands.rs",
+    "purpose": "external-style public consumer and independent graph oracle",
+    "public_operations": [
+      "Handlers",
+      "Agent",
+      "Prompt",
+      "RigCommands",
+      "CommandFailures"
+    ],
+    "hidden_setup": "local App installer fixture; public setup also shown in every example",
+    "features": [],
+    "execution_mode": "offline integration test",
+    "status": "new; normal helpers contain no named lifetimes or boxed futures; direct request oracle builds reference graph independently",
+    "verification": "immediate/deferred and equivalence checks passed; complete gate results in the PR description"
+  },
+  {
+    "path": "README.md; src/lib.rs; examples/*/Cargo.toml",
+    "purpose": "root/workspace discovery",
+    "public_operations": [],
+    "hidden_setup": "none",
+    "features": [],
+    "execution_mode": "source inventory",
+    "status": "no root/workspace ECS construction snippet or additional ECS example package; facade docs retain link to separate rig-ecs crate",
+    "verification": "searched root docs, facade, manifests and all ECS rustdoc fences"
+  }
+]

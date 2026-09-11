@@ -20,16 +20,16 @@ use super::{
 use rig_core::observe::{Action, Emitter, OutcomeSummary, Reason, Stage};
 
 /// How many trailing stream events a truncation observation keeps.
-pub const TRUNCATION_TAIL: usize = 8;
+const TRUNCATION_TAIL: usize = 8;
 
 /// Maximum live streaming queue checks across a host tick.
-pub const STREAM_WORK_PER_TICK: usize = 4096;
+pub(super) const STREAM_WORK_PER_TICK: usize = 4096;
 const STREAM_ITEMS_PER_EFFECT: usize = 64;
 
 /// Streaming delivery allowance shared by all quiescence passes in one host tick.
 /// The sequence cursor rotates service when the allowance runs out.
 #[derive(Resource)]
-pub struct CollectionBudget {
+pub(super) struct CollectionBudget {
     /// Queue checks left in the current allowance.
     pub remaining: usize,
     /// Whether collection belongs to the shared quiescence loop.
@@ -49,14 +49,14 @@ impl Default for CollectionBudget {
 /// Marker for a library collector's outcome insertion. Removed by settlement;
 /// direct in-flight insertions without it cannot establish policy replay.
 #[derive(Component)]
-pub struct CollectedOutcome;
+pub(super) struct CollectedOutcome;
 
 /// Submitted world answers whose visible outcome has not landed.
-pub type WorldAnswersReady = (With<InFlight>, Without<EffectOutcome>);
+pub(super) type WorldAnswersReady = (With<InFlight>, Without<EffectOutcome>);
 
 /// Publish submitted world answers at the same boundary as task results.
 /// Arrival order is independent of dispatch order and entity archetypes.
-pub fn collect_world(
+pub(super) fn collect_world(
     mut commands: Commands,
     ready: Query<(Entity, &WorldOutcome), WorldAnswersReady>,
     mut progress: ResMut<Progress>,
@@ -77,7 +77,7 @@ pub fn collect_world(
 /// and the task leaves the entity; a tool call's published context lands
 /// beside it as [`ToolOutputs`]. A non-blocking check per in-flight task
 /// (`check_ready`), no waker kept, nothing awaited.
-pub fn collect_tasks(
+pub(super) fn collect_tasks(
     mut commands: Commands,
     serving: Query<(Entity, &Serving, Option<&Publishing>), With<InFlight>>,
     policy: Res<super::Policy>,
@@ -123,9 +123,9 @@ pub fn collect_tasks(
     clippy::too_many_arguments,
     reason = "one collection pass shares driver state and its work allowance"
 )]
-pub fn collect_streams(
+pub(super) fn collect_streams(
     mut commands: Commands,
-    mut streaming: Query<StreamingView, With<InFlight>>,
+    mut streaming: Query<CollectingStream, With<InFlight>>,
     mut executions: NonSendMut<Executions>,
     recording: Option<Res<Recording>>,
     witness: Option<Res<Witnessing>>,
@@ -136,7 +136,7 @@ pub fn collect_streams(
     mut order: Local<Vec<(super::Seq, Entity)>>,
 ) {
     order.clear();
-    order.extend(streaming.iter().map(|(entity, seq, ..)| (*seq, entity)));
+    order.extend(streaming.iter().map(|stream| (*stream.seq, stream.entity)));
     order.sort_unstable_by_key(|(seq, _)| *seq);
     let start = budget
         .last
@@ -145,8 +145,13 @@ pub fn collect_streams(
         if budget.remaining == 0 {
             break;
         }
-        let Ok((_, _, Issued(id), mut streaming, mut streamed, publishing)) =
-            streaming.get_mut(entity)
+        let Ok(CollectingStreamItem {
+            issued: Issued(id),
+            stream: mut streaming,
+            accumulated: mut streamed,
+            publishing,
+            ..
+        }) = streaming.get_mut(entity)
         else {
             continue;
         };
@@ -271,41 +276,51 @@ pub fn collect_streams(
 }
 
 /// The effect's delivery fold and optional streamed consumer state.
-pub type StreamingView = (
-    Entity,
-    &'static super::Seq,
-    &'static Issued,
-    &'static mut Streaming,
-    Option<&'static mut Streamed>,
-    Option<&'static Publishing>,
-);
+#[derive(bevy_ecs::query::QueryData)]
+#[query_data(mutable)]
+pub(super) struct CollectingStream {
+    entity: Entity,
+    seq: &'static super::Seq,
+    issued: &'static Issued,
+    stream: &'static mut Streaming,
+    accumulated: Option<&'static mut Streamed>,
+    publishing: Option<&'static Publishing>,
+}
 
 /// An outcome that landed on an effect still in flight.
-pub type Landed = (Added<EffectOutcome>, With<InFlight>);
+pub(super) type Landed = (Added<EffectOutcome>, With<InFlight>);
 
 /// The outcome and durable tool output needed to close a dispatch's record.
-pub type LandedView = (
-    Entity,
-    &'static Issued,
-    &'static EffectOutcome,
-    Option<&'static Observed>,
-    Option<&'static ToolOutputs>,
-);
+#[derive(bevy_ecs::query::QueryData)]
+pub(super) struct LandedEffect {
+    entity: Entity,
+    issued: &'static Issued,
+    outcome: &'static EffectOutcome,
+    observed: Option<&'static Observed>,
+    outputs: Option<&'static ToolOutputs>,
+}
 
 /// An outcome landed on an in-flight effect: the record closes with it and
 /// the effect leaves flight. The one place records close, so a `Gate`
 /// denial (never in flight) is no record and a `Judge` rewrite (after this)
 /// is not re-recorded: decisions are program, never record.
-pub fn settle(
+pub(super) fn settle(
     mut commands: Commands,
-    landed: Query<LandedView, Landed>,
+    landed: Query<LandedEffect, Landed>,
     replaced: Query<&super::record::ReplacedBy>,
     recording: Option<Res<Recording>>,
     witness: Option<Res<Witnessing>>,
     subjects: Subjects,
     mut progress: ResMut<Progress>,
 ) {
-    for (entity, &Issued(id), outcome, observed, outputs) in &landed {
+    for LandedEffectItem {
+        entity,
+        issued: &Issued(id),
+        outcome,
+        observed,
+        outputs,
+    } in &landed
+    {
         // A layered handler: the record holds what the innermost handler
         // answered (the observer's), never a layer's verdict; a dispatch a
         // layer discarded is no record.

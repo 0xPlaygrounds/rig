@@ -1,5 +1,6 @@
 #![allow(clippy::unwrap_used)]
 use super::*;
+use crate::bus::PendingEffect;
 use rig_core::serve::Observe;
 
 #[test]
@@ -45,4 +46,32 @@ fn cancellation_and_terminal_observation_have_one_recording_boundary() {
         assert_eq!(serde_json::to_value(recorder.log()).unwrap(), closed);
         assert!(!observed.is_discarded());
     }
+}
+
+#[test]
+fn settlement_removes_observer_slots_with_the_flight() {
+    let mut world = World::new();
+    crate::bus::Bus::default().install(&mut world);
+    let effect = world
+        .spawn((
+            PendingEffect::new(
+                "test",
+                EffectKind::Custom {
+                    kind: "test".into(),
+                    payload: serde_json::Value::Null,
+                },
+            ),
+            Issued(EffectId::from_raw(0)),
+            InFlight { key: "test".into() },
+            Observed(Arc::new(ObservedState::default())),
+        ))
+        .id();
+    world
+        .entity_mut(effect)
+        .insert(EffectOutcome(Ok(Outcome::Custom {
+            payload: serde_json::Value::Null,
+        })));
+    crate::bus::run_to_quiescence(&mut world);
+    assert!(world.get::<Observed>(effect).is_none());
+    assert!(world.get::<InFlight>(effect).is_none());
 }

@@ -1,0 +1,2464 @@
+{
+  "scope": "mechanical all-features rustdoc inventory; source disposition and verification are separate in api.md/review.md",
+  "items": [
+    {
+      "item": "agent::AdditionalParams",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.AdditionalParams.html"
+    },
+    {
+      "item": "agent::Advert",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Advert.html"
+    },
+    {
+      "item": "agent::AdvertisedOn",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.AdvertisedOn.html"
+    },
+    {
+      "item": "agent::Assembling",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Assembling.html"
+    },
+    {
+      "item": "agent::AttachedTo",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "attachments"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.AttachedTo.html"
+    },
+    {
+      "item": "agent::Attachment",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Attachment.html"
+    },
+    {
+      "item": "agent::AwaitingModel",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.AwaitingModel.html"
+    },
+    {
+      "item": "agent::Batch",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.calls"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Batch.html"
+    },
+    {
+      "item": "agent::Cancelled",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Cancelled.html"
+    },
+    {
+      "item": "agent::Context",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Context.html"
+    },
+    {
+      "item": "agent::ContextOf",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.ContextOf.html"
+    },
+    {
+      "item": "agent::Conversation",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Conversation.html"
+    },
+    {
+      "item": "agent::Cursor",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.turn"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Cursor.html"
+    },
+    {
+      "item": "agent::DefaultMaxTurns",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.DefaultMaxTurns.html"
+    },
+    {
+      "item": "agent::DocumentId",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.DocumentId.html"
+    },
+    {
+      "item": "agent::DocumentProps",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.DocumentProps.html"
+    },
+    {
+      "item": "agent::DocumentText",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.DocumentText.html"
+    },
+    {
+      "item": "agent::Failed",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Failed.html"
+    },
+    {
+      "item": "agent::Failure",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.MaxTurns",
+        "variant.MaxTurns.fields",
+        "variant.MaxTurns.field.limit",
+        "variant.UnknownToolCall",
+        "variant.UnknownToolCall.fields",
+        "variant.UnknownToolCall.field.name",
+        "variant.Provider",
+        "variant.Cancelled",
+        "variant.Unsupported",
+        "variant.OutputToolCollision",
+        "variant.OutputToolCollision.fields",
+        "variant.OutputToolCollision.field.name",
+        "variant.Tool",
+        "variant.Memory"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/enum.Failure.html"
+    },
+    {
+      "item": "agent::Grant",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Grant.html"
+    },
+    {
+      "item": "agent::Grants",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Grants.html"
+    },
+    {
+      "item": "agent::InvalidCall",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.id",
+        "structfield.name",
+        "structfield.arguments",
+        "structfield.prefix",
+        "structfield.stream_offset"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.InvalidCall.html"
+    },
+    {
+      "item": "agent::InvalidCalls",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.retries",
+        "structfield.unhandled"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.InvalidCalls.html"
+    },
+    {
+      "item": "agent::InvalidRetries",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.InvalidRetries.html"
+    },
+    {
+      "item": "agent::LoadingMemory",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.LoadingMemory.html"
+    },
+    {
+      "item": "agent::MaxTokens",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.MaxTokens.html"
+    },
+    {
+      "item": "agent::MaxTurns",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.MaxTurns.html"
+    },
+    {
+      "item": "agent::MemoryAppendScheduled",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.MemoryAppendScheduled.html"
+    },
+    {
+      "item": "agent::MessageParts",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.User",
+        "variant.User.fields",
+        "variant.User.field.content",
+        "variant.Assistant",
+        "variant.Assistant.fields",
+        "variant.Assistant.field.id",
+        "variant.Assistant.field.content"
+      ],
+      "inherent_methods": [
+        "to_message",
+        "from_message",
+        "role"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "agent/enum.MessageParts.html"
+    },
+    {
+      "item": "agent::ModelOf",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "users"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.ModelOf.html"
+    },
+    {
+      "item": "agent::Order",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Order.html"
+    },
+    {
+      "item": "agent::OrderCounter",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.OrderCounter.html"
+    },
+    {
+      "item": "agent::Output",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.mode",
+        "structfield.schema"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Output.html"
+    },
+    {
+      "item": "agent::OutputKind",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.Auto",
+        "variant.Native",
+        "variant.Tool",
+        "variant.Prompted"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/enum.OutputKind.html"
+    },
+    {
+      "item": "agent::OutputRetries",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.OutputRetries.html"
+    },
+    {
+      "item": "agent::OutputToolConfig",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.name",
+        "structfield.description",
+        "structfield.augment_preamble"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.OutputToolConfig.html"
+    },
+    {
+      "item": "agent::OutputToolName",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.OutputToolName.html"
+    },
+    {
+      "item": "agent::Outputs",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.content",
+        "structfield.message_id",
+        "structfield.done",
+        "structfield.usage_recorded",
+        "structfield.stream_validated"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Outputs.html"
+    },
+    {
+      "item": "agent::Owner",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Owner.html"
+    },
+    {
+      "item": "agent::Parts",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Parts.html"
+    },
+    {
+      "item": "agent::PolicyVersion",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.PolicyVersion.html"
+    },
+    {
+      "item": "agent::Preamble",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Preamble.html"
+    },
+    {
+      "item": "agent::Remembered",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Remembered.html"
+    },
+    {
+      "item": "agent::RememberedBy",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.RememberedBy.html"
+    },
+    {
+      "item": "agent::Remembering",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Remembering.html"
+    },
+    {
+      "item": "agent::Remembers",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Remembers.html"
+    },
+    {
+      "item": "agent::Reprompt",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Reprompt.html"
+    },
+    {
+      "item": "agent::RequestPatch",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.preamble",
+        "structfield.temperature",
+        "structfield.max_tokens",
+        "structfield.tool_choice",
+        "structfield.active_tools",
+        "structfield.additional_params",
+        "structfield.extra_context",
+        "structfield.history"
+      ],
+      "inherent_methods": [
+        "merge"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.RequestPatch.html"
+    },
+    {
+      "item": "agent::Resolution",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.Fail",
+        "variant.Ignore",
+        "variant.Retry",
+        "variant.Retry.fields",
+        "variant.Retry.field.feedback",
+        "variant.Repair",
+        "variant.Repair.fields",
+        "variant.Repair.field.to",
+        "variant.Skip",
+        "variant.Skip.fields",
+        "variant.Skip.field.reason"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/enum.Resolution.html"
+    },
+    {
+      "item": "agent::ResolvingTools",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.ResolvingTools.html"
+    },
+    {
+      "item": "agent::Retrievable",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Retrievable.html"
+    },
+    {
+      "item": "agent::Retrieval",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.samples",
+        "structfield.what"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Retrieval.html"
+    },
+    {
+      "item": "agent::RetrievalKind",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.Documents",
+        "variant.Tools"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/enum.RetrievalKind.html"
+    },
+    {
+      "item": "agent::RetrievedBy",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.RetrievedBy.html"
+    },
+    {
+      "item": "agent::Retrieves",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Retrieves.html"
+    },
+    {
+      "item": "agent::Retrieving",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Retrieving.html"
+    },
+    {
+      "item": "agent::Retry",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.feedback"
+      ],
+      "inherent_methods": [
+        "feedback"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Retry.html"
+    },
+    {
+      "item": "agent::Role",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.User",
+        "variant.Assistant"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/enum.Role.html"
+    },
+    {
+      "item": "agent::Route",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Route.html"
+    },
+    {
+      "item": "agent::RoutedTo",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.RoutedTo.html"
+    },
+    {
+      "item": "agent::Run",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Run.html"
+    },
+    {
+      "item": "agent::RunCounter",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.RunCounter.html"
+    },
+    {
+      "item": "agent::RunOf",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.RunOf.html"
+    },
+    {
+      "item": "agent::RunResult",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.RunResult.html"
+    },
+    {
+      "item": "agent::RunSeq",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.RunSeq.html"
+    },
+    {
+      "item": "agent::RunStreaming",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.RunStreaming.html"
+    },
+    {
+      "item": "agent::Runs",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "runs"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Runs.html"
+    },
+    {
+      "item": "agent::Settled",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Settled.html"
+    },
+    {
+      "item": "agent::Temperature",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Temperature.html"
+    },
+    {
+      "item": "agent::ToolAccess",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.executable",
+        "structfield.allowed"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.ToolAccess.html"
+    },
+    {
+      "item": "agent::ToolCallSlot",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.index",
+        "structfield.id",
+        "structfield.provider",
+        "structfield.name"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.ToolCallSlot.html"
+    },
+    {
+      "item": "agent::ToolChoiceSpec",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.ToolChoiceSpec.html"
+    },
+    {
+      "item": "agent::ToolContextSpec",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.ToolContextSpec.html"
+    },
+    {
+      "item": "agent::ToolPolicy",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.concurrency"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.ToolPolicy.html"
+    },
+    {
+      "item": "agent::Turn",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Turn.html"
+    },
+    {
+      "item": "agent::Unhandled",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.Fail",
+        "variant.Ignore"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/enum.Unhandled.html"
+    },
+    {
+      "item": "agent::Usage",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Usage.html"
+    },
+    {
+      "item": "agent::UsesModel",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.UsesModel.html"
+    },
+    {
+      "item": "agent::Utterance",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/struct.Utterance.html"
+    },
+    {
+      "item": "agent::scene::Loaded",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.graph",
+        "structfield.effects"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/scene/struct.Loaded.html"
+    },
+    {
+      "item": "agent::scene::RunScene",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.entities",
+        "structfield.next_order",
+        "structfield.next_run"
+      ],
+      "inherent_methods": [
+        "save",
+        "load"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "agent/scene/struct.RunScene.html"
+    },
+    {
+      "item": "agent::scene::SceneEntity",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.kind",
+        "structfield.components",
+        "structfield.parent",
+        "structfield.relations"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/scene/struct.SceneEntity.html"
+    },
+    {
+      "item": "agent::scene::SceneExtensions",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "register_component"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "agent/scene/struct.SceneExtensions.html"
+    },
+    {
+      "item": "agent::scene::SceneKind",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.Agent",
+        "variant.Document",
+        "variant.Link",
+        "variant.Utterance",
+        "variant.Run",
+        "variant.Turn",
+        "variant.InvalidCall"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/scene/enum.SceneKind.html"
+    },
+    {
+      "item": "agent::scene::Target",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.Scene",
+        "variant.Scene.fields",
+        "variant.Scene.field.index",
+        "variant.Handler",
+        "variant.Handler.fields",
+        "variant.Handler.field.key"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "agent/scene/enum.Target.html"
+    },
+    {
+      "item": "agent::scene::WorldScene",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.graph",
+        "structfield.effects",
+        "structfield.slots",
+        "structfield.batch_held",
+        "structfield.retrievals",
+        "structfield.extensions"
+      ],
+      "inherent_methods": [
+        "save",
+        "load"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "agent/scene/struct.WorldScene.html"
+    },
+    {
+      "item": "approval::ApprovalChoice",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.Approve",
+        "variant.Deny",
+        "variant.Cancel"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "approval/enum.ApprovalChoice.html"
+    },
+    {
+      "item": "approval::ApprovalError",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.Missing",
+        "variant.InvalidTarget",
+        "variant.Stale",
+        "variant.TooLate",
+        "variant.AlreadyDecided",
+        "variant.HoldLost",
+        "variant.Exhausted"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "approval/enum.ApprovalError.html"
+    },
+    {
+      "item": "approval::ApprovalRequest",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "ticket",
+        "run",
+        "key",
+        "name",
+        "args",
+        "is_pending"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "approval/struct.ApprovalRequest.html"
+    },
+    {
+      "item": "approval::ApprovalRequired",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "approval/struct.ApprovalRequired.html"
+    },
+    {
+      "item": "approval::ApprovalTicket",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "effect",
+        "revision"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "approval/struct.ApprovalTicket.html"
+    },
+    {
+      "item": "approval::DecisionOutcome",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.Applied",
+        "variant.AlreadyApplied"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "approval/enum.DecisionOutcome.html"
+    },
+    {
+      "item": "approval::decide",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "approval/fn.decide.html"
+    },
+    {
+      "item": "assets::Applied",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "assets/struct.Applied.html"
+    },
+    {
+      "item": "assets::AssetsPlugin",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "assets/struct.AssetsPlugin.html"
+    },
+    {
+      "item": "assets::AssetsSet",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "assets/struct.AssetsSet.html"
+    },
+    {
+      "item": "assets::Prompt",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.text"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "assets/struct.Prompt.html"
+    },
+    {
+      "item": "assets::PromptHandle",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "assets/struct.PromptHandle.html"
+    },
+    {
+      "item": "assets::PromptLoader",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "assets/struct.PromptLoader.html"
+    },
+    {
+      "item": "assets::ToolDefinitions",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.tools"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "assets/struct.ToolDefinitions.html"
+    },
+    {
+      "item": "assets::ToolDefinitionsLoader",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "assets/struct.ToolDefinitionsLoader.html"
+    },
+    {
+      "item": "assets::ToolsHandle",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "assets/struct.ToolsHandle.html"
+    },
+    {
+      "item": "assets::apply_prompts",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "assets/fn.apply_prompts.html"
+    },
+    {
+      "item": "assets::grant_tools",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "assets/fn.grant_tools.html"
+    },
+    {
+      "item": "bus::ServingPolicy",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.command_capacity",
+        "structfield.stream_capacity",
+        "structfield.serial_per_handler"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/struct.ServingPolicy.html"
+    },
+    {
+      "item": "bus::delivery::ReplayDelivery",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "refusals",
+        "new"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/delivery/struct.ReplayDelivery.html"
+    },
+    {
+      "item": "bus::delivery::ReplayFailure",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/delivery/struct.ReplayFailure.html"
+    },
+    {
+      "item": "bus::effect::Answer",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.Answer.html"
+    },
+    {
+      "item": "bus::effect::Asked",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.Asked.html"
+    },
+    {
+      "item": "bus::effect::EffectOutcome",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [
+        "typed",
+        "custom"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.EffectOutcome.html"
+    },
+    {
+      "item": "bus::effect::ExecutionStatus",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.preparing",
+        "structfield.streaming"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.ExecutionStatus.html"
+    },
+    {
+      "item": "bus::effect::Held",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.Held.html"
+    },
+    {
+      "item": "bus::effect::IdCounter",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.IdCounter.html"
+    },
+    {
+      "item": "bus::effect::InFlight",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.key"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.InFlight.html"
+    },
+    {
+      "item": "bus::effect::Issued",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.Issued.html"
+    },
+    {
+      "item": "bus::effect::PendingEffect",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.key",
+        "structfield.kind"
+      ],
+      "inherent_methods": [
+        "new",
+        "typed",
+        "custom",
+        "is_stream"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.PendingEffect.html"
+    },
+    {
+      "item": "bus::effect::Publishing",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.Publishing.html"
+    },
+    {
+      "item": "bus::effect::Reserved",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.Reserved.html"
+    },
+    {
+      "item": "bus::effect::Scope",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.Scope.html"
+    },
+    {
+      "item": "bus::effect::Seq",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.Seq.html"
+    },
+    {
+      "item": "bus::effect::SeqCounter",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.SeqCounter.html"
+    },
+    {
+      "item": "bus::effect::Serving",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.Serving.html"
+    },
+    {
+      "item": "bus::effect::Streamed",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.errors",
+        "structfield.events",
+        "structfield.text",
+        "structfield.outcome"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.Streamed.html"
+    },
+    {
+      "item": "bus::effect::Streaming",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.events",
+        "structfield.fold",
+        "structfield.delivered"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.Streaming.html"
+    },
+    {
+      "item": "bus::effect::ToolInputs",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.ToolInputs.html"
+    },
+    {
+      "item": "bus::effect::ToolOutputs",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.ToolOutputs.html"
+    },
+    {
+      "item": "bus::effect::Typed",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [
+        "pending",
+        "key"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.Typed.html"
+    },
+    {
+      "item": "bus::effect::WorldEffect",
+      "kind": "trait",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/trait.WorldEffect.html"
+    },
+    {
+      "item": "bus::effect::WorldOutcome",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.outcome"
+      ],
+      "inherent_methods": [
+        "new",
+        "order"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/struct.WorldOutcome.html"
+    },
+    {
+      "item": "bus::effect::execution_status",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/effect/fn.execution_status.html"
+    },
+    {
+      "item": "bus::handlers::Bound",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.key",
+        "structfield.descriptor"
+      ],
+      "inherent_methods": [
+        "family"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/handlers/struct.Bound.html"
+    },
+    {
+      "item": "bus::handlers::Handlers",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "replay_delivery",
+        "with",
+        "register_in",
+        "register",
+        "register_erased",
+        "register_typed",
+        "register_erased_typed",
+        "register_world",
+        "register_open",
+        "deregister",
+        "descriptor",
+        "keys",
+        "descriptors"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/handlers/struct.Handlers.html"
+    },
+    {
+      "item": "bus::handlers::WorldHandler",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "descriptor",
+        "type_id",
+        "borrow",
+        "borrow_mut",
+        "into_any",
+        "into_any_rc",
+        "as_any",
+        "as_any_mut",
+        "into_any_send",
+        "from",
+        "instrument",
+        "in_current_span",
+        "instrument-1",
+        "in_current_span-1",
+        "into",
+        "into_result",
+        "is",
+        "try_from",
+        "try_into",
+        "with_subscriber",
+        "with_current_subscriber",
+        "with_subscriber-1",
+        "with_current_subscriber-1"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/handlers/struct.WorldHandler.html"
+    },
+    {
+      "item": "bus::hold::HoldOwners",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "owners"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/hold/struct.HoldOwners.html"
+    },
+    {
+      "item": "bus::hold::HoldTransition",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.entity",
+        "structfield.owner",
+        "structfield.acquired"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/hold/struct.HoldTransition.html"
+    },
+    {
+      "item": "bus::hold::acquire_hold",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/hold/fn.acquire_hold.html"
+    },
+    {
+      "item": "bus::hold::release_hold",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/hold/fn.release_hold.html"
+    },
+    {
+      "item": "bus::plugin::Bus",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.policy",
+        "structfield.ambiguity"
+      ],
+      "inherent_methods": [
+        "with_policy",
+        "ambiguity_detection",
+        "install"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/plugin/struct.Bus.html"
+    },
+    {
+      "item": "bus::plugin::BusSet",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.Begin",
+        "variant.Gate",
+        "variant.Dispatch",
+        "variant.Collect",
+        "variant.Judge"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/plugin/enum.BusSet.html"
+    },
+    {
+      "item": "bus::plugin::Policy",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/plugin/struct.Policy.html"
+    },
+    {
+      "item": "bus::plugin::Progress",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [
+        "mark"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/plugin/struct.Progress.html"
+    },
+    {
+      "item": "bus::plugin::QUIESCENCE_CAP",
+      "kind": "constant",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/plugin/constant.QUIESCENCE_CAP.html"
+    },
+    {
+      "item": "bus::plugin::RigSchedule",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/plugin/struct.RigSchedule.html"
+    },
+    {
+      "item": "bus::plugin::install_bus",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/plugin/fn.install_bus.html"
+    },
+    {
+      "item": "bus::plugin::run_to_quiescence",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/plugin/fn.run_to_quiescence.html"
+    },
+    {
+      "item": "bus::record::Recording",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "new",
+        "install",
+        "handlers",
+        "begin",
+        "keep_events",
+        "event",
+        "stream_error",
+        "delivery",
+        "resolve",
+        "tool_output",
+        "discard",
+        "patch"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/record/struct.Recording.html"
+    },
+    {
+      "item": "bus::replay::EffectLogResource",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [
+        "install",
+        "log"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/replay/struct.EffectLogResource.html"
+    },
+    {
+      "item": "bus::replay::Replay",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.check",
+        "structfield.require_delivery"
+      ],
+      "inherent_methods": [
+        "checking",
+        "policy_visible",
+        "register",
+        "register_in",
+        "load"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/replay/struct.Replay.html"
+    },
+    {
+      "item": "bus::scene::Scene",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.handlers",
+        "structfield.effects",
+        "structfield.next_id"
+      ],
+      "inherent_methods": [
+        "save",
+        "save_with",
+        "load",
+        "load_with",
+        "validate_resume",
+        "first_gap"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/scene/struct.Scene.html"
+    },
+    {
+      "item": "bus::scene::SceneEffect",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.seq",
+        "structfield.key",
+        "structfield.kind",
+        "structfield.id",
+        "structfield.outcome",
+        "structfield.streamed",
+        "structfield.parent",
+        "structfield.parent_ref",
+        "structfield.scope",
+        "structfield.held",
+        "structfield.hold_owners",
+        "structfield.tool_inputs",
+        "structfield.tool_outputs"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/scene/struct.SceneEffect.html"
+    },
+    {
+      "item": "bus::scene::validate_parent_indices",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/scene/fn.validate_parent_indices.html"
+    },
+    {
+      "item": "bus::witness::AdapterOperation",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.context",
+        "structfield.host_attempt"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/witness/struct.AdapterOperation.html"
+    },
+    {
+      "item": "bus::witness::BUS_EMITTER",
+      "kind": "constant",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/witness/constant.BUS_EMITTER.html"
+    },
+    {
+      "item": "bus::witness::SubjectWalk",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "of_intent",
+        "of_entity",
+        "of_scope"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/witness/struct.SubjectWalk.html"
+    },
+    {
+      "item": "bus::witness::Subjects",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "of",
+        "of_scope"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/witness/struct.Subjects.html"
+    },
+    {
+      "item": "bus::witness::Witnessing",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "new",
+        "shared",
+        "install",
+        "observe",
+        "emit",
+        "sink"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "bus/witness/struct.Witnessing.html"
+    },
+    {
+      "item": "bus::witness::bus_emitter",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "bus/witness/fn.bus_emitter.html"
+    },
+    {
+      "item": "commands::Agent",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "new",
+        "owner",
+        "preamble",
+        "temperature",
+        "max_tokens",
+        "additional_params",
+        "tool_choice",
+        "output",
+        "max_turns",
+        "tools",
+        "memory",
+        "spawn"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "commands/struct.Agent.html"
+    },
+    {
+      "item": "commands::CommandFailure",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.entity",
+        "structfield.error"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "commands/struct.CommandFailure.html"
+    },
+    {
+      "item": "commands::CommandFailures",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "drain",
+        "iter"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "commands/struct.CommandFailures.html"
+    },
+    {
+      "item": "commands::OperationError",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.NotInstalled",
+        "variant.AlreadyInstalled",
+        "variant.MissingEntity",
+        "variant.NotAgent",
+        "variant.NotRun",
+        "variant.NotTurn",
+        "variant.InvalidPhase",
+        "variant.InvalidPhase.fields",
+        "variant.InvalidPhase.field.entity",
+        "variant.InvalidPhase.field.operation",
+        "variant.ConflictingRetry",
+        "variant.UnsafeFork",
+        "variant.SequenceExhausted",
+        "variant.HandlerFamily",
+        "variant.HandlerFamily.fields",
+        "variant.HandlerFamily.field.entity",
+        "variant.HandlerFamily.field.expected"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "commands/enum.OperationError.html"
+    },
+    {
+      "item": "commands::Prompt",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "new",
+        "history",
+        "streaming",
+        "max_turns",
+        "spawn"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "commands/struct.Prompt.html"
+    },
+    {
+      "item": "commands::RigCommands",
+      "kind": "trait",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [
+        "spawn_agent",
+        "prompt",
+        "cancel_run",
+        "grant_tool",
+        "revoke_tool",
+        "retry_turn",
+        "patch_turn"
+      ],
+      "rustdoc": "commands/trait.RigCommands.html"
+    },
+    {
+      "item": "commands::install",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "commands/fn.install.html"
+    },
+    {
+      "item": "inspect::EffectInfo",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.approval",
+        "structfield.entity",
+        "structfield.effect",
+        "structfield.outcome",
+        "structfield.held",
+        "structfield.in_flight",
+        "structfield.hold_owners"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "inspect/struct.EffectInfo.html"
+    },
+    {
+      "item": "inspect::RunInfo",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "entity",
+        "status",
+        "is_finished",
+        "answer",
+        "failure",
+        "usage",
+        "effects",
+        "type_id",
+        "borrow",
+        "borrow_mut",
+        "into_any",
+        "into_any_rc",
+        "as_any",
+        "as_any_mut",
+        "into_any_send",
+        "from",
+        "instrument",
+        "in_current_span",
+        "instrument-1",
+        "in_current_span-1",
+        "into",
+        "into_result",
+        "is",
+        "try_from",
+        "try_into",
+        "with_subscriber",
+        "with_current_subscriber",
+        "with_subscriber-1",
+        "with_current_subscriber-1"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "inspect/struct.RunInfo.html"
+    },
+    {
+      "item": "inspect::RunStatus",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.Ready",
+        "variant.LoadingMemory",
+        "variant.AwaitingModel",
+        "variant.ResolvingTools",
+        "variant.Settled",
+        "variant.Failed",
+        "variant.Unknown"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "inspect/enum.RunStatus.html"
+    },
+    {
+      "item": "inspect::RunView",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.entity",
+        "structfield.agent",
+        "structfield.result",
+        "structfield.failure",
+        "structfield.usage"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "inspect/struct.RunView.html"
+    },
+    {
+      "item": "inspect::RunViewItem",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.entity",
+        "structfield.agent",
+        "structfield.result",
+        "structfield.failure",
+        "structfield.usage"
+      ],
+      "inherent_methods": [
+        "status",
+        "is_finished",
+        "answer",
+        "type_id",
+        "borrow",
+        "borrow_mut",
+        "into_any",
+        "into_any_rc",
+        "as_any",
+        "as_any_mut",
+        "into_any_send",
+        "from",
+        "instrument",
+        "in_current_span",
+        "instrument-1",
+        "in_current_span-1",
+        "into",
+        "into_result",
+        "is",
+        "try_from",
+        "try_into",
+        "with_subscriber",
+        "with_current_subscriber",
+        "with_subscriber-1",
+        "with_current_subscriber-1"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "inspect/struct.RunViewItem.html"
+    },
+    {
+      "item": "inspect::inspect",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "inspect/fn.inspect.html"
+    },
+    {
+      "item": "lifecycle::CancelOutcome",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.Cancelled",
+        "variant.AlreadyFinished"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "lifecycle/enum.CancelOutcome.html"
+    },
+    {
+      "item": "lifecycle::cancel",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "lifecycle/fn.cancel.html"
+    },
+    {
+      "item": "lifecycle::fork",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "lifecycle/fn.fork.html"
+    },
+    {
+      "item": "lifecycle::grant_tool",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "lifecycle/fn.grant_tool.html"
+    },
+    {
+      "item": "lifecycle::patch_turn",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "lifecycle/fn.patch_turn.html"
+    },
+    {
+      "item": "lifecycle::retry_turn",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "lifecycle/fn.retry_turn.html"
+    },
+    {
+      "item": "lifecycle::revoke_tool",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "lifecycle/fn.revoke_tool.html"
+    },
+    {
+      "item": "policy::RequestGraph",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.preamble",
+        "structfield.utterances",
+        "structfield.documents",
+        "structfield.tools",
+        "structfield.temperature",
+        "structfield.max_tokens",
+        "structfield.additional_params",
+        "structfield.tool_choice",
+        "structfield.output",
+        "structfield.schema",
+        "structfield.output_tool",
+        "structfield.output_tool_config"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/struct.RequestGraph.html"
+    },
+    {
+      "item": "policy::answer_text",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/fn.answer_text.html"
+    },
+    {
+      "item": "policy::fold_request",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/fn.fold_request.html"
+    },
+    {
+      "item": "policy::invalid_peer_results",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/fn.invalid_peer_results.html"
+    },
+    {
+      "item": "policy::missing_required_fields",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/fn.missing_required_fields.html"
+    },
+    {
+      "item": "policy::output_tool_callable",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/fn.output_tool_callable.html"
+    },
+    {
+      "item": "policy::output_tool_name",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/fn.output_tool_name.html"
+    },
+    {
+      "item": "policy::partial_turn_at",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/fn.partial_turn_at.html"
+    },
+    {
+      "item": "policy::reprompt_missing_fields",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/fn.reprompt_missing_fields.html"
+    },
+    {
+      "item": "policy::resolve_output",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/fn.resolve_output.html"
+    },
+    {
+      "item": "policy::retrieval_query",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/fn.retrieval_query.html"
+    },
+    {
+      "item": "policy::text::AUGMENTATION_SEPARATOR",
+      "kind": "constant",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/text/constant.AUGMENTATION_SEPARATOR.html"
+    },
+    {
+      "item": "policy::text::OUTPUT_TOOL_DESCRIPTION",
+      "kind": "constant",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/text/constant.OUTPUT_TOOL_DESCRIPTION.html"
+    },
+    {
+      "item": "policy::text::OUTPUT_TOOL_NAME",
+      "kind": "constant",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/text/constant.OUTPUT_TOOL_NAME.html"
+    },
+    {
+      "item": "policy::text::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER",
+      "kind": "constant",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/text/constant.TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.html"
+    },
+    {
+      "item": "policy::text::output_tool_augmentation",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/text/fn.output_tool_augmentation.html"
+    },
+    {
+      "item": "policy::text::prompted_augmentation",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/text/fn.prompted_augmentation.html"
+    },
+    {
+      "item": "policy::text::reprompt_text_answer",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/text/fn.reprompt_text_answer.html"
+    },
+    {
+      "item": "policy::tool_definition",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/fn.tool_definition.html"
+    },
+    {
+      "item": "policy::tool_failure",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/fn.tool_failure.html"
+    },
+    {
+      "item": "policy::tool_result_part",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/fn.tool_result_part.html"
+    },
+    {
+      "item": "policy::turn_is_empty",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/fn.turn_is_empty.html"
+    },
+    {
+      "item": "policy::user_text",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "policy/fn.user_text.html"
+    },
+    {
+      "item": "reflect::ReflectedEntity",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.entity",
+        "structfield.components"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "reflect/struct.ReflectedEntity.html"
+    },
+    {
+      "item": "reflect::ReflectedScene",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.entities"
+      ],
+      "inherent_methods": [
+        "from_world",
+        "to_json",
+        "type_id",
+        "borrow",
+        "borrow_mut",
+        "into_any",
+        "into_any_rc",
+        "as_any",
+        "as_any_mut",
+        "into_any_send",
+        "from",
+        "instrument",
+        "in_current_span",
+        "instrument-1",
+        "in_current_span-1",
+        "into",
+        "into_result",
+        "is",
+        "try_from",
+        "try_into",
+        "with_subscriber",
+        "with_current_subscriber",
+        "with_subscriber-1",
+        "with_current_subscriber-1"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "reflect/struct.ReflectedScene.html"
+    },
+    {
+      "item": "reflect::install_reflect",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "reflect/fn.install_reflect.html"
+    },
+    {
+      "item": "replay::check_replayable",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "replay/fn.check_replayable.html"
+    },
+    {
+      "item": "replay::model_key",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "replay/fn.model_key.html"
+    },
+    {
+      "item": "replay::required_row",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "replay/fn.required_row.html"
+    },
+    {
+      "item": "replay::spec_hash",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "replay/fn.spec_hash.html"
+    },
+    {
+      "item": "replay::spec_json",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "replay/fn.spec_json.html"
+    },
+    {
+      "item": "replay::stamp_header",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "replay/fn.stamp_header.html"
+    },
+    {
+      "item": "replay::stamp_run",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "replay/fn.stamp_run.html"
+    },
+    {
+      "item": "replay::tool_key",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "replay/fn.tool_key.html"
+    },
+    {
+      "item": "stream::StreamText",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [
+        "read",
+        "forget"
+      ],
+      "required_trait_methods": [],
+      "rustdoc": "stream/struct.StreamText.html"
+    },
+    {
+      "item": "stream::TextReplaced",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.entity"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "stream/struct.TextReplaced.html"
+    },
+    {
+      "item": "systems::BatchHeld",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "systems/struct.BatchHeld.html"
+    },
+    {
+      "item": "systems::Folded",
+      "kind": "struct",
+      "fields_and_variants": [
+        "structfield.0"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "systems/struct.Folded.html"
+    },
+    {
+      "item": "systems::Fresh",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "systems/struct.Fresh.html"
+    },
+    {
+      "item": "systems::Materialised",
+      "kind": "struct",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "systems/struct.Materialised.html"
+    },
+    {
+      "item": "systems::RigSet",
+      "kind": "enum",
+      "fields_and_variants": [
+        "variant.Advance",
+        "variant.Select",
+        "variant.Assemble",
+        "variant.Patch",
+        "variant.Release",
+        "variant.Fold",
+        "variant.Judge",
+        "variant.Materialise",
+        "variant.Settle"
+      ],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "systems/enum.RigSet.html"
+    },
+    {
+      "item": "systems::install_agent",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "systems/fn.install_agent.html"
+    },
+    {
+      "item": "systems::next_order",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "systems/fn.next_order.html"
+    },
+    {
+      "item": "systems::spawn_run",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "systems/fn.spawn_run.html"
+    },
+    {
+      "item": "systems::spawn_utterance",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "systems/fn.spawn_utterance.html"
+    },
+    {
+      "item": "systems::witness::AGENT_EMITTER",
+      "kind": "constant",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "systems/witness/constant.AGENT_EMITTER.html"
+    },
+    {
+      "item": "systems::witness::agent_emitter",
+      "kind": "fn",
+      "fields_and_variants": [],
+      "inherent_methods": [],
+      "required_trait_methods": [],
+      "rustdoc": "systems/witness/fn.agent_emitter.html"
+    }
+  ]
+}

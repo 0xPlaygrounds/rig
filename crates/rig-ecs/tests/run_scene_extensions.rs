@@ -11,7 +11,7 @@ mod bus_support;
 use bevy_ecs::prelude::*;
 use rig_ecs::agent::{
     Owner, Run, RunOf,
-    scene::{SceneExtensions, WorldScene, load_world, save_world},
+    scene::{SceneExtensions, WorldScene},
 };
 use serde::{Deserialize, Serialize};
 
@@ -35,7 +35,7 @@ fn scene() -> WorldScene {
     let agent = world.spawn(Owner("test".into())).id();
     world.spawn((Run, RunOf(agent), ChildOf(agent), RetryBudget(3)));
     world.insert_resource(HostState(8));
-    let saved = save_world(&mut world).unwrap();
+    let saved = WorldScene::save(&mut world).unwrap();
     serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap()
 }
 
@@ -49,7 +49,7 @@ fn custom_policy_roundtrips_on_remapped_graph_with_host_owned_resources() {
         world.spawn_empty();
     }
     world.insert_resource(HostState(99));
-    let loaded = load_world(&saved, &mut world).unwrap();
+    let loaded = saved.load(&mut world).unwrap();
     let run = loaded
         .graph
         .iter()
@@ -78,7 +78,8 @@ fn missing_registration_and_invalid_payload_are_refused_before_spawning() {
     let mut world = World::new();
     let count = world.entities().len();
     assert!(
-        load_world(&saved, &mut world)
+        saved
+            .load(&mut world)
             .unwrap_err()
             .message
             .contains("unregistered")
@@ -92,12 +93,13 @@ fn missing_registration_and_invalid_payload_are_refused_before_spawning() {
             serde_json::json!("not a budget"),
         );
     }
-    assert!(load_world(&invalid, &mut world).is_err());
+    assert!(invalid.load(&mut world).is_err());
     assert_eq!(world.entities().len(), count);
     let mut invalid = saved;
     invalid.extensions.insert(usize::MAX, Default::default());
     assert!(
-        load_world(&invalid, &mut world)
+        invalid
+            .load(&mut world)
             .unwrap_err()
             .message
             .contains("index")
@@ -109,10 +111,10 @@ fn missing_registration_and_invalid_payload_are_refused_before_spawning() {
 fn unregistered_state_is_outside_the_scene_contract() {
     let mut world = World::new();
     world.spawn((Owner("test".into()), RetryBudget(5)));
-    let saved = save_world(&mut world).unwrap();
+    let saved = WorldScene::save(&mut world).unwrap();
     assert!(saved.extensions.is_empty());
     let mut restored = World::new();
-    let loaded = load_world(&saved, &mut restored).unwrap();
+    let loaded = saved.load(&mut restored).unwrap();
     assert!(restored.get::<RetryBudget>(loaded.graph[0]).is_none());
 }
 
@@ -167,7 +169,7 @@ fn paired_graph_stream_scene_restores_completed_state_and_refuses_an_unfinished_
             }
         });
         let expected = serde_json::to_value(live.world().get::<Streamed>(effect).unwrap()).unwrap();
-        let saved = save_world(live.world_mut()).unwrap();
+        let saved = WorldScene::save(live.world_mut()).unwrap();
         let saved: WorldScene =
             serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
         let mut restored = bus_support::app();
@@ -179,7 +181,7 @@ fn paired_graph_stream_scene_restores_completed_state_and_refuses_an_unfinished_
             bus_support::MockModel::new(&counters),
         );
         let count = restored.world().entities().len();
-        let loaded = load_world(&saved, restored.world_mut());
+        let loaded = saved.load(restored.world_mut());
         if completed {
             let loaded = loaded.unwrap();
             restored.update();

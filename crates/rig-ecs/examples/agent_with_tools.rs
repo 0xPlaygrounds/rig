@@ -1,35 +1,26 @@
-//! `examples/agent_with_tools` side by side: an agent with two tools
-//! answers "Calculate 2 - 5." — there the builder's `dynamic_tools`, here
-//! a `Grant` link per tool entity and a run entity. The model is scripted
-//! (`support`), so no key.
-
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::panic,
-    clippy::type_complexity,
-    reason = "an example: user code, thirty lines, a mock behind it"
-)]
+//! An agent with two tools answers "Calculate 2 - 5." using the public
+//! construction API. The scripted model and tools require no credentials.
 
 mod support;
 
-use bevy_app::Startup;
-use bevy_ecs::prelude::*;
-use rig_core::message::AssistantContent;
-use rig_ecs::{agent::Order, bus::Handlers, prelude::*, systems::spawn_run};
+use bevy_app::{App, ScheduleRunnerPlugin, Update};
+use rig_core::{message::AssistantContent, serve::ServingPolicy};
+use rig_ecs::{
+    bus::{Handlers, run_to_quiescence},
+    commands::{Agent, Prompt, install},
+};
 
 const PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. \
      You must use the provided tools before answering.";
 
-fn main() {
-    support::app()
-        .add_systems(Startup, ask)
-        .add_observer(support::print_the_answer_and_exit)
-        .run();
-}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut app = App::new();
+    install(app.world_mut(), ServingPolicy::default())?;
+    app.add_plugins(ScheduleRunnerPlugin::default())
+        .add_systems(Update, run_to_quiescence)
+        .add_observer(support::exit_when_failed)
+        .add_observer(support::print_the_answer_and_exit);
 
-fn ask(mut handlers: Handlers, mut commands: Commands) {
     let model = support::Scripted::new(vec![
         vec![support::call(
             "subtract",
@@ -37,13 +28,21 @@ fn ask(mut handlers: Handlers, mut commands: Commands) {
         )],
         vec![AssistantContent::text("-3")],
     ]);
-    let tools = vec![support::add(), support::subtract()];
-    let (model, tools) = support::register(&mut handlers, model, tools);
-    let agent = support::agent(&mut commands, model, PREAMBLE, 2);
-    for (order, tool) in tools.into_iter().enumerate() {
-        commands.spawn((Grant(tool), Order(order as u64), ChildOf(agent)));
+    let world = app.world_mut();
+    let model = Handlers::register_in(world, support::MODEL, model)?;
+    let add = Handlers::register_in(world, "demo/add", support::add())?;
+    let subtract = Handlers::register_in(world, "demo/subtract", support::subtract())?;
+    let agent = Agent::new(model)
+        .owner("calculator")
+        .preamble(PREAMBLE)
+        .tools([add, subtract])
+        .max_turns(2)
+        .spawn(world)?;
+    Prompt::new(agent, "Calculate 2 - 5.").spawn(world)?;
+
+    if app.run().is_success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::other("the example run failed").into())
     }
-    commands.queue(move |world: &mut World| {
-        spawn_run(world, agent, &[], "Calculate 2 - 5.", false, None);
-    });
 }

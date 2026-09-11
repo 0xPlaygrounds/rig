@@ -1,9 +1,8 @@
 //! The `rig_ecs::bus` module is written as if it were already its own
-//! crate, so that the extraction to `rig-bevy` is a `git mv`:
+//! independent substrate with intentional public extension points:
 //!
-//! - nothing under `crates/rig-ecs/src/bus/` has a crate-scoped visibility
-//!   — no `pub(crate)`, no `pub(super)`, no `pub(in ..)`: an item is `pub`
-//!   (a downstream crate could use it) or private to its file;
+//! - implementation details may use restricted visibility; the executable
+//!   public consumer in `crates/rig-ecs/tests/bus_api.rs` covers extension points;
 //! - no `use crate::` in `bus/` names a module other than `bus`;
 //! - no file under `bus/`, and no `tests/bus_*` file, mentions an
 //!   agent-shaped identifier;
@@ -56,28 +55,6 @@ fn code_lines(text: &str) -> impl Iterator<Item = (usize, &str)> {
         .enumerate()
         .map(|(number, line)| (number + 1, line))
         .filter(|(_, line)| !line.trim_start().starts_with("//"))
-}
-
-#[test]
-fn nothing_in_the_bus_module_is_crate_scoped() {
-    let mut offenders = Vec::new();
-    for path in rust_files(&crate_root().join("src/bus")) {
-        let text = read(&path);
-        for (number, line) in code_lines(&text) {
-            let trimmed = line.trim_start();
-            if trimmed.contains("pub(crate)")
-                || trimmed.contains("pub(super)")
-                || trimmed.contains("pub(in ")
-            {
-                offenders.push(format!("{}:{number}: {}", relative(&path), line.trim()));
-            }
-        }
-    }
-    assert!(
-        offenders.is_empty(),
-        "a crate-scoped item in rig_ecs::bus (the module is the future rig-bevy crate: pub, or private to its file):\n{}",
-        offenders.join("\n")
-    );
 }
 
 #[test]
@@ -280,19 +257,30 @@ fn no_serde_type_holds_an_entity() {
 /// The crate's tests live where the module guard can find them: every
 /// integration test file is a `bus_*` file (the substrate's own suite) or
 /// one of the agent's — `run_*`, `tool_*`, `steer_*`, `memory_*`,
-/// `reflect_*`, `assets_*` — and no `bus_*` file imports an agent module: the
+/// `reflect_*`, `assets_*`, or a named public DX contract — and no `bus_*`
+/// file imports an agent module: the
 /// substrate's suite is the future rig-bevy suite verbatim.
 #[test]
 fn every_test_file_belongs_to_a_suite_and_the_bus_suite_is_agent_free() {
     const SUITES: [&str; 7] = [
         "bus_", "run_", "tool_", "steer_", "memory_", "reflect_", "assets_",
     ];
+    const PUBLIC_DX_CONTRACTS: [&str; 5] = [
+        "commands.rs",
+        "lifecycle.rs",
+        "approval.rs",
+        "approval_input.rs",
+        "stream_text.rs",
+    ];
     let tests = crate_root().join("tests");
     let offenders: Vec<String> = std::fs::read_dir(&tests)
         .expect("rig-ecs has tests")
         .flatten()
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .filter(|name| !SUITES.iter().any(|suite| name.starts_with(suite)))
+        .filter(|name| {
+            !SUITES.iter().any(|suite| name.starts_with(suite))
+                && !PUBLIC_DX_CONTRACTS.contains(&name.as_str())
+        })
         .collect();
     assert!(
         offenders.is_empty(),

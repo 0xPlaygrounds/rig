@@ -28,7 +28,7 @@ use rig_core::observe::{Action, Reason, Stage};
 
 /// A pending effect `Dispatch` may take: not held, not answered, not yet
 /// issued.
-pub type Candidate = (
+pub(super) type Candidate = (
     Without<InFlight>,
     Without<EffectOutcome>,
     Without<Held>,
@@ -37,14 +37,15 @@ pub type Candidate = (
 
 /// What `Dispatch` reads of a candidate: its order, its intent, a reserved
 /// id, and a tool call's inputs.
-pub type CandidateView = (
-    Entity,
-    &'static Seq,
-    &'static PendingEffect,
-    Option<&'static Reserved>,
-    Option<&'static ToolInputs>,
-    Option<&'static super::AdapterOperation>,
-);
+#[derive(bevy_ecs::query::QueryData)]
+pub(super) struct DispatchCandidate {
+    entity: Entity,
+    seq: &'static Seq,
+    effect: &'static PendingEffect,
+    reserved: Option<&'static Reserved>,
+    inputs: Option<&'static ToolInputs>,
+    operation: Option<&'static super::AdapterOperation>,
+}
 
 /// The dispatch system. In one pass, in ascending [`Seq`]:
 ///
@@ -67,13 +68,13 @@ pub type CandidateView = (
     clippy::too_many_arguments,
     reason = "one system, one pass: every parameter is a distinct world access it needs"
 )]
-pub fn dispatch(
+pub(super) fn dispatch(
     mut commands: Commands,
     policy: Res<Policy>,
     table: NonSend<HandlerTable>,
     mut executions: NonSendMut<Executions>,
     bound: Query<(Entity, &Bound)>,
-    pending: Query<CandidateView, Candidate>,
+    pending: Query<DispatchCandidate, Candidate>,
     in_flight: Query<&InFlight>,
     parents: Query<&ChildOf>,
     issued: Query<&Issued>,
@@ -85,7 +86,7 @@ pub fn dispatch(
     mut progress: ResMut<Progress>,
 ) {
     let mut candidates: Vec<_> = pending.iter().collect();
-    candidates.sort_by_key(|(_, seq, _, _, _, _)| **seq);
+    candidates.sort_by_key(|candidate| *candidate.seq);
     let DispatchWitness { witness, subjects } = witnessing;
 
     let policy = policy.0;
@@ -99,7 +100,15 @@ pub fn dispatch(
         HashSet::new()
     };
 
-    for (entity, _, effect, reserved, inputs, operation) in candidates {
+    for DispatchCandidateItem {
+        entity,
+        effect,
+        reserved,
+        inputs,
+        operation,
+        ..
+    } in candidates
+    {
         if intake.0 >= policy.command_capacity {
             return;
         }
@@ -327,7 +336,7 @@ fn nearest_scope(
 }
 
 /// The report for a dispatch to a key with no bound handler.
-pub fn handler_unavailable(key: &HandlerKey) -> ErrorReport {
+pub(super) fn handler_unavailable(key: &HandlerKey) -> ErrorReport {
     ErrorReport::new(
         ErrorKind::HandlerUnavailable,
         format!("no handler is bound to `{key}`"),
@@ -337,7 +346,7 @@ pub fn handler_unavailable(key: &HandlerKey) -> ErrorReport {
 
 /// The report for an effect whose ancestor is in flight on its own serial
 /// key: served, it would wait for itself.
-pub fn reentrant(key: &HandlerKey) -> ErrorReport {
+pub(super) fn reentrant(key: &HandlerKey) -> ErrorReport {
     ErrorReport::new(
         ErrorKind::Request,
         format!(

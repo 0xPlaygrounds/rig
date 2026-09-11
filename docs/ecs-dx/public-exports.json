@@ -1,0 +1,215 @@
+{
+  "scope": "source exports and modules, including feature-gated declarations; external reexports retain their defining crate contracts",
+  "exports": [
+    {
+      "source": "crates/rig-ecs/src/agent/mod.rs",
+      "line": 23,
+      "declaration": "pub mod reflect;"
+    },
+    {
+      "source": "crates/rig-ecs/src/agent/mod.rs",
+      "line": 24,
+      "declaration": "pub mod scene;"
+    },
+    {
+      "source": "crates/rig-ecs/src/agent/reflect.rs",
+      "line": 12,
+      "declaration": "pub use crate::bus::reflect::ToolContextReflect;"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 100,
+      "declaration": "pub mod collect;"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 102,
+      "declaration": "pub mod delivery;"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 103,
+      "declaration": "pub mod dispatch;"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 104,
+      "declaration": "pub mod effect;"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 105,
+      "declaration": "pub mod handlers;"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 106,
+      "declaration": "pub mod hold;"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 107,
+      "declaration": "pub mod plugin;"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 108,
+      "declaration": "pub mod record;"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 110,
+      "declaration": "pub mod reflect;"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 111,
+      "declaration": "pub mod scene;"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 112,
+      "declaration": "pub mod witness;"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 115,
+      "declaration": "pub mod replay;"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 117,
+      "declaration": "pub use effect::{ Answer, Asked, EffectOutcome, ExecutionStatus, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing, Reserved, Scope, Seq, SeqCounter, Serving, Streamed, Streaming, ToolInputs, ToolOutputs, Typed, WorldEffect, WorldOutcome, execution_status, };"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 122,
+      "declaration": "pub use handlers::{Bound, Handlers, WorldHandler};"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 123,
+      "declaration": "pub use hold::{HoldOwners, acquire_hold, release_hold};"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 124,
+      "declaration": "pub use plugin::{ Bus, BusSet, Policy, Progress, QUIESCENCE_CAP, RigSchedule, install_bus, run_to_quiescence, };"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 127,
+      "declaration": "pub use record::Recording;"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 128,
+      "declaration": "pub use scene::{Scene, SceneEffect};"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 129,
+      "declaration": "pub use witness::{AdapterOperation, BUS_EMITTER, SubjectWalk, Subjects, Witnessing, bus_emitter};"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 132,
+      "declaration": "pub use delivery::ReplayFailure;"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 134,
+      "declaration": "pub use replay::{EffectLogResource, Replay};"
+    },
+    {
+      "source": "crates/rig-ecs/src/bus/mod.rs",
+      "line": 136,
+      "declaration": "pub use rig_core::serve::ServingPolicy;"
+    },
+    {
+      "source": "crates/rig-ecs/src/lib.rs",
+      "line": 97,
+      "declaration": "pub mod agent;"
+    },
+    {
+      "source": "crates/rig-ecs/src/lib.rs",
+      "line": 98,
+      "declaration": "pub mod approval;"
+    },
+    {
+      "source": "crates/rig-ecs/src/lib.rs",
+      "line": 100,
+      "declaration": "pub mod assets;"
+    },
+    {
+      "source": "crates/rig-ecs/src/lib.rs",
+      "line": 101,
+      "declaration": "pub mod bus;"
+    },
+    {
+      "source": "crates/rig-ecs/src/lib.rs",
+      "line": 102,
+      "declaration": "pub mod commands;"
+    },
+    {
+      "source": "crates/rig-ecs/src/lib.rs",
+      "line": 103,
+      "declaration": "pub mod inspect;"
+    },
+    {
+      "source": "crates/rig-ecs/src/lib.rs",
+      "line": 104,
+      "declaration": "pub mod lifecycle;"
+    },
+    {
+      "source": "crates/rig-ecs/src/lib.rs",
+      "line": 105,
+      "declaration": "pub mod policy;"
+    },
+    {
+      "source": "crates/rig-ecs/src/lib.rs",
+      "line": 106,
+      "declaration": "pub mod prelude;"
+    },
+    {
+      "source": "crates/rig-ecs/src/lib.rs",
+      "line": 108,
+      "declaration": "pub mod reflect;"
+    },
+    {
+      "source": "crates/rig-ecs/src/lib.rs",
+      "line": 110,
+      "declaration": "pub mod replay;"
+    },
+    {
+      "source": "crates/rig-ecs/src/lib.rs",
+      "line": 111,
+      "declaration": "pub mod stream;"
+    },
+    {
+      "source": "crates/rig-ecs/src/lib.rs",
+      "line": 112,
+      "declaration": "pub mod systems;"
+    },
+    {
+      "source": "crates/rig-ecs/src/policy/mod.rs",
+      "line": 23,
+      "declaration": "pub mod text { /// The output tool's default name. pub const OUTPUT_TOOL_NAME: &str = \"final_result\";"
+    },
+    {
+      "source": "crates/rig-ecs/src/prelude.rs",
+      "line": 5,
+      "declaration": "pub use crate::{ agent::{ Cancelled, Context, Failed, Grant, Outputs, Remembers, RequestPatch, Resolution, Retrieves, Retry, RunResult, Settled, Usage, UsesModel, }, bus::{BusSet, EffectOutcome, Held, Streamed}, commands::{Agent, CommandFailures, OperationError, Prompt, RigCommands}, inspect::{RunStatus, RunView, inspect}, stream::StreamText, systems::RigSet, };"
+    },
+    {
+      "source": "crates/rig-ecs/src/reflect.rs",
+      "line": 27,
+      "declaration": "pub use crate::{agent::reflect::*, bus::reflect::*};"
+    },
+    {
+      "source": "crates/rig-ecs/src/systems/mod.rs",
+      "line": 47,
+      "declaration": "pub mod witness;"
+    }
+  ]
+}

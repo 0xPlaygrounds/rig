@@ -208,7 +208,7 @@ pub struct Streaming {
 
 impl Streaming {
     /// Drive one owned stream on the pool with bounded delivery to Collect.
-    pub fn spawn(mut stream: StreamEvents, capacity: usize) -> (Self, Task<()>) {
+    pub(super) fn spawn(mut stream: StreamEvents, capacity: usize) -> (Self, Task<()>) {
         use futures::{SinkExt, StreamExt};
         let (mut sender, events) = futures::channel::mpsc::channel(capacity.max(1));
         let task = bevy_tasks::IoTaskPool::get().spawn(async move {
@@ -232,15 +232,48 @@ impl Streaming {
 /// Effect-owned execution on native and browser wasm. Keeping both here
 /// avoids requiring an owned stream or initial task output to be `Sync`.
 #[derive(Default)]
-pub struct Executions {
+pub(super) struct Executions {
     /// Initial tasks, indexed by their in-flight effect entity.
     pub tasks: std::collections::HashMap<Entity, Task<rig_core::serve::Reply>>,
     /// Stream workers, cancelled when the effect leaves flight.
     pub streams: std::collections::HashMap<Entity, Task<()>>,
 }
 
+/// A snapshot of owned worker liveness, derived without exposing task handles.
+/// This does not report run completion, pending delivery, or quiescence: finished
+/// workers can still have answers queued for Collect. Native workers may advance
+/// immediately after this snapshot is read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionStatus {
+    /// An initial handler task exists and has not finished preparing its reply.
+    pub preparing: bool,
+    /// A stream worker exists and has not finished producing delivery items.
+    pub streaming: bool,
+}
+
+/// Inspect worker liveness for a live entity in an installed bus. An absent or
+/// finished task contributes false; a missing entity or execution table returns
+/// None. This supports hosts coordinating collection with their own producers.
+pub fn execution_status(world: &World, entity: Entity) -> Option<ExecutionStatus> {
+    world.get_entity(entity).ok()?;
+    let executions = world.get_non_send::<Executions>()?;
+    Some(ExecutionStatus {
+        preparing: executions
+            .tasks
+            .get(&entity)
+            .is_some_and(|task| !task.is_finished()),
+        streaming: executions
+            .streams
+            .get(&entity)
+            .is_some_and(|task| !task.is_finished()),
+    })
+}
+
 /// Remove owned execution immediately when an effect leaves flight.
-pub fn drop_execution(removed: On<Remove, InFlight>, mut executions: NonSendMut<Executions>) {
+pub(super) fn drop_execution(
+    removed: On<Remove, InFlight>,
+    mut executions: NonSendMut<Executions>,
+) {
     let entity = removed.event().entity;
     executions.tasks.remove(&entity);
     executions.streams.remove(&entity);
@@ -318,7 +351,7 @@ impl WorldOutcome {
 
 /// Monotonic submission order for the world's answer inbox.
 #[derive(Resource, Default)]
-pub struct WorldOutcomeCounter(pub u64);
+pub(super) struct WorldOutcomeCounter(pub u64);
 
 fn stamp_world_outcome(mut world: DeferredWorld<'_>, context: HookContext) {
     let order = {
@@ -457,3 +490,6 @@ const _: () = {
     assert_send_sync::<Publishing>();
     assert_send_sync::<Typed<rig_core::effect::family::Completion>>();
 };
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod wasm_tests;

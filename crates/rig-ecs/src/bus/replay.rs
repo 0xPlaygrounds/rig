@@ -109,6 +109,13 @@ impl Replay {
         Ok(())
     }
 
+    /// Register replayers from a host holding the World, applying bindings
+    /// immediately. Installation and replay validation failures share one Result.
+    /// Uses the same validation and delivery-plan setup as [`Self::register`].
+    pub fn register_in(&self, world: &mut World, log: &EffectLog) -> Result<(), ErrorReport> {
+        Handlers::with(world, |handlers| self.register(handlers, log))?
+    }
+
     /// Spawn one [`PendingEffect`] per record of `log`, in id order, each
     /// with its recorded id [`Reserved`] and `ChildOf` the entity of its
     /// recorded parent. A parent outside `log` (a log's tail loaded over a

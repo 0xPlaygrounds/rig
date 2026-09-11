@@ -10,7 +10,7 @@ use crate::{
         AdditionalParams, Context, Conversation, DefaultMaxTurns, DocumentId, DocumentProps,
         DocumentText, Grant, InvalidCalls, MaxTokens, MaxTurns, Order, Output, OutputKind,
         OutputToolConfig, PolicyVersion, Preamble, Remembers, Retrievable, Retrieval, Retrieves,
-        Route, RunOf, Streamed, Temperature, ToolChoiceSpec, ToolPolicy, UsesModel,
+        Route, RunOf, RunStreaming, Temperature, ToolChoiceSpec, ToolPolicy, UsesModel,
     },
     bus::{Bound, Scope},
 };
@@ -180,7 +180,7 @@ pub fn spec_json(world: &mut World, subject: Entity) -> serde_json::Value {
         );
         fields.insert(
             "streamed".into(),
-            serde_json::json!(world.get::<Streamed>(subject).is_some_and(|v| v.0)),
+            serde_json::json!(world.get::<RunStreaming>(subject).is_some_and(|v| v.0)),
         );
         fields.insert(
             "conversation".into(),

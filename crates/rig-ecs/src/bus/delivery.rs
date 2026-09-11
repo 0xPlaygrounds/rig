@@ -372,7 +372,7 @@ fn cancelled_prefix(
 /// Buffer ready replay data, then expose one complete recorded batch. Every
 /// policy system gets a pass between distinct batches, even if all handler
 /// futures completed together. Live handlers keep their ordinary collector.
-pub fn collect_replayed(world: &mut World) {
+pub(super) fn collect_replayed(world: &mut World) {
     if !world.contains_resource::<ReplayDelivery>() {
         return;
     }
@@ -560,7 +560,7 @@ pub fn collect_replayed(world: &mut World) {
 
 /// Diagnose absent requests and unreproduced cancellations after every policy
 /// set has run. Called by the bus runner before it stops at quiescence.
-pub fn diagnose_idle_replay(world: &mut World) {
+pub(super) fn diagnose_idle_replay(world: &mut World) {
     if world.resource::<Progress>().0 || world.contains_resource::<ReplayFailure>() {
         return;
     }
@@ -717,3 +717,6 @@ fn deliver_outcome(world: &mut World, entity: Entity) {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod visibility_tests;

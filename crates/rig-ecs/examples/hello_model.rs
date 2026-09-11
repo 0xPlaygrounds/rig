@@ -1,24 +1,13 @@
-//! Hello, model: the bus in a `World` in under thirty lines of user code.
-//! Add the plugin, register a handler, spawn an effect, observe the answer.
-//! The model is a scripted mock, so no provider feature and no key: the
-//! shape is the same with a real `CompletionAdapter` registered under the
-//! key.
+//! The advanced bus-only path: install into a World, register a handler,
+//! spawn an effect, and observe its answer. No agent runtime is needed.
+//! The mock uses the same Serve boundary as a real CompletionAdapter.
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::panic,
-    clippy::type_complexity,
-    reason = "an example: user code, thirty lines, a mock behind it"
-)]
-
-use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Startup, Update};
+use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Update};
 use bevy_ecs::prelude::*;
 use rig_core::serve::Dispatch;
 use rig_core::{
     completion::{
-        CompletionRequest, CompletionResponse, Message, ModelRef, ProviderCapabilities, Usage,
+        CompletionRequestBuilder, CompletionResponse, ModelRef, ProviderCapabilities, Usage,
     },
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     message::AssistantContent,
@@ -26,44 +15,25 @@ use rig_core::{
 };
 use rig_ecs::bus::{EffectOutcome, Handlers, PendingEffect, install_bus, run_to_quiescence};
 
-// ---- the user's program: the next thirty lines ----
-
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new();
     install_bus(app.world_mut(), ServingPolicy::default());
+    Handlers::register_in(app.world_mut(), "model", Mock)?;
     app.add_plugins(ScheduleRunnerPlugin::default())
         .add_systems(Update, run_to_quiescence)
-        .add_systems(Startup, (register_the_model, ask).chain())
-        .add_observer(print_the_answer)
-        .run();
-}
-
-fn register_the_model(mut handlers: Handlers) {
-    if let Err(report) = handlers.register("model", Mock) {
-        eprintln!("could not register the model: {report}");
-    }
-}
-
-fn ask(mut commands: Commands) {
-    let request = CompletionRequest {
-        model: None,
-        chat_history: vec![Message::user("hello?")],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
-    commands.spawn(PendingEffect::new(
+        .add_observer(print_the_answer);
+    app.world_mut().spawn(PendingEffect::new(
         "model",
         EffectKind::Completion {
-            request,
+            request: CompletionRequestBuilder::unbound("hello?").build(),
             stream: false,
         },
     ));
+    if app.run().is_success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::other("model effect failed").into())
+    }
 }
 
 fn print_the_answer(
@@ -72,8 +42,16 @@ fn print_the_answer(
     mut exit: MessageWriter<AppExit>,
 ) {
     if let Ok(outcome) = outcomes.get(answered.event().entity) {
-        println!("the model said: {}", text(&outcome.0));
-        exit.write(AppExit::Success);
+        match &outcome.0 {
+            Ok(Outcome::Completion(_)) => {
+                println!("the model said: {}", text(&outcome.0));
+                exit.write(AppExit::Success);
+            }
+            _ => {
+                eprintln!("{}", text(&outcome.0));
+                exit.write(AppExit::error());
+            }
+        }
     }
 }
 

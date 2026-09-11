@@ -1033,7 +1033,7 @@ fn retry_feedback_targets_only_the_invalid_identity_namespace() {
 #[test]
 fn concurrency_and_independent_holds_survive_mid_batch_checkpoints() {
     use rig_ecs::{
-        agent::scene::{load_world, save_world},
+        agent::scene::WorldScene,
         bus::{Held, acquire_hold, release_hold},
         systems::BatchHeld,
     };
@@ -1072,7 +1072,7 @@ fn concurrency_and_independent_holds_survive_mid_batch_checkpoints() {
                     rig_core::observe::Emitter::named("test/policy"),
                 );
             }
-            let saved = save_world(original.world_mut()).unwrap();
+            let saved = WorldScene::save(original.world_mut()).unwrap();
             // Exercise the wire format, not just an in-memory clone.
             let saved: rig_ecs::agent::scene::WorldScene =
                 serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
@@ -1088,11 +1088,11 @@ fn concurrency_and_independent_holds_survive_mid_batch_checkpoints() {
                 }
                 let (mut destination, _, _, _) = tooling(vec![]);
                 let before = destination.world().entities().len();
-                assert!(load_world(&malformed, destination.world_mut()).is_err());
+                assert!(malformed.load(destination.world_mut()).is_err());
                 assert_eq!(destination.world().entities().len(), before);
             }
             let (mut restored, _, adder, _) = tooling(vec![vec![AssistantContent::text("done")]]);
-            let loaded = load_world(&saved, restored.world_mut()).unwrap();
+            let loaded = saved.load(restored.world_mut()).unwrap();
             let run = loaded
                 .graph
                 .iter()
@@ -1161,9 +1161,9 @@ fn review_batch_hold_survives_scene_roundtrip() {
         assert!(started.elapsed() < std::time::Duration::from_secs(5));
         std::thread::yield_now();
     }
-    let saved = rig_ecs::agent::scene::save_world(app.world_mut()).unwrap();
+    let saved = rig_ecs::agent::scene::WorldScene::save(app.world_mut()).unwrap();
     let (mut restored, _, _, _) = tooling(vec![vec![AssistantContent::text("done")]]);
-    let loaded = rig_ecs::agent::scene::load_world(&saved, restored.world_mut()).unwrap();
+    let loaded = saved.load(restored.world_mut()).unwrap();
     let run = loaded
         .graph
         .iter()

@@ -146,7 +146,7 @@ jobs:
         run: cargo xtask verify --check wasm-${{ matrix.package }}
 
   # The *executed* wasm tests in the tree: rig-agent's `tests/bus_wasm.rs`
-  # and rig-ecs's `tests/{bus_wasm,run_wasm}.rs`, run under
+  # and rig-ecs's private library worker tests plus `tests/{bus_wasm,run_wasm}.rs`, run under
   # `wasm-bindgen-test-runner` on Node. Every other wasm job is a `cargo
   # check`. The CLI must match the `wasm-bindgen` crate version the lock
   # file resolves, so it is read from the lock file rather than pinned here
@@ -164,6 +164,8 @@ jobs:
             test: bus_wasm
           - package: rig-ecs
             test: run_wasm
+          - package: rig-ecs
+            test: lib
     steps:
       - name: Checkout
         uses: actions/checkout@v5

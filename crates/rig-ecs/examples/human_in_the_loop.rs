@@ -1,102 +1,133 @@
-//! `examples/agent_with_human_in_the_loop` side by side: every tool call
-//! waits for a human's decision — there an `AgentHook::on_dispatch` that
-//! awaits stdin, here a system in `BusSet::Gate` that reads a line before
-//! the bus takes the tool child. Approve: the child goes on. Deny: an
-//! `EffectOutcome` with the reason, never dispatched — the model reads the
-//! denial as the tool's result. Abort, or no input at all (closed stdin):
-//! `Cancelled` on the run, fail-closed.
+//! Nonblocking approval: the host keeps ticking while a tool waits for input.
+//! Unix CLI input is readiness-polled without a background thread. On any
+//! native platform, `--decision approve|deny|cancel` supplies scripted input.
+//! Tools and the model are local mocks; no email is actually sent.
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::panic,
-    clippy::type_complexity,
-    reason = "an example: user code, thirty lines, a mock behind it"
-)]
-
+#[cfg(unix)]
+#[path = "human_in_the_loop/input.rs"]
+mod input;
 mod support;
 
-use bevy_app::Startup;
+use bevy_app::{App, Update};
 use bevy_ecs::prelude::*;
-use rig_core::{
-    effect::EffectKind,
-    error::{ErrorKind, ErrorReport},
-    message::AssistantContent,
-};
+use rig_core::{message::AssistantContent, observe::Emitter};
 use rig_ecs::{
-    agent::{Order, ToolCallSlot, Turn},
-    bus::{Handlers, PendingEffect, RigSchedule},
-    prelude::*,
-    systems::spawn_run,
+    agent::ToolCallSlot,
+    approval::{ApprovalChoice, ApprovalRequest, ApprovalRequired, decide},
+    bus::{BusSet, Handlers, PendingEffect, RigSchedule, run_to_quiescence},
+    commands::{Agent, Prompt, install},
+    inspect::inspect,
 };
 
-fn main() {
-    support::app()
-        .add_systems(Startup, ask)
-        .add_systems(RigSchedule, approve.in_set(BusSet::Gate))
-        .add_observer(support::print_the_answer_and_exit)
-        .run();
-}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let arguments: Vec<_> = std::env::args().skip(1).collect();
+    let scripted = match arguments.as_slice() {
+        [] => None,
+        [flag, value] if flag == "--decision" => Some(choice(value)?),
+        _ => return Err("usage: human_in_the_loop [--decision approve|deny|cancel]".into()),
+    };
+    #[cfg(not(unix))]
+    if scripted.is_none() {
+        return Err("interactive CLI input requires Unix; use --decision or supply decisions from your application's UI".into());
+    }
+    #[cfg(unix)]
+    let mut input = input::Input::new(std::io::stdin());
 
-fn ask(mut handlers: Handlers, mut commands: Commands) {
-    let model = support::Scripted::new(vec![
-        vec![support::call(
-            "send_email",
-            serde_json::json!({"to": "ada@example.com", "subject": "Hi", "body": "Hello, Ada."}),
-        )],
-        vec![AssistantContent::text("Done.")],
-    ]);
-    let (model, tools) = support::register(&mut handlers, model, vec![support::send_email()]);
-    let agent = support::agent(
-        &mut commands,
-        model,
-        "You are an assistant with an email tool.",
-        2,
-    );
-    commands.spawn((Grant(tools[0]), Order(0), ChildOf(agent)));
-    commands.queue(move |world: &mut World| {
-        spawn_run(world, agent, &[], "Email Ada to say hello.", false, None);
-    });
-}
-
-/// `on_dispatch`, as a system in `Gate`: a fresh tool child waits for the
-/// human's line before the bus's `Dispatch` sees it.
-fn approve(
-    calls: Query<(Entity, &PendingEffect, &ChildOf), (Added<PendingEffect>, With<ToolCallSlot>)>,
-    turns: Query<&ChildOf, With<Turn>>,
-    mut commands: Commands,
-) {
-    for (call, effect, turn_of) in &calls {
-        let EffectKind::ToolCall { name, args } = &effect.kind else {
-            continue;
-        };
-        println!("\nthe agent wants to run a tool: {name} {args}");
-        println!("[a]pprove / [d]eny / a[b]ort?");
-        let mut line = String::new();
-        let decision = match std::io::stdin().read_line(&mut line) {
-            Ok(0) | Err(_) => None,
-            Ok(_) => Some(line.trim().to_ascii_lowercase()),
-        };
-        match decision.as_deref() {
-            Some("a" | "approve") => println!("approved"),
-            Some("d" | "deny") => {
-                println!("denied");
-                commands
-                    .entity(call)
-                    .insert(EffectOutcome(Err(ErrorReport::new(
-                        ErrorKind::Denied,
-                        "denied by the human reviewer",
-                    ))));
+    let mut app = App::new();
+    install(app.world_mut(), Default::default())?;
+    app.add_systems(Update, run_to_quiescence)
+        .add_systems(RigSchedule, require_approval.in_set(BusSet::Gate));
+    let world = app.world_mut();
+    let model = Handlers::register_in(
+        world,
+        support::MODEL,
+        support::Scripted::new(vec![
+            vec![support::call(
+                "send_email",
+                serde_json::json!({"to": "ada@example.com", "subject": "Hi", "body": "Hello, Ada."}),
+            )],
+            vec![AssistantContent::text("Done.")],
+        ]),
+    )?;
+    let tool = Handlers::register_in(world, "demo/email", support::send_email())?;
+    let agent = Agent::new(model)
+        .preamble("You are an assistant with an email tool.")
+        .tools([tool])
+        .max_turns(2)
+        .spawn(world)?;
+    let run = Prompt::new(agent, "Email Ada to say hello.").spawn(world)?;
+    let mut requests = app.world_mut().query::<&ApprovalRequest>();
+    let mut displayed = None;
+    loop {
+        app.update();
+        let view = inspect(app.world(), run)?;
+        if let Some(failure) = view.failure() {
+            return Err(format!("run failed: {failure:?}").into());
+        }
+        if let Some(answer) = view.answer() {
+            println!("{answer}");
+            return Ok(());
+        }
+        if displayed.is_none()
+            && let Some(request) = requests
+                .iter(app.world())
+                .find(|request| request.run() == run && request.is_pending())
+        {
+            println!(
+                "review {}: {} {}",
+                request.ticket().revision(),
+                request.name(),
+                request.args()
+            );
+            println!("approve / deny / cancel?");
+            displayed = Some(request.ticket());
+        }
+        if let Some(ticket) = displayed {
+            let mut decision = scripted.clone();
+            #[cfg(unix)]
+            if decision.is_none() {
+                decision = match input.poll()? {
+                    Some(input::InputEvent::Line(line)) => {
+                        Some(choice(line.trim()).unwrap_or_else(|_| {
+                            ApprovalChoice::Cancel("invalid reviewer input".into())
+                        }))
+                    }
+                    Some(input::InputEvent::Closed) => {
+                        Some(ApprovalChoice::Cancel("reviewer input closed".into()))
+                    }
+                    None => None,
+                };
             }
-            _ => {
-                println!("aborting (fail-closed)");
-                if let Ok(run_of) = turns.get(turn_of.parent()) {
-                    commands
-                        .entity(run_of.parent())
-                        .insert(Cancelled("no reviewer approval".to_owned()));
+            if let Some(decision) = decision {
+                // Keep the ticket that was displayed, even if the proposal has
+                // changed since then. A stale reply is rejected and redisplayed.
+                match decide(app.world_mut(), ticket, decision) {
+                    Ok(_) => println!("decision applied"),
+                    Err(error) => eprintln!("decision rejected: {error}"),
                 }
+                displayed = None;
             }
         }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
+fn choice(text: &str) -> Result<ApprovalChoice, &'static str> {
+    match text {
+        "approve" => Ok(ApprovalChoice::Approve),
+        "deny" => Ok(ApprovalChoice::Deny("denied by the reviewer".into())),
+        "cancel" => Ok(ApprovalChoice::Cancel("cancelled by the reviewer".into())),
+        _ => Err("expected approve, deny, or cancel"),
+    }
+}
+
+fn require_approval(
+    calls: Query<Entity, (Added<PendingEffect>, With<ToolCallSlot>)>,
+    mut commands: Commands,
+) {
+    for call in &calls {
+        commands
+            .entity(call)
+            .insert(ApprovalRequired(Emitter::named("app/human")));
     }
 }
