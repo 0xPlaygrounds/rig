@@ -68,7 +68,7 @@ impl CompletionModel for ScriptedModel {
     fn completion(
         &self,
         request: CompletionRequest,
-    ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend {
+        ) -> impl Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend {
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
         let choice = if call == 0 {
             // The request must carry the tool the run will call back into.
@@ -96,7 +96,7 @@ impl CompletionModel for ScriptedModel {
     fn stream(
         &self,
         _request: CompletionRequest,
-    ) -> impl Future<Output = Result<StreamingCompletionResponse, CompletionError>> + WasmCompatSend
+        ) -> impl Future<Output = Result<StreamingCompletionResponse, CompletionError>> + WasmCompatSend
     {
         std::future::ready(Err(CompletionError::ProviderError(
             "fixture drives unary completions only".to_string(),

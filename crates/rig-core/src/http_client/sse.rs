@@ -11,7 +11,9 @@ use crate::{
 };
 use bytes::Bytes;
 use eventsource_stream::{Event as MessageEvent, EventStreamError, Eventsource};
-use futures::Stream;
+use futures::{Stream, StreamExt};
+
+pub(crate) mod tail;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use futures::{future::BoxFuture, stream::BoxStream};
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
@@ -87,6 +89,7 @@ pin_project! {
         last_event_id: Option<String>,
         allow_missing_content_type: bool,
         request_id_capture: Option<(String, RequestIdSlot)>,
+        observation: Option<crate::observe::AdapterSlot>,
         #[pin]
         state: SourceState,
     }
@@ -99,7 +102,9 @@ where
 {
     /// Create a new event source that will connect to the given request.
     pub fn new(client: HttpClient, req: Request<RequestBody>) -> Self {
-        let response_future = Self::create_response_future(&client, &req, None);
+        let observation = crate::observe::AdapterContext::slot_for_request(&req);
+        let response_future =
+            Self::create_response_future(&client, &req, None, observation.clone());
         let state = SourceState::Connecting {
             response_future,
             last_retry: None,
@@ -112,6 +117,7 @@ where
             last_event_id: None,
             allow_missing_content_type: false,
             request_id_capture: None,
+            observation,
             state,
         }
     }
@@ -132,11 +138,16 @@ where
         (self, slot)
     }
 
+    pub(crate) fn observation(&self) -> Option<crate::observe::AdapterSlot> {
+        self.observation.clone()
+    }
+
     /// Create a response future for connecting/reconnecting
     fn create_response_future(
         client: &HttpClient,
         req: &Request<RequestBody>,
         last_event_id: Option<&str>,
+        observation: Option<crate::observe::AdapterSlot>,
     ) -> ResponseFuture {
         let mut req_clone = req.clone();
         req_clone
@@ -153,7 +164,31 @@ where
         }
 
         let client_clone = client.clone();
-        Box::pin(async move { client_clone.send_streaming(req_clone).await })
+        Box::pin(async move {
+            if let Some(observation) = &observation {
+                observation.start(&req_clone);
+            }
+            let response = client_clone.send_streaming(req_clone).await;
+            if let Some(observation) = &observation {
+                match &response {
+                    Ok(response) => observation
+                        .response_with_headers(response.status(), Some(response.headers())),
+                    Err(error) => {
+                        observation
+                            .error_boundary(crate::observe::AdapterErrorBoundary::from_http(error));
+                        if let Some(status) = error.non_success_status() {
+                            observation.response_with_headers(status, error.non_success_headers());
+                        }
+                        if let Some(body) = error.non_success_body() {
+                            observation.payload(body.as_bytes());
+                        }
+                        // The frame driver preserves the owned error and closes the
+                        // attempt. Do not clone or consume transport errors here.
+                    }
+                }
+            }
+            response
+        })
     }
 
     /// Get the last event id
@@ -212,7 +247,17 @@ where
                                         this.request_id_capture.as_ref(),
                                         &response,
                                     );
-                                    let mut event_stream = response.into_body().eventsource();
+                                    let body = response.into_body();
+                                    let body: BoxedStream = match this.observation.clone() {
+                                        Some(observation) => Box::pin(body.map(move |item| {
+                                            if let Ok(bytes) = &item {
+                                                observation.bytes(bytes);
+                                            }
+                                            item
+                                        })),
+                                        None => body,
+                                    };
+                                    let mut event_stream = body.eventsource();
                                     if let Some(id) = &this.last_event_id {
                                         event_stream.set_last_event_id(id.clone());
                                     }
@@ -222,6 +267,11 @@ where
                                     return Poll::Ready(Some(Ok(Event::Open)));
                                 }
                                 Err(err) => {
+                                    if let Some(observation) = this.observation.as_ref() {
+                                        observation.error_boundary(
+                                            crate::observe::AdapterErrorBoundary::from_http(&err),
+                                        );
+                                    }
                                     // Transition: Connecting -> Closed. A rejected
                                     // response is terminal: the retry policy governs
                                     // transport failures, not a server that answered.
@@ -256,6 +306,11 @@ where
                             return Poll::Ready(Some(Ok(Event::Message(event))));
                         }
                         Poll::Ready(Some(Err(EventStreamError::Transport(err)))) => {
+                            if let Some(observation) = this.observation.as_ref() {
+                                observation.error_boundary(
+                                    crate::observe::AdapterErrorBoundary::Transport,
+                                );
+                            }
                             // Transition: Open -> WaitingToRetry or Closed. A
                             // failure mid-stream starts a *fresh* cycle (history
                             // `None`): this connection had already succeeded, so
@@ -298,6 +353,7 @@ where
                                     this.client,
                                     this.req,
                                     this.last_event_id.as_deref(),
+                                    this.observation.clone(),
                                 );
                             this.state.set(SourceState::Connecting {
                                 response_future,

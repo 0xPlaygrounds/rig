@@ -34,7 +34,7 @@ use crate::message::{self, MimeType, Reasoning};
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
-use crate::providers::internal::completion_send::send_completion;
+use crate::providers::internal::completion_send::send_completion_with;
 use crate::providers::internal::envelope::DirectPayload;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use gemini_api_types::{
@@ -162,6 +162,25 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<GenerateContentResponse, CompletionError> {
+        self.raw_completion_with_context(completion_request, None)
+            .await
+    }
+
+    /// Return provider-native output with context owned by this invocation.
+    pub async fn raw_completion_with_context(
+        &self,
+        completion_request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<GenerateContentResponse, CompletionError> {
+        self.complete_with(completion_request, context, Ok).await
+    }
+
+    async fn complete_with<R>(
+        &self,
+        completion_request: CompletionRequest,
+        observation: Option<crate::observe::AdapterContext>,
+        normalize: impl FnOnce(GenerateContentResponse) -> Result<R, CompletionError>,
+    ) -> Result<R, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let span = CompletionSpanBuilder::new(
             PROVIDER_NAME,
@@ -189,13 +208,20 @@ where
 
         let path = completion_endpoint(&request_model);
 
-        let request = self
+        let mut request = self
             .client
             .post(path.as_str())?
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        send_completion::<_, DirectPayload<GenerateContentResponse>, _>(
+        if let Some(observation) = observation {
+            super::observation::attach(
+                observation,
+                &mut request,
+                "/models/{model}:generateContent",
+            );
+        }
+        send_completion_with::<_, DirectPayload<GenerateContentResponse>, _, _, _>(
             &self.client,
             request,
             "Gemini completion",
@@ -212,6 +238,7 @@ where
                     .unwrap_or_default();
                 span.record_token_usage(&usage);
             },
+            normalize,
         )
         .instrument(span)
         .await
@@ -225,20 +252,37 @@ where
 {
     async fn completion(
         &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Capture before `try_into` consumes the raw value.
-        let raw = self.raw_completion(completion_request).await?;
-        let captured = serde_json::to_value(&raw)?;
-        let response: completion::CompletionResponse = raw.try_into()?;
-        Ok(response.with_raw(captured))
+        request: CompletionRequest,
+    ) -> Result<crate::completion::CompletionResponse, CompletionError> {
+        self.completion_with_context(request, None).await
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        CompletionModel::stream(self, request).await
+        self.stream_with_context(request, None).await
+    }
+
+    async fn completion_with_context(
+        &self,
+        completion_request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.complete_with(completion_request, context, |raw| {
+            let captured = serde_json::to_value(&raw)?;
+            let response: completion::CompletionResponse = raw.try_into()?;
+            Ok(response.with_raw(captured))
+        })
+        .await
+    }
+
+    async fn stream_with_context(
+        &self,
+        request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+        self.stream_observed(request, context).await
     }
 }
 

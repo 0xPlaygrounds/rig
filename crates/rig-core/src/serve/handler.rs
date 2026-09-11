@@ -174,6 +174,11 @@ impl Serve for ErasedHandler {
 }
 
 pub trait Observe: Send + Sync {
+    /// Provider witness associated with this dispatch, independently of recording.
+    fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
+        None
+    }
+
     /// The completed handler response, or the fold of a streaming handler's
     /// events. A resolved response retains content that has no stream block,
     /// such as images emitted as unknown events.
@@ -203,11 +208,12 @@ pub trait Observe: Send + Sync {
             self.outcome(outcome);
         }
     }
-    /// The dispatch was decided before any handler served it: the record
-    /// it opened is forgotten.
-    fn discard(&mut self);
-    /// A layer serves `kind` in place of the effect that began (same
-    /// family): the record's request is what the innermost handler served.
+    /// The dispatch was decided before any handler served it, by the layer
+    /// named: the record it opened is forgotten.
+    fn discard(&mut self, layer: &str);
+    /// The layer named serves `kind` in place of the effect that began
+    /// (same family): the record's request is what the innermost handler
+    /// served.
     fn patch(&mut self, kind: &EffectKind);
 }
 
@@ -489,11 +495,30 @@ fn lock<T>(value: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// An effect's identity, requested delivery mode, and driver-provided scopes.
 /// Reply transport and cancellation remain owned by the driver.
 pub struct Dispatch {
+    adapter_context: Option<crate::observe::AdapterContext>,
+    adapter_context_explicit: bool,
     id: EffectId,
     streaming: bool,
     scopes: Vec<Arc<dyn std::any::Any + Send + Sync>>,
     observer: Option<Arc<Mutex<Option<Observed>>>>,
+    /// The layer whose verdict replaced the answer the consumer receives,
+    /// once one did. Shared down the layer chain; a driver reads it after
+    /// the reply ([`Dispatch::replaced_by`]).
+    replaced_by: Arc<Mutex<Option<String>>>,
     folded: Option<Folded>,
+}
+
+/// A layer's handle for attributing its verdict once its inner handler
+/// answered: [`Dispatch::attribution`].
+#[derive(Clone)]
+pub(crate) struct Attribution(Arc<Mutex<Option<String>>>);
+
+impl Attribution {
+    /// The layer named replaced the answer the consumer receives. The
+    /// outermost layer to say so is the one the consumer's answer is from.
+    pub(crate) fn replaced(&self, layer: &str) {
+        *lock(&self.0) = Some(layer.to_owned());
+    }
 }
 
 impl Dispatch {
@@ -502,10 +527,22 @@ impl Dispatch {
         Self {
             id,
             streaming,
+            adapter_context: None,
+            adapter_context_explicit: false,
             scopes: Vec::new(),
             observer: None,
+            replaced_by: Arc::new(Mutex::new(None)),
             folded: None,
         }
+    }
+
+    /// The slot a layer's replacement verdict is named in: `None` until a
+    /// layer replaced the answer on its way out, then that layer's name.
+    /// The record keeps the handler's answer regardless; this says who the
+    /// consumer's answer is from. Shared with every inner dispatch, so a
+    /// driver reads it from the dispatch it built.
+    pub fn replaced_by(&self) -> Arc<Mutex<Option<String>>> {
+        self.replaced_by.clone()
     }
 
     /// The effect being served.
@@ -538,11 +575,30 @@ impl Dispatch {
 
     /// Observe the original handler answer independently of layer verdicts.
     pub fn with_observer(mut self, observer: Box<dyn Observe>) -> Self {
+        if !self.adapter_context_explicit {
+            self.adapter_context = observer.adapter_context();
+        }
         self.observer = Some(Arc::new(Mutex::new(Some(Observed {
             observer,
             told: false,
         }))));
         self
+    }
+
+    /// Supply provider context for this invocation independently of request data.
+    ///
+    /// Explicit context takes precedence over context supplied by an observer,
+    /// regardless of installation order, and survives forwarding through layers.
+    /// Reuse an operation context only for attempts of that same logical call.
+    pub fn with_adapter_context(mut self, context: crate::observe::AdapterContext) -> Self {
+        self.adapter_context = Some(context);
+        self.adapter_context_explicit = true;
+        self
+    }
+
+    /// Provider observation context forwarded across handler layers.
+    pub fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
+        self.adapter_context.clone()
     }
 
     pub(crate) fn patched(&mut self, kind: &EffectKind) {
@@ -553,13 +609,20 @@ impl Dispatch {
         }
     }
 
-    pub(crate) fn discard(&mut self) {
+    pub(crate) fn discard(&mut self, layer: &str) {
         if let Some(slot) = &self.observer
             && let Some(mut seen) = lock(slot).take()
         {
             seen.told = true;
-            seen.observer.discard();
+            seen.observer.discard(layer);
         }
+    }
+
+    /// The handle a layer keeps to attribute its verdict once its inner
+    /// handler answered (the observer itself moves inward with
+    /// [`Self::inner`]).
+    pub(crate) fn attribution(&self) -> Attribution {
+        Attribution(self.replaced_by.clone())
     }
 
     pub(crate) fn inner(&mut self, folded: Option<Folded>) -> Self {
@@ -567,8 +630,11 @@ impl Dispatch {
         Self {
             id: self.id,
             streaming: self.streaming,
+            adapter_context: self.adapter_context.clone(),
+            adapter_context_explicit: self.adapter_context_explicit,
             scopes: self.scopes.clone(),
             observer: observer.map(|seen| Arc::new(Mutex::new(Some(seen)))),
+            replaced_by: self.replaced_by.clone(),
             folded,
         }
     }

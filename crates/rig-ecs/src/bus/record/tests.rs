@@ -15,9 +15,11 @@ fn cancellation_and_terminal_observation_have_one_recording_boundary() {
         recording.begin(id, "test".into(), kind.clone(), Origin::default());
         let observed = Arc::new(ObservedState::default());
         let mut observer = WorldObserver {
+            adapter: None,
             id,
             recording: Some(recording.clone()),
             published: None,
+            witness: None,
             observed: observed.clone(),
         };
         let final_item = Ok(StreamEvent::Final(rig_core::streaming::StreamFinal::new(
@@ -39,7 +41,7 @@ fn cancellation_and_terminal_observation_have_one_recording_boundary() {
         observer.stream_error(&cancelled());
         observer.outcome(&answer);
         observer.patch(&kind);
-        observer.discard();
+        observer.discard("layer");
         assert_eq!(serde_json::to_value(recorder.log()).unwrap(), closed);
         assert!(!observed.is_discarded());
     }

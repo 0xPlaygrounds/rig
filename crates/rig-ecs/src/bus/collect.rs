@@ -15,7 +15,12 @@ use super::{
     },
     plugin::Progress,
     record::{DeliveryBatch, Observed, Recording},
+    witness::{SeenOutcome, Subjects, Witnessing, bus_emitter, fingerprint},
 };
+use rig_core::observe::{Action, Emitter, OutcomeSummary, Reason, Stage};
+
+/// How many trailing stream events a truncation observation keeps.
+pub const TRUNCATION_TAIL: usize = 8;
 
 /// Maximum live streaming queue checks across a host tick.
 pub const STREAM_WORK_PER_TICK: usize = 4096;
@@ -123,6 +128,8 @@ pub fn collect_streams(
     mut streaming: Query<StreamingView, With<InFlight>>,
     mut executions: NonSendMut<Executions>,
     recording: Option<Res<Recording>>,
+    witness: Option<Res<Witnessing>>,
+    subjects: Subjects,
     batch: Res<DeliveryBatch>,
     mut progress: ResMut<Progress>,
     mut budget: ResMut<CollectionBudget>,
@@ -157,6 +164,7 @@ pub fn collect_streams(
             let outcome = match polled {
                 Poll::Pending => break,
                 Poll::Ready(Some(item)) => {
+                    streaming.delivered += 1;
                     if let Some(streamed) = &mut streamed {
                         if let Err(error) = &item {
                             let position = streamed.events.len() + streamed.errors.len();
@@ -187,10 +195,47 @@ pub fn collect_streams(
                     };
                     outcome
                 }
-                Poll::Ready(None) => streamed
+                Poll::Ready(None) => match streamed
                     .as_ref()
                     .and_then(|streamed| streamed.outcome.clone())
-                    .unwrap_or_else(|| Err(stream_truncated())),
+                {
+                    Some(outcome) => outcome,
+                    None => {
+                        // The stream closed with no terminal record: keep
+                        // the last frames the consumer saw so the failure
+                        // can be classified after the fact.
+                        if let Some(witness) = &witness {
+                            let (tail, errors) = streamed.as_ref().map_or_else(
+                                || (Vec::new(), Vec::new()),
+                                |streamed| {
+                                    let skip =
+                                        streamed.events.len().saturating_sub(TRUNCATION_TAIL);
+                                    (
+                                        streamed.events.iter().skip(skip).cloned().collect(),
+                                        streamed
+                                            .errors
+                                            .iter()
+                                            .map(|(_, error)| Reason::from_report(error))
+                                            .collect(),
+                                    )
+                                },
+                            );
+                            witness.emit(
+                                subjects.of(entity),
+                                Stage::Collect,
+                                bus_emitter(),
+                                Action::stream_truncated(
+                                    streamed.as_ref().map_or(streaming.delivered, |streamed| {
+                                        streamed.events.len() + streamed.errors.len()
+                                    }),
+                                    tail,
+                                    errors,
+                                ),
+                            );
+                        }
+                        Err(stream_truncated())
+                    }
+                },
             };
             executions.streams.remove(&entity);
             let mut entity_commands = commands.entity(entity);
@@ -254,7 +299,10 @@ pub type LandedView = (
 pub fn settle(
     mut commands: Commands,
     landed: Query<LandedView, Landed>,
+    replaced: Query<&super::record::ReplacedBy>,
     recording: Option<Res<Recording>>,
+    witness: Option<Res<Witnessing>>,
+    subjects: Subjects,
     mut progress: ResMut<Progress>,
 ) {
     for (entity, &Issued(id), outcome, observed, outputs) in &landed {
@@ -265,6 +313,10 @@ pub fn settle(
             .and_then(|observed| observed.0.take_outcome())
             .unwrap_or_else(|| outcome.0.clone());
         let discarded = observed.is_some_and(|observed| observed.0.is_discarded());
+        let replaced_by = replaced
+            .get(entity)
+            .ok()
+            .and_then(super::record::ReplacedBy::layer);
         if let (Some(recording), false) = (&recording, discarded) {
             // Layered dispatches captured output at the inner handler's
             // terminal, before an outer verdict could change it.
@@ -273,11 +325,51 @@ pub fn settle(
             {
                 recording.tool_output(id, outputs.0.result_context());
             }
-            recording.resolve(id, recorded);
+            recording.resolve(id, recorded.clone());
         }
-        commands
-            .entity(entity)
-            .remove::<(InFlight, Observed, CollectedOutcome)>();
+        if let Some(witness) = &witness {
+            let subject = subjects.of(entity);
+            if discarded {
+                // The layer's denial was observed at the handler side; the
+                // consumer's outcome is what the layer decided.
+            } else {
+                let served = OutcomeSummary::of(&recorded);
+                let seen = SeenOutcome::of(&outcome.0);
+                let consumed = seen.summary.clone();
+                let differs = seen.fingerprint != fingerprint(&recorded);
+                commands.entity(entity).insert(seen);
+                let observation = rig_core::observe::Observation::new(
+                    subject.clone(),
+                    Stage::Collect,
+                    bus_emitter(),
+                    Action::Landed {
+                        outcome: served.clone(),
+                    },
+                );
+                witness.observe(observation);
+                if differs {
+                    // A layer's verdict on the way out: the record keeps
+                    // the handler's answer, the world sees the layer's. The
+                    // layer names itself when it replaced; a difference no
+                    // layer claimed keeps the explicit unknown.
+                    witness.emit(
+                        subject,
+                        Stage::Handler,
+                        replaced_by.map_or_else(Emitter::unknown, Emitter::named),
+                        Action::Replaced {
+                            recorded: served,
+                            consumed,
+                        },
+                    );
+                }
+            }
+        }
+        commands.entity(entity).remove::<(
+            InFlight,
+            Observed,
+            CollectedOutcome,
+            super::record::ReplacedBy,
+        )>();
         progress.mark();
     }
 }

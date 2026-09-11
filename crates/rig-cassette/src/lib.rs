@@ -2155,6 +2155,8 @@ const SENSITIVE_QUERY_PARAMS: &[&str] = &[
 // not account state, and the scrubber placeholders its value.
 const RESPONSE_HEADER_ALLOWLIST: &[&str] = &[
     "content-type",
+    // Replay must retain the provider's retry hint for adapter diagnostics.
+    "retry-after",
     "x-amzn-errortype",
     "x-amzn-requestid",
     // Provider transport request ids (rig#2265): Anthropic / OpenAI-and-xAI.
@@ -2295,6 +2297,30 @@ impl CassetteScrubber {
 
     fn scrub_response(&mut self, response: &mut CassetteResponse) {
         scrub_headers(self.policy, &mut response.header, HeaderMode::Response);
+
+        // A retry hint is protocol data, not an arbitrary diagnostic string.
+        // Canonicalize valid values and discard malformed/credential-bearing text.
+        response.header.retain_mut(|header| {
+            if !header.name.eq_ignore_ascii_case("retry-after") {
+                return true;
+            }
+            let value = header.value.trim();
+            let canonical = if value.len() <= 20 && value.bytes().all(|b| b.is_ascii_digit()) {
+                value.parse::<u64>().ok().map(|seconds| seconds.to_string())
+            } else if value.len() <= 128 {
+                httpdate::parse_http_date(value)
+                    .ok()
+                    .map(httpdate::fmt_http_date)
+            } else {
+                None
+            };
+            if let Some(value) = canonical {
+                header.value = value;
+                true
+            } else {
+                false
+            }
+        });
 
         // An allowlisted header is kept for its *shape*, not its value: the
         // request id is a per-call generated token and gets the same

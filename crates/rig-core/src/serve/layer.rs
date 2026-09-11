@@ -125,11 +125,12 @@ impl<I: Intercept> Serve for Layer<I> {
 
     async fn serve(&self, kind: EffectKind, mut dispatch: Dispatch) -> Reply {
         let id = dispatch.id();
+        let name = self.intercept.name();
         let kind = match self.intercept.before(id, &kind).await {
             Decision::Proceed => kind,
             Decision::Patch(patched) => {
                 if patched.family() != kind.family() {
-                    dispatch.discard();
+                    dispatch.discard(&name);
                     return Reply::Outcome(Err(self.internal(format!(
                         "patched a {} effect into a {} effect; a layer never changes the family",
                         kind.family(),
@@ -144,7 +145,7 @@ impl<I: Intercept> Serve for Layer<I> {
                 ) = (&kind, &patched)
                     && original != replacement
                 {
-                    dispatch.discard();
+                    dispatch.discard(&name);
                     return Reply::Outcome(Err(self.internal(format!(
                         "patched tool target `{original}` into `{replacement}`; a layer never changes the bound tool"
                     ))));
@@ -153,13 +154,14 @@ impl<I: Intercept> Serve for Layer<I> {
                 patched
             }
             Decision::Deny(report) => {
-                dispatch.discard();
+                dispatch.discard(&name);
                 return Reply::Outcome(Err(report));
             }
         };
         if !dispatch.is_stream() {
             let folded = Arc::new(Mutex::new(None));
             let inner = dispatch.inner(Some(folded.clone()));
+            let attribution = dispatch.attribution();
             let outcome = self
                 .inner
                 .handle(kind.clone(), inner)
@@ -168,11 +170,15 @@ impl<I: Intercept> Serve for Layer<I> {
                 .await;
             return Reply::Outcome(match self.intercept.after(id, &kind, &outcome).await {
                 Verdict::Keep => outcome,
-                Verdict::Replace(replacement) => replacement,
+                Verdict::Replace(replacement) => {
+                    attribution.replaced(&name);
+                    replacement
+                }
             });
         }
         let folded = Arc::new(Mutex::new(None));
         let inner = dispatch.inner(Some(folded.clone()));
+        let attribution = dispatch.attribution();
         let stream = self
             .inner
             .handle(kind.clone(), inner)
@@ -181,8 +187,8 @@ impl<I: Intercept> Serve for Layer<I> {
             .fuse();
         let intercept = self.intercept.clone();
         Reply::Stream(Box::pin(futures::stream::unfold(
-            (stream, intercept, kind, folded, false),
-            move |(mut stream, intercept, kind, folded, mut decided)| async move {
+            (stream, intercept, kind, folded, false, attribution),
+            move |(mut stream, intercept, kind, folded, mut decided, attribution)| async move {
                 let item = stream.next().await;
                 if decided && item.is_none() {
                     return None;
@@ -199,16 +205,25 @@ impl<I: Intercept> Serve for Layer<I> {
                     decided = true;
                     match intercept.after(id, &kind, &outcome).await {
                         Verdict::Keep => item.unwrap_or_else(|| Err(stream_truncated())),
-                        Verdict::Replace(Err(report)) => Err(report),
-                        Verdict::Replace(Ok(_)) => Err(ErrorReport::new(
-                            ErrorKind::Internal,
-                            format!("layer `{}`: cannot replace a streamed answer already delivered; replace with an error, or decide before", intercept.name()),
-                        ).with_retryable(false)),
+                        Verdict::Replace(Err(report)) => {
+                            attribution.replaced(&intercept.name());
+                            Err(report)
+                        }
+                        Verdict::Replace(Ok(_)) => {
+                            attribution.replaced(&intercept.name());
+                            Err(ErrorReport::new(
+                                ErrorKind::Internal,
+                                format!("layer `{}`: cannot replace a streamed answer already delivered; replace with an error, or decide before", intercept.name()),
+                            ).with_retryable(false))
+                        }
                     }
                 } else {
                     item?
                 };
-                Some((item, (stream, intercept, kind, folded, decided)))
+                Some((
+                    item,
+                    (stream, intercept, kind, folded, decided, attribution),
+                ))
             },
         )))
     }

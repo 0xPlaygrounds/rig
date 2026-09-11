@@ -133,6 +133,7 @@ impl Bus {
         world.add_observer(unbound);
         world.add_observer(record_outcome);
         world.add_observer(record_cancelled);
+        world.add_observer(super::record::witness_cancelled);
         world.add_observer(record_bound);
         let mut schedule = Schedule::new(RigSchedule);
         schedule.set_build_settings(ScheduleBuildSettings {

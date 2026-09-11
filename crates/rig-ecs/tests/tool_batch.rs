@@ -7,6 +7,8 @@
 //! | `ToolPolicy { concurrency }` on the agent lets two calls fly at once; the default holds the second until the first lands | `tool_policy_sets_how_many_calls_are_in_flight` |
 //! | a `Judge` system replaces a tool child's outcome: history holds the replacement, the record the answer | `a_judge_system_replaces_a_tool_result_and_the_record_keeps_the_answer` |
 //! | a `Gate` denial is a skipped result the model sees, and no record | `a_gate_denial_is_a_skipped_result_and_no_record` |
+//! | a `Gate` hold is the policy's: the batch release never lifts it, and the held call keeps its concurrency slot | `a_gate_hold_is_not_lifted_by_the_batch_release` |
+//! | two named policy holds survive the batch's release, and releasing one policy leaves the other blocking dispatch | `a_gate_hold_on_a_call_the_batch_also_holds_survives_the_batch_release` |
 //! | a tool child despawned fails the run `Cancelled` | `despawning_a_tool_child_fails_the_run_cancelled` |
 //! | `Resolution::Repair` written by a system renames the call and dispatches it | `a_system_repairs_an_invalid_call_to_a_granted_tool` |
 //! | `Resolution::Retry` retries the turn with feedback and the invalid-peer notice | `a_system_retries_an_invalid_call_with_feedback` |
@@ -451,6 +453,221 @@ fn deny_tool_calls(
     }
 }
 
+/// A policy that holds the first call of every batch, once, and releases
+/// it when told.
+#[derive(Resource)]
+struct HoldFirst(bool);
+
+fn hold_first_call(
+    fresh: Query<(Entity, &rig_ecs::agent::ToolCallSlot), Added<PendingEffect>>,
+    mut commands: Commands,
+) {
+    for (entity, slot) in &fresh {
+        if slot.index == 0 {
+            commands.entity(entity).insert(rig_ecs::bus::Held);
+        }
+    }
+}
+
+/// Two policies hold the second call while the batch may also hold it.
+fn hold_second_call(
+    fresh: Query<(Entity, &rig_ecs::agent::ToolCallSlot), Added<PendingEffect>>,
+    mut commands: Commands,
+) {
+    for (entity, slot) in &fresh {
+        if slot.index == 1 {
+            commands.queue(move |world: &mut World| {
+                rig_ecs::bus::acquire_hold(
+                    world,
+                    entity,
+                    rig_core::observe::Emitter::named("test/second"),
+                );
+                rig_ecs::bus::acquire_hold(
+                    world,
+                    entity,
+                    rig_core::observe::Emitter::named("test/another"),
+                );
+            });
+        }
+    }
+}
+
+fn release_second_call(
+    held: Query<(Entity, &rig_ecs::agent::ToolCallSlot), With<rig_ecs::bus::HoldOwners>>,
+    hold: Res<HoldFirst>,
+    mut commands: Commands,
+) {
+    if hold.0 {
+        return;
+    }
+    for (entity, slot) in &held {
+        if slot.index == 1 {
+            commands.queue(move |world: &mut World| {
+                rig_ecs::bus::release_hold(world, entity, "test/second");
+            });
+        }
+    }
+}
+
+/// The overlap: under concurrency 1 the second call is the batch's to hold
+/// and two policies'. The batch and first policy can release independently;
+/// dispatch waits for the remaining policy too.
+#[test]
+fn a_gate_hold_on_a_call_the_batch_also_holds_survives_the_batch_release() {
+    let (mut app, agent, adder, requests) = tooling(two_calls_then_text());
+    app.insert_resource(HoldFirst(true));
+    add_system(
+        &mut app,
+        (hold_second_call, release_second_call)
+            .chain()
+            .in_set(BusSet::Gate),
+    );
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(ToolPolicy { concurrency: 1 });
+    let run = spawn_run(app.world_mut(), agent, &[], "add twice", false, None);
+    tick_until(&mut app, "the first call landed", |world| {
+        tool_children(world)
+            .first()
+            .is_some_and(|(_, _, landed, _)| *landed)
+    });
+    for _ in 0..8 {
+        app.update();
+    }
+    let calls = tool_children(app.world_mut());
+    assert_eq!(calls[0], (0, true, true, false), "{calls:?}");
+    assert_eq!(
+        calls[1],
+        (1, false, false, true),
+        "the batch's hold is gone, the policy's stands: {calls:?}"
+    );
+    assert!(
+        app.world_mut()
+            .query_filtered::<(), With<rig_ecs::systems::BatchHeld>>()
+            .iter(app.world())
+            .next()
+            .is_none(),
+        "the batch lifted its own hold"
+    );
+    assert_eq!(adder.peak.load(Ordering::SeqCst), 1);
+    assert!(app.world().get::<Settled>(run).is_none());
+    let second = app
+        .world_mut()
+        .query::<(Entity, &rig_ecs::agent::ToolCallSlot)>()
+        .iter(app.world())
+        .find_map(|(entity, slot)| (slot.index == 1).then_some(entity))
+        .unwrap();
+    let owners = app.world().get::<rig_ecs::bus::HoldOwners>(second).unwrap();
+    assert_eq!(
+        owners
+            .owners()
+            .map(|owner| owner.name.as_str())
+            .collect::<Vec<_>>(),
+        ["test/another", "test/second"]
+    );
+    app.insert_resource(HoldFirst(false));
+    for _ in 0..8 {
+        app.update();
+    }
+    assert!(app.world().get::<Issued>(second).is_none());
+    assert!(app.world().get::<rig_ecs::bus::Held>(second).is_some());
+    let owners = app.world().get::<rig_ecs::bus::HoldOwners>(second).unwrap();
+    assert_eq!(
+        owners
+            .owners()
+            .map(|owner| owner.name.as_str())
+            .collect::<Vec<_>>(),
+        ["test/another"]
+    );
+    assert!(rig_ecs::bus::release_hold(
+        app.world_mut(),
+        second,
+        "test/another"
+    ));
+    ended(&mut app, run, "answered");
+    assert!(app.world().get::<Settled>(run).is_some());
+    let requests = requests.lock().unwrap();
+    assert_eq!(
+        tool_results(&requests[1]),
+        [("c1".into(), "3".into()), ("c2".into(), "7".into())]
+    );
+}
+
+fn release_first_call(
+    held: Query<(Entity, &rig_ecs::agent::ToolCallSlot), With<rig_ecs::bus::Held>>,
+    hold: Res<HoldFirst>,
+    mut commands: Commands,
+) {
+    if hold.0 {
+        return;
+    }
+    for (entity, slot) in &held {
+        if slot.index == 0 {
+            commands.entity(entity).remove::<rig_ecs::bus::Held>();
+        }
+    }
+}
+
+fn tool_children(world: &mut World) -> Vec<(usize, bool, bool, bool)> {
+    let mut calls: Vec<_> = world
+        .query::<(
+            &rig_ecs::agent::ToolCallSlot,
+            Has<Issued>,
+            Has<EffectOutcome>,
+            Has<rig_ecs::bus::Held>,
+        )>()
+        .iter(world)
+        .map(|(slot, issued, landed, held)| (slot.index, issued, landed, held))
+        .collect();
+    calls.sort_unstable();
+    calls
+}
+
+#[test]
+fn a_gate_hold_is_not_lifted_by_the_batch_release() {
+    for concurrency in [1, 2] {
+        let (mut app, agent, adder, requests) = tooling(two_calls_then_text());
+        app.insert_resource(HoldFirst(true));
+        add_system(
+            &mut app,
+            (hold_first_call, release_first_call)
+                .chain()
+                .in_set(BusSet::Gate),
+        );
+        app.world_mut()
+            .entity_mut(agent)
+            .insert(ToolPolicy { concurrency });
+        let run = spawn_run(app.world_mut(), agent, &[], "add twice", false, None);
+        tick_until(&mut app, "the batch is out", |world| {
+            tool_children(world).len() == 2
+        });
+        // Many passes later the policy's hold still stands: the runtime lifts
+        // only the holds it placed. The held call occupies a slot, so under
+        // concurrency 1 its peer waits behind it; under 2 the peer lands.
+        for _ in 0..8 {
+            app.update();
+        }
+        let calls = tool_children(app.world_mut());
+        assert_eq!(calls[0], (0, false, false, true), "{calls:?}");
+        if concurrency == 1 {
+            assert_eq!(calls[1], (1, false, false, true), "{calls:?}");
+            assert_eq!(adder.peak.load(Ordering::SeqCst), 0);
+        } else {
+            assert_eq!(calls[1], (1, true, true, false), "{calls:?}");
+        }
+        assert!(app.world().get::<Settled>(run).is_none());
+        app.insert_resource(HoldFirst(false));
+        ended(&mut app, run, "answered");
+        assert!(app.world().get::<Settled>(run).is_some());
+        let requests = requests.lock().unwrap();
+        assert_eq!(
+            tool_results(&requests[1]),
+            [("c1".into(), "3".into()), ("c2".into(), "7".into())]
+        );
+        assert_eq!(adder.peak.load(Ordering::SeqCst), 1);
+    }
+}
+
 #[test]
 fn a_gate_denial_is_a_skipped_result_and_no_record() {
     let (mut app, agent, adder, requests) = tooling(vec![
@@ -811,4 +1028,166 @@ fn retry_feedback_targets_only_the_invalid_identity_namespace() {
             );
         }
     }
+}
+
+#[test]
+fn concurrency_and_independent_holds_survive_mid_batch_checkpoints() {
+    use rig_ecs::{
+        agent::scene::{load_world, save_world},
+        bus::{Held, acquire_hold, release_hold},
+        systems::BatchHeld,
+    };
+    for concurrency in [1, 2] {
+        for policy_held in [false, true] {
+            let turns = vec![
+                (0..4)
+                    .map(|i| call(&format!("c{i}"), "add", serde_json::json!({"x": i, "y": 1})))
+                    .collect(),
+                vec![AssistantContent::text("done")],
+            ];
+            let (mut original, agent, _, _) = tooling(turns);
+            original
+                .world_mut()
+                .entity_mut(agent)
+                .insert(ToolPolicy { concurrency });
+            spawn_run(original.world_mut(), agent, &[], "add numbers", false, None);
+            let started = std::time::Instant::now();
+            let held = loop {
+                original.world_mut().run_schedule(RigSchedule);
+                let held = original
+                    .world_mut()
+                    .query_filtered::<Entity, With<BatchHeld>>()
+                    .iter(original.world())
+                    .last();
+                if let Some(held) = held {
+                    break held;
+                }
+                assert!(started.elapsed() < GUARD, "batch was never materialised");
+                std::thread::yield_now();
+            };
+            if policy_held {
+                acquire_hold(
+                    original.world_mut(),
+                    held,
+                    rig_core::observe::Emitter::named("test/policy"),
+                );
+            }
+            let saved = save_world(original.world_mut()).unwrap();
+            // Exercise the wire format, not just an in-memory clone.
+            let saved: rig_ecs::agent::scene::WorldScene =
+                serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+            // Both halves of the scheduling barrier are required. Reject an
+            // inconsistent checkpoint before leaving a partially loaded world.
+            for missing_marker in [false, true] {
+                let mut malformed: rig_ecs::agent::scene::WorldScene = saved.clone();
+                if missing_marker {
+                    malformed.batch_held.clear();
+                } else {
+                    let index = malformed.batch_held[0];
+                    malformed.effects.effects[index].hold_owners = None;
+                }
+                let (mut destination, _, _, _) = tooling(vec![]);
+                let before = destination.world().entities().len();
+                assert!(load_world(&malformed, destination.world_mut()).is_err());
+                assert_eq!(destination.world().entities().len(), before);
+            }
+            let (mut restored, _, adder, _) = tooling(vec![vec![AssistantContent::text("done")]]);
+            let loaded = load_world(&saved, restored.world_mut()).unwrap();
+            let run = loaded
+                .graph
+                .iter()
+                .copied()
+                .find(|e| restored.world().get::<rig_ecs::agent::Run>(*e).is_some())
+                .unwrap();
+            if policy_held {
+                let held = loaded
+                    .effects
+                    .iter()
+                    .copied()
+                    .find(|e| {
+                        restored
+                            .world()
+                            .get::<rig_ecs::bus::HoldOwners>(*e)
+                            .is_some_and(|owners| {
+                                owners.owners().any(|owner| owner.name == "test/policy")
+                            })
+                    })
+                    .unwrap();
+                let started = std::time::Instant::now();
+                while restored.world().get::<BatchHeld>(held).is_some() {
+                    restored.update();
+                    assert!(
+                        started.elapsed() < GUARD,
+                        "runtime never released its restored hold"
+                    );
+                    std::thread::yield_now();
+                }
+                assert!(
+                    restored.world().get::<Held>(held).is_some(),
+                    "batch release must preserve policy hold"
+                );
+                assert!(restored.world().get::<Issued>(held).is_none());
+                assert!(release_hold(restored.world_mut(), held, "test/policy"));
+            }
+            ended(&mut restored, run, "restored serial batch");
+            assert!(restored.world().get::<Settled>(run).is_some());
+            assert!(adder.peak.load(Ordering::SeqCst) <= concurrency);
+            assert!(
+                loaded
+                    .effects
+                    .iter()
+                    .all(|e| restored.world().get::<Held>(*e).is_none())
+            );
+        }
+    }
+}
+
+#[test]
+fn review_batch_hold_survives_scene_roundtrip() {
+    let (mut app, agent, _, _) = tooling(two_calls_then_text());
+    spawn_run(app.world_mut(), agent, &[], "add numbers", false, None);
+    let started = std::time::Instant::now();
+    loop {
+        app.world_mut().run_schedule(RigSchedule);
+        if app
+            .world_mut()
+            .query_filtered::<Entity, With<rig_ecs::bus::Held>>()
+            .iter(app.world())
+            .next()
+            .is_some()
+        {
+            break;
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        std::thread::yield_now();
+    }
+    let saved = rig_ecs::agent::scene::save_world(app.world_mut()).unwrap();
+    let (mut restored, _, _, _) = tooling(vec![vec![AssistantContent::text("done")]]);
+    let loaded = rig_ecs::agent::scene::load_world(&saved, restored.world_mut()).unwrap();
+    let run = loaded
+        .graph
+        .iter()
+        .copied()
+        .find(|e| restored.world().get::<rig_ecs::agent::Run>(*e).is_some())
+        .unwrap();
+    let started = std::time::Instant::now();
+    while started.elapsed() < std::time::Duration::from_secs(1)
+        && restored.world().get::<Settled>(run).is_none()
+    {
+        restored.update();
+        std::thread::yield_now();
+    }
+    for e in &loaded.effects {
+        eprintln!(
+            "effect {:?}: held={} issued={} outcome={}",
+            e,
+            restored.world().get::<rig_ecs::bus::Held>(*e).is_some(),
+            restored.world().get::<Issued>(*e).is_some(),
+            restored.world().get::<EffectOutcome>(*e).is_some()
+        );
+    }
+    assert!(
+        restored.world().get::<Settled>(run).is_some(),
+        "restored batch never settles"
+    );
 }

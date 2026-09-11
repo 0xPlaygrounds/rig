@@ -233,11 +233,13 @@ impl MockTurn {
     }
 }
 
+type MockInvocation = (CompletionRequest, Option<crate::observe::AdapterContext>);
+
 #[derive(Default)]
 struct MockCompletionModelState {
     turns: Mutex<VecDeque<MockTurn>>,
     stream_turns: Mutex<VecDeque<Vec<MockStreamEvent>>>,
-    requests: Mutex<Vec<CompletionRequest>>,
+    requests: Mutex<Vec<MockInvocation>>,
 }
 
 /// A cloneable scripted [`CompletionModel`] for tests.
@@ -292,7 +294,18 @@ impl MockCompletionModel {
 
     /// Return cloned requests received by this model.
     pub fn requests(&self) -> Vec<CompletionRequest> {
-        self.requests_guard().clone()
+        self.requests_guard()
+            .iter()
+            .map(|(request, _)| request.clone())
+            .collect()
+    }
+
+    /// Return invocation contexts in the same order as the captured requests.
+    pub fn contexts(&self) -> Vec<Option<crate::observe::AdapterContext>> {
+        self.requests_guard()
+            .iter()
+            .map(|(_, context)| context.clone())
+            .collect()
     }
 
     /// Return the number of requests received by this model.
@@ -311,8 +324,12 @@ impl MockCompletionModel {
         self.stream_turns_guard().iter().cloned().collect()
     }
 
-    fn record_request(&self, request: CompletionRequest) {
-        self.requests_guard().push(request);
+    fn record_request(
+        &self,
+        request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) {
+        self.requests_guard().push((request, context));
     }
 
     fn next_turn(&self) -> Option<MockTurn> {
@@ -337,7 +354,7 @@ impl MockCompletionModel {
         }
     }
 
-    fn requests_guard(&self) -> MutexGuard<'_, Vec<CompletionRequest>> {
+    fn requests_guard(&self) -> MutexGuard<'_, Vec<MockInvocation>> {
         match self.state.requests.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
@@ -349,8 +366,23 @@ impl CompletionModel for MockCompletionModel {
     async fn completion(
         &self,
         request: CompletionRequest,
+    ) -> Result<crate::completion::CompletionResponse, CompletionError> {
+        self.completion_with_context(request, None).await
+    }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+        self.stream_with_context(request, None).await
+    }
+
+    async fn completion_with_context(
+        &self,
+        request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
     ) -> Result<CompletionResponse, CompletionError> {
-        self.record_request(request);
+        self.record_request(request, context);
         let Some(turn) = self.next_turn() else {
             return Err(CompletionError::ProviderError(
                 "mock completion model has no scripted completion turn".to_string(),
@@ -360,11 +392,12 @@ impl CompletionModel for MockCompletionModel {
         turn.into_completion_response()
     }
 
-    async fn stream(
+    async fn stream_with_context(
         &self,
         request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
-        self.record_request(request);
+        self.record_request(request, context);
         let Some(events) = self.next_stream_turn() else {
             return Err(CompletionError::ProviderError(
                 "mock completion model has no scripted streaming turn".to_string(),

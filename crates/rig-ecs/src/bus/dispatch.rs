@@ -22,7 +22,9 @@ use super::{
     handlers::{Bound, HandlerTable, Served},
     plugin::{Intake, Policy, Progress},
     record::Recording,
+    witness::{DispatchWitness, Refused, bus_emitter},
 };
+use rig_core::observe::{Action, Reason, Stage};
 
 /// A pending effect `Dispatch` may take: not held, not answered, not yet
 /// issued.
@@ -41,6 +43,7 @@ pub type CandidateView = (
     &'static PendingEffect,
     Option<&'static Reserved>,
     Option<&'static ToolInputs>,
+    Option<&'static super::AdapterOperation>,
 );
 
 /// The dispatch system. In one pass, in ascending [`Seq`]:
@@ -76,12 +79,14 @@ pub fn dispatch(
     issued: Query<&Issued>,
     scopes: Query<&Scope>,
     recording: Option<Res<Recording>>,
+    witnessing: DispatchWitness,
     mut ids: ResMut<IdCounter>,
     mut intake: ResMut<Intake>,
     mut progress: ResMut<Progress>,
 ) {
     let mut candidates: Vec<_> = pending.iter().collect();
-    candidates.sort_by_key(|(_, seq, _, _, _)| **seq);
+    candidates.sort_by_key(|(_, seq, _, _, _, _)| **seq);
+    let DispatchWitness { witness, subjects } = witnessing;
 
     let policy = policy.0;
     let serial = policy.serial_per_handler;
@@ -94,16 +99,28 @@ pub fn dispatch(
         HashSet::new()
     };
 
-    for (entity, _, effect, reserved, inputs) in candidates {
+    for (entity, _, effect, reserved, inputs, operation) in candidates {
         if intake.0 >= policy.command_capacity {
             return;
         }
         let key = &effect.key;
         if serial && busy.contains(key) {
             if ancestor_in_flight_on(entity, key, &parents, &in_flight) {
+                if let Some(witness) = &witness {
+                    let mut subject = subjects.of(entity);
+                    subject.parent = nearest_issued(entity, &parents, &issued, &issued_now);
+                    witness.emit(
+                        subject,
+                        Stage::Dispatch,
+                        bus_emitter(),
+                        Action::Refused {
+                            reason: Reason::with_detail("reentrant", reentrant(key).message),
+                        },
+                    );
+                }
                 commands
                     .entity(entity)
-                    .insert(EffectOutcome(Err(reentrant(key))));
+                    .insert((Refused, EffectOutcome(Err(reentrant(key)))));
                 progress.mark();
             }
             continue;
@@ -113,21 +130,46 @@ pub fn dispatch(
             .find(|(_, bound)| &bound.key == key)
             .and_then(|(handler, _)| table.served(handler));
         let Some(served) = served else {
+            if let Some(witness) = &witness {
+                let mut subject = subjects.of(entity);
+                subject.parent = nearest_issued(entity, &parents, &issued, &issued_now);
+                witness.emit(
+                    subject,
+                    Stage::Dispatch,
+                    bus_emitter(),
+                    Action::Refused {
+                        reason: Reason::with_detail(
+                            "handler_unavailable",
+                            handler_unavailable(key).message,
+                        ),
+                    },
+                );
+            }
             commands
                 .entity(entity)
-                .insert(EffectOutcome(Err(handler_unavailable(key))));
+                .insert((Refused, EffectOutcome(Err(handler_unavailable(key)))));
             progress.mark();
             continue;
         };
 
         let raw_id = reserved.map_or(ids.0, |Reserved(id)| id.as_u64());
         let Some(next_id) = raw_id.checked_add(1) else {
+            let report = ErrorReport::new(ErrorKind::Request, "effect ID allocator exhausted");
+            if let Some(witness) = &witness {
+                let mut subject = subjects.of(entity);
+                subject.parent = nearest_issued(entity, &parents, &issued, &issued_now);
+                witness.emit(
+                    subject,
+                    Stage::Dispatch,
+                    bus_emitter(),
+                    Action::Refused {
+                        reason: Reason::with_detail("ids_exhausted", report.message.clone()),
+                    },
+                );
+            }
             commands
                 .entity(entity)
-                .insert(EffectOutcome(Err(ErrorReport::new(
-                    ErrorKind::Request,
-                    "effect ID allocator exhausted",
-                ))));
+                .insert((Refused, EffectOutcome(Err(report))));
             progress.mark();
             continue;
         };
@@ -138,7 +180,25 @@ pub fn dispatch(
             scope: nearest_scope(entity, &parents, &scopes)
                 .map(|scope| std::sync::Arc::from(scope.as_str())),
         };
+        // Parent Issued writes can still be deferred in this dispatch pass.
+        // Resolve once from issued_now for every observer/context surface.
+        let mut subject = subjects.of(entity);
+        subject.effect = Some(id);
+        subject.parent = origin.parent;
+        let adapter = operation.map(|operation| {
+            operation
+                .context
+                .for_host_attempt(subject.clone(), operation.host_attempt)
+        });
 
+        if let Some(witness) = &witness {
+            witness.emit(
+                subject.clone(),
+                Stage::Dispatch,
+                bus_emitter(),
+                Action::Issued,
+            );
+        }
         let mut entity_commands = commands.entity(entity);
         match served {
             Served::Task(handler) => {
@@ -159,11 +219,16 @@ pub fn dispatch(
                     entity_commands.insert(Publishing(published));
                 }
                 let published = dispatch.scope::<rig_core::tool::PublishedContext>();
+                entity_commands.insert(super::record::ReplacedBy(dispatch.replaced_by()));
                 let dispatch = dispatch.with_observer(Box::new(super::record::WorldObserver {
+                    adapter,
                     published,
                     id,
                     recording: recording.as_ref().map(|r| (**r).clone()),
                     observed,
+                    witness: witness
+                        .as_ref()
+                        .map(|witness| ((**witness).clone(), subject.clone())),
                 }));
                 let streaming = effect.is_stream();
 

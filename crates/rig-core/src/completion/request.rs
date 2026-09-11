@@ -683,6 +683,32 @@ pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
     ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
     + WasmCompatSend;
 
+    /// Optionally observe one provider invocation, independently of request data.
+    ///
+    /// Ordinary providers need only implement [`Self::completion`] and
+    /// [`Self::stream`]. The default delegates without provider observations.
+    /// Observed providers override this method; forwarding wrappers pass the
+    /// context through to preserve per-call identity across retries and tasks.
+    fn completion_with_context(
+        &self,
+        request: CompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend
+    {
+        self.completion(request)
+    }
+
+    /// Optionally observe a stream, retaining context through lazy startup and drop.
+    /// The default delegates to [`Self::stream`] without provider observations.
+    fn stream_with_context(
+        &self,
+        request: CompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
+    + WasmCompatSend {
+        self.stream(request)
+    }
+
     /// Generates a completion request builder for the given `prompt`.
     fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self>
     where
@@ -720,6 +746,24 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
     ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
     + WasmCompatSend {
         (**self).stream(request)
+    }
+
+    fn completion_with_context(
+        &self,
+        request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend
+    {
+        (**self).completion_with_context(request, context)
+    }
+
+    fn stream_with_context(
+        &self,
+        request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
+    + WasmCompatSend {
+        (**self).stream_with_context(request, context)
     }
 
     fn capabilities(&self) -> ProviderCapabilities {

@@ -351,7 +351,27 @@ impl ModelHandle {
 
     /// A unary completion.
     pub fn complete(&self, request: CompletionRequest) -> Completion {
-        self.dispatch(request)
+        self.complete_with_context(request, None)
+    }
+
+    /// A unary completion with explicit per-invocation observation state.
+    /// The context overrides recorder context for this call only.
+    pub fn complete_with_context(
+        &self,
+        request: CompletionRequest,
+        context: Option<rig_core::observe::AdapterContext>,
+    ) -> Completion {
+        Typed::narrow(
+            self.dispatcher.dispatch_with_context(
+                &self.descriptor.key,
+                EffectKind::Completion {
+                    request,
+                    stream: false,
+                },
+                context,
+            ),
+            Ok,
+        )
     }
 
     /// A streaming completion, wrapped back into a
@@ -361,13 +381,24 @@ impl ModelHandle {
     /// name from the terminal record, so `finish().provider` is what the
     /// unary path reports.
     pub fn stream(&self, request: CompletionRequest) -> StreamingCompletionResponse {
+        self.stream_with_context(request, None)
+    }
+
+    /// A streaming completion with explicit observation state retained by the
+    /// invocation, including lazy startup and partial consumption.
+    pub fn stream_with_context(
+        &self,
+        request: CompletionRequest,
+        context: Option<rig_core::observe::AdapterContext>,
+    ) -> StreamingCompletionResponse {
         let provider = self.model_ref().to_string();
-        let stream: EffectStream = self.dispatcher.dispatch_stream(
+        let stream: EffectStream = self.dispatcher.dispatch_stream_with_context(
             &self.descriptor.key,
             EffectKind::Completion {
                 request,
                 stream: true,
             },
+            context,
         );
         wrap_stream(provider, stream)
     }
