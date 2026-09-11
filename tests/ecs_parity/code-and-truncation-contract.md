@@ -1,9 +1,0 @@
-# Native code execution and truncated-tool safety
-
-Eight recorded agent scenarios run independently through native ECS systems. The catalog identifies original/native correspondences, helper sources and fixtures. Original test bodies remain unchanged; sibling visibility exposes neutral settings, predicates and actual invocation-counting tool types.
-
-DeepSeek retains file_report's original schema, model, preamble, incident prompt and disabled-thinking parameters. Truncated arguments use max32; empty arguments use max16 and a real zero-argument side-effect tool. Blocking declares a one-turn default; streaming declares the limit on the run only. Actual invocation counters remain zero and native materialised tool calls remain absent. Native success additionally proves decoding reached the run, strengthening the original blocking assertion that tolerated errors except ProviderResponseError. Original unparseable-argument or empty-argument/length predicates still inspect their corresponding fixtures after teardown.
-
-Gemini uses Flash2.5, temperature0, max2000 and each original code-execution parameter helper. Blocking checks the original computed value. Streaming checks actual retained text deltas through the native observer and rejects stream errors. The two-terminal scenario checks the original first-round value and its fixture's early-finish premise. Code-marker assertions remain unchanged. History replay constructs the same user and text-only assistant messages from the actual first native output, then checks the actual second response. No fabricated stream response or legacy orchestration participates.
-
-These isolated recorded cases establish their stated predicates, not exhaustive provider capability or full functional-superset coverage.

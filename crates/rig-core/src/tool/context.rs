@@ -285,7 +285,9 @@ impl ToolContext {
         }
     }
 
-    /// Insert an inbound typed value, returning the displaced value if present.
+    /// Insert an inbound typed value, returning the displaced value if it decodes
+    /// as `T`. A differently shaped displaced value is replaced successfully and
+    /// returns `None`; decoding the previous value cannot undo a successful write.
     ///
     /// Fails only when `value` cannot be represented as JSON (a map with
     /// non-string keys, a float `NaN`).
@@ -304,7 +306,8 @@ impl ToolContext {
         require_slot(&self.inbound)
     }
 
-    /// Remove an inbound typed value.
+    /// Remove an inbound typed value. The slot is removed even if decoding its
+    /// former value fails.
     pub fn remove<T: ContextValue>(&mut self) -> Result<Option<T>, ToolContextError> {
         self.inbound
             .remove(T::KEY)

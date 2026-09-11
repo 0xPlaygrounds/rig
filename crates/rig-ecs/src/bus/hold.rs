@@ -121,8 +121,8 @@ pub fn release_hold(world: &mut World, entity: Entity, owner: &str) -> bool {
     let Some(owner) = owners.0.remove(owner) else {
         return false;
     };
-    // Keep the ownership component present during Held removal: the legacy
-    // aggregate observer must not duplicate this explicit owner transition.
+    // Keep the ownership component present during Held removal: the bare-Held
+    // observer must not duplicate this explicit owner transition.
     begin(
         world,
         HoldTransition {

@@ -20,7 +20,6 @@ autoexamples = false
 # in the package needs them to compile.
 exclude = [
     "tests/cassettes/**",
-    "docs/performance/**",
 ]
 
 [package.metadata.docs.rs]

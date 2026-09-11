@@ -1,7 +1,7 @@
 use super::*;
 use serde_json::json;
 fn catalog() -> Value {
-    json!({"schema":1,"configurations":{"root-bedrock":{}},"scenarios":[{"id":"rig::anthropic::original","classification":"agent","source":"xtask/Cargo.toml","configuration":"root-bedrock","ecs":{"binary":"anthropic","test":"native","source":"xtask/Cargo.toml"}}]})
+    json!({"schema":2,"files":["xtask/Cargo.toml"],"configurations":{"root-bedrock":{}},"scenarios":[{"id":"rig::anthropic::original","classification":"agent","source":"xtask/Cargo.toml","configuration":"root-bedrock","ecs":{"binary":"anthropic","test":"native","source":"xtask/Cargo.toml"}}]})
 }
 fn root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()
@@ -35,7 +35,7 @@ fn filtered_listing_fails() {
     assert!(validate(root(), &catalog(), Some(&l)).is_err());
 }
 #[test]
-fn duplicates_stale_files_and_historical_verdicts_fail() {
+fn duplicates_stale_files_and_unknown_fields_fail() {
     let mut c = catalog();
     let row = c["scenarios"][0].clone();
     c["scenarios"].as_array_mut().unwrap().push(row);
@@ -77,20 +77,41 @@ fn unmapped_source_only_scenarios_remain_explicit() {
 }
 
 #[test]
-fn nested_file_references_cannot_skip_validation() {
-    for value in [
-        json!("missing.md"),
-        json!("../outside.md"),
-        json!("/etc/passwd"),
-        json!({"wrong":"type"}),
+fn file_inventory_rejects_missing_escaping_duplicate_and_malformed_paths() {
+    for files in [
+        json!(["missing.md"]),
+        json!(["../outside.md"]),
+        json!(["/etc/passwd"]),
+        json!([{"wrong":"type"}]),
+        json!(["xtask/Cargo.toml", "xtask/Cargo.toml"]),
+        Value::Null,
     ] {
         let mut catalog = catalog();
-        catalog["scenarios"][0]["family_contract"] = value;
+        catalog["files"] = files;
         assert!(validate(root(), &catalog, None).is_err());
     }
-    let mut catalog = catalog();
-    catalog["scenarios"][0]["external_helper_source"] = json!({"role":"missing path"});
-    assert!(validate(root(), &catalog, None).is_err());
+}
+
+#[test]
+fn missing_or_duplicate_native_mappings_fail() {
+    let mut c = catalog();
+    c["scenarios"][0].as_object_mut().unwrap().remove("ecs");
+    assert!(validate(root(), &c, None).is_err());
+    let mut c = catalog();
+    let mut row = c["scenarios"][0].clone();
+    row["id"] = json!("rig::anthropic::another_original");
+    c["scenarios"].as_array_mut().unwrap().push(row);
+    assert!(validate(root(), &c, None).is_err());
+}
+
+#[test]
+fn unknown_configuration_and_missing_native_source_fail() {
+    let mut c = catalog();
+    c["scenarios"][0]["configuration"] = json!("missing");
+    assert!(validate(root(), &c, None).is_err());
+    let mut c = catalog();
+    c["scenarios"][0]["ecs"]["source"] = json!("missing.rs");
+    assert!(validate(root(), &c, None).is_err());
 }
 
 #[test]
