@@ -13,6 +13,30 @@
 //! [`AnthropicCompatibleProvider::signed_headers`] — which it calls immediately before the request
 //! body is attached, in both the unary and the streaming path.
 //!
+//! # Why a hook in rig-core, and not a transport decorator
+//!
+//! The hook is not the only place the body is final, and it is worth being precise about that,
+//! because the obvious alternative is genuinely workable. A `SigV4HttpClient<H>` decorator
+//! implementing [`HttpClientExt`] would see a fully built `http::Request<T>` — method, URI, headers
+//! and body all settled, strictly later than "immediately before the body is attached" — and
+//! `T: Into<bytes::Bytes>` makes the payload hashable right there. That would need no rig-core
+//! change at all, would sign at one site instead of two, and would cover
+//! [`VerifyClient::verify`](rig_core::client::VerifyClient::verify) for free.
+//!
+//! What rules it out is the transport type's position in [`Provider::from_env`] and
+//! [`Provider::from_val`]: both are `fn(..., http: H) -> ProviderClientResult<Client<Self, H>>`, so
+//! the transport the caller hands in is the transport the returned client is typed on. A decorator
+//! cannot be installed inside them, because `Client<Self, SigV4HttpClient<H>>` is not the declared
+//! return type. The wrapping would have to move to the caller — and then
+//! `AnthropicKey::sigv4(region)` plus a forgotten wrapper is a silently unsigned request, which is
+//! the single failure this design exists to prevent.
+//!
+//! The cost of the choice made instead: the hook has two call sites in rig-core, the unary and the
+//! streaming builder, and they must stay in step. A third Anthropic request path added there later
+//! will not sign, and nothing will fail when that happens —
+//! `tests::the_streaming_path_signs_as_well` exists because the second call site could already
+//! regress on its own, but no test can cover a call site that does not exist yet.
+//!
 //! # Example
 //!
 //! ```no_run
@@ -41,8 +65,12 @@
 //! client has none, by design, since the signature covers the body and the clock and so cannot be
 //! precomputed at construction. Signing is applied at the two Anthropic request builders, which
 //! `verify` does not go through, so it returns 403 rather than a credential verdict. Send a small
-//! completion instead. Closing this would mean a second signing hook in rig-core covering arbitrary
-//! client requests, which is more surface there than one verification convenience is worth.
+//! completion instead.
+//!
+//! This is a direct cost of the design above, not an independent decision: a transport decorator
+//! would sign `verify`'s GET along with everything else and close this, and the reason there is no
+//! decorator is the return-position transport type in `from_env`/`from_val`. If that constraint is
+//! ever lifted upstream, this limitation goes with it.
 
 mod sigv4;
 
@@ -66,7 +94,7 @@ const BASE_URL_ENV: &str = "ANTHROPIC_BASE_URL";
 
 /// How to authenticate against the AWS-fronted Anthropic endpoint, which accepts either a Bedrock
 /// API key or SigV4 credentials.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum AnthropicKey {
     /// A key sent as Anthropic's own `x-api-key` header, the same way rig-core's Anthropic provider
     /// sends one. What `From<S: Into<String>>` builds.
@@ -80,9 +108,27 @@ pub enum AnthropicKey {
 
 impl AnthropicKey {
     /// Sign requests with AWS SigV4 for `region` instead of sending an API key.
+    ///
+    /// Credentials come from the standard AWS provider chain and are resolved once per client, on
+    /// its first signed request. Per client, not per process: two clients built under two profiles
+    /// or roles sign as two different principals. Because resolution is deferred to that first
+    /// request, a client reads the ambient AWS environment as it stands then, not as it stood at
+    /// construction.
     pub fn sigv4(region: impl Into<String>) -> Self {
         Self::SigV4 {
             region: region.into(),
+        }
+    }
+}
+
+/// Hand-written, not derived: the derive would print the API key verbatim into any
+/// `tracing::debug!(?key)` or `{:?}`. [`rig_core::client::Provider`] requires credentials it holds
+/// to be redacted by their own `Debug`; this is the same rule applied to the key type.
+impl std::fmt::Debug for AnthropicKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ApiKey(_) => f.write_str("ApiKey(<redacted>)"),
+            Self::SigV4 { region } => f.debug_struct("SigV4").field("region", region).finish(),
         }
     }
 }
@@ -121,6 +167,12 @@ pub struct AnthropicOnAws {
     /// choice is explicit: a blank API key against an AWS host would otherwise silently become a
     /// signed request, and the resulting 403 would look nothing like a missing credential.
     signing_region: Option<String>,
+    /// This client's AWS credentials, resolved on its first signed request.
+    ///
+    /// Per client rather than per process, so two clients built under two different profiles or
+    /// roles sign as two different principals. See [`sigv4::SharedSdkConfig`] for what a
+    /// process-wide cache got wrong and for the limitation that remains.
+    sdk_config: sigv4::SharedSdkConfig,
 }
 
 pub type Client<H = rig_core::http_client::BoxedHttpClient> = client::Client<AnthropicOnAws, H>;
@@ -145,7 +197,12 @@ impl Provider for AnthropicOnAws {
             AnthropicKey::SigV4 { region } => Some(region.clone()),
             AnthropicKey::ApiKey(_) => None,
         };
-        Ok(AnthropicOnAws { signing_region })
+        // A fresh cell per built client, which is what keeps two clients from sharing one
+        // identity. Empty until the first signed request; an api-key client never fills it.
+        Ok(AnthropicOnAws {
+            signing_region,
+            sdk_config: sigv4::SharedSdkConfig::default(),
+        })
     }
 
     fn finish<H>(
@@ -214,11 +271,13 @@ impl AnthropicCompatibleProvider for AnthropicOnAws {
     async fn signed_headers(
         &self,
         method: &str,
-        uri: &str,
+        uri: &http::Uri,
         body: &[u8],
     ) -> Result<Vec<(String, String)>, CompletionError> {
         match &self.signing_region {
-            Some(region) => sigv4::signed_headers(method, uri, body, region).await,
+            Some(region) => {
+                sigv4::signed_headers(method, uri, body, region, &self.sdk_config).await
+            }
             None => Ok(Vec::new()),
         }
     }
@@ -226,12 +285,16 @@ impl AnthropicCompatibleProvider for AnthropicOnAws {
 
 /// Install the AWS example credentials this module's SigV4 tests sign with.
 ///
-/// One writer, run exactly once, because [`sigv4`] resolves the credential chain once per process:
-/// whichever test reaches it first fixes what every later test signs with. Every signing test calls
-/// this before its first `await` and `call_once` blocks until the variables are set, so resolution
-/// order stops mattering. Two tests each setting up their own environment would instead make the
-/// outcome depend on test order, and on a machine with no AWS configuration the loser would see
-/// "no AWS credentials could be resolved".
+/// One writer, run exactly once, because these are process-global variables and the credential
+/// chain reads them: a test whose client resolves before the variables are set would see "no AWS
+/// credentials could be resolved" on a machine with no AWS configuration. Every signing test calls
+/// this before its first `await` and `call_once` blocks until the variables are set, so test order
+/// stops mattering. Two tests each installing their own environment would instead make the outcome
+/// depend on which ran first.
+///
+/// Note this is about the environment, not about the cache: since [`sigv4::SharedSdkConfig`] moved
+/// off a `static`, each client resolves its own chain. They still all read this one environment,
+/// which is why a single writer is still the right shape.
 ///
 /// A `Mutex` held across the awaits would have served too, but `clippy::await_holding_lock` is
 /// denied workspace-wide and is right to be: `Once` needs no guard to outlive anything.
