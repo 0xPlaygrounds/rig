@@ -301,6 +301,9 @@ jobs:
       - name: Test maintenance tooling
         run: cargo test --locked -p xtask
 
+      - name: Test dependency-floor lockfile isolation
+        run: python3 -B -m unittest discover -s scripts -p test_dependency_floors.py
+
       - name: Check ECS scenario file references
         run: cargo xtask check-ecs-scenarios
 

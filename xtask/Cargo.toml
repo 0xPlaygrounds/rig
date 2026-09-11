@@ -16,3 +16,4 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 sha2 = { workspace = true }
 ctrlc = { version = "3.5.2", features = ["termination"] }
+toml = "1.1.2"

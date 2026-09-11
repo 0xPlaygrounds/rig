@@ -62,6 +62,19 @@ pub(super) fn all() -> Vec<Check> {
             vec![
                 Step::new("@layout", &[]),
                 Step::new("@scenarios", &[]),
+                Step::new(
+                    "python3",
+                    &[
+                        "-B",
+                        "-m",
+                        "unittest",
+                        "discover",
+                        "-s",
+                        "scripts",
+                        "-p",
+                        "test_dependency_floors.py",
+                    ],
+                ),
                 cargo(&["test", "--locked", "-p", "xtask"]),
                 cargo(&[
                     "clippy",
@@ -184,6 +197,14 @@ pub(super) fn all() -> Vec<Check> {
                 "-p",
                 "rig-gemini-grpc",
                 "--all-features",
+                // nextest -E filters execution after Cargo compilation. Select
+                // the same integration targets before compiling their harnesses.
+                "--test",
+                "streaming_conformance",
+                "--test",
+                "streaming_conformance_websocket",
+                "--test",
+                "driver_adoption",
                 "--retries",
                 "0",
                 "-E",
@@ -260,10 +281,10 @@ pub(super) fn all() -> Vec<Check> {
         // Existing repository floor checker; new verification tooling is Rust.
         check(
             "dependency-floors",
-            vec![Step::new(
-                "python3",
-                &["scripts/check-dependency-floors.py"],
-            )],
+            vec![
+                Step::new("python3", &["scripts/check-dependency-floors.py"])
+                    .env("PYTHONUNBUFFERED", "1"),
+            ],
         ),
     ];
     for package in [

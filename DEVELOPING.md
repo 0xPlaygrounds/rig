@@ -32,7 +32,7 @@ regenerates goldens.
 
 Full validation needs the repository toolchain, nextest, Clippy, rustfmt,
 protoc, Docker for service integrations, Node, and wasm-bindgen-test-runner
-matching the lockfile. The existing dependency-floor script also needs Python.
+matching the lockfile. The dependency-floor script and its isolation tests also need Python 3.11+.
 CI installs its required tools through `.github/actions/rust-setup`. A missing
 prerequisite is a failed/incomplete check, never successful verification.
 
@@ -78,13 +78,26 @@ Changed mode can reuse successful local checks; `--no-reuse` forces execution.
 PR mode executes by default (`--reuse` is an explicit local opt-in); full mode
 and CI always execute. `full-tests` and `dependency-floors` always execute even
 with `--reuse`, because external services and dependency resolution can change.
+`doctests` and `package-rig-fastembed` also always execute and write no success
+receipt: their model-loading examples depend on mutable external model files.
+These commands explicitly set `HF_HOME` and `FASTEMBED_CACHE_DIR` to
+`<target>/verify/fastembed-cache`. A pre-existing ignored default model cache is
+moved there before fingerprints, preserving downloads and internal relative
+links. Conflicts, tracked caches, and unsafe links fail before checks. Repository
+source inputs remain checked before and after these fresh executions.
 Result files under `target/verify/` are disposable and
 contain the latest success fingerprint, per-input hashes, configuration hash, and
 measured elapsed time for each check. Per-check `.log` files contain subprocess
 output and phase boundaries; internal source guards print diagnostics on the
 console. The active subprocess emits a heartbeat every 15 seconds, without an
 ETA. Dry runs explain selection, fresh-execution policy, and receipt mismatches.
-Cheap prerequisite probes precede execution. Failure or catchable interruption
+Cheap prerequisite probes precede execution. Selected nested compile fixtures
+resolve their ignored Cargo lockfiles before any check fingerprints are taken;
+these lockfiles remain verification inputs. This avoids invalidating earlier
+checks when a nested Cargo invocation first creates or updates its lockfile.
+The six known ignored fixture locks select their owning tests in changed mode;
+unknown generated inputs still select conservative full coverage.
+Failure or catchable interruption
 prints remaining work and one continuation command; the planner never loops
 automatically. Uncatchable termination (such as SIGKILL or power loss) cannot
 print a summary, but the active check has no success receipt.
@@ -96,7 +109,22 @@ bytes, test selection, environment, tool versions, ancestor/user Cargo
 configuration, and user nextest configuration. A changed input invalidates reuse; a failed rerun removes prior
 success. Inputs changing during a check prevent recording a reusable result.
 Unsupported inputs such as symlinks execute fresh without a reusable receipt.
-This guide is reporting-only and is not a compilation or test input.
+This guide is reporting-only and is not a compilation or test input; a change
+only to `DEVELOPING.md` selects no checks in changed mode. Other Markdown,
+including tracked progress files, remains conservatively covered. PR/full
+requirements are unchanged by this reporting-only exception.
+
+Dependency floors resolve freshly in a temporary sibling copy of the current
+working files, including uncommitted and ignored generated inputs. Only Git
+metadata and known build directories are omitted; symlinks and external path
+dependencies fail explicitly. The caller's lockfile is never written or restored.
+Floor builds use the stable `<target>/dependency-floors` directory, so lowered
+dependency artifacts do not displace the normal locked build configuration.
+`python3 scripts/check-dependency-floors.py --keep` retains the temporary source
+and lowered lockfile for inspection, without modifying the caller. Resolution
+and compilation have separate measured durations. Unreachable floors retain
+explicit lower-bound caveats. A hard kill can leave a temporary source copy;
+its printed path identifies it, and it is never reused as a successful check.
 
 CI uses the same check definitions in `xtask/src/verify/checks.rs`, while retaining
 separate jobs for parallelism and platform setup. The guards nextest profile
@@ -110,6 +138,12 @@ Only trusted upstream pushes may write shared caches. One warming job targets
 refs remain read-only. PRs can restore their base branch's caches under
 [GitHub's cache visibility rules](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching).
 Other matrix configurations are not multiplied into development-base caches.
+The warmer's explicit `default-test-build` check compiles the identical
+default/bedrock artifacts with nextest `--no-run`; it makes no test-execution
+claim and is never substituted for `default-tests` in verification. Conformance
+passes explicit Cargo test-target selectors matching its existing nextest
+filter, preserving the four executed binaries and their package/feature graph
+while avoiding compilation of unused harnesses.
 Cache warming still consumes runner time and quota; its benefit can only be
 measured after the workflow lands and trusted pushes populate that base cache.
 

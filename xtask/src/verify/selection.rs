@@ -4,7 +4,11 @@ use std::{
     path::PathBuf,
 };
 
-pub(super) fn changes(root: &Path, opts: &Options) -> Result<BTreeSet<String>> {
+pub(super) fn changes(
+    root: &Path,
+    opts: &Options,
+    target: Option<&Path>,
+) -> Result<BTreeSet<String>> {
     let revision = if let Some(base) = &opts.base {
         let merge = output(root, "git", &["merge-base", base, "HEAD"])?;
         println!("Base: {base}; merge base: {}", merge.trim());
@@ -25,7 +29,6 @@ pub(super) fn changes(root: &Path, opts: &Options) -> Result<BTreeSet<String>> {
             "-z",
             &revision,
         ],
-        vec!["ls-files", "--others", "--exclude-standard", "-z"],
     ] {
         for p in output(root, "git", &args)?
             .split('\0')
@@ -34,6 +37,7 @@ pub(super) fn changes(root: &Path, opts: &Options) -> Result<BTreeSet<String>> {
             paths.insert(p.into());
         }
     }
+    paths.extend(execute::other_inputs(root, target)?);
     Ok(paths)
 }
 fn broad(all: &[Check], reason: &str, full: bool) -> Vec<Check> {
@@ -114,6 +118,28 @@ fn dynamic(id: String, args: Vec<String>, reason: &str) -> Check {
         reason: reason.into(),
     }
 }
+fn provider_check(name: &str, reason: &str) -> Check {
+    dynamic(
+        format!("provider-{name}"),
+        [
+            "nextest",
+            "run",
+            "--locked",
+            "-p",
+            "rig",
+            "--all-features",
+            "--test",
+            name,
+            "--retries",
+            "0",
+        ]
+        .iter()
+        .map(|s| (*s).into())
+        .collect(),
+        reason,
+    )
+}
+
 pub(super) fn plan(
     root: &Path,
     metadata: &Value,
@@ -127,6 +153,25 @@ pub(super) fn plan(
             .as_deref()
             .ok_or_else(|| invalid("missing check ID"))?;
         let mut out = Vec::new();
+        if id == "default-test-build" {
+            add(
+                &mut out,
+                all,
+                "default-tests",
+                "cache warming only: compile default test artifacts; executes no tests",
+            )?;
+            if let Some(check) = out.first_mut() {
+                check.id = id.into();
+                for step in &mut check.steps {
+                    // nextest 0.9.67 rejects --retries with --no-run.
+                    if let Some(index) = step.args.iter().position(|a| a == "--retries") {
+                        step.args.drain(index..index + 2);
+                    }
+                    step.args.push("--no-run".into());
+                }
+            }
+            return Ok(out);
+        }
         add(&mut out, all, id, "explicit check; always selected")?;
         return Ok(out);
     }
@@ -165,14 +210,38 @@ pub(super) fn plan(
             "complete intended PR diff; preserves required lanes; full-lane inputs: {triggers:?}; {}",
             fallback.map_or("no conservative full fallback", |c| c.reason.as_str())
         );
-        return Ok(broad(all, &reason, needs_full));
+        let mut required = broad(all, &reason, needs_full);
+        // The fast PR lane skips facade-build-tests. Preserve this targeted
+        // owner when its generated lock selected it without a full-lane trigger.
+        if !needs_full
+            && let Some(facade) = local
+                .iter()
+                .find(|c| c.id == "provider-tool_facade_features")
+        {
+            required.push(facade.clone());
+        }
+        return Ok(required);
     }
     let packages = metadata["packages"]
         .as_array()
         .ok_or_else(|| invalid("Cargo metadata missing packages"))?;
-    let mut out = Vec::new();
+    let mut out: Vec<Check> = Vec::new();
     let mut affected = BTreeSet::new();
     for path in paths {
+        if path == "DEVELOPING.md" {
+            continue;
+        }
+        if let Some(owner) = preflight::fixture_lock_owner(path) {
+            let reason = "generated nested-workspace lockfile: execute its owning fixture tests";
+            if owner == "provider-tool_facade_features" {
+                if !out.iter().any(|c| c.id == owner) {
+                    out.push(provider_check("tool_facade_features", reason));
+                }
+            } else {
+                add(&mut out, all, owner, reason)?;
+            }
+            continue;
+        }
         if path == "Cargo.lock"
             || path.ends_with("Cargo.toml")
             || path == "rust-toolchain.toml"
@@ -252,10 +321,7 @@ pub(super) fn plan(
             }
             let id = format!("provider-{name}");
             if !out.iter().any(|c| c.id == id) {
-                out.push(dynamic(
-                    id,
-                    ["nextest", "run", "--locked", "-p", "rig", "--all-features", "--test", name, "--retries", "0"]
-                        .iter().map(|s| (*s).into()).collect(),
+                out.push(provider_check(name,
                     "provider source or cassette: execute complete target with all capabilities, including feature-gated tests and shared safety assertions",
                 ));
             }
@@ -291,7 +357,7 @@ pub(super) fn plan(
             true,
         ));
     }
-    if !paths.is_empty() {
+    if paths.iter().any(|p| p != "DEVELOPING.md") {
         add(&mut out, all, "fmt", "changed files must remain formatted")?;
     }
     let mut downstream = BTreeSet::new();

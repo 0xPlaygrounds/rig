@@ -17,21 +17,125 @@ impl Drop for PlannerLock {
     }
 }
 
-fn tracked_inputs(root: &Path) -> Result<Vec<String>> {
-    let mut files = std::collections::BTreeSet::new();
-    for args in [
-        vec!["ls-files", "-z"],
-        vec!["ls-files", "--others", "--exclude-standard", "-z"],
-    ] {
-        files.extend(
+pub(super) fn tracked_inputs(root: &Path) -> Result<Vec<String>> {
+    Ok(output(root, "git", &["ls-files", "-z"])?
+        .split('\0')
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect())
+}
+pub(super) fn other_inputs(root: &Path, target: Option<&Path>) -> Result<Vec<String>> {
+    let mut pending = Vec::new();
+    for ignored in [false, true] {
+        let mut args = vec![
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "--directory",
+            "--no-empty-directory",
+            "-z",
+        ];
+        if ignored {
+            args.push("--ignored");
+        }
+        pending.extend(
             output(root, "git", &args)?
                 .split('\0')
                 .filter(|s| !s.is_empty())
-                .map(str::to_owned),
+                .map(|s| root.join(s)),
         );
     }
-    Ok(files.into_iter().collect())
+    let mut files = Vec::new();
+    while let Some(path) = pending.pop() {
+        // Only disposable, untracked build outputs are pruned. A tracked file
+        // within these directories still enters through tracked_inputs.
+        if path.starts_with(root.join("target"))
+            || target.is_some_and(|target| path.starts_with(target))
+        {
+            continue;
+        }
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.is_dir() && !metadata.file_type().is_symlink() {
+            for entry in fs::read_dir(&path)? {
+                pending.push(entry?.path());
+            }
+        } else {
+            files.push(
+                path.strip_prefix(root)
+                    .map_err(|e| invalid(e.to_string()))?
+                    .to_str()
+                    .ok_or_else(|| invalid("non-UTF-8 ignored input"))?
+                    .to_string(),
+            );
+        }
+    }
+    Ok(files)
 }
+
+fn manifest_paths(root: &Path, directory: &Path, value: &toml::Value) -> Result<()> {
+    match value {
+        toml::Value::Table(table) => {
+            for (key, value) in table {
+                if key == "path"
+                    && let Some(path) = value.as_str()
+                {
+                    let resolved = fs::canonicalize(directory.join(path))?;
+                    if !resolved.starts_with(root) {
+                        return Err(invalid(format!(
+                            "external manifest path {path}: cannot certify external source"
+                        )));
+                    }
+                }
+                manifest_paths(root, directory, value)?;
+            }
+        }
+        toml::Value::Array(values) => {
+            for value in values {
+                manifest_paths(root, directory, value)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+fn guard_manifest_paths(root: &Path, inputs: &[String]) -> Result<()> {
+    // Include nested/patch crate manifests too: --no-deps only reports workspace
+    // members, and an internal path crate can itself depend on external source.
+    let manifests = inputs
+        .iter()
+        .filter(|name| {
+            Path::new(name)
+                .file_name()
+                .is_some_and(|name| name == "Cargo.toml")
+        })
+        .map(|name| root.join(name));
+    for manifest in manifests {
+        let text = match fs::read_to_string(&manifest) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e.into()),
+        };
+        let value: toml::Value = toml::from_str(&text).map_err(|e| invalid(e.to_string()))?;
+        manifest_paths(root, manifest.parent().unwrap_or(root), &value)?;
+    }
+    Ok(())
+}
+fn guard_config_paths(bytes: &[u8]) -> Result<()> {
+    let text = std::str::from_utf8(bytes).map_err(|e| invalid(e.to_string()))?;
+    let value: toml::Value = toml::from_str(text).map_err(|e| invalid(e.to_string()))?;
+    // Cargo configuration can override sources outside metadata --no-deps.
+    // Conservatively execute fresh instead of inferring their dependency graph.
+    if ["paths", "patch", "replace", "source"]
+        .iter()
+        .any(|key| value.get(key).is_some())
+    {
+        return Err(invalid(
+            "Cargo source/path override: execute fresh without a reusable receipt",
+        ));
+    }
+    Ok(())
+}
+
 fn input_hashes(root: &Path, files: &[String]) -> Result<BTreeMap<String, String>> {
     let mut values = BTreeMap::new();
     let mut existing = Vec::new();
@@ -108,7 +212,23 @@ fn identity(root: &Path, metadata: &Value, check: &Check) -> Result<Value> {
             "external path dependency: local inputs cannot certify its source",
         ));
     }
-    let files = input_hashes(root, &tracked_inputs(root)?)?;
+    if std::env::vars_os().any(|(key, _)| {
+        key.to_string_lossy().starts_with("CARGO_SOURCE_")
+            || key.to_string_lossy().starts_with("CARGO_PATCH_")
+    }) {
+        return Err(invalid(
+            "Cargo source/patch environment override: cannot certify external source",
+        ));
+    }
+    let mut inputs = tracked_inputs(root)?;
+    inputs.extend(other_inputs(
+        root,
+        metadata["target_directory"].as_str().map(Path::new),
+    )?);
+    inputs.sort();
+    inputs.dedup();
+    guard_manifest_paths(root, &inputs)?;
+    let files = input_hashes(root, &inputs)?;
     let config = config(root, check)?;
     Ok(
         serde_json::json!({"fingerprint": fingerprint(&files, &config)?,
@@ -135,6 +255,7 @@ pub(super) fn config(root: &Path, check: &Check) -> Result<Vec<u8>> {
             let path = directory.join(name);
             match fs::read(&path) {
                 Ok(bytes) => {
+                    guard_config_paths(&bytes)?;
                     s.push_str(&format!("{}:{:x}\n", path.display(), Sha256::digest(bytes)))
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -165,7 +286,7 @@ pub(super) fn config(root: &Path, check: &Check) -> Result<Vec<u8>> {
         ("node", vec!["--version"]),
         ("wasm-bindgen-test-runner", vec!["--version"]),
     ] {
-        let value = Command::new(program).args(&args).current_dir(root).output();
+        let value = process::capture(root, program, &args);
         s.push_str(&format!("{program} {args:?}: {value:?}\n"));
     }
     Ok(s.into_bytes())
@@ -201,11 +322,15 @@ fn internal(root: &Path, directory: &Path, log: &Path, step: &Step) -> Result<()
                 .map_err(|e| invalid(e.to_string()))
         }
         "@fixture-paths" => {
-            for path in tracked_inputs(root)?.into_iter().filter(|p| {
-                p.starts_with("crates/")
-                    && p.ends_with(".rs")
-                    && (p.contains("/src/") || p.contains("/tests/"))
-            }) {
+            for path in tracked_inputs(root)?
+                .into_iter()
+                .chain(other_inputs(root, directory.parent())?)
+                .filter(|p| {
+                    p.starts_with("crates/")
+                        && p.ends_with(".rs")
+                        && (p.contains("/src/") || p.contains("/tests/"))
+                })
+            {
                 let text = match fs::read_to_string(root.join(&path)) {
                     Ok(text) => text,
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
@@ -268,7 +393,9 @@ fn internal(root: &Path, directory: &Path, log: &Path, step: &Step) -> Result<()
     }
 }
 pub(super) fn policy(opts: &Options, check: &Check) -> &'static str {
-    if ["full-tests", "dependency-floors"].contains(&check.id.as_str()) {
+    if preflight::uses_runtime_model(check) {
+        "mandatory fresh: external runtime models are non-reusable; no success receipt"
+    } else if ["full-tests", "dependency-floors"].contains(&check.id.as_str()) {
         "mandatory fresh: services/dependency resolution are non-reusable"
     } else if opts.mode == Mode::Full || std::env::var_os("CI").is_some() {
         "mandatory fresh: full mode or CI"
@@ -404,22 +531,43 @@ fn summary(
     );
     let mut current = true;
     for check in plan {
-        let now = identity(root, metadata, check).ok();
+        let now = if process::interrupted() {
+            None
+        } else {
+            identity(root, metadata, check).ok()
+        };
+        let mut check_current = true;
         if let Some(before) = completed.get(&check.id) {
             match (before, &now) {
                 (Some(before), Some(now)) if before["fingerprint"] == now["fingerprint"] => {
-                    println!("SUCCESS {}: current inputs", check.id)
+                    if preflight::uses_runtime_model(check) {
+                        println!(
+                            "SUCCESS {}: current source inputs; runtime models executed fresh, no reusable certification",
+                            check.id
+                        );
+                    } else {
+                        println!("SUCCESS {}: current inputs", check.id);
+                    }
                 }
                 (None, _) => println!(
                     "SUCCESS {}: executed fresh with unsupported inputs; no reusable certification",
                     check.id
                 ),
+                (Some(_), None) => {
+                    println!(
+                        "UNVALIDATED SUCCESS {}: current inputs could not be checked; continuation must revalidate",
+                        check.id
+                    );
+                    current = false;
+                    check_current = false;
+                }
                 _ => {
                     println!(
                         "OLD-INPUT SUCCESS {}: does not verify the current tree",
                         check.id
                     );
                     current = false;
+                    check_current = false;
                 }
             }
         } else if failed == Some(check.id.as_str()) {
@@ -431,6 +579,7 @@ fn summary(
             .zip(now)
             .is_some_and(|(old, now)| matches(&old, &now));
         if valid
+            && !preflight::uses_runtime_model(check)
             && !["full-tests", "dependency-floors"].contains(&check.id.as_str())
             && opts.mode != Mode::Full
             && std::env::var_os("CI").is_none()
@@ -439,7 +588,7 @@ fn summary(
                 "STILL-VALID REUSABLE {}: continuation with --reuse may reuse",
                 check.id
             );
-        } else if !completed.contains_key(&check.id) || !current {
+        } else if !completed.contains_key(&check.id) || !check_current {
             println!(
                 "REMAINING {}: requires execution; {}",
                 check.id,
@@ -453,7 +602,7 @@ fn summary(
             continuation(root, opts)
         );
         println!(
-            "Continuation always reexecutes selected full-tests and dependency-floors; no automatic rerun."
+            "Continuation always reexecutes selected full-tests, dependency-floors, and model-loading checks; no automatic rerun."
         );
     }
     std::io::stdout().flush()?;
@@ -480,7 +629,10 @@ pub(super) fn run(root: &Path, metadata: &Value, opts: &Options, plan: &[Check])
     let _lock = PlannerLock(lock);
     let start = Instant::now();
     let mut completed = BTreeMap::new();
-    if let Err(error) = preflight::run(root, plan) {
+    if let Err(error) = preflight::run(root, plan)
+        .and_then(|()| preflight::prepare_model_cache(root, plan))
+        .and_then(|()| preflight::prepare_fixtures(root, plan))
+    {
         summary(
             root,
             metadata,
@@ -572,18 +724,20 @@ pub(super) fn run(root: &Path, metadata: &Value, opts: &Options, plan: &[Check])
                         difference(before, &after)
                     )));
                 }
-                let mut value = before
-                    .as_object()
-                    .ok_or_else(|| invalid("invalid input identity"))?
-                    .clone();
-                value.insert("schema".into(), 2.into());
-                value.insert("success".into(), true.into());
-                value.insert("seconds".into(), check_start.elapsed().as_secs_f64().into());
-                let tmp = receipt.with_extension("tmp");
-                let mut f = File::create(&tmp)?;
-                f.write_all(&serde_json::to_vec_pretty(&value)?)?;
-                f.sync_all()?;
-                fs::rename(tmp, &receipt)?;
+                if !preflight::uses_runtime_model(check) {
+                    let mut value = before
+                        .as_object()
+                        .ok_or_else(|| invalid("invalid input identity"))?
+                        .clone();
+                    value.insert("schema".into(), 2.into());
+                    value.insert("success".into(), true.into());
+                    value.insert("seconds".into(), check_start.elapsed().as_secs_f64().into());
+                    let tmp = receipt.with_extension("tmp");
+                    let mut f = File::create(&tmp)?;
+                    f.write_all(&serde_json::to_vec_pretty(&value)?)?;
+                    f.sync_all()?;
+                    fs::rename(tmp, &receipt)?;
+                }
             }
             println!(
                 "PASS {}: {:.3}s measured",

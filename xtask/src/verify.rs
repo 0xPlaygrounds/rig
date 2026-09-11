@@ -99,10 +99,7 @@ impl Options {
     }
 }
 fn output(root: &Path, program: &str, args: &[&str]) -> Result<String> {
-    let result = Command::new(program)
-        .args(args)
-        .current_dir(root)
-        .output()?;
+    let result = process::capture(root, program, args)?;
     if !result.status.success() {
         return Err(invalid(format!(
             "{program} {args:?} failed: {}",
@@ -121,9 +118,17 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<()> {
         "cargo",
         &["metadata", "--locked", "--no-deps", "--format-version", "1"],
     )?)?;
-    let changes = selection::changes(root, &opts)?;
+    let changes = selection::changes(
+        root,
+        &opts,
+        metadata
+            .get("target_directory")
+            .and_then(Value::as_str)
+            .map(Path::new),
+    )?;
     let all = checks::all();
-    let plan = selection::plan(root, &metadata, &opts, &changes, &all)?;
+    let mut plan = selection::plan(root, &metadata, &opts, &changes, &all)?;
+    preflight::configure_model_cache(&metadata, &mut plan)?;
     println!(
         "Verification {:?}: {} changed paths; {} checks. No live recording or recapture.",
         opts.mode,
@@ -148,6 +153,11 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<()> {
         for step in &check.steps {
             println!("  {} {} {:?}", step.program, step.args.join(" "), step.env);
         }
+    }
+    for manifest in preflight::fixture_manifests(&plan) {
+        println!(
+            "PREPARATION before check fingerprints: cargo metadata --format-version 1 --manifest-path {manifest}; retain or resolve ignored fixture lockfile"
+        );
     }
     for check in &all {
         if !plan.iter().any(|c| c.id == check.id) {

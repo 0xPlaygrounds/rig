@@ -240,7 +240,7 @@ fn staged_then_undone_and_untracked_inputs_are_not_lost() {
     output(&repo.0, "git", &["add", "file.rs"]).unwrap();
     std::fs::write(repo.0.join("file.rs"), "original").unwrap();
     std::fs::write(repo.0.join("new.rs"), "new").unwrap();
-    let paths = selection::changes(&repo.0, &opts("--changed")).unwrap();
+    let paths = selection::changes(&repo.0, &opts("--changed"), None).unwrap();
     assert!(paths.contains("file.rs"));
     assert!(paths.contains("new.rs"));
 }
@@ -438,6 +438,140 @@ fn fake_check(id: &str, script: &str) -> Check {
         steps: vec![Step::new("bash", &["-c", script])],
     }
 }
+
+#[test]
+fn fixture_resolution_precedes_checks_and_continuation_retains_lock() {
+    let repo = Repo::new();
+    let fixture = repo
+        .0
+        .join("crates/rig-core/tests/fixtures/telemetry_macro_consumer");
+    std::fs::create_dir_all(fixture.join("src")).unwrap();
+    std::fs::write(fixture.join("Cargo.toml"), "[package]\nname = \"preparation-test\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[workspace]\n").unwrap();
+    std::fs::write(fixture.join("src/lib.rs"), "").unwrap();
+    std::fs::write(fixture.join(".gitignore"), "Cargo.lock\n").unwrap();
+    let check = fake_check(
+        "macro-hygiene",
+        "test -f crates/rig-core/tests/fixtures/telemetry_macro_consumer/Cargo.lock && echo ran >> target/count",
+    );
+    let metadata = repo_metadata(&repo);
+    let options = opts("--changed");
+    execute::run(&repo.0, &metadata, &options, std::slice::from_ref(&check)).unwrap();
+    let lock = std::fs::read(fixture.join("Cargo.lock")).unwrap();
+    execute::run(&repo.0, &metadata, &options, std::slice::from_ref(&check)).unwrap();
+    assert_eq!(std::fs::read(fixture.join("Cargo.lock")).unwrap(), lock);
+    let baseline = if std::env::var_os("CI").is_some() {
+        2
+    } else {
+        1
+    };
+    let count = || {
+        std::fs::read_to_string(repo.0.join("target/count"))
+            .unwrap()
+            .lines()
+            .count()
+    };
+    assert_eq!(count(), baseline);
+    let before = execute::digest(
+        &repo.0,
+        &["crates/rig-core/tests/fixtures/telemetry_macro_consumer/Cargo.lock".into()],
+        &[],
+    )
+    .unwrap();
+    std::fs::write(
+        fixture.join("Cargo.lock"),
+        [lock.clone(), b"\n# changed input\n".to_vec()].concat(),
+    )
+    .unwrap();
+    assert_ne!(
+        before,
+        execute::digest(
+            &repo.0,
+            &["crates/rig-core/tests/fixtures/telemetry_macro_consumer/Cargo.lock".into()],
+            &[]
+        )
+        .unwrap()
+    );
+    // Cargo may normalize comments. Change resolution itself to exercise a
+    // stale fixture lock being updated before execution, then fingerprinted.
+    let manifest = std::fs::read_to_string(fixture.join("Cargo.toml")).unwrap();
+    std::fs::write(
+        fixture.join("Cargo.toml"),
+        manifest.replace("0.0.0", "0.0.1"),
+    )
+    .unwrap();
+    execute::run(&repo.0, &metadata, &options, &[check]).unwrap();
+    assert_ne!(std::fs::read(fixture.join("Cargo.lock")).unwrap(), lock);
+    assert_eq!(count(), baseline + 1);
+}
+
+#[test]
+fn fixture_preparation_covers_nested_checks_only() {
+    let all = checks::all();
+    let fixtures = preflight::fixture_manifests(&all);
+    assert_eq!(fixtures.len(), 6);
+    for (id, count) in [
+        ("macro-hygiene", 1),
+        ("derive", 4),
+        ("full-tests", 2),
+        ("package-rig-core", 1),
+        ("package-rig-derive", 4),
+        ("package-rig", 1),
+        ("provider-tool_facade_features", 1),
+        ("fmt", 0),
+        ("conformance", 0),
+    ] {
+        assert_eq!(
+            preflight::fixture_manifests(&[fake_check(id, "true")]).len(),
+            count,
+            "{id}"
+        );
+    }
+}
+
+#[test]
+fn generated_fixture_locks_select_owners_without_permanent_full_fallback() {
+    let all = checks::all();
+    for manifest in preflight::fixture_manifests(&all) {
+        let lock = manifest.replace("Cargo.toml", "Cargo.lock");
+        let owner = preflight::fixture_lock_owner(&lock).unwrap();
+        let selected = ids("--changed", &[&lock]);
+        assert!(selected.contains(owner), "{lock}: {selected:?}");
+        assert_eq!(
+            selected.len(),
+            2,
+            "owner plus formatting only: {selected:?}"
+        );
+        let pr = ids("--pr", &[&lock]);
+        assert!(pr.contains(owner), "PR dropped fixture owner: {pr:?}");
+        assert!(!pr.contains("full-tests"));
+        assert!(!pr.contains("dependency-floors"));
+    }
+    assert!(ids("--changed", &["tests/fixtures/unknown/Cargo.lock"]).contains("full-tests"));
+    assert!(
+        ids(
+            "--changed",
+            &["crates/rig-core/tests/fixtures/unknown/Cargo.lock"]
+        )
+        .contains("full-tests")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn fixture_preparation_refuses_symlinked_lock_without_writing() {
+    let repo = Repo::new();
+    let fixture = repo
+        .0
+        .join("crates/rig-core/tests/fixtures/telemetry_macro_consumer");
+    std::fs::create_dir_all(&fixture).unwrap();
+    let original = repo.0.join("original.lock");
+    std::fs::write(&original, "untouched").unwrap();
+    std::os::unix::fs::symlink(&original, fixture.join("Cargo.lock")).unwrap();
+    let error =
+        preflight::prepare_fixtures(&repo.0, &[fake_check("macro-hygiene", "true")]).unwrap_err();
+    assert!(error.to_string().contains("symlinked fixture input"));
+    assert_eq!(std::fs::read_to_string(original).unwrap(), "untouched");
+}
 fn repo_metadata(repo: &Repo) -> Value {
     serde_json::json!({"target_directory":repo.0.join("target")})
 }
@@ -607,4 +741,308 @@ fn tool_versions_require_the_exact_pinned_version() {
         "rustc 1.95.0-nightly",
         "1.95.0"
     ));
+}
+
+#[test]
+fn cache_warming_compiles_the_default_graph_without_claiming_test_execution() {
+    let mut options = Options::parse(vec!["--check".into(), "default-test-build".into()]).unwrap();
+    options.check = Some("default-test-build".into());
+    let all = checks::all();
+    let plan = selection::plan(
+        Path::new("/repo"),
+        &metadata(),
+        &options,
+        &BTreeSet::new(),
+        &all,
+    )
+    .unwrap();
+    let default = all.iter().find(|c| c.id == "default-tests").unwrap();
+    let mut expected = default.steps[0].clone();
+    let index = expected.args.iter().position(|a| a == "--retries").unwrap();
+    expected.args.drain(index..index + 2);
+    expected.args.push("--no-run".into());
+    assert_eq!(plan[0].steps, vec![expected]);
+    assert_ne!(plan[0].id, default.id);
+    assert!(!all.iter().any(|c| c.id == "default-test-build"));
+    assert!(!default.steps[0].args.contains(&"--no-run".into()));
+}
+#[test]
+fn conformance_compiles_exactly_its_executed_targets() {
+    let all = checks::all();
+    let c = all.iter().find(|c| c.id == "conformance").unwrap();
+    let targets: BTreeSet<_> = c.steps[0]
+        .args
+        .windows(2)
+        .filter(|w| w[0] == "--test")
+        .map(|w| w[1].as_str())
+        .collect();
+    assert_eq!(
+        targets,
+        BTreeSet::from([
+            "streaming_conformance",
+            "streaming_conformance_websocket",
+            "driver_adoption"
+        ])
+    );
+    assert!(c.steps[0].args.windows(2).any(|w| w == ["--retries", "0"]));
+    assert!(c.steps[0].args.contains(&"--all-features".into()));
+}
+#[test]
+fn reporting_only_selection_skips_work_but_other_docs_keep_executable_checks() {
+    assert!(ids("--changed", &["DEVELOPING.md"]).is_empty());
+    for path in ["docs/progress.md", "README.md", "crates/rig-ecs/README.md"] {
+        assert!(!ids("--changed", &[path]).is_empty());
+    }
+    assert_eq!(ids("--pr", &["DEVELOPING.md"]), ids("--pr", &[]));
+}
+
+#[test]
+fn ignored_generated_inputs_invalidate_but_build_outputs_do_not() {
+    let repo = Repo::new();
+    std::fs::write(repo.0.join(".gitignore"), "target/\ngenerated/\n").unwrap();
+    std::fs::create_dir(repo.0.join("generated")).unwrap();
+    std::fs::write(repo.0.join("generated/included.rs"), "original").unwrap();
+    let check = fake_check("ignored-input", "echo ran >> target/count");
+    let metadata = repo_metadata(&repo);
+    let options = opts("--changed");
+    execute::run(&repo.0, &metadata, &options, std::slice::from_ref(&check)).unwrap();
+    execute::run(&repo.0, &metadata, &options, std::slice::from_ref(&check)).unwrap();
+    let count = || {
+        std::fs::read_to_string(repo.0.join("target/count"))
+            .unwrap()
+            .lines()
+            .count()
+    };
+    let baseline = if std::env::var_os("CI").is_some() {
+        2
+    } else {
+        1
+    };
+    assert_eq!(count(), baseline);
+    std::fs::write(repo.0.join("generated/included.rs"), "changed").unwrap();
+    execute::run(&repo.0, &metadata, &options, std::slice::from_ref(&check)).unwrap();
+    assert_eq!(count(), baseline + 1);
+    let paths = selection::changes(&repo.0, &options, None).unwrap();
+    assert!(paths.contains("generated/included.rs"));
+    assert!(!paths.iter().any(|p| p.starts_with("target/")));
+    let mutating = fake_check("ignored-input", "echo mutated > generated/included.rs");
+    assert!(execute::run(&repo.0, &metadata, &options, &[mutating]).is_err());
+    assert!(!repo.0.join("target/verify/ignored-input.json").exists());
+}
+#[test]
+fn path_patch_hidden_by_no_deps_metadata_cannot_be_reused() {
+    let repo = Repo::new();
+    let external = Repo::new();
+    std::fs::write(
+        repo.0.join("Cargo.toml"),
+        format!("[patch.crates-io]\nfoo = {{ path = {:?} }}\n", external.0),
+    )
+    .unwrap();
+    let check = fake_check("patched", "true");
+    execute::run(&repo.0, &repo_metadata(&repo), &opts("--changed"), &[check]).unwrap();
+    assert!(!repo.0.join("target/verify/patched.json").exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn planning_and_preflight_probes_are_interruptible() {
+    const CHILD: &str = "RIG_VERIFY_PROBE_INTERRUPT_TEST";
+    if let Some(root) = std::env::var_os(CHILD) {
+        process::install_interrupt_handler().unwrap();
+        let start = std::time::Instant::now();
+        let error = process::capture(
+            Path::new(&root),
+            "bash",
+            &["-c", "kill -TERM $PPID; sleep 30"],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("interrupted"));
+        assert!(start.elapsed() < std::time::Duration::from_secs(5));
+        return;
+    }
+    let repo = Repo::new();
+    let result = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "verify::tests::planning_and_preflight_probes_are_interruptible",
+            "--nocapture",
+        ])
+        .env(CHILD, &repo.0)
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
+#[test]
+fn custom_unignored_target_outputs_do_not_invalidate_but_tracked_inputs_do() {
+    let repo = Repo::new();
+    let target = repo.0.join("build-cache");
+    let metadata = serde_json::json!({"target_directory": target});
+    let check = fake_check("custom-target", "echo ran >> build-cache/count");
+    let options = opts("--changed");
+    for _ in 0..2 {
+        execute::run(&repo.0, &metadata, &options, std::slice::from_ref(&check)).unwrap();
+    }
+    let count = || {
+        std::fs::read_to_string(target.join("count"))
+            .unwrap()
+            .lines()
+            .count()
+    };
+    let baseline = if std::env::var_os("CI").is_some() {
+        2
+    } else {
+        1
+    };
+    assert_eq!(count(), baseline);
+    assert!(
+        selection::changes(&repo.0, &options, Some(&target))
+            .unwrap()
+            .is_empty()
+    );
+    std::fs::write(target.join("tracked.rs"), "source").unwrap();
+    output(&repo.0, "git", &["add", "build-cache/tracked.rs"]).unwrap();
+    execute::run(&repo.0, &metadata, &options, std::slice::from_ref(&check)).unwrap();
+    assert_eq!(count(), baseline + 1);
+    std::fs::write(target.join("tracked.rs"), "changed source").unwrap();
+    execute::run(&repo.0, &metadata, &options, &[check]).unwrap();
+    assert_eq!(count(), baseline + 2);
+}
+
+#[test]
+fn fixture_guard_checks_untracked_rust_sources_before_staging() {
+    let repo = Repo::new();
+    let source = repo.0.join("crates/new/src/lib.rs");
+    std::fs::create_dir_all(source.parent().unwrap()).unwrap();
+    std::fs::write(&source, "let fixture = std::fs::read(\"tests/data/bad\");").unwrap();
+    let check = Check {
+        id: "fixture-guard".into(),
+        reason: "test".into(),
+        steps: vec![Step::new("@fixture-paths", &[])],
+    };
+    let error =
+        execute::run(&repo.0, &repo_metadata(&repo), &opts("--changed"), &[check]).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("CWD-relative fixture path in crates/new/src/lib.rs")
+    );
+}
+
+#[test]
+fn model_checks_execute_fresh_without_receipts_and_still_detect_source_changes() {
+    let repo = Repo::new();
+    let metadata = repo_metadata(&repo);
+    let mut plan = vec![fake_check(
+        "package-rig-fastembed",
+        "echo ran >> target/count",
+    )];
+    plan[0].steps[0]
+        .env
+        .insert("HF_HOME".into(), "/inherited/cache".into());
+    preflight::configure_model_cache(&metadata, &mut plan).unwrap();
+    let cache = repo.0.join("target/verify/fastembed-cache");
+    for key in ["HF_HOME", "FASTEMBED_CACHE_DIR"] {
+        assert_eq!(plan[0].steps[0].env[key], cache.to_str().unwrap());
+    }
+    let options = opts("--changed");
+    for _ in 0..2 {
+        execute::run(&repo.0, &metadata, &options, &plan).unwrap();
+        assert!(
+            !repo
+                .0
+                .join("target/verify/package-rig-fastembed.json")
+                .exists()
+        );
+    }
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("target/count")).unwrap(),
+        "ran\nran\n"
+    );
+    plan[0].steps[0].args = vec!["-c".into(), "echo changed > file.rs".into()];
+    let error = execute::run(&repo.0, &metadata, &options, &plan).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("inputs changed during package-rig-fastembed")
+    );
+    assert!(
+        !repo
+            .0
+            .join("target/verify/package-rig-fastembed.json")
+            .exists()
+    );
+    assert!(preflight::uses_runtime_model(&fake_check(
+        "doctests", "true"
+    )));
+    assert!(!preflight::uses_runtime_model(&fake_check(
+        "default-tests",
+        "true"
+    )));
+}
+
+#[cfg(unix)]
+#[test]
+fn model_cache_migration_preserves_downloads_and_rejects_unsafe_moves() {
+    use std::os::unix::fs::symlink;
+    for case in ["safe", "conflict", "tracked", "root-link", "escaping-link"] {
+        let repo = Repo::new();
+        let relative = "crates/rig-fastembed/.fastembed_cache";
+        let source = repo.0.join(relative);
+        std::fs::create_dir_all(source.join("blobs")).unwrap();
+        std::fs::create_dir_all(source.join("snapshots")).unwrap();
+        std::fs::write(source.join("blobs/model"), "model bytes").unwrap();
+        symlink("../blobs/model", source.join("snapshots/model")).unwrap();
+        std::fs::write(repo.0.join(".gitignore"), format!("{relative}/\ntarget/\n")).unwrap();
+        let mut plan = vec![fake_check("doctests", "true")];
+        preflight::configure_model_cache(&repo_metadata(&repo), &mut plan).unwrap();
+        let destination = repo.0.join("target/verify/fastembed-cache");
+        match case {
+            "conflict" => {
+                std::fs::create_dir_all(&destination).unwrap();
+            }
+            "tracked" => {
+                assert!(
+                    Command::new("git")
+                        .current_dir(&repo.0)
+                        .args(["add", "-f", relative])
+                        .status()
+                        .unwrap()
+                        .success()
+                );
+            }
+            "root-link" => {
+                std::fs::rename(&source, repo.0.join("original-cache")).unwrap();
+                symlink(repo.0.join("original-cache"), &source).unwrap();
+            }
+            "escaping-link" => {
+                symlink(repo.0.join("file.rs"), source.join("escape")).unwrap();
+            }
+            _ => {}
+        }
+        let result = preflight::prepare_model_cache(&repo.0, &plan);
+        if case == "safe" {
+            result.unwrap();
+            assert!(!source.exists());
+            assert_eq!(
+                std::fs::read(destination.join("snapshots/model")).unwrap(),
+                b"model bytes"
+            );
+            assert_eq!(
+                std::fs::read_link(destination.join("snapshots/model")).unwrap(),
+                Path::new("../blobs/model")
+            );
+        } else {
+            assert!(result.is_err(), "{case}");
+            assert_eq!(
+                std::fs::read(source.join("blobs/model")).unwrap(),
+                b"model bytes"
+            );
+        }
+    }
 }
