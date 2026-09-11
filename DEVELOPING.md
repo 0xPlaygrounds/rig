@@ -107,15 +107,31 @@ measured after the workflow lands and trusted pushes populate that base cache.
 
 ## PR completion
 
-Inspect the complete intended diff against its merge base, including staged,
-unstaged and relevant untracked files. Run targeted checks first, then the full
-required PR plan. Obtain a fresh independent review of the complete diff;
-validate findings, fix confirmed P0/P1 issues and in-scope lower-severity issues,
-and rerun affected checks and review after fixes. Publish a normal PR only after
-initial verification and review. Inspect committed-head required CI and
-unresolved actionable review threads afterward. Pending/failed checks and
-unresolved required work mean the PR is incomplete. Report unrelated blockers
-without broadening the change to fix them.
+Finish implementation and review before starting expensive final verification:
+
+1. Inspect the complete intended diff against the actual merge base, including
+   staged, unstaged, deleted, renamed, and relevant untracked files.
+2. Complete implementation, examples, tests, migration notes, and scope review.
+   Generated release documents remain subject to the repository's release policy.
+3. Run formatting, targeted tests, and cheap checks; resolve findings.
+4. Obtain a fresh independent full-diff review and fix confirmed findings before
+   launching expensive final checks. Validate findings against current code;
+   fix P0/P1 issues and address or justify in-scope lower-severity findings.
+5. Freeze verification inputs and run the required final plan. Keep progress
+   logs and reports outside the repository (for example in a sibling reviews
+   directory). Freezing inputs does not require committing unfinished work.
+6. If a later fix is needed, rerun affected checks and the final review. Use
+   `cargo xtask verify --pr --base <intended-base-ref> --reuse` to continue with
+   matching successes under the reuse rules above. Broad input changes may
+   invalidate every result; `full-tests` and `dependency-floors` must still run
+   fresh. Report every mandatory fresh check still outstanding.
+
+This reduces avoidable restarts; defects can still require another run. Never
+count a successful command on old inputs as verification of the current tree.
+Publish a normal PR only after initial verification and review. Inspect
+committed-head required CI and unresolved actionable review threads afterward.
+Pending/failed checks and unresolved required work mean the PR is incomplete.
+Report unrelated blockers without broadening the change to fix them.
 
 ## Measurements
 
