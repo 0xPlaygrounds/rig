@@ -1,22 +1,23 @@
-//! AWS SigV4 request signing for Anthropic-compatible endpoints fronted by AWS.
+//! AWS SigV4 request signing for the Anthropic-compatible endpoint.
 //!
-//! Only compiled with the `sigv4` feature. Selected per-client via [`super::AnthropicKey::sigv4`];
-//! never inferred from the URL, so an unsigned request can never silently become a signed one.
+//! Selected per-client via [`super::AnthropicKey::sigv4`]; never inferred from the URL, so an
+//! unsigned request can never silently become a signed one.
 //!
 //! Signing is per-request rather than a static header because the signature covers the request body
 //! and the current time. That imposes an ordering constraint on callers: **sign last**. The payload
 //! hash is taken over the exact bytes sent, so any body shaping must already have happened.
+//! rig-core's Anthropic request builders call
+//! [`AnthropicCompatibleProvider::signed_headers`](rig_core::providers::anthropic::completion::AnthropicCompatibleProvider::signed_headers)
+//! at exactly that point.
 
-use std::sync::OnceLock;
 use std::time::SystemTime;
 
 use aws_config::BehaviorVersion;
 use aws_credential_types::provider::ProvideCredentials;
 use aws_sigv4::http_request::{SignableBody, SignableRequest, SigningSettings, sign};
 use aws_sigv4::sign::v4;
+use rig_core::completion::CompletionError;
 use tokio::sync::OnceCell;
-
-use crate::completion::CompletionError;
 
 /// The AWS service name that goes in the SigV4 credential scope.
 ///
@@ -29,10 +30,11 @@ const SIGNING_SERVICE: &str = "bedrock-mantle";
 
 /// Resolved once per process. The credential chain performs I/O -- profile files, SSO cache, IMDS --
 /// and re-running it on every request would add that cost to each model call.
+///
+/// `tokio::sync::OnceCell`, not `std::sync::OnceLock`: initialisation is `async` because it awaits
+/// `load_defaults`, and `OnceLock` has no async initialiser. tokio is a first-class dependency of
+/// this crate, which is one of the reasons the signing belongs here rather than in rig-core.
 static SDK_CONFIG: OnceCell<aws_config::SdkConfig> = OnceCell::const_new();
-
-/// Cached so the "feature is on but no credentials" message is produced once.
-static WARNED: OnceLock<()> = OnceLock::new();
 
 async fn sdk_config() -> &'static aws_config::SdkConfig {
     SDK_CONFIG
@@ -67,7 +69,6 @@ pub(crate) async fn signed_headers(
 
     let config = sdk_config().await;
     let provider = config.credentials_provider().ok_or_else(|| {
-        let _ = WARNED.set(());
         CompletionError::RequestError(
             "SigV4 auth was requested but no AWS credentials could be resolved. The standard chain \
              was consulted (environment, shared config/credentials, SSO cache, IMDS)."
@@ -136,15 +137,8 @@ mod tests {
     /// instead. This test guards the invariant at the layer where it is deterministic.
     #[tokio::test]
     async fn signed_headers_never_include_host() {
-        // SAFETY: set before the first credential resolution in this process.
-        unsafe {
-            std::env::set_var("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE");
-            std::env::set_var(
-                "AWS_SECRET_ACCESS_KEY",
-                "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-            );
-            std::env::set_var("AWS_REGION", "us-east-1");
-        }
+        super::super::install_static_test_credentials();
+
         let headers = signed_headers(
             "POST",
             "https://bedrock-mantle.us-east-1.api.aws/anthropic/v1/messages",

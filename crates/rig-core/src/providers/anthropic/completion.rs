@@ -57,25 +57,37 @@ pub trait AnthropicCompatibleProvider: Provider {
     /// unchanged.
     fn enable_strict_tool_use(_tool: &mut ToolDefinition) {}
 
-    /// AWS region to sign requests for, when this provider fronts an
-    /// Anthropic-compatible endpoint behind AWS SigV4.
+    /// Per-request headers computed over the exact bytes about to be sent.
     ///
-    /// `None` — the default — means the provider authenticates some other way
-    /// and no signing is attempted, so existing implementors are unaffected.
-    /// Signing itself is behind the `sigv4` cargo feature; a provider that
-    /// returns `Some` in a build without the feature gets a hard error rather
-    /// than an unsigned request.
-    fn sigv4_region(&self) -> Option<&str> {
-        None
+    /// Returns nothing by default, so a provider whose credential is a static
+    /// header — every provider in this crate — is unaffected and needs no
+    /// implementation. Override it when the credential cannot be produced once
+    /// at client construction: a request signature covers the method, the URI, a
+    /// hash of the payload and the current time, so it has to be recomputed for
+    /// every call.
+    ///
+    /// Called immediately before the body is attached to the request builder, in
+    /// both the unary and the streaming path. That ordering is the contract an
+    /// implementor may rely on — `body` is final, and nothing reshapes it
+    /// afterwards.
+    ///
+    /// The hook exists so the signing itself does not have to live here.
+    /// rig-core carries no cloud SDK and no credential chain; `rig-bedrock`
+    /// implements this for the AWS-fronted Anthropic endpoint, where the AWS
+    /// dependencies already belong.
+    fn signed_headers(
+        &self,
+        method: &str,
+        uri: &str,
+        body: &[u8],
+    ) -> impl Future<Output = Result<Vec<(String, String)>, CompletionError>> + WasmCompatSend {
+        let _ = (method, uri, body);
+        async { Ok(Vec::new()) }
     }
 }
 
 impl AnthropicCompatibleProvider for super::client::Anthropic {
     const PROVIDER_NAME: &'static str = "anthropic";
-
-    fn sigv4_region(&self) -> Option<&str> {
-        self.sigv4_region.as_deref()
-    }
 
     fn default_max_tokens(model: &str) -> Option<u64> {
         default_max_tokens_for_model(model)
@@ -1818,7 +1830,12 @@ where
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on Anthropic's
 /// published synchronous Messages API output limits for current models.
-fn default_max_tokens_for_model(model: &str) -> Option<u64> {
+///
+/// Public because an Anthropic-dialect provider outside this crate needs the same table:
+/// `rig-bedrock`'s AWS-fronted endpoint serves these exact models, and without this its
+/// [`AnthropicCompatibleProvider::default_max_tokens`] would have to either return `None` — making
+/// `max_tokens` mandatory on every request — or invent a flat limit that truncates Opus.
+pub fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     if model.starts_with("claude-opus-4-8")
         || model.starts_with("claude-opus-4-7")
         || model.starts_with("claude-opus-4-6")
@@ -3030,41 +3047,22 @@ where
 
         let request: Vec<u8> = serde_json::to_vec(&request)?;
 
-        // `mut` is only needed when signing is compiled in; without the feature nothing
-        // reassigns it, and an unconditional `mut` would add a warning to every build.
-        #[cfg_attr(
-            not(all(feature = "sigv4", not(target_arch = "wasm32"))),
-            allow(unused_mut)
-        )]
         let mut builder = self.client.post("/v1/messages")?;
 
-        // SigV4, when the client was built with AnthropicKey::sigv4. Signed HERE and not
-        // earlier: the payload hash covers these exact bytes, so signing must follow every
-        // change to the body.
-        #[cfg(all(feature = "sigv4", not(target_arch = "wasm32")))]
-        if let Some(region) = self.client.provider().sigv4_region() {
-            let uri = builder
-                .uri_ref()
-                .map(ToString::to_string)
-                .unwrap_or_default();
-            for (name, value) in
-                super::sigv4::signed_headers("POST", &uri, &request, region).await?
-            {
-                builder = builder.header(name, value);
-            }
-        }
-        // With signing not compiled in, selecting SigV4 must fail loudly rather than send an
-        // unsigned request that 401s with a message about a missing API key. Two ways to get
-        // here, and the message names both: the `sigv4` feature is off, or the target is wasm,
-        // where the feature is inert because the AWS credential chain has no socket to use.
-        #[cfg(not(all(feature = "sigv4", not(target_arch = "wasm32"))))]
-        if self.client.provider().sigv4_region().is_some() {
-            return Err(CompletionError::RequestError(
-                "SigV4 auth was selected but request signing is not available in this build: \
-                 either the `sigv4` feature is disabled, or the target is wasm, where it is \
-                 unsupported"
-                    .into(),
-            ));
+        // Applied HERE and not earlier: a request signature's payload hash covers these exact
+        // bytes, so it must follow every change to the body. Empty for every provider that
+        // authenticates with a static header, which is all of them in this crate.
+        let uri = builder
+            .uri_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        for (name, value) in self
+            .client
+            .provider()
+            .signed_headers("POST", &uri, &request)
+            .await?
+        {
+            builder = builder.header(name, value);
         }
 
         let req = builder

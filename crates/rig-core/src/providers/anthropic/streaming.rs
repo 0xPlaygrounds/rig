@@ -578,34 +578,21 @@ where
 
         let body: Vec<u8> = serde_json::to_vec(&body)?;
 
-        // See the note in completion.rs: `mut` is only used when signing is compiled in.
-        #[cfg_attr(
-            not(all(feature = "sigv4", not(target_arch = "wasm32"))),
-            allow(unused_mut)
-        )]
         let mut builder = self.client.post("/v1/messages")?;
 
-        // Same as the non-streaming path in completion.rs, and it must be duplicated because the
-        // two paths build their requests independently. Signed after the body is final.
-        #[cfg(all(feature = "sigv4", not(target_arch = "wasm32")))]
-        if let Some(region) = self.client.provider().sigv4_region() {
-            let uri = builder
-                .uri_ref()
-                .map(ToString::to_string)
-                .unwrap_or_default();
-            for (name, value) in super::sigv4::signed_headers("POST", &uri, &body, region).await? {
-                builder = builder.header(name, value);
-            }
-        }
-        // See completion.rs: two ways to reach this, and the message names both.
-        #[cfg(not(all(feature = "sigv4", not(target_arch = "wasm32"))))]
-        if self.client.provider().sigv4_region().is_some() {
-            return Err(CompletionError::RequestError(
-                "SigV4 auth was selected but request signing is not available in this build: \
-                 either the `sigv4` feature is disabled, or the target is wasm, where it is \
-                 unsupported"
-                    .into(),
-            ));
+        // Same as the unary path in completion.rs, and it has to be repeated because the two
+        // paths build their requests independently. Applied after the body is final.
+        let uri = builder
+            .uri_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        for (name, value) in self
+            .client
+            .provider()
+            .signed_headers("POST", &uri, &body)
+            .await?
+        {
+            builder = builder.header(name, value);
         }
 
         let req = builder.body(body).map_err(http_client::Error::Protocol)?;
