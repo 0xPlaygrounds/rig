@@ -84,6 +84,26 @@ fn an_api_key_still_sends_x_api_key() {
     assert_eq!(value, "secret");
 }
 
+/// `Debug` must not print the API key. Nothing in this crate logs a key today, so the derive would
+/// have been a latent leak rather than an active one -- one `tracing::debug!(?key)` away.
+#[test]
+fn debug_redacts_the_api_key() {
+    let rendered = format!("{:?}", AnthropicKey::from("super-secret"));
+    assert!(
+        !rendered.contains("super-secret"),
+        "Debug leaked the API key: {rendered}"
+    );
+    // Anti-vacuity: an empty or panicking Debug would also "not contain" the key.
+    assert_eq!(rendered, "ApiKey(<redacted>)");
+
+    // The region is not a secret and stays legible, which is what makes the redacted variant
+    // distinguishable from a client that was never given a key at all.
+    assert_eq!(
+        format!("{:?}", AnthropicKey::sigv4("us-east-1")),
+        r#"SigV4 { region: "us-east-1" }"#
+    );
+}
+
 #[test]
 fn building_without_an_endpoint_is_rejected() {
     let error = Client::builder()
@@ -249,6 +269,45 @@ async fn the_streaming_path_signs_as_well() {
     assert!(
         authorization.contains("/us-east-1/bedrock-mantle/aws4_request"),
         "wrong credential scope: {authorization}"
+    );
+}
+
+/// Two clients must not share one resolved credential chain.
+///
+/// This is the property that makes `AnthropicKey::sigv4` usable more than once in a process. The
+/// cache used to be a `static`, so the first client to sign fixed the identity every later client
+/// signed with: a process building one client under one profile or assumed role and a second
+/// expecting another would sign both as whichever resolved first, and a successful call could be
+/// authorized and billed against the wrong account.
+///
+/// Asserted on the cells rather than on two live identities on purpose. The credential chain reads
+/// process-global environment and files, so a hermetic test cannot give two clients two different
+/// real identities without racing every other test in the binary. Cell identity is the part that
+/// is actually under this crate's control, and sharing is exactly what went wrong.
+#[test]
+fn two_clients_do_not_share_one_credential_cell() {
+    let build = |region: &str| {
+        AnthropicOnAws::build(
+            rig_core::providers::anthropic::client::AnthropicConfig::default(),
+            &AnthropicKey::sigv4(region),
+        )
+        .expect("building a provider value from a sigv4 key does no I/O and cannot fail")
+    };
+
+    let east = build("us-east-1");
+    let west = build("us-west-2");
+    assert!(
+        !Arc::ptr_eq(&east.sdk_config, &west.sdk_config),
+        "two separately built clients share one credential cell, so the first to sign would fix \
+         the identity of the second"
+    );
+
+    // The other half of the property: a clone is the same client, so it must reuse the one
+    // resolution rather than pay for the credential chain again.
+    let east_clone = east.clone();
+    assert!(
+        Arc::ptr_eq(&east.sdk_config, &east_clone.sdk_config),
+        "a cloned client resolved its own credentials instead of sharing the original's"
     );
 }
 

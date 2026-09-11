@@ -582,17 +582,18 @@ where
 
         // Same as the unary path in completion.rs, and it has to be repeated because the two
         // paths build their requests independently. Applied after the body is final.
-        let uri = builder
-            .uri_ref()
-            .map(ToString::to_string)
-            .unwrap_or_default();
-        for (name, value) in self
-            .client
-            .provider()
-            .signed_headers("POST", &uri, &body)
-            .await?
-        {
-            builder = builder.header(name, value);
+        //
+        // See that call site for why a `None` from `uri_ref` skips signing instead of failing.
+        let uri = builder.uri_ref().cloned();
+        if let Some(uri) = uri {
+            for (name, value) in self
+                .client
+                .provider()
+                .signed_headers("POST", &uri, &body)
+                .await?
+            {
+                builder = builder.header(name, value);
+            }
         }
 
         let req = builder.body(body).map_err(http_client::Error::Protocol)?;
