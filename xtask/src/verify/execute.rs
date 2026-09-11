@@ -17,66 +17,223 @@ impl Drop for PlannerLock {
     }
 }
 
-fn tracked_inputs(root: &Path) -> Result<Vec<String>> {
-    let mut files = std::collections::BTreeSet::new();
-    for args in [
-        vec!["ls-files", "-z"],
-        vec!["ls-files", "--others", "--exclude-standard", "-z"],
-    ] {
-        files.extend(
+pub(super) fn tracked_inputs(root: &Path) -> Result<Vec<String>> {
+    Ok(output(root, "git", &["ls-files", "-z"])?
+        .split('\0')
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect())
+}
+pub(super) fn other_inputs(root: &Path, target: Option<&Path>) -> Result<Vec<String>> {
+    let mut pending = Vec::new();
+    for ignored in [false, true] {
+        let mut args = vec![
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "--directory",
+            "--no-empty-directory",
+            "-z",
+        ];
+        if ignored {
+            args.push("--ignored");
+        }
+        pending.extend(
             output(root, "git", &args)?
                 .split('\0')
                 .filter(|s| !s.is_empty())
-                .map(str::to_owned),
+                .map(|s| root.join(s)),
         );
     }
-    Ok(files.into_iter().collect())
+    let mut files = Vec::new();
+    while let Some(path) = pending.pop() {
+        // Only disposable, untracked build outputs are pruned. A tracked file
+        // within these directories still enters through tracked_inputs.
+        if path.starts_with(root.join("target"))
+            || target.is_some_and(|target| path.starts_with(target))
+        {
+            continue;
+        }
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.is_dir() && !metadata.file_type().is_symlink() {
+            for entry in fs::read_dir(&path)? {
+                pending.push(entry?.path());
+            }
+        } else {
+            files.push(
+                path.strip_prefix(root)
+                    .map_err(|e| invalid(e.to_string()))?
+                    .to_str()
+                    .ok_or_else(|| invalid("non-UTF-8 ignored input"))?
+                    .to_string(),
+            );
+        }
+    }
+    Ok(files)
 }
-pub(super) fn digest(root: &Path, files: &[String], config: &[u8]) -> Result<String> {
-    let mut hash = Sha256::new();
-    hash.update(b"rig-verify-local-v2\0");
-    hash.update(config);
+
+fn manifest_paths(root: &Path, directory: &Path, value: &toml::Value) -> Result<()> {
+    match value {
+        toml::Value::Table(table) => {
+            for (key, value) in table {
+                if key == "path"
+                    && let Some(path) = value.as_str()
+                {
+                    let resolved = fs::canonicalize(directory.join(path))?;
+                    if !resolved.starts_with(root) {
+                        return Err(invalid(format!(
+                            "external manifest path {path}: cannot certify external source"
+                        )));
+                    }
+                }
+                manifest_paths(root, directory, value)?;
+            }
+        }
+        toml::Value::Array(values) => {
+            for value in values {
+                manifest_paths(root, directory, value)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+fn guard_manifest_paths(root: &Path, inputs: &[String]) -> Result<()> {
+    // Include nested/patch crate manifests too: --no-deps only reports workspace
+    // members, and an internal path crate can itself depend on external source.
+    let manifests = inputs
+        .iter()
+        .filter(|name| {
+            Path::new(name)
+                .file_name()
+                .is_some_and(|name| name == "Cargo.toml")
+        })
+        .map(|name| root.join(name));
+    for manifest in manifests {
+        let text = match fs::read_to_string(&manifest) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e.into()),
+        };
+        let value: toml::Value = toml::from_str(&text).map_err(|e| invalid(e.to_string()))?;
+        manifest_paths(root, manifest.parent().unwrap_or(root), &value)?;
+    }
+    Ok(())
+}
+fn guard_config_paths(bytes: &[u8]) -> Result<()> {
+    let text = std::str::from_utf8(bytes).map_err(|e| invalid(e.to_string()))?;
+    let value: toml::Value = toml::from_str(text).map_err(|e| invalid(e.to_string()))?;
+    // Cargo configuration can override sources outside metadata --no-deps.
+    // Conservatively execute fresh instead of inferring their dependency graph.
+    if ["paths", "patch", "replace", "source"]
+        .iter()
+        .any(|key| value.get(key).is_some())
+    {
+        return Err(invalid(
+            "Cargo source/path override: execute fresh without a reusable receipt",
+        ));
+    }
+    Ok(())
+}
+
+fn input_hashes(root: &Path, files: &[String]) -> Result<BTreeMap<String, String>> {
+    let mut values = BTreeMap::new();
     let mut existing = Vec::new();
     for name in files {
-        // The timing report describes measurements; no executable consumes it.
-        // All other source, fixture, lock, config and documentation bytes count.
+        // Explicit reporting-only precedent. Do not exempt other Markdown:
+        // rustdoc, include_str!, fixtures and build scripts may consume it.
         if name == "DEVELOPING.md" {
             continue;
         }
-        hash.update(name.len().to_le_bytes());
-        hash.update(name.as_bytes());
-        let path = root.join(name);
-        match fs::symlink_metadata(&path) {
+        match fs::symlink_metadata(root.join(name)) {
             Ok(meta) => {
-                if meta.file_type().is_symlink() {
+                if !meta.is_file() || meta.file_type().is_symlink() {
                     return Err(invalid(format!(
-                        "cannot reuse verification across symlink input {name}; use --no-reuse"
+                        "unsupported input {name}; execute fresh without a reusable receipt"
                     )));
                 }
-                if !meta.is_file() {
-                    return Err(invalid(format!("unsupported verification input {name}")));
-                }
-                existing.push(name.as_str());
+                #[cfg(not(unix))]
+                let mode = String::new();
                 #[cfg(unix)]
-                {
+                let mode = {
                     use std::os::unix::fs::PermissionsExt;
-                    hash.update(meta.permissions().mode().to_le_bytes());
-                }
+                    meta.permissions().mode().to_string()
+                };
+                values.insert(name.clone(), mode);
+                existing.push(name.as_str());
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => hash.update(b"<deleted>"),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                values.insert(name.clone(), "<deleted>".into());
+            }
             Err(e) => return Err(e.into()),
         }
     }
-    // Git hashes the actual working bytes in optimized native code. Reading
-    // every cassette through unoptimized sha2 added seconds to cheap checks.
-    // --no-filters preserves byte-sensitive fixtures regardless of attributes;
-    // the index/status cache is deliberately not trusted for content identity.
+    // Git hashes actual working bytes, without filters or trusting index stat data.
     for paths in existing.chunks(256) {
         let mut args = vec!["hash-object", "--no-filters", "--"];
         args.extend_from_slice(paths);
-        hash.update(output(root, "git", &args)?);
+        let hashes = output(root, "git", &args)?;
+        if hashes.lines().count() != paths.len() {
+            return Err(invalid("incomplete input hashes"));
+        }
+        for (name, hash) in paths.iter().zip(hashes.lines()) {
+            if let Some(value) = values.get_mut(*name) {
+                value.push(':');
+                value.push_str(hash);
+            }
+        }
     }
+    Ok(values)
+}
+fn fingerprint(files: &BTreeMap<String, String>, config: &[u8]) -> Result<String> {
+    let mut hash = Sha256::new();
+    hash.update(b"rig-verify-local-v3\0");
+    hash.update(Sha256::digest(config));
+    hash.update(serde_json::to_vec(files)?);
     Ok(format!("{:x}", hash.finalize()))
+}
+#[cfg(test)]
+pub(super) fn digest(root: &Path, files: &[String], config: &[u8]) -> Result<String> {
+    fingerprint(&input_hashes(root, files)?, config)
+}
+fn identity(root: &Path, metadata: &Value, check: &Check) -> Result<Value> {
+    if metadata["packages"].as_array().is_some_and(|packages| {
+        packages.iter().any(|p| {
+            p["dependencies"].as_array().is_some_and(|deps| {
+                deps.iter().any(|d| {
+                    d["path"]
+                        .as_str()
+                        .is_some_and(|p| !Path::new(p).starts_with(root))
+                })
+            })
+        })
+    }) {
+        return Err(invalid(
+            "external path dependency: local inputs cannot certify its source",
+        ));
+    }
+    if std::env::vars_os().any(|(key, _)| {
+        key.to_string_lossy().starts_with("CARGO_SOURCE_")
+            || key.to_string_lossy().starts_with("CARGO_PATCH_")
+    }) {
+        return Err(invalid(
+            "Cargo source/patch environment override: cannot certify external source",
+        ));
+    }
+    let mut inputs = tracked_inputs(root)?;
+    inputs.extend(other_inputs(
+        root,
+        metadata["target_directory"].as_str().map(Path::new),
+    )?);
+    inputs.sort();
+    inputs.dedup();
+    guard_manifest_paths(root, &inputs)?;
+    let files = input_hashes(root, &inputs)?;
+    let config = config(root, check)?;
+    Ok(
+        serde_json::json!({"fingerprint": fingerprint(&files, &config)?,
+        "inputs": files, "configuration": format!("{:x}", Sha256::digest(config))}),
+    )
 }
 pub(super) fn config(root: &Path, check: &Check) -> Result<Vec<u8>> {
     let mut s = format!("{} {:?}\nroot={}\n", check.id, check.steps, root.display());
@@ -98,6 +255,7 @@ pub(super) fn config(root: &Path, check: &Check) -> Result<Vec<u8>> {
             let path = directory.join(name);
             match fs::read(&path) {
                 Ok(bytes) => {
+                    guard_config_paths(&bytes)?;
                     s.push_str(&format!("{}:{:x}\n", path.display(), Sha256::digest(bytes)))
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -128,7 +286,7 @@ pub(super) fn config(root: &Path, check: &Check) -> Result<Vec<u8>> {
         ("node", vec!["--version"]),
         ("wasm-bindgen-test-runner", vec!["--version"]),
     ] {
-        let value = Command::new(program).args(&args).current_dir(root).output();
+        let value = process::capture(root, program, &args);
         s.push_str(&format!("{program} {args:?}: {value:?}\n"));
     }
     Ok(s.into_bytes())
@@ -143,27 +301,36 @@ pub(super) fn command(root: &Path, step: &Step) -> Command {
         .env_remove("NEXTEST_RETRIES");
     cmd
 }
-fn internal(root: &Path, directory: &Path, step: &Step) -> Result<()> {
+fn internal(root: &Path, directory: &Path, log: &Path, step: &Step) -> Result<()> {
     match step.program.as_str() {
         "@layout" => crate::test_layout::check(root).map_err(invalid),
         "@scenarios" => crate::scenarios::run(root, Vec::new()).map_err(|e| invalid(e.to_string())),
         "@registrations" => {
-            let json = output(
-                root,
-                "cargo",
-                &step.args.iter().map(String::as_str).collect::<Vec<_>>(),
-            )?;
+            let cargo = Step {
+                program: "cargo".into(),
+                args: step.args.clone(),
+                env: step.env.clone(),
+            };
+            let result = process::run(root, &cargo, log)?;
+            if !result.status.success() {
+                return Err(invalid("registration discovery failed"));
+            }
+            let json = result.stdout;
             let file = directory.join("registrations.json");
             fs::write(&file, json)?;
             crate::scenarios::run(root, vec![file.to_string_lossy().into_owned()])
                 .map_err(|e| invalid(e.to_string()))
         }
         "@fixture-paths" => {
-            for path in tracked_inputs(root)?.into_iter().filter(|p| {
-                p.starts_with("crates/")
-                    && p.ends_with(".rs")
-                    && (p.contains("/src/") || p.contains("/tests/"))
-            }) {
+            for path in tracked_inputs(root)?
+                .into_iter()
+                .chain(other_inputs(root, directory.parent())?)
+                .filter(|p| {
+                    p.starts_with("crates/")
+                        && p.ends_with(".rs")
+                        && (p.contains("/src/") || p.contains("/tests/"))
+                })
+            {
                 let text = match fs::read_to_string(root.join(&path)) {
                     Ok(text) => text,
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
@@ -190,20 +357,21 @@ fn internal(root: &Path, directory: &Path, step: &Step) -> Result<()> {
                 .args
                 .get(1)
                 .ok_or_else(|| invalid("native-only diagnostic missing"))?;
-            let result = Command::new("cargo")
-                .args([
+            let cargo = Step::new(
+                "cargo",
+                &[
                     "check",
                     "--locked",
                     "--package",
                     package,
                     "--target",
                     "wasm32-unknown-unknown",
-                ])
-                .env("CARGO_TERM_COLOR", "never")
-                .current_dir(root)
-                .output()?;
+                ],
+            )
+            .env("CARGO_TERM_COLOR", "never");
+            let result = process::run(root, &cargo, log)?;
             let stderr = String::from_utf8_lossy(&result.stderr);
-            print!("{stderr}");
+
             let count = stderr
                 .lines()
                 .filter(|l| {
@@ -224,18 +392,229 @@ fn internal(root: &Path, directory: &Path, step: &Step) -> Result<()> {
         ))),
     }
 }
+pub(super) fn policy(opts: &Options, check: &Check) -> &'static str {
+    if preflight::uses_runtime_model(check) {
+        "mandatory fresh: external runtime models are non-reusable; no success receipt"
+    } else if ["full-tests", "dependency-floors"].contains(&check.id.as_str()) {
+        "mandatory fresh: services/dependency resolution are non-reusable"
+    } else if opts.mode == Mode::Full || std::env::var_os("CI").is_some() {
+        "mandatory fresh: full mode or CI"
+    } else if !opts.reuse {
+        "mandatory execution: reuse not requested (PR reuse requires --reuse)"
+    } else {
+        "reuse-eligible: requires matching successful inputs and configuration"
+    }
+}
+fn reusable(opts: &Options, check: &Check) -> bool {
+    policy(opts, check).starts_with("reuse-eligible")
+}
+fn prior(directory: &Path, check: &Check) -> Option<Value> {
+    fs::read(directory.join(format!("{}.json", check.id)))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+}
+fn matches(prior: &Value, now: &Value) -> bool {
+    prior["success"] == true && prior["schema"] == 2 && prior["fingerprint"] == now["fingerprint"]
+}
+fn difference(prior: &Value, now: &Value) -> String {
+    if !prior["inputs"].is_object() {
+        return "old receipt format; input details unavailable".into();
+    }
+    let mut changes = std::collections::BTreeSet::new();
+    for state in [prior, now] {
+        if let Some(inputs) = state["inputs"].as_object() {
+            for name in inputs.keys() {
+                if prior["inputs"].get(name) != now["inputs"].get(name) {
+                    changes.insert(name);
+                }
+            }
+        }
+    }
+    format!(
+        "changed inputs: {changes:?}; command/toolchain/target/environment/Cargo or nextest configuration changed: {}",
+        prior["configuration"] != now["configuration"]
+    )
+}
+fn explain(opts: &Options, check: &Check, old: Option<&Value>, now: Option<&Value>) -> bool {
+    let matching = old.zip(now).is_some_and(|(old, now)| matches(old, now));
+    if let Some(old) = old {
+        if let Some(seconds) = old["seconds"].as_f64() {
+            println!(
+                "HISTORY {}: {seconds:.3}s measured on prior execution; not an estimate",
+                check.id
+            );
+        }
+        if !matching {
+            println!(
+                "NO REUSE {}: {}",
+                check.id,
+                now.map_or_else(
+                    || "inputs cannot be certified".into(),
+                    |now| difference(old, now)
+                )
+            );
+        } else if !reusable(opts, check) {
+            println!(
+                "NO REUSE {}: matching prior success, but {}",
+                check.id,
+                policy(opts, check)
+            );
+        }
+    } else {
+        println!("NO REUSE {}: no readable successful receipt", check.id);
+    }
+    matching && reusable(opts, check)
+}
+fn directory(metadata: &Value) -> Result<PathBuf> {
+    Ok(PathBuf::from(
+        metadata["target_directory"]
+            .as_str()
+            .ok_or_else(|| invalid("Cargo metadata missing target directory"))?,
+    )
+    .join("verify"))
+}
+pub(super) fn preview(root: &Path, metadata: &Value, opts: &Options, plan: &[Check]) -> Result<()> {
+    let directory = directory(metadata)?;
+    for check in plan {
+        let now = identity(root, metadata, check);
+        if let Err(error) = &now {
+            println!("NO REUSE {}: {error}", check.id);
+        }
+        if explain(
+            opts,
+            check,
+            prior(&directory, check).as_ref(),
+            now.as_ref().ok(),
+        ) {
+            println!("WOULD REUSE {}: current inputs match", check.id);
+        }
+    }
+    println!("Dry run only; no checks or prerequisites certified.");
+    Ok(())
+}
+fn quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+fn continuation(root: &Path, opts: &Options) -> String {
+    let mut args = match opts.mode {
+        Mode::Pr => "--pr".to_string(),
+        Mode::Changed => "--changed".to_string(),
+        Mode::Full => "--full".to_string(),
+        Mode::Check => format!("--check {}", quote(opts.check.as_deref().unwrap_or(""))),
+    };
+    if let Some(base) = &opts.base {
+        args.push_str(&format!(" --base {}", quote(base)));
+    }
+    if opts.mode != Mode::Full {
+        args.push_str(" --reuse");
+    }
+    format!(
+        "cd {} && cargo xtask verify {args}",
+        quote(&root.to_string_lossy())
+    )
+}
+fn summary(
+    root: &Path,
+    metadata: &Value,
+    opts: &Options,
+    plan: &[Check],
+    completed: &BTreeMap<String, Option<Value>>,
+    failed: Option<&str>,
+    elapsed: f64,
+) -> Result<bool> {
+    let directory = directory(metadata)?;
+    println!(
+        "SUMMARY: {}/{} completed; {elapsed:.3}s elapsed; logs: {}",
+        completed.len(),
+        plan.len(),
+        directory.display()
+    );
+    let mut current = true;
+    for check in plan {
+        let now = if process::interrupted() {
+            None
+        } else {
+            identity(root, metadata, check).ok()
+        };
+        let mut check_current = true;
+        if let Some(before) = completed.get(&check.id) {
+            match (before, &now) {
+                (Some(before), Some(now)) if before["fingerprint"] == now["fingerprint"] => {
+                    if preflight::uses_runtime_model(check) {
+                        println!(
+                            "SUCCESS {}: current source inputs; runtime models executed fresh, no reusable certification",
+                            check.id
+                        );
+                    } else {
+                        println!("SUCCESS {}: current inputs", check.id);
+                    }
+                }
+                (None, _) => println!(
+                    "SUCCESS {}: executed fresh with unsupported inputs; no reusable certification",
+                    check.id
+                ),
+                (Some(_), None) => {
+                    println!(
+                        "UNVALIDATED SUCCESS {}: current inputs could not be checked; continuation must revalidate",
+                        check.id
+                    );
+                    current = false;
+                    check_current = false;
+                }
+                _ => {
+                    println!(
+                        "OLD-INPUT SUCCESS {}: does not verify the current tree",
+                        check.id
+                    );
+                    current = false;
+                    check_current = false;
+                }
+            }
+        } else if failed == Some(check.id.as_str()) {
+            println!("FAILED/INTERRUPTED {}: no success recorded", check.id);
+        } else {
+            println!("NOT RUN {}", check.id);
+        }
+        let valid = prior(&directory, check)
+            .zip(now)
+            .is_some_and(|(old, now)| matches(&old, &now));
+        if valid
+            && !preflight::uses_runtime_model(check)
+            && !["full-tests", "dependency-floors"].contains(&check.id.as_str())
+            && opts.mode != Mode::Full
+            && std::env::var_os("CI").is_none()
+        {
+            println!(
+                "STILL-VALID REUSABLE {}: continuation with --reuse may reuse",
+                check.id
+            );
+        } else if !completed.contains_key(&check.id) || !check_current {
+            println!(
+                "REMAINING {}: requires execution; {}",
+                check.id,
+                policy(opts, check)
+            );
+        }
+    }
+    if failed.is_some() || completed.len() != plan.len() || !current {
+        println!(
+            "Freeze inputs after fixes, then continue (same environment/target):\n{}",
+            continuation(root, opts)
+        );
+        println!(
+            "Continuation always reexecutes selected full-tests, dependency-floors, and model-loading checks; no automatic rerun."
+        );
+    }
+    std::io::stdout().flush()?;
+    Ok(current)
+}
 pub(super) fn run(root: &Path, metadata: &Value, opts: &Options, plan: &[Check]) -> Result<()> {
     if plan.is_empty() {
-        println!("No working changes; no verification result claimed.");
+        println!("No executable changes; no verification result claimed.");
         return Ok(());
     }
-    let target = metadata["target_directory"]
-        .as_str()
-        .ok_or_else(|| invalid("Cargo metadata missing target directory"))?;
-    let directory = PathBuf::from(target).join("verify");
+    let directory = directory(metadata)?;
     fs::create_dir_all(&directory)?;
-    // An OS lock, not a stale pid/marker. Only our planner participates; we
-    // neither kill nor wait on unrelated builds. Our Cargo children are serial.
     let lock = OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -248,105 +627,157 @@ pub(super) fn run(root: &Path, metadata: &Value, opts: &Options, plan: &[Check])
         ))
     })?;
     let _lock = PlannerLock(lock);
+    let start = Instant::now();
+    let mut completed = BTreeMap::new();
+    if let Err(error) = preflight::run(root, plan)
+        .and_then(|()| preflight::prepare_model_cache(root, plan))
+        .and_then(|()| preflight::prepare_fixtures(root, plan))
+    {
+        summary(
+            root,
+            metadata,
+            opts,
+            plan,
+            &completed,
+            None,
+            start.elapsed().as_secs_f64(),
+        )?;
+        return Err(error);
+    }
     for check in plan {
-        let start = Instant::now();
+        let check_start = Instant::now();
         let receipt = directory.join(format!("{}.json", check.id));
-        let inputs = tracked_inputs(root)?;
-        let configuration = config(root, check)?;
-        let external_path_dependency = metadata["packages"].as_array().is_some_and(|packages| {
-            packages.iter().any(|p| {
-                p["dependencies"].as_array().is_some_and(|deps| {
-                    deps.iter().any(|d| {
-                        d["path"]
-                            .as_str()
-                            .is_some_and(|p| !Path::new(p).starts_with(root))
-                    })
-                })
-            })
-        });
-        let before = match if external_path_dependency {
-            Err(invalid(
-                "external path dependency: local source fingerprint cannot certify its inputs",
-            ))
-        } else {
-            digest(root, &inputs, &configuration)
-        } {
-            Ok(digest) => Some(digest),
-            Err(error) => {
-                println!(
-                    "NO REUSE {}: {error}; execute fresh without a receipt",
-                    check.id
-                );
-                None
-            }
-        };
-        let prior = fs::read(&receipt)
-            .ok()
-            .and_then(|s| serde_json::from_slice::<Value>(&s).ok());
-        if opts.reuse
-            && !["full-tests", "dependency-floors"].contains(&check.id.as_str())
-            && std::env::var_os("CI").is_none()
-            && prior.as_ref().is_some_and(|p| {
-                before
-                    .as_ref()
-                    .is_some_and(|hash| p["fingerprint"] == *hash)
-                    && p["success"] == true
-            })
-        {
-            println!(
-                "REUSE {}: all current inputs, commands, environment and tool versions match ({:.3}s)",
-                check.id,
-                start.elapsed().as_secs_f64()
-            );
-            continue;
-        }
+        let log = directory.join(format!("{}.log", check.id));
         println!(
-            "RUN {}: {}",
+            "PROGRESS {}/{} completed; ACTIVE {}; {:.1}s elapsed; log: {}",
+            completed.len(),
+            plan.len(),
             check.id,
-            if !opts.reuse {
-                "fresh execution requested"
-            } else {
-                "no matching successful local result"
-            }
+            start.elapsed().as_secs_f64(),
+            log.display()
         );
-        // Invalidate before running, so a failed rerun cannot expose old success.
-        if receipt.exists() {
-            fs::remove_file(&receipt)?;
-        }
-        for step in &check.steps {
-            if step.program.starts_with('@') {
-                internal(root, &directory, step)?;
-            } else {
-                let status = command(root, step).status()?;
-                if !status.success() {
-                    return Err(invalid(format!(
-                        "required check {} failed: {} {:?} ({status})",
-                        check.id, step.program, step.args
-                    )));
+        std::io::stdout().flush()?;
+        let result = (|| -> Result<Option<Value>> {
+            if process::interrupted() {
+                return Err(invalid("verification interrupted"));
+            }
+            let before = match identity(root, metadata, check) {
+                Ok(value) => Some(value),
+                Err(error) => {
+                    println!("NO REUSE {}: {error}", check.id);
+                    None
+                }
+            };
+            if explain(
+                opts,
+                check,
+                prior(&directory, check).as_ref(),
+                before.as_ref(),
+            ) {
+                println!("REUSE {}: matching current inputs", check.id);
+                return Ok(before);
+            }
+            if receipt.exists() {
+                fs::remove_file(&receipt)?;
+            }
+            File::create(&log)?;
+            println!("RUN {}: {}", check.id, policy(opts, check));
+            for step in &check.steps {
+                if process::interrupted() {
+                    return Err(invalid("verification interrupted"));
+                }
+                if step.program.starts_with('@') {
+                    println!(
+                        "PHASE {} {:?}; log: {}",
+                        step.program,
+                        step.args,
+                        log.display()
+                    );
+                    std::io::stdout().flush()?;
+                    let mut internal_log = OpenOptions::new().append(true).open(&log)?;
+                    writeln!(
+                        internal_log,
+                        "INTERNAL {} {:?}: diagnostics on console",
+                        step.program, step.args
+                    )?;
+                    internal(root, &directory, &log, step)?;
+                    writeln!(internal_log, "PASS {}", step.program)?;
+                } else {
+                    let result = process::run(root, step, &log)?;
+                    if !result.status.success() {
+                        return Err(invalid(format!(
+                            "required check {} failed: {} {:?} ({})",
+                            check.id, step.program, step.args, result.status
+                        )));
+                    }
                 }
             }
+            if process::interrupted() {
+                return Err(invalid("verification interrupted"));
+            }
+            if let Some(before) = &before {
+                let after = identity(root, metadata, check)?;
+                if before.get("fingerprint") != after.get("fingerprint") {
+                    return Err(invalid(format!(
+                        "inputs changed during {}; result not reusable; {}",
+                        check.id,
+                        difference(before, &after)
+                    )));
+                }
+                if !preflight::uses_runtime_model(check) {
+                    let mut value = before
+                        .as_object()
+                        .ok_or_else(|| invalid("invalid input identity"))?
+                        .clone();
+                    value.insert("schema".into(), 2.into());
+                    value.insert("success".into(), true.into());
+                    value.insert("seconds".into(), check_start.elapsed().as_secs_f64().into());
+                    let tmp = receipt.with_extension("tmp");
+                    let mut f = File::create(&tmp)?;
+                    f.write_all(&serde_json::to_vec_pretty(&value)?)?;
+                    f.sync_all()?;
+                    fs::rename(tmp, &receipt)?;
+                }
+            }
+            println!(
+                "PASS {}: {:.3}s measured",
+                check.id,
+                check_start.elapsed().as_secs_f64()
+            );
+            Ok(before)
+        })();
+        match result {
+            Ok(before) => {
+                completed.insert(check.id.clone(), before);
+            }
+            Err(error) => {
+                // Even an error after receipt publication must not expose success.
+                if receipt.exists() {
+                    fs::remove_file(&receipt)?;
+                }
+                summary(
+                    root,
+                    metadata,
+                    opts,
+                    plan,
+                    &completed,
+                    Some(&check.id),
+                    start.elapsed().as_secs_f64(),
+                )?;
+                return Err(error);
+            }
         }
-        if before.is_some()
-            && before != Some(digest(root, &tracked_inputs(root)?, &config(root, check)?)?)
-        {
-            return Err(invalid(format!(
-                "inputs changed during {}; result not reusable; rerun",
-                check.id
-            )));
-        }
-        let elapsed = start.elapsed().as_secs_f64();
-        if before.is_none() {
-            println!("PASS {}: {elapsed:.3}s; no reusable result", check.id);
-            continue;
-        }
-        let value =
-            serde_json::json!({"schema":1,"success":true,"fingerprint":before,"seconds":elapsed});
-        let tmp = receipt.with_extension("tmp");
-        let mut f = File::create(&tmp)?;
-        f.write_all(&serde_json::to_vec_pretty(&value)?)?;
-        f.sync_all()?;
-        fs::rename(tmp, receipt)?;
-        println!("PASS {}: {elapsed:.3}s", check.id);
+    }
+    if !summary(
+        root,
+        metadata,
+        opts,
+        plan,
+        &completed,
+        None,
+        start.elapsed().as_secs_f64(),
+    )? {
+        return Err(invalid("earlier successes no longer verify current inputs"));
     }
     println!("All selected checks passed. This does not certify independent review or remote CI.");
     Ok(())

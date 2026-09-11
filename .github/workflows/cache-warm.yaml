@@ -23,8 +23,8 @@ jobs:
       - uses: ./.github/actions/rust-setup
         with:
           nextest: "true"
-          protoc: "true"
           components: rustfmt
           sccache: "true"
           cache-development: "true"
-      - run: cargo xtask verify --check default-tests
+      # Populate the same artifacts without repeating the required CI test run.
+      - run: cargo xtask verify --check default-test-build

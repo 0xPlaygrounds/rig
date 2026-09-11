@@ -2,6 +2,8 @@
 //! This is not a historical evidence archive or a substitute for independent review.
 mod checks;
 mod execute;
+mod preflight;
+mod process;
 mod selection;
 #[cfg(test)]
 mod tests;
@@ -97,10 +99,7 @@ impl Options {
     }
 }
 fn output(root: &Path, program: &str, args: &[&str]) -> Result<String> {
-    let result = Command::new(program)
-        .args(args)
-        .current_dir(root)
-        .output()?;
+    let result = process::capture(root, program, args)?;
     if !result.status.success() {
         return Err(invalid(format!(
             "{program} {args:?} failed: {}",
@@ -112,25 +111,53 @@ fn output(root: &Path, program: &str, args: &[&str]) -> Result<String> {
 }
 pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<()> {
     let opts = Options::parse(args)?;
+    process::install_interrupt_handler()?;
+    println!("Planning: cargo metadata --locked --no-deps (dependency resolution may take time)");
     let metadata: Value = serde_json::from_str(&output(
         root,
         "cargo",
         &["metadata", "--locked", "--no-deps", "--format-version", "1"],
     )?)?;
-    let changes = selection::changes(root, &opts)?;
+    let changes = selection::changes(
+        root,
+        &opts,
+        metadata
+            .get("target_directory")
+            .and_then(Value::as_str)
+            .map(Path::new),
+    )?;
     let all = checks::all();
-    let plan = selection::plan(root, &metadata, &opts, &changes, &all)?;
+    let mut plan = selection::plan(root, &metadata, &opts, &changes, &all)?;
+    preflight::configure_model_cache(&metadata, &mut plan)?;
     println!(
         "Verification {:?}: {} changed paths; {} checks. No live recording or recapture.",
         opts.mode,
         changes.len(),
         plan.len()
     );
+    println!("Changed inputs: {changes:?}");
+    println!(
+        "Target directory: {}",
+        metadata.get("target_directory").unwrap_or(&Value::Null)
+    );
+    println!(
+        "Environment: RIG_PROVIDER_TEST_MODE=replay; unset RIG_REGENERATE_GOLDEN and NEXTEST_RETRIES; other Cargo/environment configuration inherited and fingerprinted."
+    );
     for check in &plan {
-        println!("SELECT {}: {}", check.id, check.reason);
+        println!(
+            "SELECT {}: {}; {}",
+            check.id,
+            check.reason,
+            execute::policy(&opts, check)
+        );
         for step in &check.steps {
             println!("  {} {} {:?}", step.program, step.args.join(" "), step.env);
         }
+    }
+    for manifest in preflight::fixture_manifests(&plan) {
+        println!(
+            "PREPARATION before check fingerprints: cargo metadata --format-version 1 --manifest-path {manifest}; retain or resolve ignored fixture lockfile"
+        );
     }
     for check in &all {
         if !plan.iter().any(|c| c.id == check.id) {
@@ -141,7 +168,7 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<()> {
         }
     }
     if opts.dry_run {
-        return Ok(());
+        return execute::preview(root, &metadata, &opts, &plan);
     }
     execute::run(root, &metadata, &opts, &plan)
 }
