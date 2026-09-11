@@ -32,6 +32,17 @@
 //! `api.anthropic.com` is never what the caller meant and a wrong default would produce a 403 that
 //! reads like a credential problem. Supply it with [`ClientBuilder::base_url`] or the
 //! `ANTHROPIC_BASE_URL` environment variable; building without one fails immediately.
+//!
+//! # Known limitation: `verify()`
+//!
+//! [`VerifyClient::verify`](rig_core::client::VerifyClient::verify) does not work against a signed
+//! endpoint. It is a blanket implementation over every [`rig_core::client::Client`] and sends a
+//! plain GET to [`Provider::VERIFY_PATH`] carrying only the client's default headers — and a SigV4
+//! client has none, by design, since the signature covers the body and the clock and so cannot be
+//! precomputed at construction. Signing is applied at the two Anthropic request builders, which
+//! `verify` does not go through, so it returns 403 rather than a credential verdict. Send a small
+//! completion instead. Closing this would mean a second signing hook in rig-core covering arbitrary
+//! client requests, which is more surface there than one verification convenience is worth.
 
 mod sigv4;
 
