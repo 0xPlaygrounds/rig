@@ -578,11 +578,25 @@ where
 
         let body: Vec<u8> = serde_json::to_vec(&body)?;
 
-        let req = self
-            .client
-            .post("/v1/messages")?
-            .body(body)
-            .map_err(http_client::Error::Protocol)?;
+        let mut builder = self.client.post("/v1/messages")?;
+
+        // Same as the unary path in completion.rs, and it has to be repeated because the two
+        // paths build their requests independently. Applied after the body is final.
+        //
+        // See that call site for why a `None` from `uri_ref` skips signing instead of failing.
+        let uri = builder.uri_ref().cloned();
+        if let Some(uri) = uri {
+            for (name, value) in self
+                .client
+                .provider()
+                .signed_headers("POST", &uri, &body)
+                .await?
+            {
+                builder = builder.header(name, value);
+            }
+        }
+
+        let req = builder.body(body).map_err(http_client::Error::Protocol)?;
 
         let event_source = GenericEventSource::new(self.client.clone(), req);
         let (event_source, request_id_slot) = match Ext::REQUEST_ID_HEADER {

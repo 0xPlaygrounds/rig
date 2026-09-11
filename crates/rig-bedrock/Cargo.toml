@@ -11,12 +11,26 @@ workspace = true
 
 [dependencies]
 async-stream = { workspace = true }
-aws-config = { workspace = true, features = ["behavior-version-latest"] }
+# `default-https-client` and `rt-tokio` are load-bearing for the SigV4 signer in
+# `src/anthropic/sigv4.rs`, not cosmetic: the workspace pins aws-config with
+# default-features = false, and `load_defaults` walks the full credential chain,
+# which needs both. Each failure is a runtime panic at first credential
+# resolution, not a compile error, so `cargo check` cannot catch either:
+#   default-https-client — without it: "a http_client is required"
+#   rt-tokio            — without it: "An async sleep implementation is required for retry to work"
+aws-config = { workspace = true, features = [
+    "behavior-version-latest",
+    "default-https-client",
+    "rt-tokio",
+] }
+aws-credential-types = { workspace = true }
 # The generated `rustls` feature selects AWS's legacy Hyper 0.14 connector.
 aws-sdk-bedrockruntime = { workspace = true, features = ["rt-tokio", "default-https-client"] }
+aws-sigv4 = { workspace = true }
 aws-smithy-types = { workspace = true }
 base64 = { workspace = true }
 futures = { workspace = true }
+http = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [
     "image",
 ] }
@@ -31,6 +45,9 @@ uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+# Only to name `Bytes` in the `HttpClientExt` bounds of a test-local streaming
+# recorder; rig-core's bundled mocks record unary requests only.
+bytes = { workspace = true }
 # Harness signal: rig-core's sequence laws panic (not just log) in this
 # crate's own tests.
 rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [

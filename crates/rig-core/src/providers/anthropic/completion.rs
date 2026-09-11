@@ -56,6 +56,41 @@ pub trait AnthropicCompatibleProvider: Provider {
     /// constrained tool schemas, so the default deliberately leaves tools
     /// unchanged.
     fn enable_strict_tool_use(_tool: &mut ToolDefinition) {}
+
+    /// Per-request headers computed over the exact bytes about to be sent.
+    ///
+    /// Returns nothing by default, so a provider whose credential is a static
+    /// header — every provider in this crate — is unaffected and needs no
+    /// implementation. Override it when the credential cannot be produced once
+    /// at client construction: a request signature covers the method, the URI, a
+    /// hash of the payload and the current time, so it has to be recomputed for
+    /// every call.
+    ///
+    /// Called immediately before the body is attached to the request builder, in
+    /// both the unary and the streaming path. That ordering is the contract an
+    /// implementor may rely on — `body` is final, and nothing reshapes it
+    /// afterwards.
+    ///
+    /// `uri` is the parsed [`http::Uri`] the request will be sent to, not its
+    /// string form. A signature covers the host, and recovering the host from a
+    /// string means re-parsing an authority that was already parsed — which gets
+    /// `https://user@host/` and an explicit port wrong, and produces a signature
+    /// the server cannot reproduce. Handing over the parsed value removes that
+    /// class of mistake from every implementor.
+    ///
+    /// The hook exists so the signing itself does not have to live here.
+    /// rig-core carries no cloud SDK and no credential chain; `rig-bedrock`
+    /// implements this for the AWS-fronted Anthropic endpoint, where the AWS
+    /// dependencies already belong.
+    fn signed_headers(
+        &self,
+        method: &str,
+        uri: &http::Uri,
+        body: &[u8],
+    ) -> impl Future<Output = Result<Vec<(String, String)>, CompletionError>> + WasmCompatSend {
+        let _ = (method, uri, body);
+        async { Ok(Vec::new()) }
+    }
 }
 
 impl AnthropicCompatibleProvider for super::client::Anthropic {
@@ -1802,7 +1837,18 @@ where
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on Anthropic's
 /// published synchronous Messages API output limits for current models.
-fn default_max_tokens_for_model(model: &str) -> Option<u64> {
+///
+/// Public because this is the canonical home of that published table, and an Anthropic-dialect
+/// provider outside this crate needs it to implement
+/// [`AnthropicCompatibleProvider::default_max_tokens`], whose own default returns `None`.
+///
+/// Not because there is no other path to the value: `<Anthropic as
+/// AnthropicCompatibleProvider>::default_max_tokens(model)` returns exactly this, and both are
+/// public. Routing through it would be the wrong dependency — it makes a claim about *models*
+/// (Anthropic's published output limits) reachable only through one particular *client* type, so
+/// every Anthropic-dialect provider would have to depend on the `Anthropic` client to learn its own
+/// defaults. A named function states the contract the callers actually want.
+pub fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     if model.starts_with("claude-opus-4-8")
         || model.starts_with("claude-opus-4-7")
         || model.starts_with("claude-opus-4-6")
@@ -2329,7 +2375,21 @@ enum OutputFormat {
 /// Configuration for the model's output format.
 #[derive(Debug, Deserialize, Serialize)]
 struct OutputConfig {
-    format: OutputFormat,
+    /// Optional so that `effort` can be sent without a structured-output schema. Agent prompts have
+    /// no schema but may still want an effort level.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<OutputFormat>,
+    /// Anthropic's adaptive-thinking effort level: `max`, `xhigh`, `high`, `medium`, `low`.
+    ///
+    /// Kept as a String rather than an enum so a newly-added level does not become a deserialize
+    /// error in this crate before it can be used.
+    ///
+    /// This must be a sibling of `format` in one `output_config` object. It cannot be supplied via
+    /// `additional_params`, because that field is `#[serde(flatten)]` and would emit a SECOND
+    /// `output_config` key alongside this one whenever a schema is also set. `try_from` below lifts
+    /// any caller-supplied `output_config` into this struct for exactly that reason.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    effort: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -2863,13 +2923,32 @@ impl AnthropicCompletionRequest {
             top_level_cache_control.as_ref(),
         )?;
 
-        let output_config = if let Some(schema) = req.output_schema {
+        // Lift any caller-supplied `output_config` OUT of additional_params and into the typed
+        // field. Without this, `additional_params` being `#[serde(flatten)]` emits a second
+        // `output_config` key next to the typed one, and a duplicate JSON key means one of the two
+        // is silently discarded by whatever parses it -- losing either the structured-output schema
+        // or the effort level, depending on order. Removing it here is what makes the two coexist.
+        let supplied_output_config = additional_params_payload
+            .as_object_mut()
+            .and_then(|obj| obj.remove("output_config"));
+        let supplied_effort = supplied_output_config
+            .as_ref()
+            .and_then(|oc| oc.get("effort"))
+            .and_then(|e| e.as_str())
+            .map(str::to_owned);
+
+        let format = req.output_schema.map(|schema| {
             let mut schema_value = schema.to_value();
             sanitize_schema(&mut schema_value);
+            OutputFormat::JsonSchema {
+                schema: schema_value,
+            }
+        });
+
+        let output_config = if format.is_some() || supplied_effort.is_some() {
             Some(OutputConfig {
-                format: OutputFormat::JsonSchema {
-                    schema: schema_value,
-                },
+                format,
+                effort: supplied_effort,
             })
         } else {
             None
@@ -2981,9 +3060,29 @@ where
 
         let request: Vec<u8> = serde_json::to_vec(&request)?;
 
-        let req = self
-            .client
-            .post("/v1/messages")?
+        let mut builder = self.client.post("/v1/messages")?;
+
+        // Applied HERE and not earlier: a request signature's payload hash covers these exact
+        // bytes, so it must follow every change to the body. Empty for every provider that
+        // authenticates with a static header, which is all of them in this crate.
+        //
+        // `uri_ref` returns `None` only when the builder is already in an error state. Signing
+        // is skipped in that case so that `body` below surfaces the builder's own error, rather
+        // than the hook reporting a derived complaint about an empty URI. Nothing escapes
+        // unsigned either way: `body` on a failed builder returns the failure.
+        let uri = builder.uri_ref().cloned();
+        if let Some(uri) = uri {
+            for (name, value) in self
+                .client
+                .provider()
+                .signed_headers("POST", &uri, &request)
+                .await?
+            {
+                builder = builder.header(name, value);
+            }
+        }
+
+        let req = builder
             .body(request)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
