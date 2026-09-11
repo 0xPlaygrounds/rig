@@ -188,6 +188,7 @@ impl ObservedState {
     }
 
     /// Whether the original handler answer has been observed.
+    #[cfg(feature = "replay")]
     pub fn has_outcome(&self) -> bool {
         self.lock().outcome.is_some()
     }
