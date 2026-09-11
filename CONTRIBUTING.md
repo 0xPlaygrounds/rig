@@ -1,6 +1,6 @@
 # Contributing to Rig
 
-For the fast edit/check loop, run `cargo xtask verify --changed`. Before publishing, run `cargo xtask verify --pr --base <intended-base-ref>` and complete independent review and committed-head CI. See [development verification](DEVELOPING.md) for modes, prerequisites, result invalidation, and measurements.
+For the fast edit/check loop, run `cargo xtask verify --changed`. Before publishing, run `cargo xtask verify --pr --base <intended-base-ref>` and complete independent review and committed-head CI. See [development verification](DEVELOPING.md) for modes, prerequisites, result invalidation, and recovery.
 
 Thank you for considering contributing to Rig! Here are some guidelines to help you get started.
 

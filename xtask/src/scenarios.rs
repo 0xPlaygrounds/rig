@@ -44,43 +44,15 @@ fn file(root: &Path, name: &str) -> Result<()> {
     }
     Ok(())
 }
-fn references(root: &Path, v: &Value) -> Result<()> {
-    match v {
-        Value::Object(m) => {
-            for (key, value) in m {
-                if matches!(
-                    key.as_str(),
-                    "path" | "source" | "family_contract" | "contract"
-                ) {
-                    let path = value
-                        .as_str()
-                        .ok_or_else(|| invalid(format!("{key} must be a file path string")))?;
-                    file(root, path)?;
-                }
-                if key == "external_helper_source" {
-                    file(root, text(value, "path")?)?;
-                }
-                if key.contains("sha256")
-                    || matches!(
-                        key.as_str(),
-                        "scoped_parity"
-                            | "candidate_execution_evidence"
-                            | "classification_review"
-                            | "review_state"
-                            | "baseline_execution_result"
-                    )
-                {
-                    return Err(invalid(format!("obsolete historical-proof field: {key}")));
-                }
-                references(root, value)?;
-            }
+// Keep the catalog a registration index rather than an unchecked report.
+fn only_fields(value: &Value, allowed: &[&str]) -> Result<()> {
+    let fields = value
+        .as_object()
+        .ok_or_else(|| invalid("expected catalog object"))?;
+    for field in fields.keys() {
+        if !allowed.contains(&field.as_str()) {
+            return Err(invalid(format!("unknown catalog field: {field}")));
         }
-        Value::Array(a) => {
-            for value in a {
-                references(root, value)?;
-            }
-        }
-        _ => {}
     }
     Ok(())
 }
@@ -115,8 +87,29 @@ fn validate(
     catalog: &Value,
     listing: Option<&Value>,
 ) -> Result<(usize, usize, usize)> {
-    if catalog["schema"] != 1 {
+    if catalog["schema"] != 2 {
         return Err(invalid("unsupported scenario catalog schema"));
+    }
+    only_fields(
+        catalog,
+        &[
+            "schema",
+            "configurations",
+            "files",
+            "scenarios",
+            "shared_provider_correspondences",
+        ],
+    )?;
+    let files = catalog["files"]
+        .as_array()
+        .ok_or_else(|| invalid("missing file inventory"))?;
+    let mut seen_files = BTreeSet::new();
+    for path in files {
+        let path = path.as_str().ok_or_else(|| invalid("expected file path"))?;
+        if !seen_files.insert(path) {
+            return Err(invalid(format!("duplicate catalog file: {path}")));
+        }
+        file(root, path)?;
     }
     let rows = catalog["scenarios"]
         .as_array()
@@ -148,7 +141,13 @@ fn validate(
         {
             return Err(invalid(format!("unknown configuration: {id}")));
         }
-        references(root, row)?;
+        only_fields(
+            row,
+            &["id", "classification", "source", "configuration", "ecs"],
+        )?;
+        if row.get("ecs").is_none() {
+            return Err(invalid(format!("missing explicit native mapping: {id}")));
+        }
         if let Some(tests) = &compiled
             && !tests.contains(id)
         {
@@ -160,6 +159,7 @@ fn validate(
             unlisted_unmapped += 1;
         }
         if let Some(ecs) = row.get("ecs").filter(|v| !v.is_null()) {
+            only_fields(ecs, &["binary", "test", "source"])?;
             file(root, text(ecs, "source")?)?;
             let native = format!("rig::{}::{}", text(ecs, "binary")?, text(ecs, "test")?);
             if !natives.insert(native.clone()) {
@@ -181,6 +181,7 @@ fn validate(
             .ok_or_else(|| invalid("shared-provider correspondences must be an array"))?;
         let mut seen = BTreeSet::new();
         for pair in shared {
+            only_fields(pair, &["original", "counterpart"])?;
             let original = text(pair, "original")?;
             let counterpart = text(pair, "counterpart")?;
             if !seen.insert((original, counterpart))

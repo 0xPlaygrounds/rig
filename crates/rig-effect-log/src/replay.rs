@@ -638,8 +638,8 @@ impl Serve for EffectLogReplayer {
                         }
                         // Merge kept successful events and errors by original item
                         // position, including late frames after the first terminal.
-                        // Without recorded errors, preserve the legacy folded-error
-                        // fallback. A canonical truncation is reconstructed by EOF,
+                        // A setup failure may have a folded error without any
+                        // stream items. A canonical truncation is reconstructed by EOF,
                         // not an invented in-band error.
                         if let (Some(events), true) = (record.events, dispatch.is_stream()) {
                             let errors = self

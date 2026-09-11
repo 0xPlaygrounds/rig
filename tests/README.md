@@ -411,8 +411,9 @@ Bedrock models.
 Native ECS tests execute real provider adapters against the same cassettes as
 rig-agent tests. Original and native golden comparisons retain their complete
 assertions. The [scenario catalog](ecs_parity/scenarios.json) records current
-correspondences, classifications, configuration and behavioral obligations;
-family contracts describe differences and limitations. It is not a passing
+test correspondences, classifications and configuration, with a deduplicated
+source/helper/fixture inventory. The [comparison guide](ecs_parity/README.md)
+describes shared boundaries and family-specific limitations. It is not a passing
 result or proof of an exhaustive functional superset.
 
 The catalog includes unmapped and unclassified cases. Further migration and
@@ -429,12 +430,12 @@ cargo xtask check-ecs-scenarios target/ecs-tests.json
 cargo test --locked -p xtask
 ```
 
-The checker rejects duplicate mappings, missing source/fixture/contract files,
+The checker rejects duplicate mappings, missing source/helper/fixture files,
 missing compiled mapped original/native tests, and filtered listings. Unmapped
 source-only or feature-gated scenarios outside the listing are counted explicitly.
 Ignored registrations are not execution results. The checker does not
-validate every behavioral claim in the catalog or certify execution. Maintain
-those obligations alongside the corresponding tests; current test runs and CI
+certify execution or behavioral equivalence. Maintain behavioral obligations
+alongside the corresponding tests; current test runs and CI
 establish which tests pass.
 
 Run a native family using its catalog binary and test module, for example:
