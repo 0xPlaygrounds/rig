@@ -370,8 +370,8 @@ fn successful_execution_is_reused_until_fixture_or_command_changes() {
         )],
     };
     let opts = opts("--changed");
-    execute::run(&repo.0, &metadata, &opts, &[check.clone()]).unwrap();
-    execute::run(&repo.0, &metadata, &opts, &[check.clone()]).unwrap();
+    execute::run(&repo.0, &metadata, &opts, std::slice::from_ref(&check)).unwrap();
+    execute::run(&repo.0, &metadata, &opts, std::slice::from_ref(&check)).unwrap();
     // CI deliberately executes even when a matching local result exists.
     let first_count = if std::env::var_os("CI").is_some() {
         3
@@ -387,12 +387,12 @@ fn successful_execution_is_reused_until_fixture_or_command_changes() {
     };
     assert_eq!(count(), first_count);
     std::fs::write(repo.0.join("fixture.yaml"), "changed fixture").unwrap();
-    execute::run(&repo.0, &metadata, &opts, &[check.clone()]).unwrap();
+    execute::run(&repo.0, &metadata, &opts, std::slice::from_ref(&check)).unwrap();
     assert_eq!(count(), first_count + 1);
     check.steps[0]
         .env
         .insert("RIG_VERIFY_TEST_CONFIG".into(), "different".into());
-    execute::run(&repo.0, &metadata, &opts, &[check.clone()]).unwrap();
+    execute::run(&repo.0, &metadata, &opts, std::slice::from_ref(&check)).unwrap();
     assert_eq!(count(), first_count + 2);
     check.id = "different-test-identity".into();
     execute::run(&repo.0, &metadata, &opts, &[check]).unwrap();
@@ -429,4 +429,182 @@ fn verification_commands_force_replay_and_preserve_retry_contracts() {
     );
     assert_eq!(env[std::ffi::OsStr::new("RIG_REGENERATE_GOLDEN")], None);
     assert_eq!(env[std::ffi::OsStr::new("NEXTEST_RETRIES")], None);
+}
+
+fn fake_check(id: &str, script: &str) -> Check {
+    Check {
+        id: id.into(),
+        reason: "fake execution".into(),
+        steps: vec![Step::new("bash", &["-c", script])],
+    }
+}
+fn repo_metadata(repo: &Repo) -> Value {
+    serde_json::json!({"target_directory":repo.0.join("target")})
+}
+#[test]
+fn change_during_execution_cannot_certify_new_inputs() {
+    let repo = Repo::new();
+    let check = fake_check("mutating", "printf changed > file.rs");
+    let error =
+        execute::run(&repo.0, &repo_metadata(&repo), &opts("--changed"), &[check]).unwrap_err();
+    assert!(error.to_string().contains("inputs changed during mutating"));
+    assert!(error.to_string().contains("file.rs"));
+    assert!(!repo.0.join("target/verify/mutating.json").exists());
+}
+#[test]
+fn signalled_child_leaves_no_success_and_continuation_executes() {
+    let repo = Repo::new();
+    let metadata = repo_metadata(&repo);
+    let check = fake_check(
+        "signalled",
+        "if test ! -f target/allow; then kill -TERM $$; fi; echo ran >> target/count",
+    );
+    let options = opts("--changed");
+    assert!(execute::run(&repo.0, &metadata, &options, std::slice::from_ref(&check)).is_err());
+    assert!(!repo.0.join("target/verify/signalled.json").exists());
+    std::fs::write(repo.0.join("target/allow"), "").unwrap();
+    execute::run(&repo.0, &metadata, &options, &[check]).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("target/count")).unwrap(),
+        "ran\n"
+    );
+}
+#[test]
+fn missing_prerequisite_stops_before_any_check() {
+    let repo = Repo::new();
+    let first = fake_check("first", "touch target/executed");
+    let missing = Check {
+        id: "missing".into(),
+        reason: "test".into(),
+        steps: vec![Step::new("rig-nonexistent-tool-for-test", &[])],
+    };
+    let error = execute::run(
+        &repo.0,
+        &repo_metadata(&repo),
+        &opts("--changed"),
+        &[first, missing],
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("no checks executed"));
+    assert!(error.to_string().contains("rig-nonexistent-tool-for-test"));
+    assert!(!repo.0.join("target/executed").exists());
+}
+#[test]
+fn reuse_policy_cannot_be_bypassed_by_matching_success() {
+    let repo = Repo::new();
+    let metadata = repo_metadata(&repo);
+    let check = fake_check("count", "echo ran >> target/count");
+    for mode in ["--pr", "--full"] {
+        let options = opts(mode);
+        for _ in 0..2 {
+            execute::run(&repo.0, &metadata, &options, std::slice::from_ref(&check)).unwrap();
+        }
+    }
+    for id in ["full-tests", "dependency-floors"] {
+        let c = fake_check(id, "true");
+        assert!(execute::policy(&opts("--changed"), &c).contains("non-reusable"));
+    }
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("target/count"))
+            .unwrap()
+            .lines()
+            .count(),
+        4
+    );
+}
+#[test]
+fn included_docs_build_inputs_moves_and_permissions_invalidate() {
+    let repo = Repo::new();
+    let files = vec![
+        "file.rs".into(),
+        "included.md".into(),
+        "build.rs".into(),
+        "renamed.rs".into(),
+    ];
+    let mut previous = execute::digest(&repo.0, &files, b"config").unwrap();
+    for name in ["included.md", "build.rs"] {
+        std::fs::write(repo.0.join(name), "executable input").unwrap();
+        let next = execute::digest(&repo.0, &files, b"config").unwrap();
+        assert_ne!(previous, next);
+        previous = next;
+    }
+    std::fs::rename(repo.0.join("file.rs"), repo.0.join("renamed.rs")).unwrap();
+    assert_ne!(
+        previous,
+        execute::digest(&repo.0, &files, b"config").unwrap()
+    );
+}
+#[test]
+fn pr_broad_reason_names_verification_inputs() {
+    let plan = selection::plan(
+        Path::new("/repo"),
+        &metadata(),
+        &opts("--pr"),
+        &BTreeSet::from(["xtask/src/verify.rs".into()]),
+        &checks::all(),
+    )
+    .unwrap();
+    assert!(
+        plan.iter()
+            .all(|c| c.reason.contains("xtask/src/verify.rs"))
+    );
+}
+#[test]
+#[cfg(unix)]
+fn planner_interruption_summarizes_and_kills_its_child_group() {
+    const CHILD: &str = "RIG_VERIFY_INTERRUPT_TEST_ROOT";
+    if let Some(root) = std::env::var_os(CHILD) {
+        process::install_interrupt_handler().unwrap();
+        let root = std::path::PathBuf::from(root);
+        let metadata = serde_json::json!({"target_directory":root.join("target")});
+        let check = fake_check(
+            "interrupt",
+            "kill -TERM $PPID; sleep 30; touch target/escaped",
+        );
+        let later = fake_check("later", "touch target/later");
+        let error =
+            execute::run(&root, &metadata, &opts("--changed"), &[check, later]).unwrap_err();
+        assert!(error.to_string().contains("interrupted"));
+        assert!(!root.join("target/verify/interrupt.json").exists());
+        assert!(!root.join("target/escaped").exists());
+        return;
+    }
+    let repo = Repo::new();
+    let result = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "verify::tests::planner_interruption_summarizes_and_kills_its_child_group",
+            "--nocapture",
+        ])
+        .env(CHILD, &repo.0)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(
+        result.status.success(),
+        "{stdout}\n{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(stdout.contains("FAILED/INTERRUPTED interrupt"), "{stdout}");
+    assert!(stdout.contains("NOT RUN later"), "{stdout}");
+    assert!(
+        stdout.contains("cargo xtask verify --changed --base 'HEAD' --reuse"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn tool_versions_require_the_exact_pinned_version() {
+    assert!(preflight::version_matches(
+        "wasm-bindgen-test-runner 0.2.118",
+        "0.2.118"
+    ));
+    assert!(!preflight::version_matches(
+        "wasm-bindgen-test-runner 0.2.126",
+        "0.2.118"
+    ));
+    assert!(!preflight::version_matches(
+        "rustc 1.95.0-nightly",
+        "1.95.0"
+    ));
 }

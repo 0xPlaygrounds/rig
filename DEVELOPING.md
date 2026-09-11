@@ -79,7 +79,15 @@ PR mode executes by default (`--reuse` is an explicit local opt-in); full mode
 and CI always execute. `full-tests` and `dependency-floors` always execute even
 with `--reuse`, because external services and dependency resolution can change.
 Result files under `target/verify/` are disposable and
-contain only the latest success fingerprint and elapsed time for each check.
+contain the latest success fingerprint, per-input hashes, configuration hash, and
+measured elapsed time for each check. Per-check `.log` files contain subprocess
+output and phase boundaries; internal source guards print diagnostics on the
+console. The active subprocess emits a heartbeat every 15 seconds, without an
+ETA. Dry runs explain selection, fresh-execution policy, and receipt mismatches.
+Cheap prerequisite probes precede execution. Failure or catchable interruption
+prints remaining work and one continuation command; the planner never loops
+automatically. Uncatchable termination (such as SIGKILL or power loss) cannot
+print a summary, but the active check has no success receipt.
 There is no evidence archive, download step, historical review log, or parity
 verdict. Deleting the files simply causes fresh verification.
 

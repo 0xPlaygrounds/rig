@@ -157,15 +157,15 @@ pub(super) fn plan(
             reuse: false,
             check: None,
         };
-        let needs_full = paths.iter().any(|p| checks::full_lane(p))
-            || plan(root, metadata, &changed, paths, all)?
-                .iter()
-                .any(|check| check.id == "full-tests");
-        return Ok(broad(
-            all,
-            "complete intended PR diff; preserves existing required lanes",
-            needs_full,
-        ));
+        let local = plan(root, metadata, &changed, paths, all)?;
+        let triggers: Vec<_> = paths.iter().filter(|p| checks::full_lane(p)).collect();
+        let fallback = local.iter().find(|check| check.id == "full-tests");
+        let needs_full = !triggers.is_empty() || fallback.is_some();
+        let reason = format!(
+            "complete intended PR diff; preserves required lanes; full-lane inputs: {triggers:?}; {}",
+            fallback.map_or("no conservative full fallback", |c| c.reason.as_str())
+        );
+        return Ok(broad(all, &reason, needs_full));
     }
     let packages = metadata["packages"]
         .as_array()

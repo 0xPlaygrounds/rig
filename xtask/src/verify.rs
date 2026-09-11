@@ -2,6 +2,8 @@
 //! This is not a historical evidence archive or a substitute for independent review.
 mod checks;
 mod execute;
+mod preflight;
+mod process;
 mod selection;
 #[cfg(test)]
 mod tests;
@@ -112,6 +114,8 @@ fn output(root: &Path, program: &str, args: &[&str]) -> Result<String> {
 }
 pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<()> {
     let opts = Options::parse(args)?;
+    process::install_interrupt_handler()?;
+    println!("Planning: cargo metadata --locked --no-deps (dependency resolution may take time)");
     let metadata: Value = serde_json::from_str(&output(
         root,
         "cargo",
@@ -126,8 +130,21 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<()> {
         changes.len(),
         plan.len()
     );
+    println!("Changed inputs: {changes:?}");
+    println!(
+        "Target directory: {}",
+        metadata.get("target_directory").unwrap_or(&Value::Null)
+    );
+    println!(
+        "Environment: RIG_PROVIDER_TEST_MODE=replay; unset RIG_REGENERATE_GOLDEN and NEXTEST_RETRIES; other Cargo/environment configuration inherited and fingerprinted."
+    );
     for check in &plan {
-        println!("SELECT {}: {}", check.id, check.reason);
+        println!(
+            "SELECT {}: {}; {}",
+            check.id,
+            check.reason,
+            execute::policy(&opts, check)
+        );
         for step in &check.steps {
             println!("  {} {} {:?}", step.program, step.args.join(" "), step.env);
         }
@@ -141,7 +158,7 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<()> {
         }
     }
     if opts.dry_run {
-        return Ok(());
+        return execute::preview(root, &metadata, &opts, &plan);
     }
     execute::run(root, &metadata, &opts, &plan)
 }
