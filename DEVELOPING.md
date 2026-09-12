@@ -173,9 +173,11 @@ verification. rust-cache keeps dependency artifacts only, so workspace crates
 still compile in every run. Conformance passes explicit Cargo test-target
 selectors matching its existing nextest filter, preserving the four executed
 binaries and their package/feature graph while avoiding compilation of unused
-harnesses. Cache warming still consumes runner time and quota; its benefit can
-only be measured after the workflow lands and trusted pushes populate that
-base cache.
+harnesses. Cache warming still consumes runner time and quota: a started
+warm is never cancelled (a cancelled warm once published a partial entry that
+later complete warms treated as an exact match), so a warm is never
+superseded mid-build; newer pushes queue behind it, a queued warm may be
+replaced by a newer one, and only a warm that succeeds saves.
 
 The all-features run starts its two nested-Cargo tests first (a nextest
 priority override): the facade feature-forwarding guard alone runs four

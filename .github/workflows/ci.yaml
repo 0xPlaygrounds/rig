@@ -15,6 +15,11 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Read-only token for every job: nothing here writes checks, artifacts or
+# comments (cargo's own diagnostics become annotations without any scope).
+permissions:
+  contents: read
+
 # Ensure the workflow runs once per PR: a newer push cancels and restarts the
 # in-flight run. Keyed on the PR number rather than `head_ref` because two
 # forks PRing from identically-named branches share a head_ref — under the
@@ -310,8 +315,6 @@ jobs:
   clippy:
     name: stable / clippy
     runs-on: ubuntu-latest
-    permissions:
-      checks: write
     steps:
       - name: Checkout
         uses: actions/checkout@v5
