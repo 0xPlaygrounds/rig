@@ -87,6 +87,8 @@ The agent's sets, around the bus's:
 
 `tests/tool_batch.rs` pins the batch: two calls are two children dispatched in call order and one utterance of results; `ToolPolicy` sets how many fly at once; a `Judge` system's replacement reaches history while the record keeps the answer; a `Gate` denial is a skipped result and no record; a despawned child fails the run `Cancelled`; a system's `Resolution::{Repair, Retry}` renames or retries an invalid call (`Skip` and `Ignore` likewise). The corpus's nesting cases run through a key the world serves (`Handlers::register_open`), the `lookup` tool answered by a system that spawns its child `ChildOf` the call.
 
+A run leaves its graph — turns, utterances, adverts, attachments, the settled effects and a stream's fold — in the world until the host takes it out: `systems::despawn_run` despawns an ended run whole and refuses one still running (`tests/run_lifetime.rs`). A host that runs for long despawns the runs it is done reading; the world keeps nothing of a run by itself. The bus takes at least one effect per tick whatever `command_capacity` says.
+
 The first steering slot is any system before `Assemble`: it edits the graph. `tests/run_graph.rs` pins the wins: an utterance despawned leaves the next request; one document entity feeds two runs; a grant link advertises a tool and its removal un-advertises it; a model swapped on the run changes the next key; a `Patch` system's rewrite reaches the handler and the record; a system before `Assemble` rewrites an utterance. `tests/run_scene.rs` pins that the graph is the state: a run saved mid-turn resumes in a fresh world to the same second request.
 
 ## Steering with systems

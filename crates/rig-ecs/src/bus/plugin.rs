@@ -121,7 +121,13 @@ impl Bus {
             "the bus is already installed in this world"
         );
         IoTaskPool::get_or_init(TaskPool::default);
-        world.insert_resource(Policy(self.policy));
+        // A tick takes at least one effect: a zero intake bound would leave
+        // every pending effect pending forever with no error, no record and
+        // no witness event. rig-agent's driver clamps the same field.
+        world.insert_resource(Policy(rig_core::serve::ServingPolicy {
+            command_capacity: self.policy.command_capacity.max(1),
+            ..self.policy
+        }));
         world.init_resource::<SeqCounter>();
         world.init_resource::<IdCounter>();
         world.init_resource::<Progress>();

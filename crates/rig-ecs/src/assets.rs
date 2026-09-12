@@ -183,6 +183,10 @@ pub struct AssetsPlugin;
 
 impl Plugin for AssetsPlugin {
     fn build(&self, app: &mut App) {
+        assert!(
+            app.world().contains_resource::<OrderCounter>(),
+            "AssetsPlugin needs install_agent first: its grants take the agent's order counter"
+        );
         app.init_asset::<Prompt>()
             .register_asset_loader(PromptLoader)
             .init_asset::<ToolDefinitions>()

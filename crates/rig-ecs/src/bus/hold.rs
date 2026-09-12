@@ -19,6 +19,16 @@ impl HoldOwners {
     pub fn owners(&self) -> impl Iterator<Item = &Emitter> {
         self.0.values()
     }
+
+    /// Drop `owner`'s entry when it holds one: whether it did.
+    pub(crate) fn forget(&mut self, owner: &str) -> bool {
+        self.0.remove(owner).is_some()
+    }
+
+    /// Whether no owner holds the effect.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 /// An ownership transition published after the corresponding hold mutation.
