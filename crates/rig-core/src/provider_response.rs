@@ -179,18 +179,14 @@ macro_rules! impl_provider_response_helpers {
             }
 
             /// Routes a transport error. A non-success response the
-            /// transport reported as an error, body in hand, is the
-            /// provider's reply and becomes [`Self::ProviderResponse`] (with
-            /// the headers when the transport kept them); everything else — a
-            /// response-less failure, or a status the transport reported
-            /// without a body — stays [`Self::HttpError`]. This is the
+            /// transport reported as an error — status, body and headers in
+            /// hand — is the provider's reply and becomes
+            /// [`Self::ProviderResponse`]; a response-less failure stays
+            /// [`Self::HttpError`] and never carries a status. This is the
             /// `From<http_client::Error>` conversion, so a `?` on a transport
             /// call classifies like an explicit funnel call.
             pub fn from_transport_error(error: $crate::http_client::Error) -> Self {
                 match error {
-                    $crate::http_client::Error::InvalidStatusCodeWithMessage(status, body) => {
-                        Self::from_http_response(status, body)
-                    }
                     $crate::http_client::Error::InvalidStatusCodeWithDetails {
                         status,
                         body,
@@ -248,21 +244,17 @@ macro_rules! impl_provider_response_helpers {
 
             /// Returns the raw provider response body when available.
             ///
-            /// This is available for:
-            /// - `Self::ProviderResponse` using its preserved body.
-            /// - `Self::HttpError` when it wraps an HTTP non-success response that
-            ///   carries a body.
+            /// This is available for `Self::ProviderResponse`, using its
+            /// preserved body.
             ///
             /// Returns `None` for any other variant — for example a Rig-generated
-            /// `ProviderError` diagnostic, or a failure from a transport with no
-            /// provider response body to preserve. An empty preserved body is
+            /// `ProviderError` diagnostic, or a response-less transport failure. An empty preserved body is
             /// reported as `Some("")` (the provider returned no payload), which is
             /// distinct from `None`; note that [`Self::provider_response_json`]
             /// maps that same empty body to `Ok(None)`.
             pub fn provider_response_body(&self) -> Option<&str> {
                 match self {
                     Self::ProviderResponse(response) => Some(response.body.as_str()),
-                    Self::HttpError(error) => error.non_success_body(),
                     _ => None,
                 }
             }
@@ -292,7 +284,6 @@ macro_rules! impl_provider_response_helpers {
             pub fn provider_response_status(&self) -> Option<http::StatusCode> {
                 match self {
                     Self::ProviderResponse(response) => response.status,
-                    Self::HttpError(error) => error.non_success_status(),
                     $(Self::$report(report) => report
                         .http_status
                         .and_then(|status| http::StatusCode::from_u16(status).ok()),)?
@@ -334,14 +325,12 @@ macro_rules! impl_provider_response_helpers {
             ///
             /// Returns `None` when no headers were captured: non-HTTP
             /// transports (gRPC / SDK clients), Rig-generated diagnostics,
-            /// errors funnelled from only a status and body (e.g. via
-            /// [`Self::from_http_response`]), and transports that report a
-            /// non-success status without preserving them. `None` therefore
-            /// means "not captured", never "the response had no headers".
+            /// and errors funnelled from only a status and body (e.g. via
+            /// [`Self::from_http_response`]). `None` therefore means "not
+            /// captured", never "the response had no headers".
             pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
                 match self {
                     Self::ProviderResponse(response) => response.headers.as_deref(),
-                    Self::HttpError(error) => error.non_success_headers(),
                     _ => None,
                 }
             }

@@ -605,14 +605,9 @@ where
             Ok(response) => http_client::text(response)
                 .await
                 .map_err(CachedContentError::Http)?,
-            // Triage on the *status*, not on one error variant. The bundled
-            // reqwest transports always report a non-success status as
-            // `InvalidStatusCodeWithDetails`, but `H` is a public extension
-            // point (`ClientBuilder::http_client`) and a custom `HttpClientExt`
-            // may report `InvalidStatusCode` or `InvalidStatusCodeWithMessage`
-            // instead. Matching the one variant dropped those into `Http`
-            // below, so the recovery this module documents — recreate the cache
-            // on `Expired` — never fired outside the bundled clients.
+            // Triage on the *status*: a transport that rejected the reply as
+            // an error still carries it, and the recovery this module
+            // documents — recreate the cache on `Expired` — must fire on it.
             Err(error) => {
                 let Some(status) = error.non_success_status() else {
                     // No status at all: a genuine transport failure (DNS, TLS,
@@ -645,8 +640,7 @@ fn qualify_model(model: &str) -> String {
 
 /// Stand-in for the provider's message when a failure carried no text.
 ///
-/// [`http_client::Error::InvalidStatusCode`] carries a status and nothing else,
-/// and a non-success response can have an empty body; either way there is
+/// A non-success response can have an empty body, and then there is
 /// nothing to quote. An empty `message` would leave both [`CachedContentError`]
 /// Displays ending in a bare colon, which reads as a truncated error rather
 /// than as a silent provider.

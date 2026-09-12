@@ -998,8 +998,9 @@ async fn transport_error_flushes_delivered_tool_calls_before_the_error() {
     });
     let chunks = vec![
         Ok(sse_bytes_from_data_lines([tool_call_done.to_string()])),
-        Err(crate::http_client::Error::InvalidStatusCodeWithMessage(
+        Err(crate::http_client::Error::non_success_with_details(
             http::StatusCode::BAD_GATEWAY,
+            http::HeaderMap::new(),
             r#"{"error":{"message":"upstream unavailable"}}"#.to_string(),
         )),
     ];
@@ -2263,7 +2264,7 @@ async fn streaming_non_http_transport_error_stays_a_transport_error() {
         err.to_string(),
         "HttpError: Invalid content type was returned: \"application/json\""
     );
-    assert_eq!(err.kind, ErrorKind::Http { status: None });
+    assert_eq!(err.kind, ErrorKind::Http);
     // A response-less transport failure has no provider response body.
     assert_eq!(err.provider_response_body(), None);
     assert_eq!(err.http_status, None);

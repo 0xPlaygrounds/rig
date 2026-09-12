@@ -20,10 +20,12 @@ fn transcription_error_provider_response_helpers_with_preserved_json_body() {
 #[test]
 fn transcription_error_provider_response_helpers_with_http_non_success() {
     let body = r#"{"error":{"message":"bad request"}}"#;
-    let error = TranscriptionError::HttpError(http_client::Error::InvalidStatusCodeWithMessage(
-        StatusCode::BAD_REQUEST,
-        body.to_string(),
-    ));
+    let error =
+        TranscriptionError::from_transport_error(http_client::Error::non_success_with_details(
+            StatusCode::BAD_REQUEST,
+            http::HeaderMap::new(),
+            body.to_string(),
+        ));
 
     assert_eq!(error.provider_response_body(), Some(body));
     assert_eq!(

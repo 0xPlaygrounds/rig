@@ -36,8 +36,10 @@ impl HttpClientExt for SequencedStreamingClient {
         T: Into<Bytes> + WasmCompatSend,
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        std::future::ready(Err(http_client::Error::InvalidStatusCode(
+        std::future::ready(Err(http_client::Error::non_success_with_details(
             StatusCode::NOT_IMPLEMENTED,
+            http::HeaderMap::new(),
+            String::new(),
         )))
     }
 
@@ -50,8 +52,10 @@ impl HttpClientExt for SequencedStreamingClient {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        std::future::ready(Err(http_client::Error::InvalidStatusCode(
+        std::future::ready(Err(http_client::Error::non_success_with_details(
             StatusCode::NOT_IMPLEMENTED,
+            http::HeaderMap::new(),
+            String::new(),
         )))
     }
 
@@ -169,5 +173,122 @@ async fn reconnect_replaces_request_id_slot_including_with_none() {
         None,
         "the reconnect omitted the header, so the slot must not retain the \
              first connection's id"
+    );
+}
+
+/// A transport that hands a non-200 reply back as a response, with a body
+/// stream and headers, so the opener has to read the reply itself.
+#[derive(Clone)]
+struct RejectingClient {
+    status: StatusCode,
+    body: &'static [u8],
+}
+
+impl HttpClientExt for RejectingClient {
+    fn send<T, U>(
+        &self,
+        _req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<Response<http_client::LazyBody<U>>>>
+    + WasmCompatSend
+    + 'static
+    where
+        T: Into<Bytes> + WasmCompatSend,
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        std::future::ready(Err(http_client::Error::StreamEnded))
+    }
+
+    fn send_multipart<U>(
+        &self,
+        _req: Request<crate::http_client::MultipartForm>,
+    ) -> impl Future<Output = http_client::Result<Response<http_client::LazyBody<U>>>>
+    + WasmCompatSend
+    + 'static
+    where
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        std::future::ready(Err(http_client::Error::StreamEnded))
+    }
+
+    fn send_streaming<T>(
+        &self,
+        _req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<http_client::StreamingResponse>> + WasmCompatSend
+    where
+        T: Into<Bytes> + WasmCompatSend,
+    {
+        let (status, body) = (self.status, self.body);
+        async move {
+            // Two chunks, so the opener has to drain the stream rather than
+            // read one frame.
+            let (head, tail) = body.split_at(body.len() / 2);
+            let boxed: BoxedStream = Box::pin(futures::stream::iter([
+                Ok(Bytes::copy_from_slice(head)),
+                Ok(Bytes::copy_from_slice(tail)),
+            ]));
+            Response::builder()
+                .status(status)
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .header(http::header::RETRY_AFTER, "20")
+                .header("x-request-id", "req-rejected")
+                .body(boxed)
+                .map_err(http_client::Error::Protocol)
+        }
+    }
+}
+
+/// A reply the opener will not stream is the provider's reply, whole: the
+/// error carries its status, its full body and its headers, never a bare
+/// status. Like a rejection the bundled transports report themselves, it
+/// then goes to the retry policy, which sees `Retry-After` on it.
+#[tokio::test]
+async fn a_rejected_open_keeps_the_reply_body_and_headers_on_the_error() {
+    const BODY: &[u8] = br#"{"error":{"type":"rate_limit_error","message":"slow down"}}"#;
+    let client = RejectingClient {
+        status: StatusCode::TOO_MANY_REQUESTS,
+        body: BODY,
+    };
+    let req = Request::builder()
+        .uri("http://mock.invalid/stream")
+        .body(Vec::<u8>::new())
+        .expect("request should build");
+    let mut source = GenericEventSource::new(client, req);
+    // The policy always grants the first reconnect; `Some(0)` stops there.
+    source.retry_policy = ExponentialBackoff::new(
+        Duration::from_millis(1),
+        1.,
+        Some(Duration::from_millis(1)),
+        Some(0),
+    );
+    let mut source = Box::pin(source);
+
+    let mut rejections = 0;
+    while let Some(item) = source.next().await {
+        let error = item.expect_err("a 429 does not open");
+        let http_client::Error::InvalidStatusCodeWithDetails {
+            status,
+            body,
+            headers,
+        } = &error
+        else {
+            panic!("the reply must ride on the error whole: {error:?}");
+        };
+        assert_eq!(*status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(body.as_bytes(), BODY, "the body is drained to its end");
+        assert_eq!(
+            headers
+                .get(http::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok()),
+            Some("20")
+        );
+        assert_eq!(
+            headers.get("x-request-id").and_then(|v| v.to_str().ok()),
+            Some("req-rejected")
+        );
+        rejections += 1;
+    }
+    assert_eq!(
+        rejections, 2,
+        "the connect and the one reconnect the policy grants, then it closes"
     );
 }

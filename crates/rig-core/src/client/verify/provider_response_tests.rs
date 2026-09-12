@@ -19,8 +19,9 @@ fn verify_error_provider_response_helpers_with_preserved_json_body() {
 #[test]
 fn verify_error_provider_response_helpers_with_http_non_success() {
     let body = r#"{"error":{"message":"bad request"}}"#;
-    let error = VerifyError::HttpError(http_client::Error::InvalidStatusCodeWithMessage(
+    let error = VerifyError::from_transport_error(http_client::Error::non_success_with_details(
         StatusCode::BAD_REQUEST,
+        http::HeaderMap::new(),
         body.to_string(),
     ));
 

@@ -783,10 +783,12 @@ fn completion_error_provider_error_is_not_a_provider_response() {
 #[test]
 fn completion_error_provider_response_helpers_with_http_non_success_body_and_status() {
     let body = r#"{"error":{"type":"invalid_request","message":"bad request"}}"#;
-    let error = CompletionError::HttpError(http_client::Error::InvalidStatusCodeWithMessage(
-        http::StatusCode::BAD_REQUEST,
-        body.to_string(),
-    ));
+    let error =
+        CompletionError::from_transport_error(http_client::Error::non_success_with_details(
+            http::StatusCode::BAD_REQUEST,
+            http::HeaderMap::new(),
+            body.to_string(),
+        ));
 
     assert_eq!(error.provider_response_body(), Some(body));
     assert_eq!(

@@ -1834,8 +1834,9 @@ mod terminal_emission {
             .api_key("test-key")
             .http_client(SequencedStreamingHttpClient::new(vec![
                 Ok(sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA])),
-                Err(crate::http_client::Error::InvalidStatusCodeWithMessage(
+                Err(crate::http_client::Error::non_success_with_details(
                     http::StatusCode::BAD_GATEWAY,
+                    http::HeaderMap::new(),
                     "connection reset".to_string(),
                 )),
             ]))

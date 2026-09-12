@@ -18,7 +18,7 @@ fn native_http_errors_preserve_distinct_boundaries_before_report_erasure() {
     ] {
         let error = CompletionError::HttpError(native);
         let report = crate::error::ErrorReport::from(&error);
-        assert_eq!(report.kind, crate::error::ErrorKind::Http { status: None });
+        assert_eq!(report.kind, crate::error::ErrorKind::Http);
         let log = Arc::new(ObservationLog::default());
         let context = AdapterContext::new(log.clone(), Subject::default(), "call");
         let mut request = http::Request::new(());

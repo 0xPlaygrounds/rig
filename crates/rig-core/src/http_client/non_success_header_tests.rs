@@ -1,18 +1,16 @@
 use super::*;
 
-/// `None` means "not captured" and must not be confused with an empty map:
-/// every other shape of this error reports it.
+/// `None` means "no response" and must not be confused with an empty map:
+/// a response-less failure has no headers, a reply always reports its own.
 #[test]
 fn non_success_headers_absent_when_not_captured() {
     for error in [
-        Error::InvalidStatusCodeWithMessage(
-            StatusCode::TOO_MANY_REQUESTS,
-            "rate limited".to_string(),
-        ),
-        Error::InvalidStatusCode(StatusCode::TOO_MANY_REQUESTS),
         Error::StreamEnded,
+        Error::NoHeaders,
+        Error::instance(std::io::Error::other("connection reset")),
     ] {
         assert!(error.non_success_headers().is_none());
+        assert!(error.non_success_status().is_none());
     }
 
     // A captured-but-empty map is `Some`, not `None`.

@@ -64,17 +64,8 @@ macro_rules! assert_funnel {
         assert!(err.provider_response_json().expect("ok").is_none());
 
         // A transport that reported the reply as an error routes through the
-        // same funnel: body -> ProviderResponse (headers kept when the
-        // transport kept them); a status without a body, or no response at
-        // all, stays a transport error.
-        let err =
-            E::from_transport_error($crate::http_client::Error::InvalidStatusCodeWithMessage(
-                StatusCode::TOO_MANY_REQUESTS,
-                body.to_string(),
-            ));
-        assert!(matches!(err, E::ProviderResponse(_)));
-        assert_eq!(err.provider_response_body(), Some(body));
-        assert!(err.provider_response_headers().is_none());
+        // same funnel: status, body and headers -> ProviderResponse; no
+        // response at all stays a transport error, with no status.
         let err =
             E::from_transport_error($crate::http_client::Error::InvalidStatusCodeWithDetails {
                 status: StatusCode::TOO_MANY_REQUESTS,
@@ -82,27 +73,20 @@ macro_rules! assert_funnel {
                 headers: retry_after_headers(),
             });
         assert!(matches!(err, E::ProviderResponse(_)));
+        assert_eq!(err.provider_response_body(), Some(body));
         assert_eq!(
             err.provider_response_headers()
                 .and_then(|headers| headers.get(http::header::RETRY_AFTER))
                 .and_then(|value| value.to_str().ok()),
             Some("20"),
         );
-        let err = E::from_transport_error($crate::http_client::Error::InvalidStatusCode(
-            StatusCode::BAD_GATEWAY,
-        ));
-        assert!(matches!(err, E::HttpError(_)));
-        assert_eq!(
-            err.provider_response_status(),
-            Some(StatusCode::BAD_GATEWAY)
-        );
-        assert_eq!(err.provider_response_body(), None);
         let err = E::from_transport_error($crate::http_client::Error::StreamEnded);
         assert!(matches!(err, E::HttpError(_)));
         assert_eq!(err.provider_response_status(), None);
         // The `?` conversion is the same route.
-        let err: E = $crate::http_client::Error::InvalidStatusCodeWithMessage(
+        let err: E = $crate::http_client::Error::non_success_with_details(
             StatusCode::NOT_FOUND,
+            http::HeaderMap::new(),
             body.to_string(),
         )
         .into();
@@ -296,8 +280,8 @@ fn attaching_headers_never_overwrites_an_earlier_capture() {
 }
 
 /// Variants with no slot for a response absorb the call unchanged, so a
-/// capture site can attach unconditionally. A transport error that carries
-/// a status but no body has no response to annotate either.
+/// capture site can attach unconditionally. A response-less transport error
+/// has no response to annotate either.
 #[test]
 fn attaching_headers_to_a_slotless_variant_is_a_no_op() {
     let error = crate::completion::CompletionError::ProviderError("rig diagnostic".to_string())
@@ -309,16 +293,14 @@ fn attaching_headers_to_a_slotless_variant_is_a_no_op() {
     assert!(error.provider_response_headers().is_none());
     assert_eq!(error.to_string(), "ProviderError: rig diagnostic");
 
-    let error = crate::completion::CompletionError::HttpError(
-        crate::http_client::Error::InvalidStatusCode(StatusCode::BAD_GATEWAY),
-    )
-    .with_response_headers(Some(retry_after_headers()));
+    let error =
+        crate::completion::CompletionError::HttpError(crate::http_client::Error::StreamEnded)
+            .with_response_headers(Some(retry_after_headers()));
     assert!(matches!(
         error,
-        crate::completion::CompletionError::HttpError(
-            crate::http_client::Error::InvalidStatusCode(_)
-        )
+        crate::completion::CompletionError::HttpError(crate::http_client::Error::StreamEnded)
     ));
+    assert!(error.provider_response_headers().is_none());
 }
 
 /// Display goldens (rig#2315 error matrix): error strings are what
@@ -344,27 +326,22 @@ fn display_goldens_for_error_shapes() {
         r#"ProviderResponseError: status 404 Not Found: {"error":"nope"}"#
     );
 
-    // A status the transport reported without a body is still a transport
-    // error, and says so.
-    let bodiless = crate::completion::CompletionError::from_transport_error(
-        crate::http_client::Error::InvalidStatusCode(StatusCode::NOT_FOUND),
+    // A response-less transport failure is a transport error, and says so.
+    let dropped = crate::completion::CompletionError::from_transport_error(
+        crate::http_client::Error::StreamEnded,
     );
-    assert_eq!(
-        bodiless.to_string(),
-        "HttpError: Invalid status code: 404 Not Found"
-    );
+    assert_eq!(dropped.to_string(), "HttpError: Stream ended");
 
-    // The two transport variants display identically.
+    // The transport's own rejection text names the status and body.
     let details = crate::http_client::Error::InvalidStatusCodeWithDetails {
         status: StatusCode::NOT_FOUND,
         body: "x".to_string(),
         headers: Box::new(http::HeaderMap::new()),
     };
-    let message = crate::http_client::Error::InvalidStatusCodeWithMessage(
-        StatusCode::NOT_FOUND,
-        "x".to_string(),
+    assert_eq!(
+        details.to_string(),
+        "Invalid status code 404 Not Found with message: x"
     );
-    assert_eq!(details.to_string(), message.to_string());
 
     // rig#2210: capturing headers must never change the text a caller logs.
     for build in [

@@ -81,8 +81,8 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum CompletionError {
     /// A transport failure that produced no provider reply (a connection
-    /// error, a timeout, a status reported without a body); a reply with a
-    /// body is [`Self::ProviderResponse`].
+    /// error, a timeout, an unreadable response); it never carries a
+    /// status. A reply the server made is [`Self::ProviderResponse`].
     #[error("HttpError: {0}")]
     HttpError(http_client::Error),
 

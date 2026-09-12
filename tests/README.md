@@ -467,7 +467,8 @@ without a payload projection.
 A provider's error reply classifies the same on every wire —
 `ErrorKind::ProviderResponse`, status, body, headers and request id on the
 report — through the one funnel in `rig_core::provider_response`;
-`ErrorKind::Http` is a transport failure that produced no reply.
+`ErrorKind::Http` is a transport failure that produced no reply and carries
+no status: a transport never reports a status without the reply behind it.
 
 Historical execution logs, proof snapshots, review-application commands and
 archive infrastructure are intentionally not maintained. No historical download

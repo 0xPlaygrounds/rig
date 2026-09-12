@@ -187,9 +187,7 @@ impl AdapterErrorBoundary {
             H::Protocol(_) | H::InvalidHeaderValue(_) | H::NoHeaders => Self::Request,
             H::InvalidContentType(_) => Self::Decode,
             H::StreamEnded => Self::Transport,
-            H::InvalidStatusCode(_)
-            | H::InvalidStatusCodeWithMessage(..)
-            | H::InvalidStatusCodeWithDetails { .. } => Self::ProviderResponse,
+            H::InvalidStatusCodeWithDetails { .. } => Self::ProviderResponse,
             H::Instance(_) => Self::Unknown,
         }
     }

@@ -149,16 +149,21 @@ async fn non_success_response_preserves_headers_for_a_contract_less_provider() {
     assert!(matches!(error, CompletionError::ProviderResponse(_)));
 }
 
-/// A transport that reports non-success *without* headers classifies the
-/// same, reporting `None` rather than an empty map — "not captured" must
-/// stay distinguishable from "the response had none".
+/// A rejection whose reply carried no rate-limit headers classifies the
+/// same and reports the empty map it captured, never `None`: every reply
+/// a transport rejects comes with its headers, so `None` is reserved for
+/// a failure with no reply at all.
 #[tokio::test]
-async fn header_less_transport_reports_no_headers() {
+async fn header_less_rejection_reports_an_empty_map() {
     for contract in [CONTRACT, NO_CONTRACT] {
         let client = RecordingHttpClient::with_error(http::StatusCode::TOO_MANY_REQUESTS, BODY);
         let error = drive(client, contract).await;
 
-        assert!(error.provider_response_headers().is_none());
+        assert!(
+            error
+                .provider_response_headers()
+                .is_some_and(http::HeaderMap::is_empty)
+        );
         assert!(
             matches!(error, CompletionError::ProviderResponse(_)),
             "classification must not depend on header capture",

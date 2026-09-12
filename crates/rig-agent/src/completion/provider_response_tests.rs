@@ -25,9 +25,10 @@ fn prompt_error_forwards_provider_response_to_completion_error() {
 #[test]
 fn prompt_error_provider_response_helpers_forward_http_status_and_body() {
     let body = r#"{"error":{"message":"unauthorized"}}"#;
-    let error = PromptError::CompletionError(CompletionError::HttpError(
-        http_client::Error::InvalidStatusCodeWithMessage(
+    let error = PromptError::CompletionError(CompletionError::from_transport_error(
+        http_client::Error::non_success_with_details(
             http::StatusCode::UNAUTHORIZED,
+            http::HeaderMap::new(),
             body.to_string(),
         ),
     ));

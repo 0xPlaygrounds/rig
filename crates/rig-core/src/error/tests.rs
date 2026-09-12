@@ -3,9 +3,11 @@ use http::StatusCode;
 use super::*;
 use crate::{http_client, provider_response::ProviderResponseError};
 
+/// A non-success reply as a transport reports it, routed like a `?` would.
 fn http_error(status: u16) -> CompletionError {
-    CompletionError::HttpError(http_client::Error::InvalidStatusCodeWithMessage(
+    CompletionError::from_transport_error(http_client::Error::non_success_with_details(
         StatusCode::from_u16(status).expect("valid status"),
+        http::HeaderMap::new(),
         "body".to_string(),
     ))
 }
@@ -61,8 +63,10 @@ fn retry_table_per_status() {
 
 #[test]
 fn completion_http_error_reports_status_and_retryability() {
+    // The transport's rejection is the provider's reply: the kind says so,
+    // and the status decides retryability.
     let report = http_error(429).report();
-    assert_eq!(report.kind, ErrorKind::Http { status: Some(429) });
+    assert_eq!(report.kind, ErrorKind::ProviderResponse);
     assert_eq!(report.http_status, Some(429));
     assert!(report.retryable);
     assert!(http_error(429).is_retryable());
@@ -85,7 +89,7 @@ fn transport_failures_without_a_status_classify_by_what_they_are() {
         let error = CompletionError::HttpError(error);
         assert!(error.is_retryable(), "{error}");
         let report = error.report();
-        assert_eq!(report.kind, ErrorKind::Http { status: None });
+        assert_eq!(report.kind, ErrorKind::Http);
         assert_eq!(report.http_status, None);
         assert!(report.retryable, "{report:?}");
     }
@@ -101,13 +105,9 @@ fn transport_failures_without_a_status_classify_by_what_they_are() {
         assert!(!error.is_retryable(), "{error}");
         assert!(!error.report().retryable, "{error}");
     }
-    // A status-carrying transport failure follows the status table.
-    assert!(
-        CompletionError::HttpError(http_client::Error::InvalidStatusCode(
-            StatusCode::SERVICE_UNAVAILABLE
-        ))
-        .is_retryable()
-    );
+    // A transport error never carries a status: a status-carrying
+    // rejection routes to the provider's reply and follows the status table.
+    assert!(http_error(503).is_retryable());
     // A provider response without a status decides nothing either.
     assert!(
         !CompletionError::ProviderResponse(ProviderResponseError::without_status("body"))
@@ -304,8 +304,8 @@ fn a_provider_response_travels_with_the_report() {
         .map(|response| Box::new(response.with_headers(None)));
     assert_eq!(back, without_headers);
 
-    // A non-success HTTP failure carries its status and body the same way;
-    // a diagnostic with no provider response carries nothing.
+    // A non-success reply the transport rejected carries its status and body
+    // the same way; a diagnostic with no provider response carries nothing.
     let http = ErrorReport::from(&http_error(503));
     assert_eq!(
         http.provider_response_status(),
@@ -343,8 +343,21 @@ fn embedding_and_rerank_reports_retain_structured_provider_metadata() {
     }
 }
 
+/// A transport rejection routed through the `From` conversion is the
+/// provider's reply on every capability: body, headers and status ride on
+/// the report, and the kind says so. `HttpError` itself cannot carry any of
+/// them, so a report from one has no provider response.
 #[test]
 fn embedding_and_rerank_http_reports_retain_body_and_headers() {
+    for report in [
+        ErrorReport::from(EmbeddingError::HttpError(http_client::Error::StreamEnded)),
+        ErrorReport::from(RerankError::HttpError(http_client::Error::StreamEnded)),
+    ] {
+        assert_eq!(report.kind, ErrorKind::Http);
+        assert_eq!(report.http_status, None);
+        assert!(report.provider_response.is_none());
+        assert!(report.retryable);
+    }
     let make_error = || {
         let mut headers = http::HeaderMap::new();
         headers.insert("retry-after", http::HeaderValue::from_static("7"));
@@ -355,9 +368,10 @@ fn embedding_and_rerank_http_reports_retain_body_and_headers() {
         }
     };
     for report in [
-        ErrorReport::from(EmbeddingError::HttpError(make_error())),
-        ErrorReport::from(RerankError::HttpError(make_error())),
+        ErrorReport::from(EmbeddingError::from(make_error())),
+        ErrorReport::from(RerankError::from(make_error())),
     ] {
+        assert_eq!(report.kind, ErrorKind::ProviderResponse);
         let response = report.provider_response.expect("structured HTTP response");
         assert_eq!(response.body, "temporary outage");
         assert_eq!(

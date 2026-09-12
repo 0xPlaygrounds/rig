@@ -28,8 +28,10 @@ impl http_client::HttpClientExt for ChunkedStreamingClient {
         T: Into<Bytes> + WasmCompatSend,
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        future::ready(Err(http_client::Error::InvalidStatusCode(
+        future::ready(Err(http_client::Error::non_success_with_details(
             http::StatusCode::NOT_IMPLEMENTED,
+            http::HeaderMap::new(),
+            String::new(),
         )))
     }
 
@@ -42,8 +44,10 @@ impl http_client::HttpClientExt for ChunkedStreamingClient {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        future::ready(Err(http_client::Error::InvalidStatusCode(
+        future::ready(Err(http_client::Error::non_success_with_details(
             http::StatusCode::NOT_IMPLEMENTED,
+            http::HeaderMap::new(),
+            String::new(),
         )))
     }
 

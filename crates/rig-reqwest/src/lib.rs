@@ -166,13 +166,13 @@ use std::pin::Pin;
 /// Map a transport-level `reqwest::Error` onto the transport-agnostic
 /// [`Error`].
 ///
-/// A failure that carries a status (an `error_for_status` rejection) keeps
-/// it as [`Error::InvalidStatusCode`] so provider retry and error-inspection
-/// paths can still read the code; a response-less failure (connect, decode,
-/// timeout) becomes [`Error::Instance`].
+/// This is the response-less side (connect, decode, timeout): a reply the
+/// server made is read off the `reqwest::Response` with its body and headers
+/// by [`non_success_status_error`] instead, never reduced to a bare status.
+/// Rig never calls `error_for_status`, so a `reqwest::Error` here carries no
+/// reply to preserve.
 pub fn from_reqwest(err: reqwest::Error) -> Error {
-    err.status()
-        .map_or_else(|| Error::instance(err), Error::InvalidStatusCode)
+    Error::instance(err)
 }
 
 /// Read the status, headers and body off a failed `reqwest::Response` and

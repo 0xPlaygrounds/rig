@@ -84,7 +84,7 @@ expectations:
   `with_response_headers` when the call site has them, so retry/status logic
   can inspect `provider_response_status()`, the raw provider body, the
   request id and `Retry-After`. `HttpError` is only a transport failure that
-  produced no provider reply.
+  produced no provider reply, and never carries a status.
 - `ProviderResponseExt`, telemetry spans, and GenAI fields are populated
   consistently with nearby providers where applicable.
 - Tests cover the smallest reliable scope: unit tests, cassette-backed provider

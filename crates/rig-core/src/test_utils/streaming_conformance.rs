@@ -349,12 +349,13 @@ pub fn ok_chunks(frames: impl IntoIterator<Item = impl Into<WireInput>>) -> Wire
     frames.into_iter().map(|frame| Ok(frame.into())).collect()
 }
 
-/// A scripted mid-stream transport failure chunk.
+/// A scripted mid-stream transport failure chunk: the connection dropped,
+/// so there is no reply and no status.
 pub fn transport_error_chunk() -> http_client::Result<WireInput> {
-    Err(http_client::Error::InvalidStatusCodeWithMessage(
-        http::StatusCode::BAD_GATEWAY,
-        "connection reset".to_string(),
-    ))
+    Err(http_client::Error::instance(std::io::Error::new(
+        std::io::ErrorKind::ConnectionReset,
+        "connection reset",
+    )))
 }
 
 /// Executable stream-lifecycle validator (#2258 C1).
