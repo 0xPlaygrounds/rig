@@ -1,4 +1,5 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![deny(missing_docs)]
 #![cfg_attr(
     test,
     allow(
@@ -65,6 +66,7 @@ pub mod bus;
 pub mod client;
 pub mod completion;
 pub mod extractor;
+/// Ready-made integrations: the CLI chatbot.
 pub mod integrations;
 // Shared JSON helpers live in rig-core; re-export so call sites stay
 // `json_utils::merge` / `json_utils::serialize_json_value`.

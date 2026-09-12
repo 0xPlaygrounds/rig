@@ -273,3 +273,34 @@ fn each_block_streams_under_its_own_key() {
         "delta, synthesized end, late signature end, then a fresh block"
     );
 }
+
+/// Back-to-back signature-only parts (Gemini stamps a `thoughtSignature`
+/// on a following part too) never close one key twice: the second is a
+/// signature-only block under a fresh key, so every end has its own key.
+#[test]
+fn a_second_signature_only_chunk_closes_a_fresh_key_not_the_same_one() {
+    let mut lifecycle = lifecycle();
+    let mut out = crate::providers::internal::adapter::AdapterOutput::new();
+    let signed = || ChunkParts {
+        reasoning: None,
+        reasoning_signature: Some("sig".to_owned()),
+        text: None,
+        tool_events: Vec::new(),
+    };
+    lifecycle.emit_chunk(signed(), &mut out);
+    let first = lifecycle.key().clone();
+    lifecycle.emit_chunk(signed(), &mut out);
+    let second = lifecycle.key().clone();
+    assert_ne!(
+        first, second,
+        "a signature after a close signs a fresh block"
+    );
+    let ends: Vec<_> = out
+        .drain()
+        .filter_map(|item| match item {
+            Ok(StreamEvent::BlockEnd { id, .. }) => Some(id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ends, [first, second]);
+}

@@ -4,7 +4,12 @@
 //! |---|---|
 //! | a zero intake bound is a bound of one: the world makes progress, it never sits | `a_zero_command_capacity_still_takes_an_effect_per_tick` |
 //! | `despawn_run` takes an ended run and its whole graph out of the world; it refuses a run that has not ended | `despawn_run_removes_an_ended_run_and_refuses_a_live_one` |
-#![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 
 mod run_support;
 

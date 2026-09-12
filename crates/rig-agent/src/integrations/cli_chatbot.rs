@@ -38,10 +38,12 @@ impl Chat for Agent {
 use futures::StreamExt;
 use std::io::{self, Write};
 
+/// A chatbot over any [`Chat`] implementation.
 pub struct ChatImpl<T>(T)
 where
     T: Chat;
 
+/// A chatbot over an [`Agent`], streaming each answer as it is produced.
 pub struct AgentImpl {
     agent: Agent,
     max_turns: usize,
@@ -49,8 +51,10 @@ pub struct AgentImpl {
     usage: Usage,
 }
 
+/// Builds a [`ChatBot`]: give it an agent or a [`Chat`], then `build`.
 pub struct ChatBotBuilder<T = Missing>(T);
 
+/// A terminal chat loop over an agent or a [`Chat`]; see [`ChatBot::run`].
 pub struct ChatBot<T>(T);
 
 /// Trait to abstract message behavior away from cli_chat/`run` loop
@@ -160,10 +164,12 @@ impl Default for ChatBotBuilder<Missing> {
 }
 
 impl ChatBotBuilder<Missing> {
+    /// A builder with nothing chosen yet.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Chat with `agent`.
     pub fn agent(self, agent: Agent) -> ChatBotBuilder<Provided<AgentImpl>> {
         ChatBotBuilder(Provided(AgentImpl {
             agent,
@@ -173,6 +179,7 @@ impl ChatBotBuilder<Missing> {
         }))
     }
 
+    /// Chat with any [`Chat`] implementation.
     pub fn chat<T: Chat>(self, chatbot: T) -> ChatBotBuilder<Provided<ChatImpl<T>>> {
         ChatBotBuilder(Provided(ChatImpl(chatbot)))
     }
@@ -182,6 +189,7 @@ impl<T> ChatBotBuilder<Provided<ChatImpl<T>>>
 where
     T: Chat,
 {
+    /// The chatbot.
     pub fn build(self) -> ChatBot<ChatImpl<T>> {
         ChatBot(self.0.0)
     }
@@ -197,6 +205,7 @@ impl ChatBotBuilder<Provided<AgentImpl>> {
         }))
     }
 
+    /// Print the token usage after every answer.
     pub fn show_usage(self) -> Self {
         ChatBotBuilder(Provided(AgentImpl {
             show_usage: true,
@@ -204,6 +213,7 @@ impl ChatBotBuilder<Provided<AgentImpl>> {
         }))
     }
 
+    /// The chatbot.
     pub fn build(self) -> ChatBot<AgentImpl> {
         ChatBot(self.0.0)
     }
@@ -214,6 +224,7 @@ impl<T> ChatBot<T>
 where
     T: CliChat,
 {
+    /// Read prompts from stdin and print answers until EOF or `exit`.
     pub async fn run(mut self) -> Result<(), PromptError> {
         let stdin = io::stdin();
         let mut stdout = io::stdout();

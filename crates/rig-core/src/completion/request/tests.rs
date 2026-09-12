@@ -858,18 +858,23 @@ mod additional_params_precedence {
         assert!(shadowed_typed_fields(None, &[("temperature", true)]).is_empty());
     }
 
-    /// `additional_params(None)` merges nothing; a second call merges into
-    /// the first rather than replacing it.
+    /// A second `additional_params(Some(..))` merges into the first rather
+    /// than replacing it; `None` clears, like every other folded setter.
     #[test]
-    fn additional_params_merges_and_none_is_a_no_op() {
+    fn additional_params_merges_and_none_clears() {
         let model = crate::test_utils::MockCompletionModel::text("x");
-        let request = crate::completion::CompletionRequestBuilder::new(model, "p")
+        let request = crate::completion::CompletionRequestBuilder::new(model.clone(), "p")
             .additional_params(json!({"a": 1}))
-            .additional_params(None)
             .additional_params(json!({"b": 2}))
             .temperature(None)
             .build();
         assert_eq!(request.additional_params, Some(json!({"a": 1, "b": 2})));
         assert_eq!(request.temperature, None);
+        let cleared = crate::completion::CompletionRequestBuilder::new(model, "p")
+            .additional_params(json!({"a": 1}))
+            .additional_params(None)
+            .additional_params(json!({"b": 2}))
+            .build();
+        assert_eq!(cleared.additional_params, Some(json!({"b": 2})));
     }
 }

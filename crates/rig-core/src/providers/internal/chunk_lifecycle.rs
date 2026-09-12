@@ -82,6 +82,9 @@ pub struct MintedReasoningLifecycle {
     /// Whether `key`'s block has been closed, so the next reasoning delta
     /// opens a new block under a fresh key.
     closed: bool,
+    /// The last close was the wire's own signature: the block is signed,
+    /// and a further signature is a block of its own.
+    signed: bool,
 }
 
 impl MintedReasoningLifecycle {
@@ -94,6 +97,7 @@ impl MintedReasoningLifecycle {
             key,
             open: false,
             closed: false,
+            signed: false,
         }
     }
 
@@ -120,6 +124,7 @@ impl MintedReasoningLifecycle {
             if self.closed {
                 self.key = self.ids.mint();
                 self.closed = false;
+                self.signed = false;
             }
             self.open = true;
             out.reasoning_delta(&self.key, None, reasoning.clone());
@@ -130,8 +135,17 @@ impl MintedReasoningLifecycle {
             // deltas, the already-finished block that holds the
             // chain-of-thought, or a signature-only part when nothing
             // streamed — the shared accumulator owns the per-case behavior.
+            // A signature after a synthesized close signs that finished
+            // block (the late signature). A signature after a *signed*
+            // close is a block of its own (a signature-only part), under a
+            // fresh key: one signed end per key, so a consumer keeping its
+            // own block lifecycle sees a balanced stream.
+            if self.signed && !self.open {
+                self.key = self.ids.mint();
+            }
             self.open = false;
             self.closed = true;
+            self.signed = true;
             out.reasoning_end(self.key.clone(), None, Some(signature), false);
         }
 

@@ -190,12 +190,21 @@ Composition through `HookStack` remains event-dependent:
 - **Completion calls accumulate and merge.** Every
   `CompletionCallAction::Patch(RequestPatch)` is merged in registration order;
   `Stop` short-circuits the stack.
-- **Tool calls and results chain.** `ToolCallAction::Rewrite` and
-  `ToolResultAction::Rewrite` are threaded into later hooks. A tool-call `Skip`
-  or either event's `Stop` is terminal.
+- **Every effect crosses the dispatch boundary.** Completions, tool calls,
+  memory loads and appends, and retrievals are dispatched on the agent's bus,
+  and `on_dispatch` / `on_outcome` see each of them: each hook's
+  `DispatchAction::Patch` is what the next hook sees, the first
+  `DispatchAction::Deny` wins (a denied tool call is the skipped result the
+  model sees), and each `OutcomeAction::Replace` is what the next hook sees.
+  The internal families (`Memory`, `Retrieve`, `Embed`, `Rerank`, `Custom`)
+  are observe-only until a hook opts in through `observes`.
+- **Model turns** return `ModelTurnAction` (`Continue`, `Retry`, or `Stop`);
+  a retry or stop short-circuits the remaining hooks for that event.
 - **Invalid tool calls** return `InvalidToolCallAction` (`Fail`, `Retry`,
   `Repair`, `Skip`, or `Stop`).
 - **Observe-only events** return `ObservationAction` (`Continue` or `Stop`).
+- **`RunSettled` fires exactly once per run**, before the run's error reaches
+  the consumer on any surface.
 
 Register observe-only hooks before steering hooks because stop actions
 short-circuit. Nested `HookStack`s must preserve merge and chaining semantics.

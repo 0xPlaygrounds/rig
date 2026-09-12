@@ -866,13 +866,21 @@ pub enum SettledOutcome<'a> {
 /// Hook event kind used only as an observation performance hint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StepEventKind {
+    /// `on_run_start`.
     RunStart,
+    /// `on_run_settled`.
     RunSettled,
+    /// `on_completion_call`.
     CompletionCall,
+    /// `on_model_turn_finished`.
     ModelTurnFinished,
+    /// `on_invalid_tool_call`.
     InvalidToolCall,
+    /// `on_text_delta`.
     TextDelta,
+    /// `on_reasoning_delta`.
     ReasoningDelta,
+    /// `on_tool_call_delta`.
     ToolCallDelta,
     /// `on_dispatch`/`on_outcome` for a completion effect.
     CompletionDispatch,

@@ -21,15 +21,19 @@ use rig_core::message::Message;
 // go no-op — browser wasm. `rig-core` keys those markers on this same
 // predicate, so keep the two in step: a bare `target_arch = "wasm32"` would
 // also drop `Send` on WASI, where `rig-core` still requires it.
+/// The stream a streamed run yields: its items, then its ending.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub type StreamingResult =
     Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + Send>>;
 
+/// The stream a streamed run yields: its items, then its ending.
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>>>>;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
+/// One item of a streamed run: a provider stream event, a committed tool
+/// call, a lifecycle marker, or the run's final response.
 #[allow(
     clippy::large_enum_variant,
     reason = "the terminal items are one per run and are moved, not copied; boxing them would put an allocation on every consumer's match"
@@ -249,14 +253,17 @@ pub(crate) fn finalize_streamed_choice(
     Some(items)
 }
 
+/// Why a streamed run ended before its final response.
 #[derive(Debug, thiserror::Error)]
 pub enum StreamingError {
+    /// The provider stream failed.
     #[error("CompletionError: {0}")]
     Completion(#[from] CompletionError),
     /// An effect failed on the agent's bus — a bus or handler failure, a
     /// hook's denial, a stream item's error — as the wire reports it.
     #[error("{0}")]
     Report(#[from] rig_core::error::ErrorReport),
+    /// The run failed for a reason the blocking surface reports the same way.
     #[error("PromptError: {0}")]
     Prompt(#[from] Box<PromptError>),
 }

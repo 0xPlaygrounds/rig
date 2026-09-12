@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 // No longer `Copy`: the identity fields carry owned strings. No longer `Eq`:
 // `raw` is a `serde_json::Value`, which is `PartialEq` but not `Eq` (floats).
+/// One completion call of a run: what was asked and what came back.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompletionCall {
     /// Zero-based index of the completion request within this agent run.
@@ -202,6 +203,7 @@ impl std::fmt::Display for PromptResponse {
 }
 
 impl PromptResponse {
+    /// A response whose final text is `output`, with the run's `usage`.
     pub fn new(output: impl Into<String>, usage: Usage) -> Self {
         let output = output.into();
         Self {
@@ -220,6 +222,7 @@ impl PromptResponse {
         Self::new(String::new(), Usage::new())
     }
 
+    /// Attach the run's accumulated message history.
     pub fn with_messages(mut self, messages: Vec<Message>) -> Self {
         self.messages = Some(messages);
         self
@@ -244,11 +247,13 @@ impl PromptResponse {
         self
     }
 
+    /// Record how many times the output tool was called.
     pub fn with_output_tool_calls(mut self, count: usize) -> Self {
         self.output_tool_calls = count;
         self
     }
 
+    /// How many times the output tool was called.
     pub fn output_tool_calls(&self) -> usize {
         self.output_tool_calls
     }

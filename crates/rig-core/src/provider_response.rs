@@ -213,7 +213,7 @@ pub(crate) fn completion_error_from_body(
 /// variant; the generated helpers read from those two sources only, since they
 /// are the only ones that genuinely represent a provider's response.
 macro_rules! impl_provider_response_helpers {
-    ($error:ty $(, $report:ident)?) => {
+    ($error:ty) => {
         impl $error {
             /// Builds an error from a captured HTTP status and raw response
             /// body: the one funnel every HTTP-error path uses.
@@ -247,7 +247,9 @@ macro_rules! impl_provider_response_helpers {
                         status,
                         body,
                         headers,
-                    } => Self::from_http_response(status, body).with_response_headers(Some(headers)),
+                    } => {
+                        Self::from_http_response(status, body).with_response_headers(Some(headers))
+                    }
                     other => Self::HttpError(other),
                 }
             }
@@ -259,7 +261,9 @@ macro_rules! impl_provider_response_helpers {
             pub fn with_provider_request_id(self, provider_request_id: Option<String>) -> Self {
                 match self {
                     Self::ProviderResponse(response) if response.provider_request_id.is_none() => {
-                        Self::ProviderResponse(response.with_provider_request_id(provider_request_id))
+                        Self::ProviderResponse(
+                            response.with_provider_request_id(provider_request_id),
+                        )
                     }
                     other => other,
                 }
@@ -400,9 +404,6 @@ macro_rules! impl_provider_response_helpers {
             pub fn provider_response_status(&self) -> Option<http::StatusCode> {
                 match self {
                     Self::ProviderResponse(response) => response.status,
-                    $(Self::$report(report) => report
-                        .http_status
-                        .and_then(|status| http::StatusCode::from_u16(status).ok()),)?
                     _ => None,
                 }
             }
@@ -415,7 +416,6 @@ macro_rules! impl_provider_response_helpers {
             pub fn provider_request_id(&self) -> Option<&str> {
                 match self {
                     Self::ProviderResponse(response) => response.provider_request_id.as_deref(),
-                    $(Self::$report(report) => report.request_id.as_deref(),)?
                     _ => None,
                 }
             }

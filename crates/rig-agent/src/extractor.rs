@@ -136,6 +136,7 @@ impl<T> ExtractorBuilder<T>
 where
     T: JsonSchema + DeserializeOwned + Serialize + WasmCompatSend + WasmCompatSync + 'static,
 {
+    /// An extractor of `T` over `model`.
     pub fn new<M>(model: M) -> Self
     where
         M: CompletionModel + 'static,

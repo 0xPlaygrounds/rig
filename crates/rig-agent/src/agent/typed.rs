@@ -33,6 +33,7 @@ use crate::{
 /// completion calls.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypedPromptResponse<T> {
+    /// The parsed structured output.
     pub output: T,
     /// Usage accumulated across every attempt, including attempts that
     /// received a billed response but failed to produce a parseable value.
@@ -52,6 +53,7 @@ pub struct TypedPromptResponse<T> {
 }
 
 impl<T> TypedPromptResponse<T> {
+    /// A response of `output` with the run's `usage`.
     pub fn new(output: T, usage: Usage) -> Self {
         Self {
             output,
