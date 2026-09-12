@@ -4,11 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-pub(super) fn changes(
-    root: &Path,
-    opts: &Options,
-    target: Option<&Path>,
-) -> Result<BTreeSet<String>> {
+pub(super) fn changes(root: &Path, opts: &Options) -> Result<BTreeSet<String>> {
     let revision = if let Some(base) = &opts.base {
         let merge = output(root, "git", &["merge-base", base, "HEAD"])?;
         println!("Base: {base}; merge base: {}", merge.trim());
@@ -30,14 +26,14 @@ pub(super) fn changes(
             &revision,
         ],
     ] {
-        for p in output(root, "git", &args)?
-            .split('\0')
-            .filter(|s| !s.is_empty())
-        {
-            paths.insert(p.into());
-        }
+        paths.extend(
+            output(root, "git", &args)?
+                .split('\0')
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned),
+        );
     }
-    paths.extend(execute::other_inputs(root, target)?);
+    paths.extend(execute::untracked_inputs(root)?);
     Ok(paths)
 }
 /// The two expensive lanes on top of the fast PR set. They have separate
@@ -188,7 +184,7 @@ pub(super) fn plan(
             if let Some(check) = out.first_mut() {
                 check.id = id.into();
                 for step in &mut check.steps {
-                    // nextest 0.9.67 rejects --retries with --no-run.
+                    // nextest rejects --retries together with --no-run.
                     if let Some(index) = step.args.iter().position(|a| a == "--retries") {
                         step.args.drain(index..index + 2);
                     }
@@ -207,13 +203,17 @@ pub(super) fn plan(
             Lanes::ALL,
         ));
     }
-    if opts.mode == Mode::Pr {
-        if paths.iter().any(|p| {
-            p == "CHANGELOG.md"
-                || p == "MIGRATING.md"
-                || p.starts_with("docs/migrations/")
-                || (p.starts_with("crates/") && p.ends_with("/CHANGELOG.md"))
-        }) {
+    if matches!(opts.mode, Mode::Pr | Mode::Lanes) {
+        // The release-document freeze is a PR policy with its own exemptions
+        // in ci.yaml; a lane query must not enforce it.
+        if opts.mode == Mode::Pr
+            && paths.iter().any(|p| {
+                p == "CHANGELOG.md"
+                    || p == "MIGRATING.md"
+                    || p.starts_with("docs/migrations/")
+                    || (p.starts_with("crates/") && p.ends_with("/CHANGELOG.md"))
+            })
+        {
             return Err(invalid(
                 "ordinary PR changes frozen release documents; put release notes in the PR description",
             ));
@@ -224,7 +224,6 @@ pub(super) fn plan(
             mode: Mode::Changed,
             base: opts.base.clone(),
             dry_run: opts.dry_run,
-            reuse: false,
             check: None,
         };
         let local = plan(root, metadata, &changed, paths, all)?;
@@ -242,16 +241,7 @@ pub(super) fn plan(
         let reason = format!(
             "complete intended PR diff; preserves required lanes; full-lane inputs: {full_triggers:?}; floor-lane inputs: {floor_triggers:?}; conservative fallbacks: {fallbacks:?}"
         );
-        let mut required = broad(all, &reason, lanes);
-        // The fast PR lane skips facade-build-tests. Preserve this targeted
-        // owner when its generated lock selected it without a full-lane trigger.
-        if !lanes.full
-            && let Some(facade) = local
-                .iter()
-                .find(|c| c.id == "provider-tool_facade_features")
-        {
-            required.push(facade.clone());
-        }
+        let required = broad(all, &reason, lanes);
         return Ok(required);
     }
     let packages = metadata["packages"]
@@ -261,17 +251,6 @@ pub(super) fn plan(
     let mut affected = BTreeSet::new();
     for path in paths {
         if path == "DEVELOPING.md" {
-            continue;
-        }
-        if let Some(owner) = preflight::fixture_lock_owner(path) {
-            let reason = "generated nested-workspace lockfile: execute its owning fixture tests";
-            if owner == "provider-tool_facade_features" {
-                if !out.iter().any(|c| c.id == owner) {
-                    out.push(provider_check("tool_facade_features", reason));
-                }
-            } else {
-                add(&mut out, all, owner, reason)?;
-            }
             continue;
         }
         if path == "scripts/check-dependency-floors.py"
