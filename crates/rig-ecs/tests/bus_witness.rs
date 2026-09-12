@@ -1424,3 +1424,36 @@ fn same_pass_parent_is_kept_in_fallback_adapter_and_layer_facts() {
         assert_eq!(fact.subject.scope.as_deref(), Some("same-pass"));
     }
 }
+
+/// The refusals a policy must not confuse: once dispatch has taken an
+/// effect the hold is refused as `Issued` (or `Settled` once it answered),
+/// never as `AlreadyHeld`, which would let a policy believe it holds a
+/// barrier it does not.
+#[test]
+fn a_hold_after_dispatch_is_refused_as_issued_or_settled_not_already_held() {
+    use rig_ecs::bus::{HoldRefused, acquire_hold};
+    let counters = Arc::new(Counters::default());
+    let mut app = app();
+    register(&mut app, "model", MockModel::new(&counters));
+    let entity = app
+        .world_mut()
+        .spawn(PendingEffect::new("model", completion()))
+        .id();
+    tick_until(&mut app, "issued", |world| {
+        world.get::<Issued>(entity).is_some() || world.get::<EffectOutcome>(entity).is_some()
+    });
+    let refused = acquire_hold(app.world_mut(), entity, Emitter::named("policy/late"))
+        .expect_err("dispatch already took the effect");
+    assert!(
+        matches!(refused, HoldRefused::Issued | HoldRefused::Settled),
+        "{refused:?}"
+    );
+    assert_ne!(refused, HoldRefused::AlreadyHeld);
+    tick_until(&mut app, "answered", |world| {
+        world.get::<EffectOutcome>(entity).is_some()
+    });
+    assert_eq!(
+        acquire_hold(app.world_mut(), entity, Emitter::named("policy/late")),
+        Err(HoldRefused::Settled)
+    );
+}

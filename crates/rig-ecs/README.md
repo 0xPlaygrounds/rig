@@ -32,7 +32,7 @@ must declare a nonempty `agent::PolicyVersion` for their custom systems,
 ordering and otherwise-unhashed configuration. A missing declaration is
 reported as unverified. This declaration is not an automatic code fingerprint
 or a check of ambient credentials and external state. The builder-only
-`stamp_header` remains a corpus header, not an effective compatibility check.
+`stamp_legacy_builder_header` remains a corpus header, not an effective compatibility check.
 
 `check_replayable` can run in a fresh world bound to the log's replayers.
 Recorded model identity and capabilities stay authoritative, including native
@@ -58,7 +58,7 @@ The request the model sees is derived, never authored: a run entity, utterances 
 | Agent | `Owner`, `Preamble`, `Temperature`, `MaxTokens`, `AdditionalParams`, `ToolChoiceSpec`, `Output { mode, schema }`, `OutputToolConfig`, `MaxTurns`, `DefaultMaxTurns`, `InvalidCalls`; `UsesModel` → the model's handler entity; `Grant` link entities → tool handler entities; `Context` link entities → documents |
 | Document | `DocumentId`, `DocumentText`, `DocumentProps`; attached to a turn by an `Attachment` link |
 | Utterance | `Utterance`, `Role`, `Parts` (the message's parts, verbatim), `Order`; `ChildOf` the run |
-| Run | `Run`, `RunOf` → agent, `RunSeq`, `Streamed`, `Cursor`, a phase (`Assembling`, `AwaitingModel`, `Settled`, `Failed(Failure)`), `RunResult`, `Usage`, `OutputRetries`, `OutputToolName`, the run's own overrides of the agent's settings, the bus's `Scope` |
+| Run | `Run`, `RunOf` → agent, `RunSeq`, `StreamRequested`, `Cursor`, a phase (`Assembling`, `AwaitingModel`, `Settled`, `Failed(Failure)`), `RunResult`, `Usage`, `OutputRetries`, `OutputToolName`, the run's own overrides of the agent's settings, the bus's `Scope` |
 | Turn | `Turn`, `ChildOf` the run, `Order`; `Advert` links → the tools it advertised; `Attachment` links → its documents; `Outputs` (per tick for a stream); `Reprompt`; `Batch` while its tool calls are out; `systems::{Fresh, Folded, Materialised}` |
 | Effect | the bus module's, `ChildOf` the turn: the completion, then one per call to a granted tool (`ToolCallSlot` says which call; the bus's `ToolInputs` carries the run's `ToolContextSpec`) — the batch is the turn's children, `ToolPolicy { concurrency }` on the run or the agent says how many fly at once |
 | Invalid call | `InvalidCall` + `Resolution`, `ChildOf` the turn |
@@ -170,7 +170,7 @@ still publish tool output before reaching `EffectOutcome` and shared settlement.
 
 ## The schedule
 
-`Bus::install` (or `install_bus`) adds `RigSchedule` with four sets in order to a `World`; the host runs it to quiescence by calling `run_to_quiescence` once per tick from the schedule or loop it owns (while a bus system marks `Progress`, at most `QUIESCENCE_CAP` passes). The base bus uses `bevy_ecs`, `bevy_tasks` and a private `futures` delivery queue; it does not require an `App`. Users add their systems to `RigSchedule`, ordered against the sets, never beside the runner.
+`Bus::install` adds `RigSchedule` with four sets in order to a `World`; the host runs it to quiescence by calling `run_to_quiescence` once per tick from the schedule or loop it owns (while a bus system marks `Progress`, at most `QUIESCENCE_CAP` passes). The base bus uses `bevy_ecs`, `bevy_tasks` and a private `futures` delivery queue; it does not require an `App`. Users add their systems to `RigSchedule`, ordered against the sets, never beside the runner.
 
 | set | true before | written during |
 |---|---|---|

@@ -647,7 +647,7 @@ pub(super) struct Command {
     /// was scoped ([`Dispatcher::scoped`]).
     pub(super) scope: Option<Arc<str>>,
     /// The context a tool call runs with, carried beside the effect (never
-    /// in it) to the handler's dispatch context ([`Dispatcher::dispatch_tool_with_id`]).
+    /// in it) to the handler's dispatch context ([`DispatchOptions::with_tool_context`]).
     pub(super) context: Option<ToolContext>,
     /// Observation state for this invocation only; never inherited by child dispatches.
     pub(super) adapter_context: Option<rig_core::observe::AdapterContext>,
@@ -812,7 +812,7 @@ impl Dispatcher {
         EffectId::from_raw(self.shared.next_id.fetch_add(1, Ordering::SeqCst))
     }
 
-    /// Mint the id a later [`Dispatcher::dispatch_with_id`] will carry, so a
+    /// Mint the id a later [`Dispatcher::dispatch_with`] with [`DispatchOptions::with_id`] will carry, so a
     /// hook can see the effect's identity before it is sent.
     pub fn mint_id(&self) -> EffectId {
         self.mint()
@@ -1094,11 +1094,6 @@ enum PendingState {
     Failed(Option<Box<ErrorReport>>),
 }
 
-/// A unary dispatch in flight: a plain `Unpin` future with no executor
-/// affinity, resolving to the outcome or a report. Dropping it cancels the
-/// dispatch (the owned reply is dropped). A host that ticks rather
-/// than awaits does not hold one: it holds effects as entities
-/// (`rig_ecs::bus`).
 /// What a dispatch may carry beside the effect. Every field is optional and
 /// they compose: [`Dispatcher::dispatch_with`] and
 /// [`Dispatcher::dispatch_stream_with`] take one value in place of a method
@@ -1117,24 +1112,32 @@ pub struct DispatchOptions {
 
 impl DispatchOptions {
     /// Dispatch under `id`.
+    #[must_use = "the setting applies to the returned value"]
     pub fn with_id(mut self, id: EffectId) -> Self {
         self.id = Some(id);
         self
     }
 
     /// Carry `context` to the tool handler.
+    #[must_use = "the setting applies to the returned value"]
     pub fn with_tool_context(mut self, context: ToolContext) -> Self {
         self.tool_context = Some(context);
         self
     }
 
     /// Observe the dispatch under `context`.
+    #[must_use = "the setting applies to the returned value"]
     pub fn with_adapter_context(mut self, context: rig_core::observe::AdapterContext) -> Self {
         self.adapter_context = Some(context);
         self
     }
 }
 
+/// A unary dispatch in flight: a plain `Unpin` future with no executor
+/// affinity, resolving to the outcome or a report. Dropping it cancels the
+/// dispatch (the owned reply is dropped). A host that ticks rather
+/// than awaits does not hold one: it holds effects as entities
+/// (`rig_ecs::bus`).
 #[must_use = "a dispatch does nothing until polled"]
 pub struct Pending {
     id: EffectId,

@@ -6,7 +6,7 @@ application verification. It has no dependency on either agent runtime, the
 Rig facade, a consumer registry or a repository's fixture inventory.
 
 Pass a fixture root containing provider directories to `ProviderCassette::start`,
-`start_direct_recording`, `cassette_path` and every `recorded_*` reader:
+`start_via(Transport::Direct, ..)`, `cassette_path` and every `recorded_*` reader:
 
 ```text
 <fixture-root>/anthropic/completion.yaml
@@ -24,10 +24,9 @@ fixtures and failed assertions panic, preserving the original test-support
 behavior.
 
 `RIG_PROVIDER_TEST_MODE` defaults to `replay`. `record` contacts the configured
-upstream and overwrites the selected fixture after scrubbing. Controlled offline
-workflows should use `ProviderCassette::start_at` with `CassetteMode::Replay` and
-an exact path; that method never derives a mode from the environment. Recording
-can target a separate candidate path, then be validated before promotion.
+upstream and overwrites the selected fixture after scrubbing; the mode is read from
+the environment by every constructor, and a recording reaches the provider through
+the proxy (`start`) or directly (`start_via(Transport::Direct, ..)`).
 
 `DirectRecorder`, its request/response types and `DirectRecordingHttpClient`
 preserve binary bodies that a text proxy cannot record. SSE and ordinary binary

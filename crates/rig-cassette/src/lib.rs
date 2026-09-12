@@ -6,8 +6,9 @@
 //!
 //! Every constructor and recorded-request reader receives its fixture root
 //! explicitly. The root contains provider directories; this crate does not
-//! depend on a repository layout or consumer registry. `start_at` instead takes
-//! an exact destination and mode, for controlled offline/candidate workflows.
+//! depend on a repository layout or consumer registry. The ambient
+//! [`CassetteMode`] decides recording versus replay; [`Transport`] decides how
+//! a recording reaches the provider.
 //! Enable `bedrock` to scrub binary Smithy event-stream payloads. Ordinary
 //! binary bodies and SSE work without that feature. This is native test support;
 //! invalid fixtures and failed replay assertions deliberately panic.

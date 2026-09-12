@@ -43,10 +43,10 @@ async fn catalog_matches_definitions_and_dispatches_by_name() {
     assert!(!missing.is_success(), "retrieval-only tools are not pinned");
 }
 
-/// `execute_owned` matches `execute` (result and published context) and
+/// An owned execution matches `execute` (result and published context) and
 /// its future is `Send + 'static` — spawnable on any executor.
 #[tokio::test]
-async fn execute_owned_matches_execute_and_is_static() {
+async fn an_owned_execution_matches_the_borrowed_one_and_is_static() {
     fn assert_send_static<T: Send + 'static>(value: T) -> T {
         value
     }

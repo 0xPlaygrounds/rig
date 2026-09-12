@@ -164,7 +164,7 @@ pub(crate) async fn build_prepared_completion_request(
         executable_tool_names,
         allowed_tool_names,
         output_tool_name,
-        // The post-patch binding from above — the one `.max_tokens_opt(..)`
+        // The post-patch binding from above — the one `.max_tokens(..)`
         // put on the request.
         max_tokens,
     })

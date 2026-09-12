@@ -413,7 +413,7 @@ pub(crate) fn record_cancelled(
 
 /// An in-flight effect losing `InFlight` without an outcome, seen by the
 /// witness: a cancelled dispatch, whether or not a record is kept.
-pub fn witness_cancelled(
+pub(crate) fn witness_cancelled(
     removed: On<Remove, InFlight>,
     effects: Query<(Has<EffectOutcome>, Option<&Observed>), With<Issued>>,
     subjects: super::witness::Subjects,

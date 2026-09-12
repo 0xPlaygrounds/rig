@@ -1314,17 +1314,17 @@ impl<M> CompletionRequestBuilder<M> {
         // used to follow could never be taken — and it forced a clone of the
         // prompt to feed it.
         chat_history.push(prompt);
-        let additional_params = merge_provider_tools_into_additional_params(
-            self.additional_params,
-            self.provider_tools,
-        );
+        // Checked before provider tools are merged in: that merge writes a
+        // `tools` key of its own, which is not a caller collision.
         for key in shadowed_typed_fields(
-            additional_params.as_ref(),
+            self.additional_params.as_ref(),
             &[
                 ("temperature", self.temperature.is_some()),
                 ("max_tokens", self.max_tokens.is_some()),
                 ("tool_choice", self.tool_choice.is_some()),
                 ("model", self.request_model.is_some()),
+                ("tools", !self.tools.is_empty()),
+                ("response_format", self.output_schema.is_some()),
             ],
         ) {
             tracing::warn!(
@@ -1332,6 +1332,10 @@ impl<M> CompletionRequestBuilder<M> {
                 "additional_params overrides the typed `{key}` field set on the same request"
             );
         }
+        let additional_params = merge_provider_tools_into_additional_params(
+            self.additional_params,
+            self.provider_tools,
+        );
 
         let request = CompletionRequest {
             model: self.request_model,
