@@ -641,7 +641,7 @@ impl ProviderCassette {
 
     /// Finalize after a successful fallible test, preserving its failure otherwise.
     pub async fn finish_after_test_result<E>(
-        self,
+        mut self,
         test_result: Result<Result<(), E>, PanicPayload>,
     ) -> Result<(), E> {
         match test_result {
@@ -651,8 +651,19 @@ impl ProviderCassette {
                 }
                 Ok(())
             }
-            Ok(Err(error)) => Err(error),
+            Ok(Err(error)) => {
+                // The test's own failure is the report; the session it left
+                // unplayed must not replace it with the drop guard's.
+                self.disarm_drop_guard();
+                Err(error)
+            }
             Err(payload) => resume_unwind(payload),
+        }
+    }
+
+    fn disarm_drop_guard(&mut self) {
+        if let CassetteServer::Replay(server) = &mut self.server {
+            server.checked = true;
         }
     }
 
@@ -666,6 +677,8 @@ struct ReplayServer {
     state: Arc<Mutex<ReplayState>>,
     shutdown: Option<oneshot::Sender<()>>,
     task: Option<JoinHandle<()>>,
+    /// `finish` asserted consumption: the drop guard has nothing to add.
+    checked: bool,
 }
 
 impl ReplayServer {
@@ -714,6 +727,7 @@ impl ReplayServer {
             state,
             shutdown: Some(shutdown_tx),
             task: Some(task),
+            checked: false,
         }
     }
 
@@ -721,7 +735,8 @@ impl ReplayServer {
         format!("http://{}", self.addr)
     }
 
-    async fn assert_consumed(&self, cassette_path: &Path) {
+    async fn assert_consumed(&mut self, cassette_path: &Path) {
+        self.checked = true;
         let state = self.state.lock().await;
         assert_replay_finished(cassette_path, &state.interactions, &state.misses);
     }
@@ -741,6 +756,23 @@ impl Drop for ReplayServer {
     fn drop(&mut self) {
         if let Some(shutdown) = self.shutdown.take() {
             let _ = shutdown.send(());
+        }
+        if self.checked || std::thread::panicking() {
+            return;
+        }
+        // A session dropped without `finish` — a test that returned early,
+        // a helper that forgot — would otherwise pass on a recording it
+        // never played to the end, or on a request the replay refused. Only
+        // that evidence panics; a fully consumed session may end silently.
+        let Ok(state) = self.state.try_lock() else {
+            return;
+        };
+        if let Some(message) = replay_completion_failure_message(
+            &state.cassette_path,
+            &state.interactions,
+            &state.misses,
+        ) {
+            panic!("{message}\n(the replay session was dropped without `finish`)");
         }
     }
 }
@@ -3337,6 +3369,8 @@ pub fn owned_headers(headers: &http_client::HeaderMap) -> Vec<(String, String)> 
 
 #[cfg(test)]
 mod paths;
+#[cfg(test)]
+mod replay_session_tests;
 
 #[cfg(test)]
 mod cached_content_scrub_tests;

@@ -364,12 +364,14 @@ pub fn settle(
                 }
             }
         }
-        commands.entity(entity).remove::<(
-            InFlight,
-            Observed,
-            CollectedOutcome,
-            super::record::ReplacedBy,
-        )>();
+        // The collection marker goes first, on its own: the `Remove<InFlight>`
+        // observers read its absence as "settled" and its presence as an
+        // answered effect leaving flight unsettled (a despawn from the
+        // outcome observer), whose record they close instead.
+        commands.entity(entity).remove::<CollectedOutcome>();
+        commands
+            .entity(entity)
+            .remove::<(InFlight, Observed, super::record::ReplacedBy)>();
         progress.mark();
     }
 }

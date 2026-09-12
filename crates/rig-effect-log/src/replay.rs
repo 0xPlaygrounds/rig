@@ -638,9 +638,15 @@ impl Serve for EffectLogReplayer {
                         }
                         // Merge kept successful events and errors by original item
                         // position, including late frames after the first terminal.
-                        // A setup failure may have a folded error without any
-                        // stream items. A canonical truncation is reconstructed by EOF,
-                        // not an invented in-band error.
+                        // The record's outcome is appended as one last error item
+                        // only when nothing kept produces it: not an error item
+                        // (kept at its position), not the fold of the kept events
+                        // (a terminal, or a malformed block the consumer's own
+                        // fold reports again — appending it would hand the
+                        // consumer an item the live stream never carried), and
+                        // not a truncation (reconstructed by EOF, never an
+                        // invented in-band error). What remains is an outcome
+                        // the stream never reached — a cancellation mid-stream.
                         if let (Some(events), true) = (record.events, dispatch.is_stream()) {
                             let errors = self
                                 .stream_errors
@@ -648,17 +654,18 @@ impl Serve for EffectLogReplayer {
                                 .cloned()
                                 .unwrap_or_default();
                             let mut tap = rig_core::serve::StreamTap::new();
-                            let truncated = errors.is_empty()
-                                && record.outcome.as_ref().is_err_and(|error| {
-                                    error == &rig_core::serve::stream_truncated()
-                                })
-                                && !events
-                                    .iter()
-                                    .any(|event| tap.observe(&Ok(event.clone())).is_some());
-                            let fallback = if errors.is_empty() && !truncated {
-                                record.outcome.err()
-                            } else {
-                                None
+                            let folded = events
+                                .iter()
+                                .any(|event| tap.observe(&Ok(event.clone())).is_some());
+                            let fallback = match record.outcome {
+                                Err(error)
+                                    if errors.is_empty()
+                                        && !folded
+                                        && error != rig_core::serve::stream_truncated() =>
+                                {
+                                    Some(error)
+                                }
+                                Ok(_) | Err(_) => None,
                             };
                             let total = events.len() + errors.len();
                             let mut errors = errors.into_iter().peekable();

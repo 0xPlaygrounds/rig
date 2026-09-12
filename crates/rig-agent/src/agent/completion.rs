@@ -767,7 +767,8 @@ impl Agent {
     /// [`add_hook`](AgentRunner::add_hook),
     /// [`tool_context`](AgentRunner::tool_context),
     /// [`tool_concurrency`](AgentRunner::tool_concurrency), the model
-    /// selection and telemetry settings. Two run-side values still show
+    /// selection and telemetry settings (inbound tool context is driver
+    /// state, never part of the persisted run). Two run-side values still show
     /// through: the run's persisted tool choice is what invalid-call hooks
     /// see and what gates a `Skip`, while the request's tool choice is the
     /// runner's; and the output tool the run committed stays committed even
@@ -775,7 +776,11 @@ impl Agent {
     /// unhandled-invalid-tool-call policy is the run's on the blocking path
     /// and the runner's on the streamed path. Conversation memory is neither
     /// loaded nor appended: the history is already in the run, and the driver
-    /// that persisted it owns its memory. Drive it like any runner: `.await`,
+    /// that persisted it owns its memory — it appends the finished run's
+    /// `messages` itself, since a suspended run never reached the `Done`
+    /// append, so the response's `memory_append` is `None`. Pending tool
+    /// calls re-execute on resume: a tool that ran before the suspension and
+    /// answered nothing runs again. Drive it like any runner: `.await`,
     /// [`stream`](AgentRunner::stream) or
     /// [`run_channel`](AgentRunner::run_channel). The run must have been
     /// suspended by the same rig version.
@@ -796,17 +801,23 @@ impl Agent {
     /// then append the messages the run committed to `chat_history`. This is
     /// [`prompt`](Self::prompt) with [`history`](AgentRunner::history) plus
     /// the write-back; the runner form is the one to configure or stream.
+    /// The returned [`PromptResponse`] keeps its `messages`.
+    ///
+    /// The caller's history is the run's input history, so conversation
+    /// memory is bypassed (no load, no append) and the caller owns
+    /// persistence. A run that fails appends nothing: the error carries the
+    /// history the run had, the caller's vector is unchanged.
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name_or_default()))]
     pub async fn chat(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
         chat_history: &mut Vec<Message>,
     ) -> Result<PromptResponse, PromptError> {
-        let mut response = AgentRunner::from_agent(self, prompt)
+        let response = AgentRunner::from_agent(self, prompt)
             .history(chat_history.clone())
             .await?;
-        if let Some(messages) = response.messages.take() {
-            chat_history.extend(messages);
+        if let Some(messages) = &response.messages {
+            chat_history.extend(messages.iter().cloned());
         }
         Ok(response)
     }

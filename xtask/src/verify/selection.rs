@@ -40,10 +40,28 @@ pub(super) fn changes(
     paths.extend(execute::other_inputs(root, target)?);
     Ok(paths)
 }
-fn broad(all: &[Check], reason: &str, full: bool) -> Vec<Check> {
+/// The two expensive lanes on top of the fast PR set. They have separate
+/// triggers (`checks::full_lane`, `checks::floor_lane`) both locally and in
+/// CI, so a storage-suite edit no longer resolves dependency floors and a
+/// manifest edit no longer waits on the service suites unless it also
+/// matches that lane.
+#[derive(Clone, Copy)]
+struct Lanes {
+    full: bool,
+    floors: bool,
+}
+impl Lanes {
+    const ALL: Self = Self {
+        full: true,
+        floors: true,
+    };
+}
+fn broad(all: &[Check], reason: &str, lanes: Lanes) -> Vec<Check> {
     all.iter()
-        .filter(|c| {
-            full || !["full-tests", "dependency-floors", "workspace-check"].contains(&c.id.as_str())
+        .filter(|c| match c.id.as_str() {
+            "full-tests" => lanes.full,
+            "dependency-floors" => lanes.floors,
+            _ => true,
         })
         .cloned()
         .map(|mut c| {
@@ -153,12 +171,19 @@ pub(super) fn plan(
             .as_deref()
             .ok_or_else(|| invalid("missing check ID"))?;
         let mut out = Vec::new();
-        if id == "default-test-build" {
+        // Cache warming: compile exactly the artifacts a test check needs,
+        // without executing it or claiming its result. Each alias keeps its
+        // source check's package/feature graph so rust-cache entries match.
+        let warming = [
+            ("default-test-build", "default-tests"),
+            ("full-test-build", "full-tests"),
+        ];
+        if let Some((_, source)) = warming.iter().find(|(alias, _)| *alias == id) {
             add(
                 &mut out,
                 all,
-                "default-tests",
-                "cache warming only: compile default test artifacts; executes no tests",
+                source,
+                "cache warming only: compile test artifacts; executes no tests",
             )?;
             if let Some(check) = out.first_mut() {
                 check.id = id.into();
@@ -179,7 +204,7 @@ pub(super) fn plan(
         return Ok(broad(
             all,
             "exhaustive supported repository verification",
-            true,
+            Lanes::ALL,
         ));
     }
     if opts.mode == Mode::Pr {
@@ -203,17 +228,24 @@ pub(super) fn plan(
             check: None,
         };
         let local = plan(root, metadata, &changed, paths, all)?;
-        let triggers: Vec<_> = paths.iter().filter(|p| checks::full_lane(p)).collect();
-        let fallback = local.iter().find(|check| check.id == "full-tests");
-        let needs_full = !triggers.is_empty() || fallback.is_some();
+        let full_triggers: Vec<_> = paths.iter().filter(|p| checks::full_lane(p)).collect();
+        let floor_triggers: Vec<_> = paths.iter().filter(|p| checks::floor_lane(p)).collect();
+        let fallback = |id: &str| local.iter().find(|check| check.id == id);
+        let lanes = Lanes {
+            full: !full_triggers.is_empty() || fallback("full-tests").is_some(),
+            floors: !floor_triggers.is_empty() || fallback("dependency-floors").is_some(),
+        };
+        let fallbacks: Vec<_> = ["full-tests", "dependency-floors"]
+            .into_iter()
+            .filter_map(|id| fallback(id).map(|c| format!("{id}: {}", c.reason)))
+            .collect();
         let reason = format!(
-            "complete intended PR diff; preserves required lanes; full-lane inputs: {triggers:?}; {}",
-            fallback.map_or("no conservative full fallback", |c| c.reason.as_str())
+            "complete intended PR diff; preserves required lanes; full-lane inputs: {full_triggers:?}; floor-lane inputs: {floor_triggers:?}; conservative fallbacks: {fallbacks:?}"
         );
-        let mut required = broad(all, &reason, needs_full);
+        let mut required = broad(all, &reason, lanes);
         // The fast PR lane skips facade-build-tests. Preserve this targeted
         // owner when its generated lock selected it without a full-lane trigger.
-        if !needs_full
+        if !lanes.full
             && let Some(facade) = local
                 .iter()
                 .find(|c| c.id == "provider-tool_facade_features")
@@ -242,6 +274,19 @@ pub(super) fn plan(
             }
             continue;
         }
+        if path == "scripts/check-dependency-floors.py"
+            || path == "scripts/test_dependency_floors.py"
+        {
+            // The floor checker and its isolation tests touch nothing else.
+            add(&mut out, all, "tooling", "floor checker isolation tests")?;
+            add(
+                &mut out,
+                all,
+                "dependency-floors",
+                "floor checker changed: resolve and build the lowered graph",
+            )?;
+            continue;
+        }
         if path == "Cargo.lock"
             || path.ends_with("Cargo.toml")
             || path == "rust-toolchain.toml"
@@ -259,10 +304,19 @@ pub(super) fn plan(
             .iter()
             .any(|p| path.starts_with(p))
         {
+            // Shared inputs broaden to every runtime check. Dependency floors
+            // join only for resolver inputs: nextest configuration, shared
+            // test support or facade source cannot change what Cargo resolves.
+            let lanes = Lanes {
+                full: true,
+                floors: checks::floor_lane(path)
+                    || path.starts_with(".github/")
+                    || path.starts_with("scripts/"),
+            };
             return Ok(broad(
                 all,
                 &format!("conservative fallback: shared/build/verification input {path}"),
-                true,
+                lanes,
             ));
         }
         if path.starts_with("tests/ecs_parity/") {
@@ -316,7 +370,7 @@ pub(super) fn plan(
                 return Ok(broad(
                     all,
                     &format!("unknown provider/target for {path}"),
-                    true,
+                    Lanes::ALL,
                 ));
             }
             let id = format!("provider-{name}");
@@ -345,7 +399,7 @@ pub(super) fn plan(
                 return Ok(broad(
                     all,
                     &format!("unmodeled package asset or generator {path}"),
-                    true,
+                    Lanes::ALL,
                 ));
             }
             affected.insert(name.to_string());
@@ -354,7 +408,7 @@ pub(super) fn plan(
         return Ok(broad(
             all,
             &format!("unknown input {path}; cannot safely narrow"),
-            true,
+            Lanes::ALL,
         ));
     }
     if paths.iter().any(|p| p != "DEVELOPING.md") {

@@ -2,21 +2,23 @@ name: Development cache warm
 
 on:
   push:
-    branches: [feat/effect-bus]
+    branches: [main, feat/effect-bus]
 
 permissions:
   contents: read
 
 concurrency:
-  group: cache-warm-effect-bus
+  group: cache-warm-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # One configuration and one base branch, not every matrix leg. PR merge
-  # refs can restore their base's cache but cannot warm other PRs themselves.
-  # Match ci.yaml's test job ID and setup so rust-cache keys stay compatible.
+  # Two configurations, not every matrix leg. PR merge refs can restore
+  # their base's cache but cannot warm other PRs themselves. The default
+  # graph is warmed for the development base only: on main, cd.yaml's own
+  # `test` job already saves it. Match ci.yaml's test job ID and setup so
+  # rust-cache keys stay compatible.
   test:
-    if: github.repository == '0xPlaygrounds/rig' && github.event_name == 'push'
+    if: github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' && github.ref == 'refs/heads/feat/effect-bus'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -28,3 +30,31 @@ jobs:
           cache-development: "true"
       # Populate the same artifacts without repeating the required CI test run.
       - run: cargo xtask verify --check default-test-build
+
+  # The all-features test graph, shared through one rust-cache key by the two
+  # jobs that build it verbatim — ci.yaml's `doctest` (`cargo test --doc
+  # --workspace --all-features`) and nightly.yaml's `test-all-features`
+  # (`nextest run --workspace --all-features`): same profile, same feature
+  # set, same environment. No sccache, for the quota reason on the
+  # rust-setup input. This job is the key's only writer — both restoring
+  # jobs pass `cache-save-if: "false"` — so the saved entry is always the
+  # complete nextest graph (the doctest build is a subset: bin-only members
+  # have no doctests). It runs on main as well; nothing else writes the key
+  # there, so without it every PR and merge-queue restore would miss.
+  # Before this job every doctest run compiled the whole graph cold: nine of
+  # its ten minutes were dependencies, sixteen seconds were doctests.
+  # rust-cache keeps dependency artifacts only, so workspace crates still
+  # rebuild in every run.
+  all-features:
+    if: github.repository == '0xPlaygrounds/rig' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/rust-setup
+        with:
+          nextest: "true"
+          protoc: "true"
+          cache-development: "true"
+          cache-shared-key: all-features
+      # Compile the all-features test artifacts; execute nothing.
+      - run: cargo xtask verify --check full-test-build

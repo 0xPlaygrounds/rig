@@ -106,14 +106,19 @@ impl Recording {
 #[derive(Resource, Default)]
 pub struct DeliveryBatch(pub u64);
 
-/// Begin the next pass's observation group.
+/// Begin the next pass's observation group. A pass the host runs itself
+/// (outside [`run_to_quiescence`](super::run_to_quiescence)) is that
+/// host's tick: its stream budget and its intake bound start afresh here,
+/// as the runner starts them at the top of each of its ticks.
 pub fn begin_delivery_pass(
     mut batch: ResMut<DeliveryBatch>,
     mut budget: ResMut<super::collect::CollectionBudget>,
+    mut intake: ResMut<super::plugin::Intake>,
 ) {
     batch.0 += 1;
     if !budget.in_runner {
         budget.remaining = super::collect::STREAM_WORK_PER_TICK;
+        intake.0 = 0;
     }
 }
 
@@ -340,6 +345,7 @@ impl rig_core::serve::Observe for WorldObserver {
 pub type CancellationView = (
     &'static Issued,
     Option<&'static EffectOutcome>,
+    Has<super::collect::CollectedOutcome>,
     Option<&'static super::effect::Publishing>,
     Option<&'static super::effect::ToolOutputs>,
     Option<&'static Observed>,
@@ -348,6 +354,12 @@ pub type CancellationView = (
 /// An in-flight effect losing `InFlight` without an outcome — a despawn,
 /// its own or an ancestor's — is a cancelled dispatch: the record says so,
 /// as it does when a consumer drops its `Pending` on rig-bus.
+///
+/// An effect losing `InFlight` with an outcome landed but not yet settled
+/// — despawned from the `On<Add, EffectOutcome>` observer that is its
+/// readiness signal, before `settle` ran — is an answered dispatch whose
+/// settlement will never happen: the record closes here with the answer
+/// the handler gave, as `settle` would have closed it.
 pub fn record_cancelled(
     removed: On<Remove, InFlight>,
     effects: Query<CancellationView>,
@@ -357,27 +369,45 @@ pub fn record_cancelled(
     let Some(recording) = recording else {
         return;
     };
-    if let Ok((Issued(id), None, publishing, outputs, observed)) =
+    let Ok((Issued(id), outcome, collected, publishing, outputs, observed)) =
         effects.get(removed.event().entity)
-    {
-        let original = observed.and_then(|observed| observed.0.take_outcome());
-        if observed.is_some_and(|observed| observed.0.is_discarded()) {
-            return;
+    else {
+        return;
+    };
+    if observed.is_some_and(|observed| observed.0.is_discarded()) {
+        return;
+    }
+    match outcome {
+        // Landed but not settled: `settle` retires `CollectedOutcome` before
+        // it retires `InFlight`, so its presence here means settlement never
+        // ran (the entity is being despawned with its answer on it).
+        Some(EffectOutcome(landed)) if collected => {
+            let original = observed.and_then(|observed| observed.0.take_outcome());
+            if observed.is_none()
+                && let Some(outputs) = outputs
+            {
+                recording.tool_output(*id, outputs.0.result_context());
+            }
+            recording.resolve(*id, original.unwrap_or_else(|| landed.clone()));
         }
-        let output = publishing
-            .and_then(|published| published.0.result_context())
-            .or_else(|| outputs.map(|outputs| outputs.0.result_context()));
-        if let Some(output) = output {
-            recording.tool_output(*id, output);
+        Some(_) => {}
+        None => {
+            let original = observed.and_then(|observed| observed.0.take_outcome());
+            let output = publishing
+                .and_then(|published| published.0.result_context())
+                .or_else(|| outputs.map(|outputs| outputs.0.result_context()));
+            if let Some(output) = output {
+                recording.tool_output(*id, output);
+            }
+            if original.as_ref().is_some_and(|answer| {
+                !answer
+                    .as_ref()
+                    .is_err_and(|error| error.kind == rig_core::error::ErrorKind::Cancelled)
+            }) {
+                recording.delivery(batch.0, *id, rig_core::effect::DeliveryKind::Cancelled);
+            }
+            recording.resolve(*id, original.unwrap_or_else(|| Err(cancelled())));
         }
-        if original.as_ref().is_some_and(|answer| {
-            !answer
-                .as_ref()
-                .is_err_and(|error| error.kind == rig_core::error::ErrorKind::Cancelled)
-        }) {
-            recording.delivery(batch.0, *id, rig_core::effect::DeliveryKind::Cancelled);
-        }
-        recording.resolve(*id, original.unwrap_or_else(|| Err(cancelled())));
     }
 }
 

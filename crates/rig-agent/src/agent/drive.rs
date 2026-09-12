@@ -27,6 +27,8 @@ use crate::sync::Mutex;
 
 #[cfg(all(test, rig_loom))]
 mod loom_models;
+#[cfg(all(test, not(rig_loom)))]
+mod tests;
 use crate::bus::{BusDriver, Dispatcher, Registrar};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::ServingPolicy;
@@ -375,10 +377,14 @@ pub(crate) struct Driven<S> {
 }
 
 impl<S> Driven<S> {
-    /// The run is over: it neither drives nor needs waking any more.
+    /// The run is over: it neither drives nor needs waking any more. The
+    /// runs still registered are woken: one of them may have found the
+    /// driver lock taken under this run's last poll and buffered a command
+    /// since that poll's drain, and nothing polls the driver between runs.
     fn finish(&mut self) {
         self.inner = None;
         self.wakers.unregister(self.slot);
+        self.wakers.wake_by_ref();
     }
 
     /// A run that ended with a dispatch still in flight left it because it
@@ -458,6 +464,9 @@ impl<S> Drop for Driven<S> {
             let mut driver_cx = Context::from_waker(&waker);
             let _ = Pin::new(&mut *guard).poll(&mut driver_cx);
         }
+        // As at `finish`: a run that found the lock taken under this poll
+        // takes over once it is released.
+        self.wakers.wake_by_ref();
     }
 }
 

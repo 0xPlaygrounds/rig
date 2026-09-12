@@ -39,6 +39,13 @@ inputs:
   cache-development:
     description: Allow the bounded development-base warming job to save caches
     default: "false"
+  cache-shared-key:
+    description: >-
+      rust-cache key shared by jobs that compile the same dependency graph
+      (profile, features, environment), replacing the automatic per-job key.
+      Restoring jobs must pass `cache-save-if: "false"` so the warming job
+      is the key's only writer. Empty keeps the per-job key.
+    default: ""
   sccache:
     description: >-
       Enable sccache with the GitHub Actions cache backend. Reserved for the
@@ -92,6 +99,7 @@ runs:
         components: ${{ inputs.components }}
         target: ${{ inputs.target }}
         cache: ${{ inputs.cache }}
+        cache-shared-key: ${{ inputs.cache-shared-key }}
         cache-save-if: ${{ inputs.cache-save-if == 'true' && github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || (inputs.cache-development == 'true' && github.ref == 'refs/heads/feat/effect-bus')) }}
 
     # rust-cache (inside setup-rust-toolchain above) persists *dependency*

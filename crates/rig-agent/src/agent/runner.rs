@@ -344,6 +344,15 @@ impl AgentRunner {
     }
 
     /// Set the conversation id used to load and persist memory for this run.
+    ///
+    /// With a memory backend configured, the run loads the conversation
+    /// before its first model call (a load failure fails the run with
+    /// [`PromptError::MemoryError`] before any completion) and appends its
+    /// `messages` once it finishes. The append is acknowledged on the
+    /// response's [`memory_append`](PromptResponse::memory_append): a
+    /// refused append does not fail the run, the answer stands and the
+    /// response says the transcript was not persisted. Explicit
+    /// [`history`](Self::history) bypasses both.
     pub fn conversation(mut self, id: impl Into<rig_core::id::ConversationId>) -> Self {
         self.config.conversation_id = Some(id.into());
         self
@@ -541,7 +550,8 @@ impl AgentRunner {
         // A resumed run brought its history with it: nothing is loaded and
         // nothing is saved — no `Memory` dispatch, no memory hook event, no
         // record in the log — so its continuation is exactly the reference
-        // log's tail and a memory backend that is down cannot fail it.
+        // log's tail and a memory backend that is down cannot fail it. The
+        // driver that persisted the run owns its append (see `Agent::resume`).
         let (history_override, memory_handle) = match &self.origin {
             RunOrigin::Resume(_) => (None, None),
             RunOrigin::Prompt(_) => {

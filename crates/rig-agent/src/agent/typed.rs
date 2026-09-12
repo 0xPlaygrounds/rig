@@ -45,6 +45,10 @@ pub struct TypedPromptResponse<T> {
     /// metrics for that request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_calls: Vec<CompletionCall>,
+    /// How the accepted attempt's conversation-memory append settled; see
+    /// [`PromptResponse::memory_append`](crate::agent::PromptResponse::memory_append).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_append: Option<crate::run::MemoryAppend>,
 }
 
 impl<T> TypedPromptResponse<T> {
@@ -53,6 +57,7 @@ impl<T> TypedPromptResponse<T> {
             output,
             usage,
             completion_calls: Vec::new(),
+            memory_append: None,
         }
     }
 
@@ -368,6 +373,7 @@ where
                         output,
                         usage,
                         completion_calls: response.completion_calls,
+                        memory_append: response.memory_append,
                     })
                 }
                 Err(err) => {

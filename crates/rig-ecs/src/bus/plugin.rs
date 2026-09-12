@@ -59,7 +59,8 @@ impl Progress {
 
 /// How many effects `Dispatch` has taken this tick, against
 /// [`ServingPolicy::command_capacity`]: the per-tick intake bound. Reset by
-/// the runner at the start of every tick.
+/// the runner at the start of every tick, and at the start of every pass a
+/// host runs itself (each such pass is that host's tick).
 #[derive(Resource, Debug, Default, Clone, Copy)]
 pub struct Intake(pub usize);
 
@@ -211,3 +212,6 @@ pub fn run_to_quiescence(world: &mut World) {
         .resource_mut::<super::collect::CollectionBudget>()
         .in_runner = false;
 }
+
+#[cfg(test)]
+mod tests;

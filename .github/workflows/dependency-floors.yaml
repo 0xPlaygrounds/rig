@@ -1,0 +1,95 @@
+# The declared dependency requirements are floors, not pins (`tokio = "1"`
+# is `^1`), and a downstream resolves anywhere inside them — usually to
+# whatever its own lockfile already holds. So rig has to actually build at
+# the lowest version it declares, or the floor is a lie that surfaces as a
+# build break in someone else's tree (#2195). Cargo's `-Zdirect-minimal-
+# versions` is nightly-only and dead-ends in this workspace's transitive
+# graph, so `scripts/check-dependency-floors.py` does the equivalent on
+# stable: `cargo update --precise` every direct dependency down to the
+# lowest version the tree admits, then `cargo check --workspace
+# --all-features --all-targets`.
+#
+# Its own lane, separate from nightly.yaml's runtime suites, because the two
+# have different inputs. The floors change when Cargo's resolver inputs
+# change — a manifest anywhere in the workspace, the lockfile, the toolchain,
+# Cargo configuration, the checker itself — while the service suites care
+# about the storage crates' source. Sharing one path filter made a sqlite
+# suite edit resolve and build the whole lowered graph (about eleven
+# minutes) for nothing, and made a manifest edit wait on Docker-backed
+# suites it cannot affect. `checks::floor_lane` in xtask is the local mirror
+# of the filter below; a test keeps the two in step.
+#
+# The accepted tradeoff: a source-only change that starts using an API newer
+# than a declared floor is caught by the scheduled run, the merge queue or
+# the release gate rather than on its own PR. All three still run this lane
+# unconditionally.
+#
+# When it runs:
+#   * nightly at 06:00 UTC;
+#   * on any PR that touches a resolver input (below);
+#   * in the merge queue (`merge_group`), because the squashed batch that
+#     lands on main is not any PR head the filter validated (GitHub does not
+#     support `paths` filters on merge_group events);
+#   * on demand via `gh workflow run dependency-floors.yaml`;
+#   * via `workflow_call` from cd.yaml on every push to main, so release-plz
+#     never publishes a commit that does not build at its floors.
+name: Dependency Floors
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  pull_request:
+    paths:
+      # Every manifest is a resolver input: crates, examples, the service
+      # runner, xtask and the nested compile fixtures all declare
+      # requirements that `cargo update --precise` lowers.
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "**/Cargo.toml"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - "scripts/check-dependency-floors.py"
+      - "scripts/test_dependency_floors.py"
+      # The verification tooling defines the check and prepares its inputs.
+      - "xtask/**"
+      # Editing the lane, or the setup every lane shares, must run the lane.
+      - ".github/workflows/dependency-floors.yaml"
+      - ".github/actions/**"
+  merge_group:
+  workflow_dispatch:
+  workflow_call:
+
+env:
+  CARGO_TERM_COLOR: always
+
+# Disjoint from ci.yaml's and nightly.yaml's groups when all three are
+# invoked from one cd.yaml run (inside a called workflow, `github.workflow`
+# resolves to the CALLER's name). Keyed on the PR number rather than
+# `head_ref` because two forks PRing from identically-named branches share a
+# head_ref.
+concurrency:
+  group: floors-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-floors:
+    name: stable / dependency floors
+    runs-on: ubuntu-latest
+    # `schedule` fires on any fork whose owner has enabled Actions; the
+    # guard also covers the `workflow_call` path on a fork's own cd.yaml.
+    if: github.repository == '0xPlaygrounds/rig'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # protoc: the lowered all-features graph still contains rig-lancedb.
+      - name: Install Rust stable
+        uses: ./.github/actions/rust-setup
+        with:
+          protoc: "true"
+
+      - name: Build against the declared dependency floors
+        run: cargo xtask verify --check dependency-floors

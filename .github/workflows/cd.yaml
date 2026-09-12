@@ -34,9 +34,15 @@ jobs:
   run-full-ci:
     uses: ./.github/workflows/nightly.yaml
 
+  # The declared dependency floors are their own lane (see the workflow's
+  # header): on PRs it runs only when a resolver input changes, so this call
+  # is what guarantees every release was built at its floors.
+  run-dependency-floors:
+    uses: ./.github/workflows/dependency-floors.yaml
+
   release-plz:
     name: Release-plz
-    needs: [run-ci, run-full-ci]
+    needs: [run-ci, run-full-ci, run-dependency-floors]
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write

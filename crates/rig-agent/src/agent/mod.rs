@@ -118,7 +118,7 @@ mod typed;
 pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
 pub use crate::bus::ModelHandle;
-pub use crate::run::response::{CompletionCall, PromptResponse};
+pub use crate::run::response::{CompletionCall, MemoryAppend, PromptResponse};
 pub use crate::run::spec::RunSpec;
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::{Agent, AgentParts};

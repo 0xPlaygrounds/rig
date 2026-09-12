@@ -66,8 +66,9 @@
 //! - Explicit history leaves memory in the required row: the builder
 //!   registered it, the run did not touch it.
 //! - A failed `Append` is a warning: the record holds the store's error
-//!   and the answer stands. A failed `Load` fails the run at the memory
-//!   record, before any completion.
+//!   and the answer stands (the classic engine's response reports the
+//!   refusal as `PromptResponse::memory_append`). A failed `Load` fails
+//!   the run at the memory record, before any completion.
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 

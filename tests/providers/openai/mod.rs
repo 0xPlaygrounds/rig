@@ -29,6 +29,7 @@ mod cassette {
     mod ecs_ordering;
     mod ecs_parity;
     mod ecs_prompt_caching;
+    mod ecs_stream_faults;
     mod ecs_termination;
     mod effect_corpus;
     mod embedding_matrix;
@@ -64,6 +65,7 @@ mod cassette {
     mod responses_sessions;
     mod responses_tool_args;
     mod responses_tool_choice;
+    mod stream_faults;
     mod streaming;
     mod streaming_grammar;
     mod streaming_grammar_chat;
