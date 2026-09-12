@@ -561,3 +561,117 @@ async fn tool_argument_patches_keep_the_bound_target_and_reach_inner_policy() {
     );
     assert_eq!(tap.patched.lock().expect("patches").len(), 1);
 }
+
+/// A layered dispatch is resolved exactly once whichever future is dropped:
+/// the layer's own (its inner handler still pending, the observer moved
+/// inward by `Dispatch::inner`) resolves the record as cancelled once; a
+/// layer whose `after` is dropped mid-decision leaves the handler's answer
+/// as the one resolution, with no cancellation after it.
+#[test]
+fn a_dropped_layer_resolves_its_record_exactly_once() {
+    use std::task::Context;
+
+    use futures::task::noop_waker_ref;
+
+    use super::super::Resolver;
+
+    /// Answers when told to, from outside.
+    struct Deferred(Arc<Mutex<Option<Resolver>>>);
+    impl Serve for Deferred {
+        type Family = family::Dynamic;
+        fn descriptor(&self) -> HandlerDescriptor {
+            HandlerDescriptor {
+                key: HandlerKey::from("deferred"),
+                family: FamilyDescriptor::Custom {
+                    kind: "test".into(),
+                },
+                layers: Vec::new(),
+            }
+        }
+        async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+            let (resolver, answer) = super::super::deferred();
+            *self.0.lock().expect("slot") = Some(resolver);
+            Reply::Outcome(answer.await)
+        }
+    }
+    /// Decides `after` only when told to, from outside.
+    struct Deciding(Arc<Mutex<Option<futures::channel::oneshot::Sender<()>>>>);
+    impl Intercept for Deciding {
+        fn name(&self) -> String {
+            "deciding".to_owned()
+        }
+        async fn before(&self, _: EffectId, _: &EffectKind) -> Decision {
+            Decision::Proceed
+        }
+        async fn after(
+            &self,
+            _: EffectId,
+            _: &EffectKind,
+            _: &Result<Outcome, ErrorReport>,
+        ) -> Verdict {
+            let (decide, decided) = futures::channel::oneshot::channel();
+            *self.0.lock().expect("slot") = Some(decide);
+            let _ = decided.await;
+            Verdict::Keep
+        }
+    }
+
+    // The layer's future dropped while its handler is pending.
+    let slot = Arc::new(Mutex::new(None));
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let handler = ErasedHandler::new(Deferred(slot.clone())).layered(Policy::observing("p", &seen));
+    let tap = Arc::new(Tapped::default());
+    let mut serving = handler.handle(
+        custom(json!(1)),
+        tapped(Dispatch::new(EffectId::from_raw(1), false), &tap),
+    );
+    assert!(
+        serving
+            .as_mut()
+            .poll(&mut Context::from_waker(noop_waker_ref()))
+            .is_pending()
+    );
+    let resolver = slot
+        .lock()
+        .expect("slot")
+        .take()
+        .expect("the handler is waiting");
+    drop(serving);
+    assert!(resolver.is_closed());
+    {
+        let outcomes = tap.outcomes.lock().expect("outcomes");
+        assert_eq!(outcomes.len(), 1, "{outcomes:?}");
+        assert_eq!(
+            outcomes[0].as_ref().expect_err("cancelled").kind,
+            ErrorKind::Cancelled
+        );
+    }
+
+    // The layer's `after` dropped while it decides: the handler answered,
+    // the record holds that answer, and nothing else is told.
+    let (handler, _served) = echo();
+    let decide = Arc::new(Mutex::new(None));
+    let handler = handler.layered(Deciding(decide.clone()));
+    let tap = Arc::new(Tapped::default());
+    let mut serving = handler.handle(
+        custom(json!(2)),
+        tapped(Dispatch::new(EffectId::from_raw(2), false), &tap),
+    );
+    assert!(
+        serving
+            .as_mut()
+            .poll(&mut Context::from_waker(noop_waker_ref()))
+            .is_pending()
+    );
+    assert!(
+        decide.lock().expect("slot").is_some(),
+        "`after` is deciding"
+    );
+    drop(serving);
+    let outcomes = tap.outcomes.lock().expect("outcomes");
+    assert_eq!(outcomes.len(), 1, "{outcomes:?}");
+    assert!(
+        matches!(&outcomes[0], Ok(Outcome::Custom { payload }) if payload == &json!(2)),
+        "the handler's answer is the one resolution: {outcomes:?}"
+    );
+}

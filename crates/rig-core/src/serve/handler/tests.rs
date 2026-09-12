@@ -495,3 +495,118 @@ async fn provider_context_survives_inner_dispatch_and_explicit_call_context_wins
         )));
     }
 }
+
+/// Recording is consumer-invisible: whatever shape a handler answers in —
+/// a completed response, a setup failure, a stream with an in-band error,
+/// one cut short before its terminal, one with a frame after it — the
+/// items a streaming consumer receives and the outcome a unary consumer
+/// receives are the same with an observer attached and without one, and
+/// the observer is told exactly one outcome.
+#[test]
+fn an_observer_never_changes_what_the_consumer_receives() {
+    use crate::{
+        message::{AssistantContent, DocumentSourceKind, Image},
+        streaming::{BlockId, StreamFinal, UnknownPayload},
+    };
+
+    type Shape = fn() -> Reply;
+    fn terminal() -> Result<StreamEvent, ErrorReport> {
+        Ok(StreamEvent::Final(StreamFinal::new(
+            "test",
+            Default::default(),
+        )))
+    }
+    fn text(fragment: &str) -> Result<StreamEvent, ErrorReport> {
+        Ok(StreamEvent::text(
+            BlockId::minted(crate::streaming::MintKind::Text, 0),
+            fragment,
+        ))
+    }
+    fn items(items: Vec<Result<StreamEvent, ErrorReport>>) -> Reply {
+        Reply::Stream(Box::pin(futures::stream::iter(items)))
+    }
+    let shapes: [(&str, Shape); 6] = [
+        ("a completed response with an image", || {
+            Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
+                vec![
+                    AssistantContent::text("done"),
+                    AssistantContent::Image(Image {
+                        data: DocumentSourceKind::base64("aW1hZ2U="),
+                        ..Image::default()
+                    }),
+                ],
+                Default::default(),
+                "test",
+            ))))
+        }),
+        ("a setup failure", || {
+            Reply::Outcome(Err(ErrorReport::new(ErrorKind::Provider, "refused")))
+        }),
+        ("an in-band error before the terminal", || {
+            items(vec![
+                Err(ErrorReport::new(ErrorKind::Response, "mid-stream")),
+                text("after"),
+                terminal(),
+            ])
+        }),
+        ("a stream cut short before its terminal", || {
+            items(vec![text("prefix")])
+        }),
+        ("a frame after the terminal", || {
+            items(vec![
+                text("body"),
+                terminal(),
+                Ok(StreamEvent::Unknown(UnknownPayload::new(
+                    serde_json::json!({
+                        "late": true
+                    }),
+                ))),
+            ])
+        }),
+        ("a stream that ends at once", || items(Vec::new())),
+    ];
+    for (name, shape) in shapes {
+        for streaming in [true, false] {
+            let seen = Arc::new(Mutex::new(Seen::default()));
+            let observed = Observed {
+                observer: Box::new(Observer(seen.clone())),
+                told: false,
+            };
+            let (bare, watched) = if streaming {
+                (
+                    serde_json::to_value(block_on(
+                        shape()
+                            .observed(true, None, None)
+                            .into_stream()
+                            .collect::<Vec<_>>(),
+                    )),
+                    serde_json::to_value(block_on(
+                        shape()
+                            .observed(true, Some(observed), None)
+                            .into_stream()
+                            .collect::<Vec<_>>(),
+                    )),
+                )
+            } else {
+                (
+                    serde_json::to_value(block_on(
+                        shape().observed(false, None, None).into_outcome(),
+                    )),
+                    serde_json::to_value(block_on(
+                        shape().observed(false, Some(observed), None).into_outcome(),
+                    )),
+                )
+            };
+            assert_eq!(
+                bare.expect("serde"),
+                watched.expect("serde"),
+                "{name}, streaming: {streaming}"
+            );
+            assert_eq!(
+                seen.lock().expect("seen").outcomes.len(),
+                1,
+                "{name}, streaming: {streaming}: one outcome told"
+            );
+        }
+    }
+}
