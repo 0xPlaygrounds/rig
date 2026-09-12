@@ -106,8 +106,10 @@ struct CommandQueue {
     /// the buffer was full — **one slot per value**, however many times it
     /// is polled while parked (a frame-ticked host polls it once per frame
     /// with a fresh waker each time; the value's `AtomicWaker` keeps only
-    /// the latest). All woken when the driver drains; a slot whose value
-    /// was dropped is skipped.
+    /// the latest). All woken whenever the driver drains — the buffer is
+    /// empty after every drain, however it emptied — and when the bus
+    /// closes or a chain is cancelled; a slot whose value was dropped is
+    /// skipped.
     senders: Vec<Weak<AtomicWaker>>,
 }
 
@@ -251,18 +253,19 @@ impl Shared {
     }
 
     /// Take every buffered command (the driver's side), registering `cx` as
-    /// the waker to wake on the next enqueue, and release any parked sender.
+    /// the waker to wake on the next enqueue, and release every parked
+    /// sender: the buffer is empty after a drain, whether this drain took
+    /// the commands that filled it or something else already dropped them
+    /// (an orphaned descendant failed by [`Self::fail_cancelled_buffered`]).
+    /// A sender woken to a buffer that has since refilled parks again; a
+    /// sender left parked on a buffer with room would never be woken.
     pub(super) fn drain(&self, cx: &Context<'_>) -> VecDeque<Box<Command>> {
         // Raw waker clone/drop callbacks may reenter the dispatcher too.
         let next_driver = cx.waker().clone();
         let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
         let commands = std::mem::take(&mut queue.commands);
         let previous_driver = queue.driver.replace(next_driver);
-        let senders = if commands.is_empty() {
-            Vec::new()
-        } else {
-            std::mem::take(&mut queue.senders)
-        };
+        let senders = std::mem::take(&mut queue.senders);
         drop(queue);
         drop(previous_driver);
         wake_parked(senders);

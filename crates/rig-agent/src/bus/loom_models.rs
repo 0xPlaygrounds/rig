@@ -748,3 +748,84 @@ fn loom_cancel_wakes_a_sender_parking_below_a_completed_middle() {
         }
     });
 }
+
+/// Capacity freed without a drain: a sender is parked on a full buffer whose
+/// one command is a descendant of a dispatch that is then cancelled. The
+/// driver's release drops that orphan from the buffer and drains. Whichever
+/// way the sender's parks interleave with the cancel's wake and the release,
+/// the model ends with the sender either sent or woken after its last park —
+/// never parked on a buffer with room, which nothing would ever wake. Fails
+/// against a drain that wakes parked senders only when it took a command.
+#[test]
+fn loom_capacity_freed_by_orphan_removal_wakes_a_parked_sender() {
+    loom::model(|| {
+        let shared = Arc::new(Shared::new(rig_core::serve::ServingPolicy {
+            command_capacity: 1,
+            ..rig_core::serve::ServingPolicy::default()
+        }));
+        shared.dispatcher_opened();
+        let _root = shared
+            .begin_in_flight(EffectId::from_raw(1), HandlerKey::from("root"), None)
+            .ok()
+            .expect("nothing cancelled");
+        let root = shared.retained_lineage(EffectId::from_raw(1));
+        let (mut child, _child_receiver) = command(2);
+        child.parent = Some(EffectId::from_raw(1));
+        child.lineage = super::dispatcher::Lineage::new(child.id, Some(root));
+        let (_, waker) = recording();
+        let slot = std::sync::Arc::new(futures::task::AtomicWaker::new());
+        assert!(matches!(
+            shared.enqueue(child, &slot, &Context::from_waker(&waker)),
+            Enqueue::Sent
+        ));
+        let sender = {
+            let shared = Arc::clone(&shared);
+            thread::spawn(move || {
+                let (mut cmd, _receiver) = command(3);
+                let (flag, waker) = recording();
+                let cx = Context::from_waker(&waker);
+                let slot = std::sync::Arc::new(futures::task::AtomicWaker::new());
+                loop {
+                    // The send stage of a `Pending`: park, and poll again
+                    // only when woken.
+                    flag.0.store(false, StdOrdering::SeqCst);
+                    match shared.enqueue(cmd, &slot, &cx) {
+                        Enqueue::Sent => return None,
+                        Enqueue::Parked(kept) => {
+                            cmd = kept;
+                            thread::yield_now();
+                            if !flag.0.load(StdOrdering::SeqCst) {
+                                // Still parked: the value (and its slot)
+                                // lives on, waiting for a wake.
+                                return Some((flag, slot));
+                            }
+                        }
+                        Enqueue::Refused(_) | Enqueue::Cancelled(_) | Enqueue::Closed => {
+                            panic!("an unrelated sender is parked or sent")
+                        }
+                    }
+                }
+            })
+        };
+        let driver = {
+            let shared = Arc::clone(&shared);
+            thread::spawn(move || {
+                // The root's task observes its cancel, then the driver
+                // releases it: the orphaned child leaves the buffer, and the
+                // poll loop drains again.
+                shared.cancel_descendants(EffectId::from_raw(1));
+                assert!(shared.end_in_flight(EffectId::from_raw(1)));
+                shared.fail_cancelled_buffered();
+                let (_, waker) = recording();
+                shared.drain(&Context::from_waker(&waker));
+            })
+        };
+        driver.join().unwrap();
+        if let Some((flag, _slot)) = sender.join().unwrap() {
+            assert!(
+                flag.0.load(StdOrdering::SeqCst),
+                "a sender parked on capacity the driver freed was never woken"
+            );
+        }
+    });
+}

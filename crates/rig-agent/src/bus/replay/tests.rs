@@ -1160,3 +1160,113 @@ async fn a_record_names_the_scope_of_the_program_that_made_it() {
     let restored: EffectLog = serde_json::from_value(json).expect("restores");
     assert_eq!(restored[1].scope.as_deref(), Some("run-1"));
 }
+
+/// A stream whose *fold* fails — a tool call closed with malformed
+/// arguments under `UnparseableToolInput::Error` — reaches the consumer as
+/// the provider sent it (the malformed close is an `Ok` item; the
+/// consumer's own accumulator reports it) while the record's outcome is
+/// the fold's error. A replay with kept events re-emits the items as they
+/// were and nothing more: the consumer re-derives the same error and a
+/// re-record folds to the same outcome. It never appends the folded error
+/// as an item the live consumer did not receive.
+#[tokio::test]
+async fn kept_events_replay_a_fold_error_as_the_items_that_produced_it() {
+    use rig_core::streaming::{
+        BlockClose, BlockId, BlockKind, Delta, StreamFinal, ToolCallEnd, UnparseableToolInput,
+    };
+
+    struct Items(Vec<Result<StreamEvent, ErrorReport>>);
+    impl Serve for Items {
+        type Family = rig_core::effect::family::Completion;
+        fn descriptor(&self) -> HandlerDescriptor {
+            HandlerDescriptor {
+                key: "model".into(),
+                family: FamilyDescriptor::Completion {
+                    model: rig_core::completion::ModelRef::new("malformed"),
+                    capabilities: rig_core::completion::ProviderCapabilities::default(),
+                },
+                layers: vec![],
+            }
+        }
+        async fn serve(&self, _: EffectKind, _dispatch: Dispatch) -> Reply {
+            Reply::Stream(Box::pin(futures::stream::iter(self.0.clone())))
+        }
+    }
+    let call = || BlockId::wire("call_1");
+    let items = vec![
+        Ok(StreamEvent::BlockStart {
+            id: call(),
+            kind: BlockKind::ToolCall,
+        }),
+        Ok(StreamEvent::BlockDelta {
+            id: call(),
+            delta: Delta::ToolName {
+                name: "lookup".to_owned(),
+            },
+        }),
+        Ok(StreamEvent::BlockDelta {
+            id: call(),
+            delta: Delta::ToolArguments {
+                arguments: "{not json".to_owned(),
+            },
+        }),
+        Ok(StreamEvent::BlockEnd {
+            id: call(),
+            end: BlockClose::ToolCall(ToolCallEnd::new(UnparseableToolInput::Error)),
+            block: None,
+        }),
+        Ok(StreamEvent::Final(StreamFinal::new(
+            "test",
+            rig_core::completion::Usage::new(),
+        ))),
+    ];
+    let key = HandlerKey::from("model");
+    let (dispatcher, _, mut driver) = Bus::channel();
+    let recorder = EffectLogRecorder::keeping_stream_events();
+    driver.register(key.clone(), Items(items.clone())).unwrap();
+    driver.record_to(recorder.clone());
+    let _live = spawn(driver);
+    let live = within(
+        dispatcher
+            .dispatch_stream(&key, completion_kind(true))
+            .collect::<Vec<_>>(),
+    )
+    .await;
+    assert_eq!(
+        serde_json::to_value(&live).unwrap(),
+        serde_json::to_value(&items).unwrap(),
+        "the consumer receives the items as the provider sent them"
+    );
+    drop(dispatcher);
+    let log = recorder.take();
+    assert_eq!(log.len(), 1);
+    let report = log[0]
+        .outcome
+        .as_ref()
+        .expect_err("the fold's error is the record's outcome");
+    assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
+
+    let (dispatcher, _, mut driver) = Bus::channel();
+    super::register_all(&log, &mut driver).expect("fresh keys");
+    let again = EffectLogRecorder::keeping_stream_events();
+    driver.record_to(again.clone());
+    let _replay = spawn(driver);
+    let replayed = within(
+        dispatcher
+            .dispatch_stream(&key, completion_kind(true))
+            .collect::<Vec<_>>(),
+    )
+    .await;
+    assert_eq!(
+        serde_json::to_value(&replayed).unwrap(),
+        serde_json::to_value(&live).unwrap(),
+        "a replay re-emits the live items and nothing more"
+    );
+    drop(dispatcher);
+    let rerecorded = again.take();
+    assert_eq!(
+        serde_json::to_value(&rerecorded[0].outcome).unwrap(),
+        serde_json::to_value(&log[0].outcome).unwrap(),
+        "a re-record of the replay folds to the same outcome"
+    );
+}
