@@ -240,10 +240,7 @@ pub struct Executions {
 }
 
 /// Remove owned execution immediately when an effect leaves flight.
-pub(crate) fn drop_execution(
-    removed: On<Remove, InFlight>,
-    mut executions: NonSendMut<Executions>,
-) {
+pub fn drop_execution(removed: On<Remove, InFlight>, mut executions: NonSendMut<Executions>) {
     let entity = removed.event().entity;
     executions.tasks.remove(&entity);
     executions.streams.remove(&entity);
@@ -321,7 +318,7 @@ impl WorldOutcome {
 
 /// Monotonic submission order for the world's answer inbox.
 #[derive(Resource, Default)]
-pub struct WorldOutcomeCounter(pub(crate) u64);
+pub struct WorldOutcomeCounter(pub u64);
 
 fn stamp_world_outcome(mut world: DeferredWorld<'_>, context: HookContext) {
     let order = {

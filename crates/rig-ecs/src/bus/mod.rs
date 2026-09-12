@@ -114,7 +114,7 @@ pub mod witness;
 #[cfg(feature = "replay")]
 pub mod replay;
 
-pub use collect::{Landed, StreamingView, settle};
+pub use collect::{Landed, StreamingView, collect_streams, collect_tasks, settle};
 pub use dispatch::{Candidate, CandidateView, dispatch, handler_unavailable, reentrant};
 pub use effect::{
     Answer, Asked, EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing,
@@ -128,7 +128,9 @@ pub use hold::{HoldOwners, HoldRefused, acquire_hold, release_hold};
 pub use plugin::{
     Bus, BusSet, Intake, Policy, Progress, QUIESCENCE_CAP, RigSchedule, run_to_quiescence,
 };
-pub use record::{Observed, ObservedState, Recording, WorldObserver};
+pub use record::{
+    Observed, ObservedState, Recording, WorldObserver, record_bound, record_cancelled,
+};
 pub use scene::{Scene, SceneEffect};
 pub use witness::{
     AdapterOperation, BUS_EMITTER, Despawning, SubjectWalk, Subjects, Witnessing, bus_emitter,

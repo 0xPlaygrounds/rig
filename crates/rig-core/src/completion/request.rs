@@ -1211,10 +1211,11 @@ impl<M> CompletionRequestBuilder<M> {
     /// typed value. That precedence is deliberate — it is the escape hatch for
     /// a provider knob rig does not model — but it is easy to hit by accident,
     /// so [`build`](Self::build) logs a warning naming each such key. `tools`
-    /// and `response_format` are the exception: providers merge a passthrough
-    /// `tools` list into the typed one and reconcile `response_format` with
-    /// the typed `output_schema` their own way, so for those two the warning
-    /// only says both were supplied.
+    /// and `response_format` are the exception: most providers (OpenAI,
+    /// Gemini, Anthropic, xAI) merge a passthrough `tools` list into the
+    /// typed one, a few (Cohere) let it replace the typed list, and each
+    /// reconciles `response_format` with the typed `output_schema` its own
+    /// way — so for those two the warning only says both were supplied.
     pub fn additional_params(
         mut self,
         additional_params: impl Into<Option<serde_json::Value>>,

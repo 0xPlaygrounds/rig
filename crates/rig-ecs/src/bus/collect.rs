@@ -56,7 +56,7 @@ pub type WorldAnswersReady = (With<InFlight>, Without<EffectOutcome>);
 
 /// Publish submitted world answers at the same boundary as task results.
 /// Arrival order is independent of dispatch order and entity archetypes.
-pub(crate) fn collect_world(
+pub fn collect_world(
     mut commands: Commands,
     ready: Query<(Entity, &WorldOutcome), WorldAnswersReady>,
     mut progress: ResMut<Progress>,
@@ -77,7 +77,7 @@ pub(crate) fn collect_world(
 /// and the task leaves the entity; a tool call's published context lands
 /// beside it as [`ToolOutputs`]. A non-blocking check per in-flight task
 /// (`check_ready`), no waker kept, nothing awaited.
-pub(crate) fn collect_tasks(
+pub fn collect_tasks(
     mut commands: Commands,
     serving: Query<(Entity, &Serving, Option<&Publishing>), With<InFlight>>,
     policy: Res<super::Policy>,
@@ -123,7 +123,7 @@ pub(crate) fn collect_tasks(
     clippy::too_many_arguments,
     reason = "one collection pass shares driver state and its work allowance"
 )]
-pub(crate) fn collect_streams(
+pub fn collect_streams(
     mut commands: Commands,
     mut streaming: Query<StreamingView, With<InFlight>>,
     mut executions: NonSendMut<Executions>,
