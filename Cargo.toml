@@ -307,7 +307,7 @@ rig-tungstenite = { path = "crates/rig-tungstenite", version = "0.42.0", optiona
 
 [dev-dependencies]
 # The repository census checks Bedrock binary fixtures even in default suites.
-rig-cassette = { path = "crates/rig-cassette", features = ["bedrock"] }
+rig-cassette = { path = "crates/rig-cassette", version = "0.42.0", features = ["bedrock"] }
 rig-ecs = { path = "crates/rig-ecs" }
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
