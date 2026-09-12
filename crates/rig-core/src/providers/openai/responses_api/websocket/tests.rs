@@ -146,12 +146,13 @@ fn websocket_provider_error_preserves_the_rejections_headers() {
 }
 
 /// A failure that never reached the provider has no response to preserve
-/// and stays a plain diagnostic.
+/// and stays a transport error, with the transport table's retryability.
 #[test]
 fn websocket_provider_error_leaves_a_transport_failure_alone() {
     let error = websocket_provider_error(http_client::Error::StreamEnded);
 
-    assert!(matches!(error, CompletionError::ProviderError(_)));
+    assert!(matches!(error, CompletionError::HttpError(_)));
+    assert!(error.is_retryable());
     assert_eq!(error.provider_response_status(), None);
     assert_eq!(error.provider_response_body(), None);
     assert_eq!(error.provider_request_id(), None);

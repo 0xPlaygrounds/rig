@@ -37,6 +37,7 @@ mod cassette {
     mod ecs_serving;
     mod ecs_shaping;
     mod ecs_stop_sequences;
+    mod ecs_stream_faults;
     mod ecs_termination;
     mod effect_corpus;
     mod empty_end_turn;

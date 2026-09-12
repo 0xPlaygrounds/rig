@@ -3002,6 +3002,16 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
+        self.raw_completion_observed(completion_request, None).await
+    }
+
+    /// [`Self::raw_completion`] with observation context owned by this
+    /// invocation.
+    async fn raw_completion_observed(
+        &self,
+        completion_request: completion::CompletionRequest,
+        observation: Option<crate::observe::AdapterContext>,
+    ) -> Result<CompletionResponse, CompletionError> {
         let (span, request) =
             self.prepare_request(completion_request, CompletionOperation::Chat)?;
 
@@ -3013,11 +3023,14 @@ where
 
         let request: Vec<u8> = serde_json::to_vec(&request)?;
 
-        let req = self
+        let mut req = self
             .client
             .post("/v1/messages")?
             .body(request)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
+        if let Some(observation) = observation {
+            super::observation::attach(observation, &mut req, "/v1/messages");
+        }
 
         let (mut completion, provider_request_id) =
             send_completion::<_, ApiResponse<CompletionResponse>, _>(
@@ -3054,17 +3067,35 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Capture before `normalize` consumes the raw value.
-        let response = self.raw_completion(completion_request).await?;
-        let captured = serde_json::to_value(&response)?;
-        Ok(response.normalize(Ext::PROVIDER_NAME)?.with_raw(captured))
+        self.completion_with_context(completion_request, None).await
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        GenericCompletionModel::stream(self, request).await
+        self.stream_with_context(request, None).await
+    }
+
+    async fn completion_with_context(
+        &self,
+        completion_request: completion::CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        // Capture before `normalize` consumes the raw value.
+        let response = self
+            .raw_completion_observed(completion_request, context)
+            .await?;
+        let captured = serde_json::to_value(&response)?;
+        Ok(response.normalize(Ext::PROVIDER_NAME)?.with_raw(captured))
+    }
+
+    async fn stream_with_context(
+        &self,
+        request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+        GenericCompletionModel::stream_observed(self, request, context).await
     }
 }
 

@@ -78,10 +78,10 @@ async fn routed_failure_error_shape() {
                 .send()
                 .await
                 .expect_err("an unroutable model must fail");
-            // Derived from the recording: OpenRouter answers a body-ful 4xx;
-            // contract-less classification keeps the transport shape.
+            // Derived from the recording: OpenRouter answers a body-ful 4xx,
+            // preserved as its response through the one funnel.
             assert!(
-                matches!(error, rig::completion::CompletionError::HttpError(_)),
+                matches!(error, rig::completion::CompletionError::ProviderResponse(_)),
                 "got {error:?}"
             );
             assert!(error.provider_response_body().is_some());

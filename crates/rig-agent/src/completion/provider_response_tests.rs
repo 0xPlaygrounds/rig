@@ -81,16 +81,19 @@ fn prompt_error_forwards_captured_response_headers() {
     let body = r#"{"error":{"message":"rate limited"}}"#;
 
     for completion_error in [
-        // Contract provider: headers live on the ProviderResponse.
-        CompletionError::from_http_response_with_request_id(
-            http::StatusCode::TOO_MANY_REQUESTS,
-            body,
-            Some("req_abc".to_string()),
-        )
-        .with_response_headers(Some(Box::new(headers.clone()))),
-        // Contract-less provider: headers live on the transport error.
+        // A preserved response, with and without a request id.
+        CompletionError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, body)
+            .with_provider_request_id(Some("req_abc".to_string()))
+            .with_response_headers(Some(Box::new(headers.clone()))),
         CompletionError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, body)
             .with_response_headers(Some(Box::new(headers.clone()))),
+        // A transport that reported the reply as an error routes through
+        // the same funnel, headers included.
+        CompletionError::from_transport_error(http_client::Error::InvalidStatusCodeWithDetails {
+            status: http::StatusCode::TOO_MANY_REQUESTS,
+            body: body.to_string(),
+            headers: Box::new(headers.clone()),
+        }),
     ] {
         let prompt_error = PromptError::CompletionError(completion_error);
         assert_eq!(

@@ -793,9 +793,12 @@ where
     T: HttpClientExt + Clone + 'static,
     Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    pub(crate) async fn stream(
+    /// Open a Messages stream with observation context owned by this
+    /// invocation.
+    pub(crate) async fn stream_observed(
         &self,
         completion_request: CompletionRequest,
+        observation: Option<crate::observe::AdapterContext>,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let (span, request) =
             self.prepare_request(completion_request, CompletionOperation::ChatStreaming)?;
@@ -812,11 +815,14 @@ where
 
         let body: Vec<u8> = serde_json::to_vec(&body)?;
 
-        let req = self
+        let mut req = self
             .client
             .post("/v1/messages")?
             .body(body)
             .map_err(http_client::Error::Protocol)?;
+        if let Some(observation) = observation {
+            super::observation::attach(observation, &mut req, "/v1/messages");
+        }
 
         let event_source = GenericEventSource::new(self.client.clone(), req);
         let (event_source, request_id_slot) = match Ext::REQUEST_ID_HEADER {

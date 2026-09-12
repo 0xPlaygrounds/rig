@@ -307,10 +307,12 @@ where
         + crate::wasm_compat::WasmCompatSend
         + 'static,
 {
-    /// Open a chat-completions stream.
-    pub(crate) async fn stream(
+    /// Open a chat-completions stream with observation context owned by this
+    /// invocation.
+    pub(crate) async fn stream_observed(
         &self,
         completion_request: CompletionRequest,
+        observation: Option<crate::observe::AdapterContext>,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let preamble = completion_request.system_instructions().map(str::to_owned);
         let record_telemetry_content = completion_request.record_telemetry_content;
@@ -366,11 +368,18 @@ where
 
         let req_body = serde_json::to_vec(&request_as_json)?;
 
-        let req = self
+        let mut req = self
             .client
             .post(&path)?
             .body(req_body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
+        if let Some(observation) = observation {
+            crate::providers::openai::observation::attach_chat(
+                observation,
+                &mut req,
+                "/chat/completions",
+            );
+        }
 
         let span = CompletionSpanBuilder::new(
             Ext::PROVIDER_NAME,

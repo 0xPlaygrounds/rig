@@ -117,8 +117,8 @@ async fn transport_error_preserves_headers_for_a_contract_less_provider() {
     let error = drive(client, NO_CONTRACT).await;
 
     assert_rate_limit_metadata_survived(&error, "transport-error/contract-less");
-    // Contract-less providers keep the transport classification.
-    assert!(matches!(error, CompletionError::HttpError(_)));
+    // The reply is the provider's whether or not it names a request id.
+    assert!(matches!(error, CompletionError::ProviderResponse(_)));
     assert_eq!(error.provider_request_id(), None);
 }
 
@@ -146,22 +146,21 @@ async fn non_success_response_preserves_headers_for_a_contract_less_provider() {
     let error = drive(client, NO_CONTRACT).await;
 
     assert_rate_limit_metadata_survived(&error, "response/contract-less");
-    assert!(matches!(error, CompletionError::HttpError(_)));
+    assert!(matches!(error, CompletionError::ProviderResponse(_)));
 }
 
-/// A transport that reports non-success *without* headers still classifies
-/// exactly as before, reporting `None` rather than an empty map — "not
-/// captured" must stay distinguishable from "the response had none".
+/// A transport that reports non-success *without* headers classifies the
+/// same, reporting `None` rather than an empty map — "not captured" must
+/// stay distinguishable from "the response had none".
 #[tokio::test]
 async fn header_less_transport_reports_no_headers() {
-    for (contract, expect_provider_response) in [(CONTRACT, true), (NO_CONTRACT, false)] {
+    for contract in [CONTRACT, NO_CONTRACT] {
         let client = RecordingHttpClient::with_error(http::StatusCode::TOO_MANY_REQUESTS, BODY);
         let error = drive(client, contract).await;
 
         assert!(error.provider_response_headers().is_none());
-        assert_eq!(
+        assert!(
             matches!(error, CompletionError::ProviderResponse(_)),
-            expect_provider_response,
             "classification must not depend on header capture",
         );
         assert_eq!(error.provider_response_body(), Some(BODY));

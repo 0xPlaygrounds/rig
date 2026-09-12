@@ -94,9 +94,12 @@ impl<T> InteractionsCompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    pub(crate) async fn stream(
+    /// Open an interaction stream with observation context owned by this
+    /// invocation.
+    pub(crate) async fn stream_observed(
         &self,
         completion_request: CompletionRequest,
+        observation: Option<crate::observe::AdapterContext>,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let span = CompletionSpanBuilder::new(
             PROVIDER_NAME,
@@ -118,12 +121,15 @@ where
         );
 
         let body = serde_json::to_vec(&request)?;
-        let req = self
+        let mut req = self
             .client
             .post("/v1beta/interactions?alt=sse")?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
+        if let Some(observation) = observation {
+            observation.attach(&mut req, "/v1beta/interactions");
+        }
 
         Ok(streaming::StreamingCompletionResponse::stream(
             PROVIDER_NAME,

@@ -349,14 +349,17 @@ mod audio_generation {
                 .map_err(http_client::Error::from)?;
 
             let response = self.client.send::<_, Bytes>(req).await?;
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
+            let (parts, body) = response.into_parts();
+            let status = parts.status;
+            let headers = Box::new(parts.headers);
+            let response_body = body.into_future().await?.to_vec();
 
             if !status.is_success() {
                 return Err(AudioGenerationError::from_http_response(
                     status,
                     String::from_utf8_lossy(&response_body),
-                ));
+                )
+                .with_response_headers(Some(headers)));
             }
 
             match serde_json::from_slice::<ApiResponse<AudioGenerationResponse>>(&response_body)? {
@@ -366,7 +369,8 @@ mod audio_generation {
                     Err(AudioGenerationError::from_http_response(
                         status,
                         String::from_utf8_lossy(&response_body),
-                    ))
+                    )
+                    .with_response_headers(Some(headers)))
                 }
             }
         }

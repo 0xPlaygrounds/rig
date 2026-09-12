@@ -3,12 +3,13 @@
 //! faults through the ECS runtime and the real Responses adapter, with the
 //! world's witness installed. Each cell runs with and without a witness:
 //! observation is a side channel, so the failure, the record and the
-//! history must not change with it. The Responses adapter attaches no
-//! provider diagnostics yet, so the trace carries the bus's facts only.
+//! history must not change with it, and the trace carries the bus's facts
+//! beside the Responses adapter's own boundary facts.
 
 use bevy_ecs::prelude::*;
 use bytes::Bytes;
 use rig::error::ErrorKind;
+use rig::observe::{AdapterEnding, AdapterErrorBoundary, AdapterEvent};
 use rig::prelude::*;
 use rig::providers::openai::{self, GPT_4O};
 use rig::test_utils::SequencedStreamingHttpClient;
@@ -48,17 +49,27 @@ fn assert_witness_is_a_side_channel(observed: &NativeRun, plain: &NativeRun) {
     crate::stream_faults::assert_witness_is_a_side_channel(observed, plain, SCRIPTED_KEY);
 }
 
-/// The bus's facts for a failed run, in order, and no provider facts: the
-/// Responses adapter does not attach diagnostics.
-fn assert_bus_only_failure(run: &NativeRun, actions: &[&str]) {
+/// The bus's facts for a failed run, in order, and the Responses adapter's
+/// boundary facts: the request it sent and how the attempt closed.
+fn assert_failure_facts(
+    run: &NativeRun,
+    actions: &[&str],
+    ending: AdapterEnding,
+) -> Vec<AdapterEvent> {
     let trace = run.trace();
     assert_eq!(bus_actions(trace), actions);
     assert_eq!(endings(trace), ["provider"]);
+    let events = adapter_events(trace);
     assert!(
-        adapter_events(trace).is_empty(),
-        "no provider diagnostics on this wire: {:?}",
-        adapter_events(trace)
+        matches!(events.first(), Some(AdapterEvent::Started { route, .. }) if route == "/responses"),
+        "the adapter announces its request: {events:?}"
     );
+    assert_eq!(
+        events.last(),
+        Some(&AdapterEvent::Finished { ending }),
+        "the attempt closes as the fault: {events:?}"
+    );
+    events
 }
 
 /// The recorded 400 through the native runtime: the run fails as the
@@ -105,7 +116,28 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
         comparable_failure(plain.failure())
     );
     assert_eq!(observed.log_json(), plain.log_json());
-    assert_bus_only_failure(observed, &["issued", "landed_err"]);
+    let events = assert_failure_facts(
+        observed,
+        &["issued", "landed_err"],
+        AdapterEnding::Error {
+            boundary: AdapterErrorBoundary::ProviderResponse,
+            kind: "provider_response".into(),
+            status: Some(400),
+            retryable: false,
+        },
+    );
+    assert!(
+        events.contains(&AdapterEvent::Response { status: 400 }),
+        "{events:?}"
+    );
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            AdapterEvent::ErrorEnvelope { error }
+                if error.status.as_deref() == Some("invalid_request_error")
+        )),
+        "the envelope's own fields are projected: {events:?}"
+    );
     assert!(
         !trace_json(observed.trace()).contains(SETUP_PROMPT),
         "the request body never reaches the trace"
@@ -144,7 +176,17 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
     }
     let (observed, plain) = (&runs[0], &runs[1]);
     assert_witness_is_a_side_channel(observed, plain);
-    assert_bus_only_failure(observed, &["issued", "truncated", "landed_err"]);
+    let events = assert_failure_facts(
+        observed,
+        &["issued", "truncated", "landed_err"],
+        AdapterEnding::Eof {
+            after: frames.len(),
+        },
+    );
+    assert!(
+        events.contains(&AdapterEvent::Response { status: 200 }),
+        "{events:?}"
+    );
     let delivered = observed.stream().events.len();
     assert_eq!(truncations(observed.trace()), [(delivered, 0)]);
 }
@@ -191,7 +233,13 @@ async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
     }
     let (observed, plain) = (&runs[0], &runs[1]);
     assert_witness_is_a_side_channel(observed, plain);
-    assert_bus_only_failure(observed, &["issued", "truncated", "landed_err"]);
+    assert_failure_facts(
+        observed,
+        &["issued", "truncated", "landed_err"],
+        AdapterEnding::Eof {
+            after: frames.len(),
+        },
+    );
     assert_eq!(truncations(observed.trace()).len(), 1);
 }
 
@@ -237,7 +285,26 @@ async fn error_event_after_content_fails_with_the_provider_error() {
     }
     let (observed, plain) = (&runs[0], &runs[1]);
     assert_witness_is_a_side_channel(observed, plain);
-    assert_bus_only_failure(observed, &["issued", "landed_err"]);
+    let events = assert_failure_facts(
+        observed,
+        &["issued", "landed_err"],
+        AdapterEnding::Error {
+            boundary: AdapterErrorBoundary::ProviderResponse,
+            kind: "provider_response".into(),
+            status: None,
+            retryable: false,
+        },
+    );
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            AdapterEvent::ErrorEnvelope { error }
+                if error.code.as_deref() == Some("server_error")
+                    && error.status.as_deref() == Some("server_error")
+                    && error.message.as_deref() == Some("boom")
+        )),
+        "the event's envelope is projected: {events:?}"
+    );
     assert!(
         truncations(observed.trace()).is_empty(),
         "an error, not EOF"

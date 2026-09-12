@@ -27,8 +27,8 @@ async fn completion_error_preserves_status_and_body() {
                 .expect_err("an unknown model should fail");
 
             assert!(
-                matches!(error, CompletionError::HttpError(_)),
-                "expected an HTTP error, got {error:?}"
+                matches!(error, CompletionError::ProviderResponse(_)),
+                "the provider's reply is preserved as its response, got {error:?}"
             );
             assert_eq!(
                 error.provider_response_status(),

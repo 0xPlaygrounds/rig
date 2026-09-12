@@ -3965,15 +3965,9 @@ async fn completion_streaming_http_non_success_preserves_status_and_body() {
         }
     };
 
-    // Streaming *connect* failures stay transport-shaped (HttpError):
-    // rig#2314's ProviderResponse classification covers the unary driver
-    // and in-band stream envelopes, not the SSE handshake.
-    assert_eq!(
-        error.kind,
-        crate::error::ErrorKind::Http {
-            status: Some(http::StatusCode::SERVICE_UNAVAILABLE.as_u16())
-        }
-    );
+    // A rejected SSE handshake is the provider's reply, classified like the
+    // unary driver's and the in-band envelopes': one funnel.
+    assert_eq!(error.kind, crate::error::ErrorKind::ProviderResponse);
     assert_eq!(
         error.http_status,
         Some(http::StatusCode::SERVICE_UNAVAILABLE.as_u16())

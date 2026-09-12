@@ -177,8 +177,7 @@ where
     // (rig#2210).
     let (parts, body) = response.into_parts();
     let status = parts.status;
-    let provider_request_id =
-        super::transcription::request_id_from_headers(&parts.headers, request_id_header);
+    let provider_request_id = super::request_id_from_headers(&parts.headers, request_id_header);
     let bytes: Bytes = body.await?;
 
     if !status.is_success() {
@@ -186,6 +185,7 @@ where
             status,
             String::from_utf8_lossy(&bytes),
         )
+        .with_provider_request_id(provider_request_id)
         .with_response_headers(Some(Box::new(parts.headers))));
     }
 

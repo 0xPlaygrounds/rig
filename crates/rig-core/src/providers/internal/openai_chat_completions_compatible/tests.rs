@@ -470,7 +470,7 @@ async fn streaming_http_non_success_preserves_status_and_body() {
     assert_eq!(
         err.to_string(),
         format!(
-            "HttpError: Invalid status code {} with message: {}",
+            "ProviderResponseError: status {}: {}",
             http::StatusCode::TOO_MANY_REQUESTS,
             body
         )
@@ -642,7 +642,7 @@ async fn streaming_http_non_success_json_parse_error_is_visible() {
 }
 
 #[tokio::test]
-async fn streaming_non_http_transport_error_stays_provider_error() {
+async fn streaming_non_http_transport_error_stays_a_transport_error() {
     use crate::test_utils::SequencedStreamingHttpClient;
 
     use crate::providers::openai::send_compatible_streaming_request;
@@ -668,10 +668,10 @@ async fn streaming_non_http_transport_error_stays_provider_error() {
     };
     assert_eq!(
         err.to_string(),
-        "ProviderError: Invalid content type was returned: \"application/json\""
+        "HttpError: Invalid content type was returned: \"application/json\""
     );
-    assert_eq!(err.kind, ErrorKind::Provider);
-    // Rig-generated transport diagnostics are not provider response bodies.
+    assert_eq!(err.kind, ErrorKind::Http { status: None });
+    // A response-less transport failure has no provider response body.
     assert_eq!(err.provider_response_body(), None);
     assert_eq!(err.http_status, None);
 }

@@ -128,9 +128,9 @@ async fn streamed_agent_run_reports_none_identity() {
     .await;
 }
 
-/// The contract-less provider keeps the exact pre-#2314 error shape: a 4xx
-/// stays a transport-shaped `HttpError` and `provider_request_id()` is `None`
-/// — absence on the error path too, never a secondary failure.
+/// A provider that reports no request id still classifies a 4xx as its
+/// own response — one funnel — and `provider_request_id()` is `None`:
+/// absence on the error path too, never a secondary failure.
 #[tokio::test]
 async fn provider_error_keeps_transport_shape_and_none_id() {
     with_gemini_cassette(
@@ -143,8 +143,8 @@ async fn provider_error_keeps_transport_shape_and_none_id() {
                 .await
                 .expect_err("a nonexistent model must fail");
             assert!(
-                matches!(error, rig::completion::CompletionError::HttpError(_)),
-                "no request-id contract, so the classification is unchanged: {error:?}"
+                matches!(error, rig::completion::CompletionError::ProviderResponse(_)),
+                "the reply is the provider's, id contract or not: {error:?}"
             );
             assert_eq!(error.provider_request_id(), None);
         },
@@ -153,7 +153,7 @@ async fn provider_error_keeps_transport_shape_and_none_id() {
 }
 
 /// 401/403 control cell (rig#2314 error matrix): the contract-less provider's
-/// auth failure keeps the transport-shaped error, id `None`.
+/// auth failure is the provider's response, id `None`.
 #[tokio::test]
 async fn auth_rejection_keeps_transport_shape() {
     use super::super::support::with_gemini_cassette_bogus_key;
@@ -168,8 +168,8 @@ async fn auth_rejection_keeps_transport_shape() {
                 .await
                 .expect_err("a bogus key must be rejected");
             assert!(
-                matches!(error, rig::completion::CompletionError::HttpError(_)),
-                "contract-less classification unchanged: {error:?}"
+                matches!(error, rig::completion::CompletionError::ProviderResponse(_)),
+                "the reply is the provider's, id contract or not: {error:?}"
             );
             assert_eq!(error.provider_request_id(), None);
         },

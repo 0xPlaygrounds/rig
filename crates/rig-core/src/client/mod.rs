@@ -609,14 +609,14 @@ where
         // 401/403 arms below were dead and every bogus key surfaced as a raw
         // HttpError). Recover the status from the transport error so the
         // documented VerifyError classification actually fires.
-        let response = match self.http_client.send(req).await {
+        let response = match self.http_client.send::<_, Vec<u8>>(req).await {
             Ok(response) => response,
             Err(error) => {
                 return Err(match error.non_success_status() {
                     Some(StatusCode::UNAUTHORIZED) | Some(StatusCode::FORBIDDEN) => {
                         VerifyError::InvalidAuthentication
                     }
-                    _ => VerifyError::HttpError(error),
+                    _ => VerifyError::from_transport_error(error),
                 });
             }
         };
@@ -629,44 +629,12 @@ where
             // The failed response's headers are preserved on every branch, so
             // a caller can read rate-limit metadata such as `Retry-After` off
             // a rejected verification (rig#2210).
-            StatusCode::INTERNAL_SERVER_ERROR => {
+            status if status.is_success() => Ok(()),
+            status => {
                 let headers = Box::new(response.headers().clone());
-                let body = http_client::text(response).await?;
-                Err(VerifyError::HttpError(
-                    http_client::Error::InvalidStatusCodeWithDetails {
-                        status: StatusCode::INTERNAL_SERVER_ERROR,
-                        body,
-                        headers,
-                    },
-                ))
-            }
-            status if status.as_u16() == 529 => {
-                let headers = Box::new(response.headers().clone());
-                let body = http_client::text(response).await?;
-                Err(VerifyError::HttpError(
-                    http_client::Error::InvalidStatusCodeWithDetails {
-                        status,
-                        body,
-                        headers,
-                    },
-                ))
-            }
-            _ => {
-                let status = response.status();
-
-                if status.is_success() {
-                    Ok(())
-                } else {
-                    let headers = Box::new(response.headers().clone());
-                    let body: String = String::from_utf8_lossy(&response.into_body().await?).into();
-                    Err(VerifyError::HttpError(
-                        http_client::Error::InvalidStatusCodeWithDetails {
-                            status,
-                            body,
-                            headers,
-                        },
-                    ))
-                }
+                let body: String = String::from_utf8_lossy(&response.into_body().await?).into();
+                Err(VerifyError::from_http_response(status, body)
+                    .with_response_headers(Some(headers)))
             }
         }
     }

@@ -916,55 +916,22 @@ fn event_timeout_error(timeout: Duration) -> CompletionError {
     ))
 }
 
-/// Map a transport failure onto rig's error model, preserving the provider's
-/// own response when the failure carried one.
+/// Map a transport failure onto rig's error model: the one funnel, with
+/// OpenAI's own request id read off a rejected upgrade's headers.
 ///
-/// A websocket upgrade that the provider *rejects* never becomes a websocket:
-/// it is an ordinary HTTP response, and this endpoint answers it exactly as
-/// the HTTP twin answers a bad request — a status, an `x-request-id`, and a
-/// JSON error body naming the cause. A live handshake with an invalid key
-/// returns `401` with `x-request-id` and
-/// `{"error":{"code":"invalid_api_key",…}}`. Flattening that to a display
-/// string — `"HTTP error: 401 Unauthorized"` — discards the status, the body
-/// and the request id, leaving `provider_response_status()`,
-/// `provider_response_body()` and `provider_request_id()` all `None`.
-///
-/// That is the contract the crate's other two completion transports keep
-/// (rig#2314, rig#2315): the blocking path through `send_completion` and the
-/// SSE path through `sse_transport` both classify a connect failure as
-/// [`CompletionError::ProviderResponse`] with the body and id attached. This
-/// makes the websocket the third.
-///
-/// The rejection's **headers** ride along too, by the same rule and for the
-/// same reason (rig#2210): a `429` upgrade carries `Retry-After`, and a caller
-/// that has to back off needs it from whichever transport it was refused on.
-/// This mirrors `sse_transport`, which attaches its handshake's headers to the
-/// error it builds.
-///
-/// The backend's job is to report the rejection as
-/// [`http_client::Error::non_success_with_details`]; reading OpenAI's own
-/// request-id header off it is provider knowledge and belongs here.
-///
-/// Failures that never reached the provider — TLS, DNS, a protocol violation —
-/// have no response to preserve and stay [`CompletionError::ProviderError`].
+/// A rejected upgrade is the provider's reply — its status, body and headers
+/// are exactly what a caller that has to back off needs from whichever
+/// transport it was refused on — so it becomes `ProviderResponse` like the
+/// unary and SSE paths. Reading OpenAI's request-id header off it is
+/// provider knowledge and belongs here; the backend's job is to report the
+/// rejection as [`http_client::Error::non_success_with_details`]. A failure
+/// that never reached the provider (TLS, DNS, a protocol violation) stays a
+/// transport error with its own retryability.
 fn websocket_provider_error(error: http_client::Error) -> CompletionError {
-    let Some(status) = error.non_success_status() else {
-        return CompletionError::ProviderError(error.to_string());
-    };
-
-    let provider_request_id = REQUEST_ID_HEADER
-        .and_then(|header| error.non_success_headers()?.get(header))
-        .and_then(|value| value.to_str().ok())
-        .filter(|value| !value.is_empty())
-        .map(str::to_string);
-    // The body is the provider's own error envelope; an upgrade rejected
-    // without one still carries its status, which is more than the string form
-    // preserved.
-    let body = error.non_success_body().unwrap_or_default().to_string();
-    let headers = error.non_success_headers().cloned().map(Box::new);
-
-    CompletionError::from_http_response_with_request_id(status, body, provider_request_id)
-        .with_response_headers(headers)
+    let provider_request_id = error.non_success_headers().and_then(|headers| {
+        crate::providers::internal::request_id_from_headers(headers, REQUEST_ID_HEADER)
+    });
+    CompletionError::from_transport_error(error).with_provider_request_id(provider_request_id)
 }
 
 /// OpenAI Responses websocket mode on an OpenAI client.

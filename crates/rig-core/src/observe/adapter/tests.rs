@@ -356,7 +356,7 @@ async fn unary_failure_facts_preserve_retryability_without_copying_error_bodies(
                 AdapterEvent::Finished {
                     ending: AdapterEnding::Error {
                         boundary: AdapterErrorBoundary::ProviderResponse,
-                        kind: "http".into(),
+                        kind: "provider_response".into(),
                         status: Some(429),
                         retryable: true
                     }
@@ -637,7 +637,7 @@ async fn stream_terminal_eof_error_and_drop_have_distinct_closures() {
             false,
             AdapterEnding::Error {
                 boundary: AdapterErrorBoundary::ProviderResponse,
-                kind: "http".into(),
+                kind: "provider_response".into(),
                 status: Some(503),
                 retryable: true,
             },

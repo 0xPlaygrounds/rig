@@ -528,10 +528,7 @@ async fn embeddings_with_pooling_none_are_a_400() {
                 "{error}"
             );
             assert!(
-                matches!(
-                    error,
-                    EmbeddingError::ProviderResponse(_) | EmbeddingError::HttpError(_)
-                ),
+                matches!(error, EmbeddingError::ProviderResponse(_)),
                 "the provider envelope must be preserved rather than reduced: {error}"
             );
         },

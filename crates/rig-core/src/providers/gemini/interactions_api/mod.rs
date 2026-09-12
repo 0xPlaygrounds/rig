@@ -128,6 +128,16 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<Interaction, CompletionError> {
+        self.raw_completion_observed(completion_request, None).await
+    }
+
+    /// [`Self::raw_completion`] with observation context owned by this
+    /// invocation.
+    async fn raw_completion_observed(
+        &self,
+        completion_request: CompletionRequest,
+        observation: Option<crate::observe::AdapterContext>,
+    ) -> Result<Interaction, CompletionError> {
         let span = CompletionSpanBuilder::new(
             PROVIDER_NAME,
             &self.model,
@@ -148,11 +158,14 @@ where
         );
 
         let body = serde_json::to_vec(&request)?;
-        let request = self
+        let mut request = self
             .client
             .post("/v1beta/interactions")?
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
+        if let Some(observation) = observation {
+            observation.attach(&mut request, "/v1beta/interactions");
+        }
 
         send_completion::<_, DirectPayload<Interaction>, _>(
             &self.client,
@@ -182,18 +195,36 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Capture before `try_into` consumes the raw value.
-        let raw = self.raw_completion(completion_request).await?;
-        let captured = serde_json::to_value(&raw)?;
-        let response: completion::CompletionResponse = raw.try_into()?;
-        Ok(response.with_raw(captured))
+        self.completion_with_context(completion_request, None).await
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        InteractionsCompletionModel::stream(self, request).await
+        self.stream_with_context(request, None).await
+    }
+
+    async fn completion_with_context(
+        &self,
+        completion_request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        // Capture before `try_into` consumes the raw value.
+        let raw = self
+            .raw_completion_observed(completion_request, context)
+            .await?;
+        let captured = serde_json::to_value(&raw)?;
+        let response: completion::CompletionResponse = raw.try_into()?;
+        Ok(response.with_raw(captured))
+    }
+
+    async fn stream_with_context(
+        &self,
+        request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+        InteractionsCompletionModel::stream_observed(self, request, context).await
     }
 }
 
@@ -395,12 +426,10 @@ where
     T: HttpClientExt + Clone + 'static,
 {
     let response = client.send::<_, Vec<u8>>(request).await?;
+    let (parts, body) = response.into_parts();
 
-    if response.status().is_success() {
-        let response_body = response
-            .into_body()
-            .await
-            .map_err(CompletionError::HttpError)?;
+    if parts.status.is_success() {
+        let response_body = body.await?;
 
         let response_text = String::from_utf8_lossy(&response_body).to_string();
 
@@ -415,16 +444,12 @@ where
 
         Ok(response)
     } else {
-        let status = response.status();
-        let body = response
-            .into_body()
-            .await
-            .map_err(CompletionError::HttpError)?;
+        let body = body.await?;
 
-        Err(CompletionError::from_http_response(
-            status,
-            String::from_utf8_lossy(&body),
-        ))
+        Err(
+            CompletionError::from_http_response(parts.status, String::from_utf8_lossy(&body))
+                .with_response_headers(Some(Box::new(parts.headers))),
+        )
     }
 }
 

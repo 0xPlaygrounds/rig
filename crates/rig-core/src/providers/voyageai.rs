@@ -292,8 +292,10 @@ where
             .map_err(|x| EmbeddingError::HttpError(x.into()))?;
 
         let response = self.client.send::<_, Bytes>(req).await?;
-        let status = response.status();
-        let response_body = response.into_body().into_future().await?.to_vec();
+        let (parts, body) = response.into_parts();
+        let status = parts.status;
+        let headers = Box::new(parts.headers);
+        let response_body = body.into_future().await?.to_vec();
 
         if status.is_success() {
             match serde_json::from_slice::<ApiResponse<EmbeddingResponse>>(&response_body)? {
@@ -309,14 +311,15 @@ where
                     Err(EmbeddingError::from_http_response(
                         status,
                         String::from_utf8_lossy(&response_body),
-                    ))
+                    )
+                    .with_response_headers(Some(headers)))
                 }
             }
         } else {
-            Err(EmbeddingError::from_http_response(
-                status,
-                String::from_utf8_lossy(&response_body),
-            ))
+            Err(
+                EmbeddingError::from_http_response(status, String::from_utf8_lossy(&response_body))
+                    .with_response_headers(Some(headers)),
+            )
         }
     }
 }
@@ -508,8 +511,10 @@ where
             .map_err(|x| RerankError::HttpError(x.into()))?;
 
         let response = self.client.send::<_, Bytes>(req).await?;
-        let status = response.status();
-        let response_body = response.into_body().into_future().await?.to_vec();
+        let (parts, body) = response.into_parts();
+        let status = parts.status;
+        let headers = Box::new(parts.headers);
+        let response_body = body.into_future().await?.to_vec();
 
         if status.is_success() {
             match serde_json::from_slice::<ApiResponse<RerankApiResponse>>(&response_body)? {
@@ -525,14 +530,15 @@ where
                     Err(RerankError::from_http_response(
                         status,
                         String::from_utf8_lossy(&response_body),
-                    ))
+                    )
+                    .with_response_headers(Some(headers)))
                 }
             }
         } else {
-            Err(RerankError::from_http_response(
-                status,
-                String::from_utf8_lossy(&response_body),
-            ))
+            Err(
+                RerankError::from_http_response(status, String::from_utf8_lossy(&response_body))
+                    .with_response_headers(Some(headers)),
+            )
         }
     }
 }

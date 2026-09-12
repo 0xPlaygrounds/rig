@@ -1803,6 +1803,52 @@ pub mod fixtures {
         drained
     }
 
+    /// Drive `model` through the observed stream entry and drain it. Every
+    /// wire threads the context it is handed: the trace must show the
+    /// request it sent and how the attempt closed, or the wire has silently
+    /// taken the context-discarding default.
+    pub async fn drain_observed<M: CompletionModel>(
+        model: &M,
+        request: crate::completion::CompletionRequest,
+    ) -> Result<DrainedStream, CompletionError> {
+        let log = std::sync::Arc::new(crate::observe::ObservationLog::default());
+        let context = crate::observe::AdapterContext::new(
+            log.clone(),
+            crate::observe::Subject::default(),
+            "conformance",
+        );
+        // A stream that fails to open still sent (or failed to send) a
+        // request: the facts are asserted before the error propagates.
+        let drained = match model.stream_with_context(request, Some(context)).await {
+            Ok(stream) => Ok(drain(stream).await),
+            Err(error) => Err(error),
+        };
+        let events: Vec<_> = log
+            .trace()
+            .observations
+            .iter()
+            .filter_map(|o| match &o.action {
+                crate::observe::Action::Adapter { observation } => Some(observation.event.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            matches!(
+                events.first(),
+                Some(crate::observe::AdapterEvent::Started { .. })
+            ),
+            "the wire must attach the observation context it was handed: {events:?}"
+        );
+        assert!(
+            matches!(
+                events.last(),
+                Some(crate::observe::AdapterEvent::Finished { .. })
+            ),
+            "the attempt must close: {events:?}"
+        );
+        drained
+    }
+
     /// Lower fixture frames onto the byte transport a `SequencedStreamingHttpClient`
     /// replays. Only byte frames are valid here — an event frame in a
     /// byte-driver fixture is a fixture authoring error.
@@ -1854,8 +1900,7 @@ pub mod fixtures {
                         .completions_api();
                     let model = client.completion_model("gpt-4o");
                     let request = model.completion_request("hello").build();
-                    let stream = model.stream(request).await?;
-                    Ok(drain(stream).await)
+                    drain_observed(&model, request).await
                 })
             })
         }
@@ -1962,8 +2007,7 @@ pub mod fixtures {
                         .build()?;
                     let model = client.completion_model("gpt-5.4");
                     let request = model.completion_request("hello").build();
-                    let stream = model.stream(request).await?;
-                    Ok(drain(stream).await)
+                    drain_observed(&model, request).await
                 })
             })
         }
@@ -2364,8 +2408,7 @@ pub mod fixtures {
                         crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05,
                     );
                     let request = model.completion_request("hello").build();
-                    let stream = model.stream(request).await?;
-                    Ok(drain(stream).await)
+                    drain_observed(&model, request).await
                 })
             })
         }
@@ -2502,8 +2545,7 @@ pub mod fixtures {
                         .interactions_api();
                     let model = client.completion_model("gemini-2.5-pro");
                     let request = model.completion_request("hello").build();
-                    let stream = model.stream(request).await?;
-                    Ok(drain(stream).await)
+                    drain_observed(&model, request).await
                 })
             })
         }
@@ -2633,8 +2675,7 @@ pub mod fixtures {
                         crate::providers::anthropic::completion::CLAUDE_SONNET_4_6,
                     );
                     let request = model.completion_request("hello").build();
-                    let stream = model.stream(request).await?;
-                    Ok(drain(stream).await)
+                    drain_observed(&model, request).await
                 })
             })
         }
@@ -2755,8 +2796,7 @@ pub mod fixtures {
                     let model =
                         client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
                     let request = model.completion_request("hello").build();
-                    let stream = model.stream(request).await?;
-                    Ok(drain(stream).await)
+                    drain_observed(&model, request).await
                 })
             })
         }
@@ -2872,8 +2912,7 @@ pub mod fixtures {
                         .build()?;
                     let model = client.completion_model("llama3.2");
                     let request = model.completion_request("hello").build();
-                    let stream = model.stream(request).await?;
-                    Ok(drain(stream).await)
+                    drain_observed(&model, request).await
                 })
             })
         }

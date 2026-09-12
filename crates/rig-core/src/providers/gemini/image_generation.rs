@@ -7,11 +7,11 @@ use super::completion::gemini_api_types::{
 };
 use crate::completion::Usage;
 use crate::http_client::HttpClientExt;
+use crate::image_generation;
 use crate::image_generation::{
     ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
 };
 use crate::wasm_compat::WasmCompatSend;
-use crate::{http_client, image_generation};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use serde_json::Value;
@@ -78,20 +78,24 @@ where
             .body(body)
             .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
 
-        let response = self.client.send(request).await?;
+        let response = self.client.send::<_, Vec<u8>>(request).await?;
 
-        let status = response.status();
-        let text = http_client::text(response).await?;
+        let (parts, body) = response.into_parts();
+        let status = parts.status;
+        let headers = Box::new(parts.headers);
+        let text = String::from(String::from_utf8_lossy(&body.await?));
 
         if !status.is_success() {
-            return Err(ImageGenerationError::from_http_response(status, text));
+            return Err(ImageGenerationError::from_http_response(status, text)
+                .with_response_headers(Some(headers)));
         }
 
         match serde_json::from_str::<ApiResponse<GenerateContentResponse>>(&text)? {
             ApiResponse::Ok(response) => Ok(response),
             ApiResponse::Err(err) => {
                 tracing::warn!(message = %err.error.message, "provider returned an error response");
-                Err(ImageGenerationError::from_http_response(status, text))
+                Err(ImageGenerationError::from_http_response(status, text)
+                    .with_response_headers(Some(headers)))
             }
         }
     }

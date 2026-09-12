@@ -32,9 +32,12 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorKind {
-    /// A non-success HTTP response, or a transport failure without a status.
+    /// A transport failure that produced no provider reply: a response-less
+    /// failure (a reset connection, a timeout, a protocol error), or a
+    /// status the transport reported without a body. A non-success reply
+    /// *with* a body is the provider's and is [`Self::ProviderResponse`].
     Http {
-        /// The status, when the failure had a response.
+        /// The status, when the transport reported one.
         status: Option<u16>,
     },
     /// JSON serialization or deserialization failed.
@@ -47,7 +50,9 @@ pub enum ErrorKind {
     Response,
     /// The provider reported a failure without a preserved raw response.
     Provider,
-    /// The provider's raw error response was preserved.
+    /// The provider replied and its raw response was preserved: a non-2xx
+    /// status with a body, a 2xx error envelope, or a non-HTTP transport's
+    /// error payload. Status, body, request id and headers are on the report.
     ProviderResponse,
     /// A tool failed; the inner kind is the tool's own classification.
     Tool(ToolErrorKind),
@@ -464,9 +469,11 @@ impl From<MemoryError> for ErrorReport {
 
 impl From<&EmbeddingError> for ErrorReport {
     fn from(error: &EmbeddingError) -> Self {
+        let mut transport_retryable: Option<bool> = None;
         let (kind, http_status) = match error {
             EmbeddingError::HttpError(inner) => {
                 let status = inner.non_success_status().map(|s| s.as_u16());
+                transport_retryable = Some(transient_transport(inner));
                 (ErrorKind::Http { status }, status)
             }
             EmbeddingError::JsonError(_) => (ErrorKind::Json, None),
@@ -485,7 +492,9 @@ impl From<&EmbeddingError> for ErrorReport {
             }
         };
         let retryable = match kind {
-            ErrorKind::Http { status } => retryable_status(status),
+            ErrorKind::Http { status } => {
+                transport_retryable.unwrap_or_else(|| retryable_status(status))
+            }
             ErrorKind::ProviderResponse => retryable_status(http_status),
             ErrorKind::Json
             | ErrorKind::Url
@@ -546,9 +555,11 @@ impl From<EmbeddingError> for ErrorReport {
 
 impl From<&RerankError> for ErrorReport {
     fn from(error: &RerankError) -> Self {
+        let mut transport_retryable: Option<bool> = None;
         let (kind, http_status) = match error {
             RerankError::HttpError(inner) => {
                 let status = inner.non_success_status().map(|s| s.as_u16());
+                transport_retryable = Some(transient_transport(inner));
                 (ErrorKind::Http { status }, status)
             }
             RerankError::JsonError(_) => (ErrorKind::Json, None),
@@ -561,7 +572,9 @@ impl From<&RerankError> for ErrorReport {
             }
         };
         let retryable = match kind {
-            ErrorKind::Http { status } => retryable_status(status),
+            ErrorKind::Http { status } => {
+                transport_retryable.unwrap_or_else(|| retryable_status(status))
+            }
             ErrorKind::ProviderResponse => retryable_status(http_status),
             ErrorKind::Json
             | ErrorKind::Url
@@ -622,6 +635,7 @@ impl From<RerankError> for ErrorReport {
 
 impl From<&VectorStoreError> for ErrorReport {
     fn from(error: &VectorStoreError) -> Self {
+        let mut transport_retryable: Option<bool> = None;
         let (kind, http_status) = match error {
             VectorStoreError::EmbeddingError(inner) => {
                 return Self {
@@ -638,6 +652,7 @@ impl From<&VectorStoreError> for ErrorReport {
             VectorStoreError::MissingIdError(_) => (ErrorKind::Response, None),
             VectorStoreError::Http(inner) => {
                 let status = inner.non_success_status().map(|s| s.as_u16());
+                transport_retryable = Some(transient_transport(inner));
                 (ErrorKind::Http { status }, status)
             }
             VectorStoreError::ExternalAPIError(status, _) => {
@@ -645,7 +660,8 @@ impl From<&VectorStoreError> for ErrorReport {
                 (ErrorKind::Http { status }, status)
             }
         };
-        let retryable = matches!(kind, ErrorKind::Http { .. }) && retryable_status(http_status);
+        let retryable = matches!(kind, ErrorKind::Http { .. })
+            && transport_retryable.unwrap_or_else(|| retryable_status(http_status));
         ErrorReport {
             kind,
             retryable,

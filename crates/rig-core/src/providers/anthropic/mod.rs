@@ -15,6 +15,7 @@
 pub mod client;
 pub mod completion;
 pub mod model_listing;
+mod observation;
 pub mod streaming;
 
 pub use client::{Client, ClientBuilder};

@@ -159,96 +159,74 @@ pub(crate) fn completion_error_from_body(
 macro_rules! impl_provider_response_helpers {
     ($error:ty $(, $report:ident)?) => {
         impl $error {
-            /// Builds an error from a captured HTTP status and raw response body,
-            /// routing it so the `provider_response_*` helpers stay useful.
+            /// Builds an error from a captured HTTP status and raw response
+            /// body: the one funnel every HTTP-error path uses.
             ///
-            /// This is the single funnel every HTTP-error path should use instead
-            /// of flattening a status and body into a `ProviderError(String)`:
-            /// - A **success (2xx)** status carries a provider-authored error
-            ///   envelope, so it is preserved as [`Self::ProviderResponse`]
-            ///   together with the status.
-            /// - A **non-success** status is preserved as
-            ///   [`Self::HttpError`]`(`[`http_client::Error::InvalidStatusCodeWithMessage`](crate::http_client::Error::InvalidStatusCodeWithMessage)`)`.
-            ///
-            /// Either way the raw `body` is kept verbatim and the status stays
-            /// recoverable through [`Self::provider_response_status`]. Read the
-            /// response body exactly once and hand it here for both branches.
+            /// The body is the provider's own reply — a 2xx error envelope or
+            /// a non-success response — so it is preserved verbatim as
+            /// [`Self::ProviderResponse`] with its status, whatever the
+            /// status is. Stamp transport metadata with
+            /// [`Self::with_provider_request_id`] and
+            /// [`Self::with_response_headers`]. A transport failure that
+            /// never produced a provider reply is [`Self::HttpError`]; a
+            /// transport that reported the reply as an error goes through
+            /// [`Self::from_transport_error`]. Read the response body exactly
+            /// once and hand it here.
             pub fn from_http_response(status: http::StatusCode, body: impl Into<String>) -> Self {
-                if status.is_success() {
-                    Self::ProviderResponse($crate::provider_response::ProviderResponseError::new(
-                        status, body,
-                    ))
-                } else {
-                    Self::HttpError($crate::http_client::Error::InvalidStatusCodeWithMessage(
+                Self::ProviderResponse($crate::provider_response::ProviderResponseError::new(
+                    status, body,
+                ))
+            }
+
+            /// Routes a transport error. A non-success response the
+            /// transport reported as an error, body in hand, is the
+            /// provider's reply and becomes [`Self::ProviderResponse`] (with
+            /// the headers when the transport kept them); everything else — a
+            /// response-less failure, or a status the transport reported
+            /// without a body — stays [`Self::HttpError`]. This is the
+            /// `From<http_client::Error>` conversion, so a `?` on a transport
+            /// call classifies like an explicit funnel call.
+            pub fn from_transport_error(error: $crate::http_client::Error) -> Self {
+                match error {
+                    $crate::http_client::Error::InvalidStatusCodeWithMessage(status, body) => {
+                        Self::from_http_response(status, body)
+                    }
+                    $crate::http_client::Error::InvalidStatusCodeWithDetails {
                         status,
-                        body.into(),
-                    ))
+                        body,
+                        headers,
+                    } => Self::from_http_response(status, body).with_response_headers(Some(headers)),
+                    other => Self::HttpError(other),
                 }
             }
 
-            /// [`Self::from_http_response`] for paths that captured the
-            /// provider's transport request id alongside the response
-            /// (rig#2314).
-            ///
-            /// Unlike the metadata-less funnel, a **non-success** status is
-            /// preserved as [`Self::ProviderResponse`] too — `http_client`'s
-            /// error type has no slot for provider metadata, and the id the
-            /// provider reported on a failed call is exactly what support
-            /// asks for. Classification therefore follows the *code path*
-            /// (did this call site capture transport metadata?), never the
-            /// presence of the header on a particular response, so a given
-            /// provider's errors classify consistently. The status stays
-            /// recoverable through [`Self::provider_response_status`] and the
-            /// id through [`Self::provider_request_id`].
-            pub fn from_http_response_with_request_id(
-                status: http::StatusCode,
-                body: impl Into<String>,
-                provider_request_id: Option<String>,
-            ) -> Self {
-                Self::ProviderResponse(
-                    $crate::provider_response::ProviderResponseError::new(status, body)
-                        .with_provider_request_id(provider_request_id),
-                )
+            /// Attaches the provider's transport request id (rig#2314) to a
+            /// preserved provider response. A slot already filled keeps the
+            /// id that saw the response; no other variant has a slot, so
+            /// those pass through untouched.
+            pub fn with_provider_request_id(self, provider_request_id: Option<String>) -> Self {
+                match self {
+                    Self::ProviderResponse(response) if response.provider_request_id.is_none() => {
+                        Self::ProviderResponse(response.with_provider_request_id(provider_request_id))
+                    }
+                    other => other,
+                }
             }
 
-            /// Attaches the response's headers to an error just built by one of
-            /// the `from_http_response*` funnels, so rate-limit metadata
-            /// (`Retry-After`, `x-ratelimit-*`) survives onto it (rig#2210).
-            ///
-            /// This is a separate step rather than a funnel parameter because
-            /// the funnels' classification is fixed by the *call path* (does
-            /// this provider have a request-id contract?), while header capture
-            /// depends only on whether the transport handed the response back.
-            /// Both routes can therefore carry headers:
-            /// [`Self::ProviderResponse`] stores them alongside the request id,
-            /// and a non-success [`Self::HttpError`] is upgraded in place to
-            /// [`http_client::Error::InvalidStatusCodeWithDetails`](crate::http_client::Error::InvalidStatusCodeWithDetails),
-            /// which displays identically to the header-less variant.
-            ///
-            /// Passing `None` leaves the error untouched, as does calling this
-            /// on a variant with no response to annotate. An error that already
-            /// captured headers keeps the ones it has: the first capture is the
-            /// one that saw the response, so this never overwrites.
+            /// Attaches the response's headers to a preserved provider
+            /// response, so rate-limit metadata (`Retry-After`,
+            /// `x-ratelimit-*`) survives onto it (rig#2210). Passing `None`
+            /// leaves the error untouched, as does calling this on a variant
+            /// with no response to annotate. An error that already captured
+            /// headers keeps the ones it has: the first capture is the one
+            /// that saw the response, so this never overwrites.
             pub fn with_response_headers(self, headers: Option<Box<http::HeaderMap>>) -> Self {
                 let Some(headers) = headers else {
                     return self;
                 };
                 match self {
-                    // The first capture is the one that saw the response; a
-                    // later caller only fills the gap, mirroring how the
-                    // request-id slot is stamped (rig#2314).
                     Self::ProviderResponse(response) if response.headers.is_none() => {
                         Self::ProviderResponse(response.with_headers(Some(headers)))
-                    }
-                    Self::HttpError($crate::http_client::Error::InvalidStatusCodeWithMessage(
-                        status,
-                        body,
-                    )) => {
-                        Self::HttpError($crate::http_client::Error::InvalidStatusCodeWithDetails {
-                            status,
-                            body,
-                            headers,
-                        })
                     }
                     other => other,
                 }
@@ -564,9 +542,11 @@ macro_rules! provider_error_enum {
         $(#[$extra_doc])*
         #[derive(Debug, thiserror::Error)]
         pub enum $name {
-            /// Http error (e.g.: connection error, timeout, etc.)
+            /// A transport failure that produced no provider reply (a
+            /// connection error, a timeout, a status reported without a
+            /// body); a reply with a body is [`Self::ProviderResponse`].
             #[error("HttpError: {0}")]
-            HttpError(#[from] $crate::http_client::Error),
+            HttpError($crate::http_client::Error),
 
             /// Json error (e.g.: serialization, deserialization)
             #[error("JsonError: {0}")]
@@ -590,6 +570,12 @@ macro_rules! provider_error_enum {
         }
 
         $crate::provider_response::impl_provider_response_helpers!($name);
+
+        impl From<$crate::http_client::Error> for $name {
+            fn from(error: $crate::http_client::Error) -> Self {
+                Self::from_transport_error(error)
+            }
+        }
     };
 }
 

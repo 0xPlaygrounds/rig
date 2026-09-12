@@ -1457,14 +1457,16 @@ where
     Ext: crate::client::Provider + ResponsesProviderExt + Clone + 'static,
     H: Clone + WasmCompatSend + 'static,
 {
-    /// Open a Responses stream.
+    /// Open a Responses stream with observation context owned by this
+    /// invocation.
     ///
     /// The terminal record's provider-native form — the escape hatch for
     /// Responses-API terminal fields rig does not normalize — rides on
     /// [`StreamFinal::raw`] as the serialized [`StreamingCompletionResponse`].
-    pub(crate) async fn stream(
+    pub(crate) async fn stream_observed(
         &self,
         completion_request: crate::completion::CompletionRequest,
+        observation: Option<crate::observe::AdapterContext>,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let system_instructions = completion_request.system_instructions().map(str::to_owned);
         let record_telemetry_content = completion_request.record_telemetry_content;
@@ -1478,11 +1480,18 @@ where
 
         let body = serde_json::to_vec(&request)?;
 
-        let req = self
+        let mut req = self
             .client
             .post(Ext::RESPONSES_PATH)?
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
+        if let Some(observation) = observation {
+            crate::providers::openai::observation::attach_responses(
+                observation,
+                &mut req,
+                "/responses",
+            );
+        }
 
         let span = CompletionSpanBuilder::new(
             Ext::PROVIDER_NAME,
