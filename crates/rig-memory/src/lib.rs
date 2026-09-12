@@ -1241,6 +1241,7 @@ impl TemplateCompactor {
     /// `max_bytes` of `0` disables truncation (equivalent to the default
     /// unbounded behaviour). The header line plus the marker are always
     /// preserved even if they exceed the cap.
+    #[must_use = "the setting applies to the returned value"]
     pub fn with_max_bytes(mut self, max_bytes: usize) -> Self {
         self.max_bytes = if max_bytes == 0 {
             None

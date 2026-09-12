@@ -25,6 +25,7 @@ impl EffectLogResource {
     }
 
     /// The log so far.
+    #[must_use = "the log is a copy of the recorder's state"]
     pub fn log(&self) -> EffectLog {
         self.0.log()
     }
@@ -115,6 +116,7 @@ impl Replay {
     /// checkpoint) is not in the world, so that child carries no `ChildOf`
     /// and its new record names no parent. Returns the entities, in record
     /// order.
+    #[must_use = "the loaded entities are the caller's handles"]
     pub fn load(world: &mut World, log: &EffectLog) -> Vec<Entity> {
         let mut records: Vec<&rig_core::effect::EffectRecord> = log.iter().collect();
         records.sort_by_key(|record| record.id);

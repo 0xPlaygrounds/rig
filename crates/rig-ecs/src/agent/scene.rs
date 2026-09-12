@@ -227,6 +227,7 @@ pub struct Loaded {
 }
 
 /// Save the graph and the effects of `world` as one [`WorldScene`].
+#[must_use = "saving a scene does not remove it from the world"]
 pub fn save_world(world: &mut World) -> Result<WorldScene, rig_core::error::ErrorReport> {
     let (graph, entities) = RunScene::take(world)?;
     let mut extensions = BTreeMap::<usize, BTreeMap<String, serde_json::Value>>::new();
@@ -409,11 +410,13 @@ impl RunScene {
     /// Take the graph of `world`: agents and documents first, then their
     /// links, then runs, then utterances, turns and invalid calls, each
     /// after its parent.
+    #[must_use = "saving a scene does not remove it from the world"]
     pub fn save(world: &mut World) -> Result<Self, rig_core::error::ErrorReport> {
         Self::take(world).map(|(scene, _)| scene)
     }
 
     /// [`RunScene::save`], with the entity each scene index was taken from.
+    #[must_use = "the taken scene is the only copy"]
     pub fn take(world: &mut World) -> Result<(Self, Vec<Entity>), rig_core::error::ErrorReport> {
         let mut order: Vec<(u8, Entity)> = Vec::new();
         for (entity, _) in world.query::<(Entity, &Owner)>().iter(world) {
@@ -606,6 +609,7 @@ impl RunScene {
     /// Spawn the graph into `world`. Handlers are the host's to bind first:
     /// a relationship to a handler key nothing is bound to is an error
     /// naming the key. Returns the spawned entities by scene index.
+    #[must_use = "the loaded entities are the caller's handles"]
     pub fn load(&self, world: &mut World) -> Result<Vec<Entity>, rig_core::error::ErrorReport> {
         self.validate_structure()?;
         let mut spawned: Vec<Entity> = Vec::with_capacity(self.entities.len());

@@ -107,6 +107,7 @@ impl Bus {
     }
 
     /// Build the schedule with ambiguity detection at `level`.
+    #[must_use = "the setting applies to the returned value"]
     pub fn ambiguity_detection(mut self, level: LogLevel) -> Self {
         self.ambiguity = level;
         self

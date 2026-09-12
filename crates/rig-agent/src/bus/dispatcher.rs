@@ -1099,6 +1099,7 @@ enum PendingState {
 /// dispatch (the owned reply is dropped). A host that ticks rather
 /// than awaits does not hold one: it holds effects as entities
 /// (`rig_ecs::bus`).
+#[must_use = "a dispatch does nothing until polled"]
 pub struct Pending {
     id: EffectId,
     /// The dispatch this one was made from, if a handler made it.
@@ -1219,6 +1220,7 @@ enum StreamState {
 /// cancels the dispatch: the handler's next send fails and the provider
 /// stream is dropped. Pause is client-side back-pressure — stop polling and
 /// the bounded channel stalls the handler.
+#[must_use = "a dispatch does nothing until polled"]
 pub struct EffectStream {
     id: EffectId,
     /// The dispatch this one was made from, if a handler made it.

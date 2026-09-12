@@ -1084,6 +1084,7 @@ fn merge_provider_tools_into_additional_params(
 ///
 /// Note: It is usually unnecessary to create a completion request builder directly.
 /// Instead, use the [CompletionModel::completion_request] method.
+#[must_use = "a request builder does nothing until built or sent"]
 pub struct CompletionRequestBuilder<M = Unbound> {
     model: M,
     prompt: Message,

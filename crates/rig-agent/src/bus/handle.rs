@@ -195,6 +195,7 @@ const F_CUSTOM: rig_core::effect::EffectFamily = rig_core::effect::EffectFamily:
 /// parameter is the narrowed answer a convenience method returns
 /// (`MemoryHandle::load` narrows `MemoryOutcome` to the messages); by
 /// default it is the family's own answer.
+#[must_use = "a dispatch does nothing until polled"]
 pub struct Typed<F: Family, T = <F as Family>::Answer> {
     pending: Pending,
     map: fn(F::Answer) -> Result<T, ErrorReport>,
@@ -257,6 +258,7 @@ pub struct ToolAnswer {
 
 /// A tool call in flight ([`ToolHandle::call`]): the result and the
 /// context the tool published. `Unpin`, cancelled by drop.
+#[must_use = "a dispatch does nothing until polled"]
 pub struct ToolCall {
     pending: Pending,
     published: Option<std::sync::Arc<rig_core::tool::PublishedContext>>,

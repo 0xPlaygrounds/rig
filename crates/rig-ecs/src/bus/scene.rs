@@ -100,6 +100,7 @@ impl Scene {
     /// in `Seq` order, and every [`Bound`] descriptor. An effect `ChildOf`
     /// an entity that is not an effect keeps no parent; see
     /// [`Scene::save_with`].
+    #[must_use = "saving a scene does not remove it from the world"]
     pub fn save(world: &mut World) -> Self {
         Self::save_with(world, |_| None)
     }
@@ -109,6 +110,7 @@ impl Scene {
     /// effect of this scene, so a host's own entity an effect descends from
     /// is kept as [`SceneEffect::parent_ref`] and restored by
     /// [`Scene::load_with`].
+    #[must_use = "saving a scene does not remove it from the world"]
     pub fn save_with(world: &mut World, sibling: impl Fn(Entity) -> Option<usize>) -> Self {
         let mut handlers: Vec<HandlerDescriptor> = world
             .query::<&Bound>()

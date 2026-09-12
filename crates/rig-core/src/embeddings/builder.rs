@@ -48,6 +48,7 @@ use crate::{
 /// # Ok(())
 /// # }
 /// ```
+#[must_use = "an embeddings builder does nothing until built"]
 pub struct EmbeddingsBuilder<M, T> {
     model: M,
     documents: Vec<(T, Vec<String>)>,

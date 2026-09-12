@@ -771,6 +771,7 @@ impl AgentRun {
     /// the driver builds each turn stays consistent with the intercept (and
     /// a tool set that shifts mid-run cannot flip the mode); a later call
     /// with a different name is refused, not applied.
+    #[must_use = "a refused commit means the run already pinned a name"]
     pub fn commit_output_tool_name(&mut self, name: impl Into<String>) -> bool {
         if self.output_tool_name.is_some() {
             return false;

@@ -795,6 +795,7 @@ impl RequestPatch {
     /// `additional_params` shallow-merges with later keys winning,
     /// `active_tools` intersect, every other field takes the later value
     /// when set.
+    #[must_use = "the merged patch is the returned value"]
     pub fn merge(mut self, later: Self) -> Self {
         self.extra_context.extend(later.extra_context);
         self.additional_params = match (self.additional_params.take(), later.additional_params) {

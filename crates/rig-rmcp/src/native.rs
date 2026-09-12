@@ -128,6 +128,7 @@ impl McpTool {
     /// surfaces to the model as a tool result, so the agent can recover rather
     /// than hang). RMCP sends a cancellation notification when the deadline
     /// elapses.
+    #[must_use = "the setting applies to the returned value"]
     pub fn with_timeout(mut self, timeout: impl Into<Option<Duration>>) -> Self {
         self.timeout = timeout.into();
         self

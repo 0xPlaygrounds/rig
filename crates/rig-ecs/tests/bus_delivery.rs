@@ -386,7 +386,8 @@ fn serial_serving_replays_two_streams_on_the_same_key() {
     })
     .unwrap()
     .unwrap();
-    Replay::load(replay.world_mut(), &impossible);
+    // The loaded effects are found by query below; their handles are not needed.
+    let _ = Replay::load(replay.world_mut(), &impossible);
     bus_support::tick_until(
         &mut replay,
         "impossible serial batch is diagnosed",
@@ -495,7 +496,8 @@ fn world_answers_on_either_side_of_collect_preserve_policy_observations() {
     })
     .unwrap()
     .unwrap();
-    Replay::load(replay.world_mut(), &log);
+    // The loaded effects are found by query below; their handles are not needed.
+    let _ = Replay::load(replay.world_mut(), &log);
     bus_support::tick_until(&mut replay, "same observed answer sets", |world| {
         world.resource::<Visible>().0.len() == 2
     });
@@ -1102,7 +1104,8 @@ fn policy_replay_refuses_when_quiescent_policy_never_cancels() {
     })
     .unwrap()
     .unwrap();
-    Replay::load(replay.world_mut(), &log);
+    // The loaded effects are found by query below; their handles are not needed.
+    let _ = Replay::load(replay.world_mut(), &log);
     bus_support::tick_until(&mut replay, "missing policy cancellation", |world| {
         world.contains_resource::<rig_ecs::bus::ReplayFailure>()
     });
