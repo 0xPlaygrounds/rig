@@ -189,6 +189,15 @@ where
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         match kind {
+            EffectKind::ToolCall { name, .. } if name != T::NAME => {
+                // Routing is by key, so this is an invariant violation, as
+                // `Layer::serve` treats a renamed call: the handler under
+                // `tool:<name>` runs the tool of that name and no other.
+                Reply::Outcome(Err(ErrorReport::new(
+                    ErrorKind::Internal,
+                    format!("tool handler `{}` asked to run `{name}`", T::NAME),
+                )))
+            }
             EffectKind::ToolCall { args, .. } => {
                 let mut context = dispatch_context(&dispatch);
                 let result = ErasedTool::execute(&self.tool, args, &mut context).await;
@@ -335,7 +344,7 @@ where
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
-            key: HandlerKey::from(format!("embed:{}", self.label)),
+            key: crate::effect::embed_key(&self.label),
             family: FamilyDescriptor::Embed {
                 model: self.label.clone(),
                 dims: Some(self.model.ndims()),
@@ -406,7 +415,7 @@ where
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
-            key: HandlerKey::from(format!("rerank:{}", self.label)),
+            key: crate::effect::rerank_key(&self.label),
             family: FamilyDescriptor::Rerank {
                 model: self.label.clone(),
                 max_documents: self.model.max_documents(),
@@ -441,12 +450,26 @@ where
 /// A [`ConversationMemory`] as a handler.
 pub struct MemoryAdapter<M> {
     memory: M,
+    label: Option<String>,
 }
 
 impl<M> MemoryAdapter<M> {
-    /// Wrap `memory`.
+    /// Wrap `memory` as an agent's own memory, under the bare `memory` key.
     pub fn new(memory: M) -> Self {
-        Self { memory }
+        Self {
+            memory,
+            label: None,
+        }
+    }
+
+    /// Wrap `memory` under `memory:<label>`, so a host can serve several
+    /// backends (per tenant, per store) on one bus and dispatch to each by
+    /// [`memory_key`](crate::effect::memory_key).
+    pub fn labelled(label: impl Into<String>, memory: M) -> Self {
+        Self {
+            memory,
+            label: Some(label.into()),
+        }
     }
 
     /// The wrapped backend.
@@ -463,7 +486,10 @@ where
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
-            key: HandlerKey::from("memory"),
+            key: self
+                .label
+                .as_deref()
+                .map_or_else(|| HandlerKey::from("memory"), crate::effect::memory_key),
             family: FamilyDescriptor::Memory {},
             layers: Vec::new(),
         }
@@ -511,12 +537,23 @@ where
 /// typed view deserialises on the client side.
 pub struct RetrieveAdapter<I> {
     index: I,
+    label: Option<String>,
 }
 
 impl<I> RetrieveAdapter<I> {
-    /// Wrap `index`.
+    /// Wrap `index` as an agent's own index, under the bare `retrieve` key.
     pub fn new(index: I) -> Self {
-        Self { index }
+        Self { index, label: None }
+    }
+
+    /// Wrap `index` under `retrieve:<label>`, so a host can serve several
+    /// indexes on one bus and dispatch to each by
+    /// [`retrieve_key`](crate::effect::retrieve_key).
+    pub fn labelled(label: impl Into<String>, index: I) -> Self {
+        Self {
+            index,
+            label: Some(label.into()),
+        }
     }
 
     /// The wrapped index.
@@ -534,7 +571,10 @@ where
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
-            key: HandlerKey::from("retrieve"),
+            key: self
+                .label
+                .as_deref()
+                .map_or_else(|| HandlerKey::from("retrieve"), crate::effect::retrieve_key),
             family: FamilyDescriptor::Retrieve {},
             layers: Vec::new(),
         }
