@@ -782,8 +782,11 @@ fn parse_qwen3_assistant(
                 "duplicate or empty tool-call ID `{id}`"
             )));
         }
-        items.push(AssistantContent::ToolCall(ToolCall::from_wire(
+        // The `tool_calls`-th call of the turn: an id-less envelope mints
+        // its handle at that index, so two calls never share one.
+        items.push(AssistantContent::ToolCall(ToolCall::from_wire_indexed(
             envelope.id.unwrap_or_default(),
+            tool_calls as u64,
             ToolFunction::new(envelope.name, envelope.arguments),
         )));
         tool_calls += 1;

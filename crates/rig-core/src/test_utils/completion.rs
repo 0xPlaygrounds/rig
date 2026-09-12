@@ -410,8 +410,11 @@ impl CompletionModel for MockCompletionModel {
         // production runs in `StreamingCompletionResponse` for both.
         let stream = async_stream::stream! {
             let mut out = crate::providers::internal::adapter::AdapterOutput::new();
+            // An id-less scripted tool call mints per stream, like a wire
+            // that carries no ids (`tool-0`, `tool-1`, …).
+            let mut tool_ids = crate::streaming::SyntheticIds::tool();
             for event in events {
-                if let Err(error) = event.emit(&mut out) {
+                if let Err(error) = event.emit(&mut out, &mut tool_ids) {
                     out.error(error);
                 }
                 for item in out.drain() {

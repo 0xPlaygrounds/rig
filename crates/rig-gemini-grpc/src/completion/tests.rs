@@ -555,13 +555,14 @@ fn missing_call_ids_remain_distinct_and_do_not_collide_with_explicit_ids() {
         })
         .collect();
     assert_eq!(calls.len(), 3);
+    // Minted at the call's own position, not renumbered after the fact.
     assert_eq!(
-        calls
-            .iter()
-            .map(|call| &call.id)
-            .collect::<std::collections::HashSet<_>>()
-            .len(),
-        3
+        calls.iter().map(|call| call.id.clone()).collect::<Vec<_>>(),
+        [
+            message::ToolCallId::minted(0),
+            message::ToolCallId::new("tool-0").unwrap(),
+            message::ToolCallId::minted(2),
+        ]
     );
     assert!(calls.first().unwrap().provider.is_none());
     assert_eq!(
@@ -569,4 +570,48 @@ fn missing_call_ids_remain_distinct_and_do_not_collide_with_explicit_ids() {
         "tool-0"
     );
     assert!(calls.get(2).unwrap().provider.is_none());
+}
+
+/// gRPC replies carry no HTTP status; the status code is the provider's
+/// own code and decides retryability: the four codes that say "the server
+/// was unreachable, overloaded or cut the call short" retry, every other
+/// code says the call itself is wrong. The report carries the code by its
+/// canonical name.
+#[test]
+fn rpc_codes_classify_retryability_and_keep_the_code() {
+    use rig_core::error::ErrorKind;
+    let cells = [
+        (tonic::Code::Unavailable, true, "UNAVAILABLE"),
+        (tonic::Code::ResourceExhausted, true, "RESOURCE_EXHAUSTED"),
+        (tonic::Code::DeadlineExceeded, true, "DEADLINE_EXCEEDED"),
+        (tonic::Code::Aborted, true, "ABORTED"),
+        (tonic::Code::InvalidArgument, false, "INVALID_ARGUMENT"),
+        (tonic::Code::NotFound, false, "NOT_FOUND"),
+        (tonic::Code::PermissionDenied, false, "PERMISSION_DENIED"),
+        (tonic::Code::Unauthenticated, false, "UNAUTHENTICATED"),
+        (
+            tonic::Code::FailedPrecondition,
+            false,
+            "FAILED_PRECONDITION",
+        ),
+        (tonic::Code::Unimplemented, false, "UNIMPLEMENTED"),
+        (tonic::Code::Internal, false, "INTERNAL"),
+        (tonic::Code::Unknown, false, "UNKNOWN"),
+        (tonic::Code::Cancelled, false, "CANCELLED"),
+    ];
+    for (code, retryable, name) in cells {
+        let err = rpc_error(&tonic::Status::new(code, "boom"));
+        assert_eq!(err.is_retryable(), retryable, "{name}");
+        assert_eq!(err.provider_response_status(), None, "{name}");
+        let report = err.report();
+        assert_eq!(report.kind, ErrorKind::ProviderResponse, "{name}");
+        assert_eq!(report.retryable, retryable, "{name}");
+        assert_eq!(report.http_status, None, "{name}");
+        assert_eq!(report.code.as_deref(), Some(name), "{name}");
+        let response = report
+            .provider_response
+            .expect("the reply rides on the report");
+        assert_eq!(response.code.as_deref(), Some(name));
+        assert_eq!(response.transient, Some(retryable));
+    }
 }

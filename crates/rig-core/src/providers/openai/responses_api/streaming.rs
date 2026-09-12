@@ -736,10 +736,14 @@ impl RawChoiceAccumulator {
                 // (the pure-replay shape). The durable handle is the item's
                 // real `rs_*` id regardless of the accumulation key.
                 let provider_id = crate::streaming::non_empty_id(id.clone());
-                let key = self
-                    .reasoning_slots
-                    .remove(&output_index)
-                    .unwrap_or(BlockId::wire(id));
+                let key = match self.reasoning_slots.remove(&output_index) {
+                    Some(key) => key,
+                    // No slot and no id (an envelope-less done item with
+                    // nothing before it): mint from the bridge's ONE
+                    // counter, as a delta would have.
+                    None if id.is_empty() => self.tool_slots.minted_ids().mint(),
+                    None => BlockId::wire(id),
+                };
                 if let Some(reasoning) = reasoning_from_done_item(
                     provider_id.as_deref(),
                     summary,

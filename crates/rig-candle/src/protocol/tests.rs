@@ -555,3 +555,36 @@ fn renderer_rejects_stale_results_after_provider_handle_reuse() {
         assert!(prompt.contains("<tool_response>\nsecond answer\n</tool_response>"));
     }
 }
+
+/// Qwen envelopes may omit `id`. The `n`-th `<tool_call>` of a turn mints
+/// its own handle, so two id-less calls stay distinct, an explicit id
+/// between them is kept, and parsing the same text twice yields the same
+/// ids.
+#[test]
+fn id_less_tool_call_envelopes_mint_distinct_handles_by_position() {
+    let request = request(vec![Message::user("both")]);
+    let raw = concat!(
+        r#"<tool_call>{"name":"calculate","arguments":{"value":1}}</tool_call>"#,
+        r#"<tool_call>{"id":"explicit-1","name":"lookup","arguments":{}}</tool_call>"#,
+        r#"<tool_call>{"name":"calculate","arguments":{"value":2}}</tool_call>"#,
+    );
+    let first = parse_assistant(raw, &request, ConversationProtocol::Qwen3).expect("parses");
+    let again = parse_assistant(raw, &request, ConversationProtocol::Qwen3).expect("parses");
+    assert_eq!(first.items, again.items, "a re-parse yields the same ids");
+    let ids: Vec<_> = first
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            AssistantContent::ToolCall(call) => Some(call.id.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            ToolCallId::minted(0),
+            ToolCallId::new("explicit-1").expect("explicit"),
+            ToolCallId::minted(2),
+        ]
+    );
+}

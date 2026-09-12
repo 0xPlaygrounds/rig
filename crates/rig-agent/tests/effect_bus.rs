@@ -1966,3 +1966,97 @@ async fn a_hook_binds_a_run_scoped_view_and_dispatches_through_it() {
     assert_eq!(response.output, "main answer");
     assert_eq!(*seen.lock().expect("lock"), vec!["side answer".to_string()]);
 }
+
+/// Minted tool-call ids are completion-local: two turns that each issue
+/// id-less calls both mint `tool-0`/`tool-1`, and that is not a collision.
+/// A result answers the call in the adjacent assistant message (the
+/// transcript law), so the history stays canonical and every call is
+/// answered by the result that ran for it — on the blocking and the
+/// streaming surface alike.
+#[tokio::test]
+async fn id_less_calls_across_turns_keep_the_history_canonical() {
+    use rig_core::message::{AssistantContent, Message, ToolCall, ToolCallId, ToolFunction};
+    let turn = |tags: [&str; 2]| {
+        MockTurn::from_contents(tags.map(|tag| {
+            AssistantContent::ToolCall(ToolCall::from_wire_indexed(
+                "",
+                u64::from(tag.ends_with('b')),
+                ToolFunction::new("slow".to_owned(), json!({"delay_ms": 0, "tag": tag})),
+            ))
+        }))
+    };
+    let model = || {
+        MockCompletionModel::from_turns([
+            turn(["1a", "1b"]),
+            turn(["2a", "2b"]),
+            MockTurn::text("done"),
+        ])
+    };
+    let expected_call_ids = |messages: &[Message]| {
+        let assistant_calls: Vec<Vec<ToolCallId>> = messages
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant { content, .. } => Some(
+                    content
+                        .iter()
+                        .filter_map(|item| match item {
+                            AssistantContent::ToolCall(call) => Some(call.id.clone()),
+                            _ => None,
+                        })
+                        .collect(),
+                ),
+                _ => None,
+            })
+            .filter(|calls: &Vec<_>| !calls.is_empty())
+            .collect();
+        assert_eq!(
+            assistant_calls,
+            vec![
+                vec![ToolCallId::minted(0), ToolCallId::minted(1)],
+                vec![ToolCallId::minted(0), ToolCallId::minted(1)],
+            ],
+            "each turn mints from zero"
+        );
+        rig_core::transcript::validate_canonical(messages)
+            .expect("every call answered by the adjacent result");
+    };
+
+    let tool = Slow::default();
+    let agent = AgentBuilder::new(model()).tool(tool.clone()).build();
+    let response = within(agent.prompt("go").max_turns(4).tool_concurrency(2).run())
+        .await
+        .expect("run");
+    assert_eq!(response.output, "done");
+    expected_call_ids(response.messages().expect("history"));
+    assert_eq!(tool.completed.lock().expect("lock").len(), 4);
+
+    // The streaming surface mints at the stream boundary: an id-less
+    // tool-call event keys its block `tool-<n>` per stream, and the
+    // committed turn carries that identity into history.
+    use rig_core::test_utils::MockStreamEvent;
+    let streamed_turn = |tags: [&str; 2]| {
+        let mut events: Vec<_> = tags
+            .into_iter()
+            .map(|tag| MockStreamEvent::tool_call("", "slow", json!({"delay_ms": 0, "tag": tag})))
+            .collect();
+        events.push(MockStreamEvent::final_response_with_default_usage());
+        events
+    };
+    let tool = Slow::default();
+    let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+        streamed_turn(["1a", "1b"]),
+        streamed_turn(["2a", "2b"]),
+        streamed_text("done"),
+    ]))
+    .tool(tool.clone())
+    .build();
+    let mut stream = agent.prompt("go").max_turns(4).tool_concurrency(2).stream();
+    let mut messages = None;
+    while let Some(item) = within(stream.next()).await {
+        if let Ok(rig_agent::agent::MultiTurnStreamItem::FinalResponse(done)) = item {
+            messages = done.messages().map(<[Message]>::to_vec);
+        }
+    }
+    expected_call_ids(&messages.expect("streamed history"));
+    assert_eq!(tool.completed.lock().expect("lock").len(), 4);
+}

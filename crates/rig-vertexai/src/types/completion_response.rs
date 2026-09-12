@@ -49,6 +49,10 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
             .ok_or_else(|| CompletionError::ProviderError("No content in candidate".to_string()))?;
 
         let mut assistant_contents = Vec::new();
+        // Vertex function calls carry no id: the `index`-th call of the
+        // response mints its own handle, so two calls in one turn never
+        // share one (the position pass below is then a no-op).
+        let mut tool_index = 0u64;
 
         // vertexai internally uses a wkt::Struct (serde_json::Map<String, serde_json::Value>) in
         // function calling args. We need to convert that to serde_json::Value for rig_core::completion type matching
@@ -67,11 +71,14 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
                 );
 
                 // Vertex function calls carry no identifier: mint the
-                // correlation handle — never name-as-id, which collides two
-                // same-tool calls in one turn.
+                // correlation handle at the call's index — never name-as-id,
+                // which collides two same-tool calls in one turn.
+                let index = tool_index;
+                tool_index += 1;
                 assistant_contents.push(AssistantContent::ToolCall(
-                    ToolCall::from_wire(
+                    ToolCall::from_wire_indexed(
                         "",
+                        index,
                         ToolFunction::new(function_call.name.clone(), args_json),
                     )
                     .with_signature(signature),

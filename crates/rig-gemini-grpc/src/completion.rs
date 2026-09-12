@@ -166,6 +166,38 @@ pub(crate) fn text_part(text: String) -> proto::Part {
 // out as a Rig diagnostic the way Bedrock's typed service errors are.
 pub(crate) fn rpc_error(status: &tonic::Status) -> CompletionError {
     CompletionError::from_provider_body(status.to_string())
+        .with_provider_code(Some(grpc_code_name(status.code())))
+        .with_transient(Some(transient_grpc_code(status.code())))
+}
+
+/// The gRPC status code's canonical name (`UNAVAILABLE`): the code the
+/// provider answered with, kept apart from the message so a report can
+/// key on it.
+pub(crate) fn grpc_code_name(code: tonic::Code) -> String {
+    format!("{code:?}")
+        .chars()
+        .fold(String::new(), |mut name, c| {
+            if c.is_ascii_uppercase() && !name.is_empty() {
+                name.push('_');
+            }
+            name.push(c.to_ascii_uppercase());
+            name
+        })
+}
+
+/// Whether a gRPC status is one the same call may reasonably be retried
+/// on: the server was unreachable or overloaded, or the call was cut short
+/// (`UNAVAILABLE`, `RESOURCE_EXHAUSTED`, `DEADLINE_EXCEEDED`, `ABORTED`).
+/// Every other code says the call itself is wrong or the resource is not
+/// there, and retrying it as-is asks the same question again.
+pub(crate) fn transient_grpc_code(code: tonic::Code) -> bool {
+    matches!(
+        code,
+        tonic::Code::Unavailable
+            | tonic::Code::ResourceExhausted
+            | tonic::Code::DeadlineExceeded
+            | tonic::Code::Aborted
+    )
 }
 
 // Helper function to create gRPC request from Rig's CompletionRequest
@@ -452,6 +484,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
 
         let mut assistant_contents = Vec::new();
 
+        let mut tool_index = 0u64;
         for part in &content_ref.parts {
             let assistant_content = match &part.data {
                 Some(proto::part::Data::Text(text)) => {
@@ -489,10 +522,14 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
                         prost_struct_to_json,
                     );
 
-                    // An id-less call mints its correlation handle —
-                    // never name-as-id, which collides two same-tool calls.
-                    let tool_call = message::ToolCall::from_wire(
+                    // An id-less call mints its correlation handle at the
+                    // call's index — never name-as-id, which collides two
+                    // same-tool calls in one turn.
+                    let index = tool_index;
+                    tool_index += 1;
+                    let tool_call = message::ToolCall::from_wire_indexed(
                         function_call.id.clone(),
+                        index,
                         message::ToolFunction::new(function_call.name.clone(), args),
                     )
                     .with_signature(encode_optional_base64(&part.thought_signature));

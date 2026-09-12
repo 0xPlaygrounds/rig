@@ -130,9 +130,17 @@ impl From<&str> for BlockId {
 }
 
 impl BlockId {
-    /// A key derived from a wire-supplied identifier.
+    /// A key derived from a wire-supplied identifier. The identifier is
+    /// non-empty: an absent id is not an id, and an adapter whose wire may
+    /// omit one mints ([`SyntheticIds`]) instead — an empty wire key would
+    /// make every id-less block of a stream the same block.
     pub fn wire(id: impl Into<String>) -> Self {
-        Self::Wire(id.into())
+        let id = id.into();
+        debug_assert!(
+            !id.is_empty(),
+            "an empty wire id is not an id: mint instead"
+        );
+        Self::Wire(id)
     }
 
     /// A key minted at a stream boundary because the wire supplied none.
