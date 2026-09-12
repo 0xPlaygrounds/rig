@@ -404,7 +404,9 @@ impl<ToolState> AgentBuilder<ToolState> {
     }
 
     /// Record every dispatch into the agent's effect log
-    /// ([`Agent::effect_log`]).
+    /// ([`Agent::effect_log`]). For an agent that owns its bus; over a
+    /// host's bus ([`AgentBuilder::over_bus`]) the host records through its
+    /// driver, and asking here fails at build, at the `over_bus` line.
     pub fn record_effects(mut self) -> Self {
         self.record_effects = true;
         self
@@ -462,6 +464,20 @@ impl<ToolState> AgentBuilder<ToolState> {
             )
         }
 
+        /// Recording asked of an agent over a host's bus: the agent holds
+        /// no driver to tap — recording is the host's, through
+        /// `BusDriver::record_to` — so this is the host's programming
+        /// error, reported at the host's `over_bus` line.
+        #[allow(
+            clippy::panic,
+            reason = "recording over a host's bus is a programming error at the host's call site, not a runtime condition; `build` stays infallible for every other case"
+        )]
+        fn recording_over_a_hosts_bus(caller: &'static std::panic::Location<'static>) -> ! {
+            panic!(
+                "the agent built over a host's bus at {caller} cannot record: the host records through its driver (`BusDriver::record_to`)"
+            )
+        }
+
         let Self {
             mut config,
             tool_state,
@@ -476,6 +492,10 @@ impl<ToolState> AgentBuilder<ToolState> {
             retrieval_indexes: _,
             routes,
         } = self;
+        let host = match &model {
+            DefaultModel::Key(_, caller) => Some(*caller),
+            DefaultModel::Labelled(..) => None,
+        };
         // The owner: the label given, else the agent's name (so a named
         // agent's keys are the same in every process — what a log meant
         // for replay elsewhere needs), else a per-process counter.
@@ -531,7 +551,11 @@ impl<ToolState> AgentBuilder<ToolState> {
             config.memory_key = Some(config.bus.key("memory"));
         }
         if record_effects {
-            crate::agent::drive::register_generated(config.bus.enable_recording(record_events));
+            match (host, config.bus.enable_recording(record_events)) {
+                (Some(caller), Err(_)) => recording_over_a_hosts_bus(caller),
+                (None, registered) => crate::agent::drive::register_generated(registered),
+                (Some(_), Ok(())) => {}
+            }
         }
         let tool_server_handle = handle(tool_state, config.bus.owner());
         tool_server_handle.attach(config.bus.registrar());
