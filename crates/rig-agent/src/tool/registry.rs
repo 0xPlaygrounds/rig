@@ -200,25 +200,32 @@ impl RegisteredTool {
 
     /// Run the tool here, without a bus, publishing its result metadata
     /// into `context` — the inline path of a standalone tool set.
+    ///
+    /// The tool runs on a dispatch snapshot of `context` (its inbound values,
+    /// no result metadata); only what it published lands back, replacing
+    /// `context`'s result metadata. That holds for every ending — a result,
+    /// a failed result, a handler that answered nothing usable — and for a
+    /// future dropped mid-call, which leaves `context` exactly as it was:
+    /// the caller's inbound values are never moved out or mutated.
     pub async fn execute(&self, args: String, context: &mut ToolContext) -> ToolResult {
         let name = self.definition.name.clone();
         // The context travels beside the call, never in it (format 5): the
-        // inline sink carries it and the slot the tool publishes into.
+        // inline sink carries a snapshot and the slot the tool publishes into.
         let published = rig_core::tool::PublishedContext::new();
         let outcome = rig_core::serve::serve_inline_with(
             &self.handler,
             EffectKind::ToolCall { name, args },
             vec![
-                std::sync::Arc::new(std::mem::take(context)),
+                std::sync::Arc::new(context.for_dispatch()),
                 published.clone() as std::sync::Arc<dyn std::any::Any + Send + Sync>,
             ],
         )
         .await;
+        // What the tool published is this call's result metadata; a handler
+        // that published nothing (or never ran) leaves an empty result map.
+        context.accept_dispatch_result(published.take().unwrap_or_default());
         match outcome {
-            Ok(Outcome::ToolResult { result }) => {
-                *context = published.take().unwrap_or_default();
-                result
-            }
+            Ok(Outcome::ToolResult { result }) => result,
             Ok(other) => ToolResult::failed(ToolExecutionError::other(format!(
                 "tool handler answered with a {} outcome",
                 other.family()

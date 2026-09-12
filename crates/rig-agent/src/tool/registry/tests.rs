@@ -153,6 +153,142 @@ async fn cancelled_toolset_dispatch_does_not_retain_stale_result_metadata() {
     assert_eq!(context.result::<Note>().unwrap(), None);
 }
 
+/// A tool-family handler that is not a tool adapter: it answers without
+/// publishing a context (a replayer for a record without output, a host's
+/// own handler).
+struct Silent;
+
+impl rig_core::serve::Serve for Silent {
+    type Family = family::Tool;
+
+    fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+        rig_core::effect::HandlerDescriptor {
+            key: tool_key("silent"),
+            family: FamilyDescriptor::Tool {
+                name: "silent".into(),
+                description: "answers without publishing".into(),
+                parameters: serde_json::json!({"type": "object"}),
+                embedding: None,
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(
+        &self,
+        _kind: EffectKind,
+        _dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
+        rig_core::serve::Reply::Outcome(Ok(Outcome::ToolResult {
+            result: ToolResult::success(ToolOutput::text("silent")),
+        }))
+    }
+}
+
+/// A tool-family handler whose answer is a report, not a result.
+struct Refusing;
+
+impl rig_core::serve::Serve for Refusing {
+    type Family = family::Tool;
+
+    fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+        rig_core::effect::HandlerDescriptor {
+            key: tool_key("refusing"),
+            family: FamilyDescriptor::Tool {
+                name: "refusing".into(),
+                description: "refuses every call".into(),
+                parameters: serde_json::json!({"type": "object"}),
+                embedding: None,
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(
+        &self,
+        _kind: EffectKind,
+        _dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
+        rig_core::serve::Reply::Outcome(Err(ErrorReport::new(ErrorKind::Other, "refused")))
+    }
+}
+
+/// The inline registration path keeps the caller's inbound values on every
+/// ending: a tool that mutates its inbound slot and publishes, a handler
+/// that publishes nothing, a handler that refuses. Only result metadata
+/// changes, and only to what the call published.
+#[tokio::test]
+async fn registered_tool_execute_keeps_inbound_values_on_every_ending() {
+    let mut context = ToolContext::new();
+    context.insert(Counter(7)).unwrap();
+    context.insert_result(Note("stale".to_string())).unwrap();
+
+    let echo = RegisteredTool::from_tool(Echo);
+    let result = echo.execute(r#"{"value":1}"#.into(), &mut context).await;
+    assert!(result.is_success());
+    assert_eq!(
+        context.get::<Counter>().unwrap(),
+        Some(Counter(7)),
+        "the tool's inbound mutation stays in the call"
+    );
+    assert_eq!(
+        context.result::<Note>().unwrap(),
+        Some(Note("result-metadata".to_string()))
+    );
+
+    let silent = RegisteredTool::from_handler(Silent).expect("a tool-family handler");
+    let result = silent.execute("{}".into(), &mut context).await;
+    assert!(result.is_success());
+    assert_eq!(context.get::<Counter>().unwrap(), Some(Counter(7)));
+    assert_eq!(
+        context.result::<Note>().unwrap(),
+        None,
+        "a handler that published nothing leaves no result metadata"
+    );
+
+    context.insert_result(Note("stale".to_string())).unwrap();
+    let refusing = RegisteredTool::from_handler(Refusing).expect("a tool-family handler");
+    let result = refusing.execute("{}".into(), &mut context).await;
+    assert_eq!(
+        result.error().map(ToolExecutionError::kind),
+        Some(ToolErrorKind::Other)
+    );
+    assert_eq!(context.get::<Counter>().unwrap(), Some(Counter(7)));
+    assert_eq!(context.result::<Note>().unwrap(), None);
+}
+
+/// Dropping an inline execution mid-call leaves the caller's context exactly
+/// as it was: nothing is moved out of it, nothing partial is published.
+#[tokio::test]
+async fn registered_tool_execute_dropped_mid_call_leaves_the_context_unchanged() {
+    let started = Arc::new(AtomicBool::new(false));
+    let tool = RegisteredTool::from_tool(PendingTool(started.clone()));
+    let mut context = ToolContext::new();
+    context.insert(Counter(7)).unwrap();
+    context.insert_result(Note("stale".to_string())).unwrap();
+    let before = context.clone();
+
+    let mut execution = Box::pin(tool.execute("null".into(), &mut context));
+    tokio::time::timeout(
+        Duration::from_secs(1),
+        poll_fn(|cx| {
+            assert!(execution.as_mut().poll(cx).is_pending());
+            started.load(Ordering::SeqCst).then_some(()).map_or_else(
+                || {
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
+                },
+                Poll::Ready,
+            )
+        }),
+    )
+    .await
+    .expect("pending tool did not start");
+    drop(execution);
+
+    assert_eq!(context, before);
+}
+
 #[tokio::test]
 async fn framework_argument_errors_remain_actionable_to_the_model() {
     let mut set = ToolSet::default();

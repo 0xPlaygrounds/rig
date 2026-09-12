@@ -250,7 +250,8 @@ pub struct ToolAnswer {
     /// The result.
     pub result: rig_core::tool::ToolResult,
     /// The dispatch context after the tool ran: the inbound values it ran
-    /// with and the result metadata it published.
+    /// with and the result metadata it published. A handler that published
+    /// nothing answers with the inbound values alone.
     pub context: ToolContext,
 }
 
@@ -259,6 +260,10 @@ pub struct ToolAnswer {
 pub struct ToolCall {
     pending: Pending,
     published: Option<std::sync::Arc<rig_core::tool::PublishedContext>>,
+    /// The dispatch snapshot the call was made under: the answer's context
+    /// when the handler published nothing (a handler that is not a tool
+    /// adapter), so the inbound values the tool ran with are never lost.
+    inbound: ToolContext,
 }
 
 impl ToolCall {
@@ -290,14 +295,18 @@ impl Future for ToolCall {
             Poll::Pending => Poll::Pending,
             Poll::Ready(Err(report)) => Poll::Ready(Err(report)),
             Poll::Ready(Ok(outcome)) => Poll::Ready(family::Tool::unwrap(outcome).map(|result| {
-                ToolAnswer {
-                    result,
-                    context: this
-                        .published
-                        .as_ref()
-                        .and_then(|published| published.take())
-                        .unwrap_or_default(),
-                }
+                // Ready is polled once: the snapshot moves out, and like a
+                // published context it is data again — no live scopes.
+                let context = this
+                    .published
+                    .as_ref()
+                    .and_then(|published| published.take())
+                    .unwrap_or_else(|| {
+                        let mut inbound = std::mem::take(&mut this.inbound);
+                        inbound.clear_scope();
+                        inbound
+                    });
+                ToolAnswer { result, context }
             })),
         }
     }
@@ -431,14 +440,23 @@ impl ToolHandle {
             name: name.into(),
             args: args.into(),
         };
+        // The tool runs on a dispatch snapshot (inbound values, no result
+        // metadata a previous call left on `context`); a handler that reads
+        // the scope directly sees the same snapshot the adapter would.
+        let inbound = context.for_dispatch();
+        drop(context);
         let pending = self.dispatcher.dispatch_tool_with_id(
             self.dispatcher.mint_id(),
             &self.descriptor.key,
             kind,
-            context,
+            inbound.clone(),
         );
         let published = pending.published_context();
-        ToolCall { pending, published }
+        ToolCall {
+            pending,
+            published,
+            inbound,
+        }
     }
 }
 
