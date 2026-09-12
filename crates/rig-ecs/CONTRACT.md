@@ -282,7 +282,11 @@ A layer is the handler's: the world registers the layered `ErasedHandler` (`hand
 
 Replayers retain recorded model identity/capabilities and include every
 `programs[*].required` row. They clear executable layer metadata until the
-application reapplies its middleware. The positive compatibility check runs
+application reapplies its middleware: a program recorded under a layer is
+replayed by the replayer wrapped in that same layer (`.layered(..)`), and only
+then does its spec hash match the record's — a bare replayer under a layered
+program, or another layer, is refused
+(`a_layered_program_replays_under_the_same_layer_and_refuses_another`). The positive compatibility check runs
 in the fresh replay world, followed by execution; model, capability, effective
 setting and application-version changes are negative cases
 (`run_replay_metadata.rs`). No policy-hash inputs were dropped to accommodate
