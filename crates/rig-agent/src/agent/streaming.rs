@@ -284,7 +284,13 @@ impl AgentRunner {
         // The span the stream is built under is the one it runs under, not
         // whichever span first polls it: a host may build the stream in a
         // request span and hand it to a task of its own.
-        let ambient = tracing::Span::current();
+        self.stream_under(tracing::Span::current())
+    }
+
+    /// [`stream`](Self::stream) under an explicitly captured ambient span —
+    /// the one terminal that builds the stream lazily inside another future
+    /// ([`run_channel`](Self::run_channel)) captures it at its own call.
+    fn stream_under(self, ambient: tracing::Span) -> StreamingResult {
         let run_under = ambient.clone();
         let stream = async_stream::stream! {
             let mut inner = self.start_stream(run_under).await;
@@ -432,7 +438,9 @@ impl AgentRunner {
     ///
     /// The feed is bounded ([`RUN_EVENTS_CAPACITY`]); when it is full the run
     /// waits for the consumer rather than dropping events. Dropping the feed
-    /// lets the run continue to completion unobserved.
+    /// lets the run continue to completion unobserved. Like
+    /// [`stream`](Self::stream), the run belongs to the span this method was
+    /// called in, wherever the future is later polled.
     #[must_use = "the run does nothing until the future is driven"]
     pub fn run_channel(
         self,
@@ -441,8 +449,12 @@ impl AgentRunner {
         RunEvents,
     ) {
         let (mut sender, receiver) = mpsc::channel(RUN_EVENTS_CAPACITY);
+        // Captured here, not when the future is first polled: the doc above
+        // says to spawn the future, and the run must still belong to the span
+        // that split it.
+        let ambient = tracing::Span::current();
         let future = async move {
-            let mut stream = self.stream();
+            let mut stream = self.stream_under(ambient);
             let mut response = None;
             let mut forward = true;
             while let Some(item) = stream.next().await {

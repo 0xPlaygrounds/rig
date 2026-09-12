@@ -517,9 +517,20 @@ impl AgentRunner {
 
     /// Drive the agent loop to completion, returning the aggregated
     /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
-    /// to terminate cancels the run.
-    pub async fn run(self) -> Result<PromptResponse, PromptError> {
-        let (agent_span, created_agent_span) = self.open_agent_span(tracing::Span::current());
+    /// to terminate cancels the run. The run belongs to the span this method
+    /// (or `.await`) was called in, wherever the future is polled.
+    pub fn run(
+        self,
+    ) -> impl Future<Output = Result<PromptResponse, PromptError>> + rig_core::wasm_compat::WasmCompatSend
+    {
+        // Like `stream()`: the run belongs to the span it was started in,
+        // not to whichever task first polls the future.
+        let ambient = tracing::Span::current();
+        self.run_under(ambient)
+    }
+
+    async fn run_under(self, ambient: tracing::Span) -> Result<PromptResponse, PromptError> {
+        let (agent_span, created_agent_span) = self.open_agent_span(ambient);
         let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(false);
         // A resumed run brought its history with it: nothing is loaded and

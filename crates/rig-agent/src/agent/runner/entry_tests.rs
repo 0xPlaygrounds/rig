@@ -1,6 +1,10 @@
 //! The entry-point contract: `Agent::prompt` is the one way to a runner and
 //! the terminal call alone chooses the medium; `Agent::resume` continues a
 //! run without a prompt; `stream()` does nothing until it is polled.
+//!
+//! The resume tests here continue a pristine run (turn 0, nothing pending):
+//! they pin the entry point, not mid-flight resumption, which
+//! `rig-verify`'s `durable_execution` suite covers.
 
 use std::sync::{
     Arc,
@@ -223,7 +227,13 @@ async fn resume_neither_loads_nor_saves_memory() {
         .build();
     let run = AgentRun::from_spec(&agent.run_spec(), Message::user("from the run"), None);
     let mut stream = agent.resume(run).conversation("thread").stream();
-    while stream.next().await.is_some() {}
+    let mut final_output = None;
+    while let Some(item) = stream.next().await {
+        if let MultiTurnStreamItem::FinalResponse(response) = item.expect("a stream item") {
+            final_output = Some(response.output);
+        }
+    }
+    assert_eq!(final_output.as_deref(), Some("streamed"));
     assert_eq!(memory.load_count(), 0);
     assert_eq!(memory.append_count(), 0);
 }

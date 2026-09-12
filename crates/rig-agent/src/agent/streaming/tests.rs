@@ -754,10 +754,16 @@ where
     S: for<'lookup> LookupSpan<'lookup>,
 {
     fn on_new_span(&self, attrs: &tracing::span::Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
-        let parent_id = attrs
-            .parent()
-            .map(Id::into_u64)
-            .or_else(|| ctx.current_span().id().map(Id::into_u64));
+        // An explicit root (`parent: None`) has no parent even when a span
+        // is current; only a contextual span inherits the current one.
+        let parent_id = if attrs.is_root() {
+            None
+        } else {
+            attrs
+                .parent()
+                .map(Id::into_u64)
+                .or_else(|| ctx.current_span().id().map(Id::into_u64))
+        };
         self.spans.insert(id, attrs.metadata().name(), parent_id);
         let mut string_fields = Vec::new();
         attrs.record(&mut SpanStringCaptureVisitor {
@@ -5930,5 +5936,116 @@ async fn a_stream_runs_under_the_span_it_was_built_in() {
     assert_eq!(chat_spans.len(), 2, "two model turns: {snapshot:?}");
     for chat_span in chat_spans {
         assert_eq!(chat_span.parent_id, Some(outer_id));
+    }
+}
+
+/// `run_channel` belongs to the span it was split in, like `stream()`: the
+/// future is spawned with no span of its own and the run still adopts
+/// `outer`.
+#[tokio::test]
+async fn run_channel_runs_under_the_span_it_was_split_in() {
+    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+    let spans = CapturedSpans::default();
+    let subscriber = Registry::default().with(SpanCaptureLayer {
+        spans: spans.clone(),
+    });
+    let _default = tracing::subscriber::set_default(subscriber);
+
+    let warmup_agent = AgentBuilder::new(streaming_tool_then_text_model()).build();
+    let mut warmup_stream = warmup_agent.prompt("warmup").max_turns(1).stream();
+    while warmup_stream.next().await.is_some() {}
+    tracing::callsite::rebuild_interest_cache();
+    spans.clear();
+
+    let agent = AgentBuilder::new(streaming_tool_then_text_model())
+        .tool(MockAddTool)
+        .build();
+    let outer_span = tracing::info_span!("outer");
+    let (run, events) =
+        outer_span.in_scope(|| agent.prompt("do tool work").max_turns(3).run_channel());
+    let (response, items) =
+        tokio::spawn(async move { futures::join!(run, events.collect::<Vec<_>>()) })
+            .await
+            .expect("join");
+    assert_eq!(response.expect("run succeeds").output(), "done");
+    assert!(matches!(
+        items.last(),
+        Some(MultiTurnStreamItem::FinalResponse(_))
+    ));
+
+    let snapshot = spans.snapshot();
+    let outer_id = snapshot
+        .iter()
+        .find(|span| span.name == "outer")
+        .map(|span| span.id)
+        .expect("outer span captured");
+    assert!(snapshot.iter().all(|span| span.name != "invoke_agent"));
+    let chat_spans: Vec<_> = snapshot
+        .iter()
+        .filter(|span| span.name == "chat_streaming")
+        .collect();
+    assert_eq!(chat_spans.len(), 2, "two model turns: {snapshot:?}");
+    for chat_span in chat_spans {
+        assert_eq!(chat_span.parent_id, Some(outer_id));
+    }
+}
+
+/// A stream built outside any span creates a root `invoke_agent` even when
+/// it is first polled inside an unrelated span: the poller's span is never
+/// adopted.
+#[tokio::test]
+async fn a_stream_built_outside_a_span_stays_a_root_when_polled_inside_one() {
+    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+    let spans = CapturedSpans::default();
+    let subscriber = Registry::default().with(SpanCaptureLayer {
+        spans: spans.clone(),
+    });
+    let _default = tracing::subscriber::set_default(subscriber);
+
+    let warmup_agent = AgentBuilder::new(streaming_tool_then_text_model()).build();
+    let mut warmup_stream = warmup_agent.prompt("warmup").max_turns(1).stream();
+    while warmup_stream.next().await.is_some() {}
+    tracing::callsite::rebuild_interest_cache();
+    spans.clear();
+
+    let agent = AgentBuilder::new(streaming_tool_then_text_model())
+        .tool(MockAddTool)
+        .build();
+    let stream = agent.prompt("do tool work").max_turns(3).stream();
+    let poller_span = tracing::info_span!("poller");
+    let items = async move {
+        let mut stream = stream;
+        let mut items = Vec::new();
+        while let Some(item) = stream.next().await {
+            items.push(item.expect("stream item"));
+        }
+        items
+    }
+    .instrument(poller_span)
+    .await;
+    assert!(matches!(
+        items.last(),
+        Some(MultiTurnStreamItem::FinalResponse(_))
+    ));
+
+    let snapshot = spans.snapshot();
+    let poller_id = snapshot
+        .iter()
+        .find(|span| span.name == "poller")
+        .map(|span| span.id)
+        .expect("poller span captured");
+    let invoke = snapshot
+        .iter()
+        .find(|span| span.name == "invoke_agent")
+        .expect("a root invoke_agent is created: {snapshot:?}");
+    assert_eq!(invoke.parent_id, None, "not the poller's child");
+    let chat_spans: Vec<_> = snapshot
+        .iter()
+        .filter(|span| span.name == "chat_streaming")
+        .collect();
+    assert_eq!(chat_spans.len(), 2);
+    for chat_span in chat_spans {
+        assert_eq!(chat_span.parent_id, Some(invoke.id));
+        assert_ne!(chat_span.parent_id, Some(poller_id));
     }
 }
