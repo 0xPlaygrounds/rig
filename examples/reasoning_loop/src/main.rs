@@ -76,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
     let agent = ReasoningAgent {
         chain_of_thought_extractor: anthropic_client
             .extractor(anthropic::completion::CLAUDE_SONNET_4_6)
-            .preamble(CHAIN_OF_THOUGHT_PROMPT)
+            .append_preamble(CHAIN_OF_THOUGHT_PROMPT)
             .build(),
 
         executor: anthropic_client

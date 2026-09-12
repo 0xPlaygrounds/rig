@@ -137,7 +137,8 @@ async fn both_constructors_replay_from_an_external_fixture_root() {
     write_fixture(&root, "unary", r#"{"answer":"ok"}"#);
     for direct in [false, true] {
         let cassette = if direct {
-            ProviderCassette::start_direct_recording(
+            ProviderCassette::start_via(
+                Transport::Direct,
                 &root,
                 "example",
                 "unary",

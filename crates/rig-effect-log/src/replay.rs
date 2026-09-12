@@ -188,6 +188,7 @@ impl EffectLogReplayer {
     }
 
     /// The same replayer comparing requests as `check` says.
+    #[must_use = "the setting applies to the returned value"]
     pub fn checking(mut self, check: RequestCheck) -> Self {
         self.check = check;
         self
@@ -195,6 +196,7 @@ impl EffectLogReplayer {
 
     /// Also signal newly generated request/publication refusals to a delivery
     /// scheduler. Recorded error outcomes never signal a refusal.
+    #[must_use = "the setting applies to the returned value"]
     pub fn reporting_refusals(mut self, refusals: ReplayRefusals) -> Self {
         self.refusals = Some(refusals);
         self

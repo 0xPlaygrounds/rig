@@ -223,11 +223,12 @@ mod driver;
 mod handle;
 mod registrar;
 
-pub use dispatcher::{BusId, Dispatcher, EffectStream, Pending};
+pub use dispatcher::{BusId, DispatchOptions, Dispatcher, EffectStream, Pending};
 pub use driver::BusDriver;
+pub(crate) use handle::wrap_stream;
 pub use handle::{
     Completion, DispatchScope, EmbedHandle, Handle, IndexHandle, MemoryHandle, ModelHandle,
-    RerankHandle, Retrieval, ToolAnswer, ToolCall, ToolHandle, Typed, wrap_stream,
+    RerankHandle, Retrieval, ToolAnswer, ToolCall, ToolHandle, Typed,
 };
 pub use registrar::Registrar;
 use rig_core::serve::ServingPolicy;

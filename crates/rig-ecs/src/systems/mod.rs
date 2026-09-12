@@ -33,7 +33,7 @@ use crate::{
         OutputRetries, OutputToolConfig, OutputToolName, Outputs, Parts, Preamble, Remembered,
         Remembering, Remembers, Reprompt, RequestPatch, Resolution, ResolvingTools, Retrievable,
         Retrieval, RetrievalKind, Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunResult,
-        RunSeq, Settled, Streamed, Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec,
+        RunSeq, Settled, StreamRequested, Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec,
         ToolContextSpec, ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
     },
     bus::{
@@ -88,7 +88,7 @@ pub type Unread = (With<Turn>, Without<Materialised>);
 pub type AssemblingView = (
     &'static RunOf,
     &'static RunSeq,
-    &'static Streamed,
+    &'static StreamRequested,
     Option<&'static UsesModel>,
     &'static OutputToolName,
 );
@@ -259,7 +259,7 @@ pub fn spawn_run(
         Run,
         RunOf(agent),
         RunSeq(seq),
-        Streamed(streamed),
+        StreamRequested(streamed),
         Cursor::default(),
         OutputRetries::default(),
         crate::agent::InvalidRetries::default(),
@@ -318,14 +318,14 @@ pub fn spawn_utterance(world: &mut World, run: Entity, parts: MessageParts) -> E
 }
 
 /// The next [`Order`].
-pub fn next_order(world: &mut World) -> Order {
+pub(crate) fn next_order(world: &mut World) -> Order {
     let mut counter = world.resource_mut::<OrderCounter>();
     let order = Order(counter.0);
     counter.0 += 1;
     order
 }
 
-pub fn next_order_in(counter: &mut OrderCounter) -> Order {
+pub(crate) fn next_order_in(counter: &mut OrderCounter) -> Order {
     let order = Order(counter.0);
     counter.0 += 1;
     order
@@ -771,7 +771,7 @@ pub fn assemble(
     turns.sort_by_key(|(_, _, seq, _, _)| *seq);
 
     for (turn, run, _, patch, is_retrieving) in turns {
-        let Ok((RunOf(agent), _, Streamed(stream), model, minted)) = runs.get(run) else {
+        let Ok((RunOf(agent), _, StreamRequested(stream), model, minted)) = runs.get(run) else {
             continue;
         };
         let agent = *agent;
@@ -1254,7 +1254,9 @@ pub fn release_batch(
                     if let Ok(mut effect) = world.get_entity_mut(entity) {
                         effect.remove::<BatchHeld>();
                     }
-                    crate::bus::release_hold(world, entity, "rig-ecs/batch");
+                    // A hold the batch never took (the effect was denied or
+                    // despawned meanwhile) has nothing to release.
+                    let _ = crate::bus::release_hold(world, entity, "rig-ecs/batch");
                 });
                 free -= 1;
             }
@@ -1845,7 +1847,10 @@ pub fn materialise(
                     effect.insert(BatchHeld);
                     let entity = effect.id();
                     commands.queue(move |world: &mut World| {
-                        crate::bus::acquire_hold(
+                        // Refused only when the effect settled or dispatched
+                        // between the spawn and this command: then the batch
+                        // bound no longer applies to it.
+                        let _ = crate::bus::acquire_hold(
                             world,
                             entity,
                             rig_core::observe::Emitter::versioned(

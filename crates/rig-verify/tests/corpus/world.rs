@@ -30,7 +30,7 @@ use rig_ecs::{
         Bus, EffectLogResource, EffectOutcome, Handlers, IdCounter, PendingEffect,
         run_to_quiescence,
     },
-    replay::stamp_header,
+    replay::stamp_legacy_builder_header,
     systems::{install_agent, spawn_run},
 };
 use rig_effect_log::{EffectLogRecorder, EffectLogReplayer, RequestCheck};
@@ -188,7 +188,7 @@ pub fn world_agent_reproduces(program: &Program) {
     let world = app.world_mut();
     super::world_hooks::install(world, program);
     let agent = spawn_agent(world, program, &handler_entities);
-    stamp_header(
+    stamp_legacy_builder_header(
         world,
         agent,
         &world.resource::<EffectLogResource>().0.clone(),
@@ -222,7 +222,8 @@ pub fn world_agent_reproduces(program: &Program) {
         if let Some(concurrency) = program.tool_concurrency {
             world.entity_mut(run).insert(ToolPolicy { concurrency });
         }
-        rig_ecs::replay::stamp_run(world, run, &world.resource::<EffectLogResource>().0.clone());
+        rig_ecs::replay::stamp_run(world, run, &world.resource::<EffectLogResource>().0.clone())
+            .expect("the run stamps its program identity");
         if !drive(&mut app, program, run, start, &log, &reached) {
             return;
         }

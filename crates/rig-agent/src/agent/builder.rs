@@ -293,15 +293,6 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
-    /// Apply a run spec's settings.
-    pub fn apply_spec(
-        mut self,
-        spec: &crate::run::spec::RunSpec,
-    ) -> Result<Self, serde_json::Error> {
-        self.config.apply_run_spec(spec)?;
-        Ok(self)
-    }
-
     /// Set the structured-output mode.
     pub fn output_mode(mut self, mode: OutputMode) -> Self {
         self.config.output_mode = mode;
@@ -383,22 +374,17 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
-    /// The bus sizing and serving policy this agent's bus is created with.
-    /// The default serves concurrently; the agent's tool concurrency is
-    /// governed by the runner, which the cassette corpus was recorded with
-    /// at its default of one. An agent over a host's bus reports the
-    /// default: the host sized its bus.
-    pub fn bus_config(&self) -> ServingPolicy {
-        match &self.bus {
-            BusSource::Owned(config) => *config,
-            BusSource::Host(..) => ServingPolicy::default(),
-        }
-    }
-
-    /// Size the agent's own bus. No effect on an agent over a host's bus.
+    /// Size the agent's own bus. The default serves concurrently; the
+    /// agent's tool concurrency is governed by the runner, which the cassette
+    /// corpus was recorded with at its default of one. An agent over a
+    /// host's bus cannot be sized here — the host sized its bus — so the
+    /// call is refused with a warning rather than silently dropped.
     pub fn configure_bus(mut self, bus_config: ServingPolicy) -> Self {
-        if let BusSource::Owned(config) = &mut self.bus {
-            *config = bus_config;
+        match &mut self.bus {
+            BusSource::Owned(config) => *config = bus_config,
+            BusSource::Host(..) => tracing::warn!(
+                "AgentBuilder::configure_bus has no effect over a host's bus; the host sized it"
+            ),
         }
         self
     }
@@ -549,6 +535,15 @@ impl<ToolState> AgentBuilder<ToolState> {
             .collect();
         if memory {
             config.memory_key = Some(config.bus.key("memory"));
+        } else if let Some(conversation) = &config.conversation_id {
+            // A conversation id without a backend loads and saves nothing;
+            // say so once here rather than let every run silently skip it.
+            // Not an error: a runner may still bypass memory with explicit
+            // history, and a host may serve the memory key itself.
+            tracing::warn!(
+                %conversation,
+                "AgentBuilder::conversation set without memory(..) or memory_handler(..): nothing is loaded or saved"
+            );
         }
         if record_effects {
             match (host, config.bus.enable_recording(record_events)) {
@@ -577,27 +572,15 @@ impl AgentBuilder<NoToolConfig> {
     }
 
     /// An agent over its own bus, with `model` registered under `label`.
+    /// Size the bus with [`configure_bus`](Self::configure_bus).
     pub fn named_model<M>(label: impl Into<ModelRef>, model: M) -> Self
-    where
-        M: CompletionModel + 'static,
-    {
-        Self::with_bus_config(ServingPolicy::default(), label, model)
-    }
-
-    /// An agent over its own bus created with `bus_config`, with `model`
-    /// registered under `label`.
-    pub fn with_bus_config<M>(
-        bus_config: ServingPolicy,
-        label: impl Into<ModelRef>,
-        model: M,
-    ) -> Self
     where
         M: CompletionModel + 'static,
     {
         let label = label.into();
         let handler = ErasedHandler::new(CompletionAdapter::new(label.clone(), model));
         Self::start(
-            BusSource::Owned(bus_config),
+            BusSource::Owned(ServingPolicy::default()),
             None,
             DefaultModel::Labelled(label, handler),
         )

@@ -87,17 +87,19 @@ pub struct PreparedRequest {
 
 impl PreparedRequest {
     /// Apply every prepared field to a provider request builder, in the
-    /// protocol's canonical order. The builder keeps its prompt and anything
-    /// the driver set on it.
+    /// protocol's canonical order. The builder keeps its prompt; the prepared
+    /// sampling fields (`temperature`, `max_tokens`, `output_schema`)
+    /// overwrite whatever the driver set on it, while messages, documents,
+    /// tools and additional parameters accumulate.
     pub fn apply<M>(self, builder: CompletionRequestBuilder<M>) -> CompletionRequestBuilder<M> {
         let builder = builder
             .messages(self.chat_history)
-            .temperature_opt(self.temperature)
-            .max_tokens_opt(self.max_tokens)
-            .additional_params_opt(self.additional_params)
+            .temperature(self.temperature)
+            .max_tokens(self.max_tokens)
+            .additional_params(self.additional_params)
             .documents(self.documents)
             .tools(self.tools)
-            .output_schema_opt(self.output_schema);
+            .output_schema(self.output_schema);
         match self.tool_choice {
             Some(tool_choice) => builder.tool_choice(tool_choice),
             None => builder,

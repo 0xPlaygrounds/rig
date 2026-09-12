@@ -107,6 +107,7 @@ impl Bus {
     }
 
     /// Build the schedule with ambiguity detection at `level`.
+    #[must_use = "the setting applies to the returned value"]
     pub fn ambiguity_detection(mut self, level: LogLevel) -> Self {
         self.ambiguity = level;
         self
@@ -171,12 +172,6 @@ impl Bus {
         world.init_resource::<Schedules>();
         world.resource_mut::<Schedules>().insert(schedule);
     }
-}
-
-/// Install the bus under `policy` with default ambiguity detection: the
-/// one-call form of [`Bus::install`].
-pub fn install_bus(world: &mut World, policy: ServingPolicy) {
-    Bus::with_policy(policy).install(world);
 }
 
 /// The runner: reset the tick's intake, then run [`RigSchedule`] while a

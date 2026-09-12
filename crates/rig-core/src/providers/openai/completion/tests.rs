@@ -2195,3 +2195,28 @@ fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
     assert_eq!(&messages[3]["tool_call_id"], first);
     assert_eq!(&messages[5]["tool_call_id"], later);
 }
+
+/// The documented precedence on the wire: `additional_params` is flattened
+/// into the request body after the typed fields, so a passthrough key
+/// overrides the typed value (`build` warns about it; it does not stop it).
+#[test]
+fn additional_params_override_typed_fields_on_the_wire() {
+    let rig_request = crate::completion::CompletionRequestBuilder::unbound("hi")
+        .temperature(0.1)
+        .additional_params(serde_json::json!({"temperature": 0.9, "top_p": 0.5}))
+        .build();
+    let request = CompletionRequest::try_from(OpenAIRequestParams {
+        model: "gpt-4o-mini".to_string(),
+        request: rig_request,
+        strict_tools: false,
+        tool_result_array_content: true,
+        supports_response_format: true,
+        supports_image_tool_results: false,
+        supports_tools: true,
+    })
+    .expect("request conversion should succeed");
+
+    let body = request_body(&request, false).expect("body should serialize");
+    assert_eq!(body["temperature"], 0.9, "{body}");
+    assert_eq!(body["top_p"], 0.5, "{body}");
+}

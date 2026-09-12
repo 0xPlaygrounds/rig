@@ -238,7 +238,7 @@ pub mod tool {
     #[cfg(feature = "agent")]
     #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
     pub use rig_agent::tool::{
-        RegisteredTool, ToolCatalog, ToolDispatch, ToolLease, ToolSet, dispatch_tool,
+        RegisteredTool, ToolCatalog, ToolDispatch, ToolLease, ToolSet, execute_tool,
     };
     // Built-in portable tools (e.g. `ThinkTool`), always available.
     pub use rig_core::tool::builtin;

@@ -34,17 +34,17 @@ async fn batch_multi_extract_chain() -> Result<()> {
         |client| async move {
             let names_extractor = client
                 .extractor::<Names>(LIVE_LIGHT_MODEL)
-                .preamble("Extract names from the given text.")
+                .append_preamble("Extract names from the given text.")
                 .retries(2)
                 .build();
             let topics_extractor = client
                 .extractor::<Topics>(LIVE_LIGHT_MODEL)
-                .preamble("Extract topics from the given text.")
+                .append_preamble("Extract topics from the given text.")
                 .retries(2)
                 .build();
             let sentiment_extractor = client
                 .extractor::<Sentiment>(LIVE_LIGHT_MODEL)
-                .preamble("Extract sentiment and confidence from the given text.")
+                .append_preamble("Extract sentiment and confidence from the given text.")
                 .retries(2)
                 .build();
 

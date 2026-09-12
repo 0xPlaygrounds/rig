@@ -36,7 +36,7 @@ fn judge_invalid(
         Added<rig_ecs::agent::InvalidCall>,
     >,
     turns: Query<&ChildOf, With<Turn>>,
-    runs: Query<&rig_ecs::agent::Streamed>,
+    runs: Query<&rig_ecs::agent::StreamRequested>,
     mut policy: ResMut<InvalidPolicy>,
 ) {
     for (entity, parent, call) in &calls {

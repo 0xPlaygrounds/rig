@@ -217,11 +217,11 @@ async fn the_agent_names_a_signature_family_the_bus_serves_otherwise() {
 /// An own-bus agent of the golden's program, serving the golden's keys on
 /// its own bus under `policy`.
 fn own_bus_agent(replay: &corpus::Replay, policy: ServingPolicy) -> rig_agent::Agent {
-    AgentBuilder::with_bus_config(
-        policy,
+    AgentBuilder::named_model(
         "default",
         rig_core::test_utils::MockCompletionModel::text("unused"),
     )
+    .configure_bus(policy)
     .name("golden")
     .preamble(TOOLS_PREAMBLE)
     .temperature(0.0)

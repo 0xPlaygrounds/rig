@@ -101,12 +101,14 @@ where
     /// registers. Pass a [`Duration`] to bound calls, or `None` to disable.
     ///
     /// This applies the same setting to every tool managed by the handler.
+    #[must_use = "the setting applies to the returned value"]
     pub fn with_timeout(mut self, timeout: impl Into<Option<Duration>>) -> Self {
         self.timeout = timeout.into();
         self
     }
 
     /// Set the deadline for initial and list-changed tool-list fetches.
+    #[must_use = "the setting applies to the returned value"]
     pub fn with_refresh_timeout(mut self, timeout: Duration) -> Self {
         self.refresh_timeout = timeout;
         self

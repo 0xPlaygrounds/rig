@@ -95,7 +95,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create vector store index
     let index = vector_store.index(embedding_model);
     let rag_extractor = gemini_client.extractor::<QuestionnaireResponses>("gemini-2.5-flash")
-        .preamble("
+        .append_preamble("
             You are a questionnaire assistant provided by the procurement department to assist the user in answering the questions.
             You are provided with the questions and based on the information available, you must answer the questions with the right format.
             Use the answer ID field to map the answer to the right question ID. Answer as much as possible without inventing information.

@@ -8,5 +8,5 @@ pub use crate::{
         Retry, RunResult, Settled, Usage, UsesModel,
     },
     bus::{BusSet, EffectOutcome, Held, Streamed},
-    systems::RigSet,
+    systems::{RigSet, spawn_run},
 };

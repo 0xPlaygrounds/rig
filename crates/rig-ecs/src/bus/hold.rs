@@ -66,14 +66,50 @@ fn finish(world: &mut World) {
     world.resource_mut::<Transitions>().publishing = false;
 }
 
-/// Acquire one owner's hold before dispatch. Returns whether it was new.
-/// A pre-existing bare Held is retained as an independent unknown owner.
-pub fn acquire_hold(world: &mut World, entity: Entity, owner: Emitter) -> bool {
+/// Why a hold could not be acquired or released.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HoldRefused {
+    /// The entity does not exist.
+    Missing,
+    /// The effect already carries an outcome: nothing left to hold.
+    Settled,
+    /// Dispatch already took the effect; a hold acquired now would not stop
+    /// it.
+    Issued,
+    /// This owner already holds the effect.
+    AlreadyHeld,
+    /// This owner does not hold the effect.
+    NotHeld,
+}
+
+impl std::fmt::Display for HoldRefused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Missing => "the effect entity does not exist",
+            Self::Settled => "the effect already has an outcome",
+            Self::Issued => "the effect was already dispatched",
+            Self::AlreadyHeld => "this owner already holds the effect",
+            Self::NotHeld => "this owner does not hold the effect",
+        })
+    }
+}
+
+impl std::error::Error for HoldRefused {}
+
+/// Acquire one owner's hold before dispatch. A pre-existing bare Held is
+/// retained as an independent unknown owner. The refusal says why: an
+/// [`Issued`](HoldRefused::Issued) effect is past holding, which a policy
+/// that believes it has a barrier must not mistake for
+/// [`AlreadyHeld`](HoldRefused::AlreadyHeld).
+pub fn acquire_hold(world: &mut World, entity: Entity, owner: Emitter) -> Result<(), HoldRefused> {
     let Ok(effect) = world.get_entity(entity) else {
-        return false;
+        return Err(HoldRefused::Missing);
     };
-    if effect.contains::<EffectOutcome>() || effect.contains::<Issued>() {
-        return false;
+    if effect.contains::<EffectOutcome>() {
+        return Err(HoldRefused::Settled);
+    }
+    if effect.contains::<Issued>() {
+        return Err(HoldRefused::Issued);
     }
     let mut owners = effect.get::<HoldOwners>().cloned().unwrap_or_else(|| {
         let mut owners = BTreeMap::new();
@@ -84,7 +120,7 @@ pub fn acquire_hold(world: &mut World, entity: Entity, owner: Emitter) -> bool {
         HoldOwners(owners)
     });
     if owners.0.contains_key(&owner.name) {
-        return false;
+        return Err(HoldRefused::AlreadyHeld);
     }
     owners.0.insert(owner.name.clone(), owner.clone());
     begin(
@@ -103,23 +139,24 @@ pub fn acquire_hold(world: &mut World, entity: Entity, owner: Emitter) -> bool {
         world.entity_mut(entity).insert(Held);
     }
     finish(world);
-    true
+    Ok(())
 }
 
 /// Release only the named owner's hold. The barrier remains while any other
-/// owner holds it. Returns false when that owner did not hold the effect.
-/// Denial/despawn cleanup is not an ordinary release observation.
-pub fn release_hold(world: &mut World, entity: Entity, owner: &str) -> bool {
+/// owner holds it. Refused with [`NotHeld`](HoldRefused::NotHeld) when that
+/// owner did not hold the effect. Denial/despawn cleanup is not an ordinary
+/// release observation.
+pub fn release_hold(world: &mut World, entity: Entity, owner: &str) -> Result<(), HoldRefused> {
     let mut owners = match world.get::<HoldOwners>(entity).cloned() {
         Some(owners) => owners,
         None if world.get::<Held>(entity).is_some() && owner == Emitter::unknown().name => {
             let unknown = Emitter::unknown();
             HoldOwners(BTreeMap::from([(unknown.name.clone(), unknown)]))
         }
-        None => return false,
+        None => return Err(HoldRefused::NotHeld),
     };
     let Some(owner) = owners.0.remove(owner) else {
-        return false;
+        return Err(HoldRefused::NotHeld);
     };
     // Keep the ownership component present during Held removal: the bare-Held
     // observer must not duplicate this explicit owner transition.
@@ -146,5 +183,5 @@ pub fn release_hold(world: &mut World, entity: Entity, owner: &str) -> bool {
         }
     }
     finish(world);
-    true
+    Ok(())
 }

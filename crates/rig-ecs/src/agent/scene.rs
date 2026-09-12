@@ -19,7 +19,7 @@ use super::{
     MemoryAppendScheduled, Order, OrderCounter, Output, OutputRetries, OutputToolConfig,
     OutputToolName, Outputs, Owner, Parts, Preamble, Remembered, Remembering, Remembers, Reprompt,
     RequestPatch, Resolution, ResolvingTools, Retrievable, Retrieval, Retrieves, Retrieving, Retry,
-    Role, Route, Run, RunCounter, RunOf, RunResult, RunSeq, Settled, Streamed, Temperature,
+    Role, Route, Run, RunCounter, RunOf, RunResult, RunSeq, Settled, StreamRequested, Temperature,
     ToolAccess, ToolCallSlot, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Usage, UsesModel,
     Utterance,
 };
@@ -227,6 +227,7 @@ pub struct Loaded {
 }
 
 /// Save the graph and the effects of `world` as one [`WorldScene`].
+#[must_use = "saving a scene does not remove it from the world"]
 pub fn save_world(world: &mut World) -> Result<WorldScene, rig_core::error::ErrorReport> {
     let (graph, entities) = RunScene::take(world)?;
     let mut extensions = BTreeMap::<usize, BTreeMap<String, serde_json::Value>>::new();
@@ -409,11 +410,13 @@ impl RunScene {
     /// Take the graph of `world`: agents and documents first, then their
     /// links, then runs, then utterances, turns and invalid calls, each
     /// after its parent.
+    #[must_use = "saving a scene does not remove it from the world"]
     pub fn save(world: &mut World) -> Result<Self, rig_core::error::ErrorReport> {
         Self::take(world).map(|(scene, _)| scene)
     }
 
     /// [`RunScene::save`], with the entity each scene index was taken from.
+    #[must_use = "the taken scene is the only copy"]
     pub fn take(world: &mut World) -> Result<(Self, Vec<Entity>), rig_core::error::ErrorReport> {
         let mut order: Vec<(u8, Entity)> = Vec::new();
         for (entity, _) in world.query::<(Entity, &Owner)>().iter(world) {
@@ -480,7 +483,7 @@ impl RunScene {
                 DocumentId => "document_id", DocumentText => "document_text",
                 DocumentProps => "document_props", Order => "order",
                 Utterance => "utterance", Role => "role", Parts => "parts",
-                Run => "run", RunSeq => "run_seq", Streamed => "streamed", Cursor => "cursor",
+                Run => "run", RunSeq => "run_seq", StreamRequested => "streamed", Cursor => "cursor",
                 Assembling => "assembling", AwaitingModel => "awaiting_model",
                 Settled => "settled", Failed => "failed", RunResult => "run_result",
                 Usage => "usage", OutputRetries => "output_retries",
@@ -606,6 +609,7 @@ impl RunScene {
     /// Spawn the graph into `world`. Handlers are the host's to bind first:
     /// a relationship to a handler key nothing is bound to is an error
     /// naming the key. Returns the spawned entities by scene index.
+    #[must_use = "the loaded entities are the caller's handles"]
     pub fn load(&self, world: &mut World) -> Result<Vec<Entity>, rig_core::error::ErrorReport> {
         self.validate_structure()?;
         let mut spawned: Vec<Entity> = Vec::with_capacity(self.entities.len());
@@ -640,7 +644,7 @@ impl RunScene {
                 DocumentId => "document_id", DocumentText => "document_text",
                 DocumentProps => "document_props", Order => "order",
                 Utterance => "utterance", Role => "role", Parts => "parts",
-                Run => "run", RunSeq => "run_seq", Streamed => "streamed", Cursor => "cursor",
+                Run => "run", RunSeq => "run_seq", StreamRequested => "streamed", Cursor => "cursor",
                 Assembling => "assembling", AwaitingModel => "awaiting_model",
                 Settled => "settled", Failed => "failed", RunResult => "run_result",
                 Usage => "usage", OutputRetries => "output_retries",

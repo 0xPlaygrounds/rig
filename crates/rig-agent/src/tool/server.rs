@@ -39,7 +39,7 @@ use crate::{
     completion::{CompletionError, ToolDefinition},
     tool::{
         DynamicTool, PortableDynamicTool, RegisteredTool, Tool, ToolCatalog, ToolContext,
-        ToolDispatch, ToolLease, ToolResult, ToolSet, dispatch_tool,
+        ToolDispatch, ToolLease, ToolResult, ToolSet, execute_tool,
     },
 };
 
@@ -208,10 +208,10 @@ impl ToolServerState {
         self.leases.insert(name.clone(), lease);
         self.publish(&tool);
         if always_exposed {
-            self.toolset.add_registered(tool);
+            self.toolset.add_registered_tool(tool);
         } else {
             let mut set = ToolSet::default();
-            set.add_registered(tool);
+            set.add_registered_tool(tool);
             self.toolset.add_retrievable_tools(set);
         }
         self.sweep_retired();
@@ -220,7 +220,7 @@ impl ToolServerState {
 
     fn remove(&mut self, name: &str) {
         self.retire(name);
-        self.toolset.delete_tool(name);
+        self.toolset.remove_tool(name);
         self.managed_generations.remove(name);
         self.sweep_retired();
     }
@@ -326,7 +326,7 @@ impl ToolServer {
 
     /// Add a registration built elsewhere.
     pub fn registered_tool(mut self, tool: RegisteredTool) -> Self {
-        self.toolset.add_registered(tool);
+        self.toolset.add_registered_tool(tool);
         self
     }
 
@@ -554,7 +554,7 @@ impl ToolServerHandle {
     }
 
     /// Merge a tool set's registrations.
-    pub fn append_toolset(&self, toolset: ToolSet) {
+    pub fn add_tools(&self, toolset: ToolSet) {
         let mut state = self.state_mut();
         let exposed: Vec<String> = toolset.always_exposed_names().map(str::to_owned).collect();
         for (name, tool) in toolset.iter() {
@@ -580,7 +580,7 @@ impl ToolServerHandle {
         context: &mut ToolContext,
     ) -> ToolResult {
         context.clear_dispatch_result();
-        let dispatch = self.dispatch(tool_name, args, context).await;
+        let dispatch = self.execute_scoped(tool_name, args, context).await;
         dispatch.publish_to(context)
     }
 
@@ -590,14 +590,14 @@ impl ToolServerHandle {
         f(&state)
     }
 
-    pub(crate) async fn dispatch(
+    pub(crate) async fn execute_scoped(
         &self,
         tool_name: &str,
         args: &str,
         context: &ToolContext,
     ) -> ToolDispatch {
         let tool = self.with_registry(|state| state.toolset.get(tool_name).cloned());
-        dispatch_tool(tool_name, args.to_string(), tool, context).await
+        execute_tool(tool_name, args.to_string(), tool, context).await
     }
 
     /// The always-exposed registrations, pinned.

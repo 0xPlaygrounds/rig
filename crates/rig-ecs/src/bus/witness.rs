@@ -76,14 +76,8 @@ pub struct AdapterOperation {
 struct WitnessObserversInstalled;
 
 impl Witnessing {
-    /// A witness over `sink`.
-    pub fn new(sink: impl Witness + Send + Sync) -> Self {
+    fn new(sink: impl Witness + Send + Sync) -> Self {
         Self(Arc::new(sink))
-    }
-
-    /// A witness over a shared sink.
-    pub fn shared(sink: Arc<dyn Witness + Send + Sync>) -> Self {
-        Self(sink)
     }
 
     /// Install `sink` on `world`: the resource and, the first time, the

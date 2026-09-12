@@ -82,7 +82,7 @@ fn serialized_log_reconstructs_capabilities_identity_and_uncalled_grants() {
     );
     let agent = program(live.world_mut(), model, tool);
     let run = spawn_run(live.world_mut(), agent, &[], "go", false, None);
-    stamp_run(live.world_mut(), run, &recorder);
+    stamp_run(live.world_mut(), run, &recorder).expect("the run stamps its program identity");
     tick_until(&mut live, "live settled", |world| {
         world.get::<Settled>(run).is_some()
     });

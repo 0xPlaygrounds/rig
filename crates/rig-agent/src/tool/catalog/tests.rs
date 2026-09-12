@@ -43,10 +43,10 @@ async fn catalog_matches_definitions_and_dispatches_by_name() {
     assert!(!missing.is_success(), "retrieval-only tools are not pinned");
 }
 
-/// `execute_owned` matches `execute` (result and published context) and
+/// An owned execution matches `execute` (result and published context) and
 /// its future is `Send + 'static` — spawnable on any executor.
 #[tokio::test]
-async fn execute_owned_matches_execute_and_is_static() {
+async fn an_owned_execution_matches_the_borrowed_one_and_is_static() {
     fn assert_send_static<T: Send + 'static>(value: T) -> T {
         value
     }
@@ -58,11 +58,14 @@ async fn execute_owned_matches_execute_and_is_static() {
     let mut context = ToolContext::new();
     let borrowed = catalog.execute("alpha", "{}", &mut context).await;
 
-    let (owned, owned_context) = assert_send_static(catalog.clone().execute_owned(
-        "alpha".to_string(),
-        "{}".to_string(),
-        ToolContext::new(),
-    ))
+    // An owned execution — the catalog, arguments and context all moved into
+    // the future — is `Send + 'static`, so a host can spawn it.
+    let owned_catalog = catalog.clone();
+    let (owned, owned_context) = assert_send_static(async move {
+        let mut context = ToolContext::new();
+        let result = owned_catalog.execute("alpha", "{}", &mut context).await;
+        (result, context)
+    })
     .await;
     assert_eq!(owned.output().as_text(), borrowed.output().as_text());
     assert_eq!(

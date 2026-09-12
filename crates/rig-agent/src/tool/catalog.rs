@@ -11,7 +11,7 @@ use rig_core::{
     tool::{ToolContext, ToolResult},
 };
 
-use super::registry::{RegisteredTool, ToolDispatch, dispatch_tool};
+use super::registry::{RegisteredTool, ToolDispatch, execute_tool};
 
 /// An opaque token a catalog keeps alive for as long as it exists: a
 /// registry that retires replaced generations lazily hands one per pinned
@@ -42,7 +42,7 @@ pub struct ToolCatalog {
 
 impl ToolCatalog {
     /// A catalog over `tools`, advertised under their map names.
-    pub fn from_registered(tools: IndexMap<String, RegisteredTool>) -> Self {
+    pub(crate) fn from_registered(tools: IndexMap<String, RegisteredTool>) -> Self {
         let definitions = tools
             .iter()
             .map(|(name, tool)| tool.definition_with_name(name.clone()))
@@ -55,7 +55,7 @@ impl ToolCatalog {
     }
 
     /// Attach the registry's generation leases (see the field).
-    pub fn with_leases(mut self, leases: Vec<ToolLease>) -> Self {
+    pub(crate) fn with_leases(mut self, leases: Vec<ToolLease>) -> Self {
         self.leases = leases;
         self
     }
@@ -109,20 +109,9 @@ impl ToolCatalog {
         context: &mut ToolContext,
     ) -> ToolResult {
         context.clear_dispatch_result();
-        self.dispatch(tool_name, args, context)
+        self.execute_scoped(tool_name, args, context)
             .await
             .publish_to(context)
-    }
-
-    /// [`Self::execute`] by value.
-    pub async fn execute_owned(
-        self,
-        tool_name: String,
-        args: String,
-        mut context: ToolContext,
-    ) -> (ToolResult, ToolContext) {
-        let result = self.execute(&tool_name, &args, &mut context).await;
-        (result, context)
     }
 
     /// Take the definitions out, leaving the registrations.
@@ -131,21 +120,21 @@ impl ToolCatalog {
     }
 
     /// Keep only `names`.
-    pub fn retain_names(&mut self, names: &BTreeSet<String>) {
+    pub(crate) fn retain_names(&mut self, names: &BTreeSet<String>) {
         self.definitions
             .retain(|definition| names.contains(&definition.name));
         self.tools.retain(|name, _| names.contains(name));
     }
 
     /// Run `tool_name` on a dispatch-scoped copy of `context`.
-    pub async fn dispatch(
+    pub async fn execute_scoped(
         &self,
         tool_name: &str,
         args: &str,
         context: &ToolContext,
     ) -> ToolDispatch {
         let tool = self.tools.get(tool_name).cloned();
-        dispatch_tool(tool_name, args.to_string(), tool, context).await
+        execute_tool(tool_name, args.to_string(), tool, context).await
     }
 }
 

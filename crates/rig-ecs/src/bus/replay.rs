@@ -25,6 +25,7 @@ impl EffectLogResource {
     }
 
     /// The log so far.
+    #[must_use = "the log is a copy of the recorder's state"]
     pub fn log(&self) -> EffectLog {
         self.0.log()
     }
@@ -49,14 +50,6 @@ pub struct Replay {
 }
 
 impl Replay {
-    /// A replay comparing requests as `check` says.
-    pub fn checking(check: RequestCheck) -> Self {
-        Self {
-            check,
-            ..Self::default()
-        }
-    }
-
     /// Replay policies that observe answer order or partial stream state.
     /// Refuses recordings without the delivery boundaries or kept stream
     /// events that guarantee needs. The same policy must reproduce recorded
@@ -115,6 +108,7 @@ impl Replay {
     /// checkpoint) is not in the world, so that child carries no `ChildOf`
     /// and its new record names no parent. Returns the entities, in record
     /// order.
+    #[must_use = "the loaded entities are the caller's handles"]
     pub fn load(world: &mut World, log: &EffectLog) -> Vec<Entity> {
         let mut records: Vec<&rig_core::effect::EffectRecord> = log.iter().collect();
         records.sort_by_key(|record| record.id);

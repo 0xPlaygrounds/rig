@@ -3,7 +3,7 @@
 //!
 //! A typed [`Tool`] erases once (`ErasedTool`) in rig-core; this module is
 //! what a driver does with the erasure: stores it in an ordered [`ToolSet`],
-//! executes it through one structured path ([`dispatch_tool`]), and pins a
+//! executes it through one structured path ([`execute_tool`]), and pins a
 //! per-turn [`ToolCatalog`]. The futures agent's live registry
 //! ([`ToolServer`](super::server::ToolServer)) is layered over these types.
 
@@ -126,7 +126,7 @@ impl RegisteredTool {
 
     /// Whether this registration is served under the default `tool:<name>`
     /// key (a registry that pins generations re-keys only those).
-    pub fn has_default_key(&self) -> bool {
+    pub(crate) fn has_default_key(&self) -> bool {
         *self.key.raw() == tool_key(&self.definition.name)
     }
 
@@ -170,7 +170,7 @@ impl RegisteredTool {
     }
 
     /// The definition, advertised under `name`.
-    pub fn definition_with_name(&self, name: impl Into<String>) -> ToolDefinition {
+    pub(crate) fn definition_with_name(&self, name: impl Into<String>) -> ToolDefinition {
         ToolDefinition {
             name: name.into(),
             description: self.definition.description.clone(),
@@ -272,7 +272,7 @@ impl ToolDispatch {
 
 /// Run `tool` (or answer `not found`) on a dispatch-scoped copy of
 /// `context`.
-pub async fn dispatch_tool(
+pub async fn execute_tool(
     name: &str,
     args: String,
     tool: Option<RegisteredTool>,
@@ -358,7 +358,7 @@ impl ToolSet {
     }
 
     /// Register an already-built registration; returns its name.
-    pub fn add_registered(&mut self, tool: RegisteredTool) -> String {
+    pub fn add_registered_tool(&mut self, tool: RegisteredTool) -> String {
         self.insert(tool)
     }
 
@@ -379,7 +379,7 @@ impl ToolSet {
     }
 
     /// Remove the tool named `name`.
-    pub fn delete_tool(&mut self, name: &str) {
+    pub fn remove_tool(&mut self, name: &str) {
         self.tools.shift_remove(name);
     }
 
@@ -433,7 +433,7 @@ impl ToolSet {
     }
 
     /// Move `name` to the end of the insertion order.
-    pub fn move_to_end(&mut self, name: &str) -> bool {
+    pub(crate) fn move_to_end(&mut self, name: &str) -> bool {
         self.tools
             .shift_remove_entry(name)
             .is_some_and(|(name, registration)| {
@@ -471,7 +471,7 @@ impl ToolSet {
     ) -> ToolResult {
         context.clear_dispatch_result();
         let tool = self.get(name).cloned();
-        let dispatch = dispatch_tool(name, args.into(), tool, context).await;
+        let dispatch = execute_tool(name, args.into(), tool, context).await;
         dispatch.publish_to(context)
     }
 

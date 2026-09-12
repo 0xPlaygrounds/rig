@@ -184,3 +184,63 @@ fn recording_over_a_host_bus_is_refused_at_build() {
     .record_effects()
     .build();
 }
+
+mod conversation_without_memory {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use tracing::Subscriber;
+    use tracing_subscriber::layer::{Context, SubscriberExt};
+    use tracing_subscriber::{Layer, Registry};
+
+    /// Collects the message field of every event at warn level or above.
+    struct Warnings(Arc<Mutex<Vec<String>>>);
+
+    impl<S: Subscriber> Layer<S> for Warnings {
+        fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
+            if *event.metadata().level() > tracing::Level::WARN {
+                return;
+            }
+            struct Message(String);
+            impl tracing::field::Visit for Message {
+                fn record_debug(
+                    &mut self,
+                    field: &tracing::field::Field,
+                    value: &dyn std::fmt::Debug,
+                ) {
+                    if field.name() == "message" {
+                        self.0 = format!("{value:?}");
+                    }
+                }
+            }
+            let mut message = Message(String::new());
+            event.record(&mut message);
+            if let Ok(mut warnings) = self.0.lock() {
+                warnings.push(message.0);
+            }
+        }
+    }
+
+    /// A conversation id with no memory backend is not silently inert: the
+    /// build warns once, naming the setter. With a backend it does not.
+    #[tokio::test]
+    async fn build_warns_when_conversation_has_no_memory_backend() {
+        let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+        let warnings = Arc::new(Mutex::new(Vec::new()));
+        let subscriber = Registry::default().with(Warnings(warnings.clone()));
+        let _default = tracing::subscriber::set_default(subscriber);
+
+        let _agent = AgentBuilder::new(MockCompletionModel::text("x"))
+            .conversation("thread-1")
+            .build();
+        let seen = warnings.lock().expect("warnings").clone();
+        assert_eq!(seen.len(), 1, "{seen:?}");
+        assert!(seen[0].contains("AgentBuilder::conversation"), "{seen:?}");
+
+        warnings.lock().expect("warnings").clear();
+        let _agent = AgentBuilder::new(MockCompletionModel::text("x"))
+            .memory(rig_core::memory::InMemoryConversationMemory::new())
+            .conversation("thread-1")
+            .build();
+        assert!(warnings.lock().expect("warnings").is_empty());
+    }
+}

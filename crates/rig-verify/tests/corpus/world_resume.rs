@@ -19,7 +19,7 @@ use rig_ecs::{
         scene::{WorldScene, load_world, save_world},
     },
     bus::{EffectLogResource, EffectOutcome, IdCounter, RigSchedule},
-    replay::{stamp_header, stamp_run},
+    replay::{stamp_legacy_builder_header, stamp_run},
     systems::{Fresh, spawn_run},
 };
 use rig_effect_log::{Checkpoint, EffectLog, RequestCheck};
@@ -55,7 +55,7 @@ pub fn world_resume_reproduces(
     let world = app.world_mut();
     super::world_hooks::install(world, program);
     let agent = spawn_agent(world, program, &handlers);
-    stamp_header(
+    stamp_legacy_builder_header(
         world,
         agent,
         &world.resource::<EffectLogResource>().0.clone(),
@@ -84,7 +84,8 @@ pub fn world_resume_reproduces(
             .entity_mut(run)
             .insert(rig_ecs::agent::ToolPolicy { concurrency });
     }
-    stamp_run(world, run, &world.resource::<EffectLogResource>().0.clone());
+    stamp_run(world, run, &world.resource::<EffectLogResource>().0.clone())
+        .expect("the run stamps its program identity");
     // One pass of the schedule at a time (an `update` runs it to
     // quiescence), until `tool_turns` batches landed and the run wants its
     // next turn: `Assembling`, the cursor at `tool_turns`, no fresh turn
@@ -188,14 +189,15 @@ pub fn world_resume_reproduces(
         .expect("the scene holds the run");
     let agent = world.get::<RunOf>(run).expect("the run's agent").0;
     super::world_hooks::install(world, program);
-    stamp_header(
+    stamp_legacy_builder_header(
         world,
         agent,
         &world.resource::<EffectLogResource>().0.clone(),
         log.header.bus,
         program_hooks(program, program.owner),
     );
-    stamp_run(world, run, &world.resource::<EffectLogResource>().0.clone());
+    stamp_run(world, run, &world.resource::<EffectLogResource>().0.clone())
+        .expect("the run stamps its program identity");
     assert!(
         drive(&mut app, program, run, start, &continuation, &reached),
         "{}: a resumed program does not cancel when reached",

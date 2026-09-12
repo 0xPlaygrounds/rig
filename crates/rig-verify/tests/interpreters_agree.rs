@@ -146,18 +146,15 @@ fn trace_of<'a>(records: impl IntoIterator<Item = &'a EffectRecord>) -> Trace {
 }
 
 async fn bus_interpreter(case: &Case) -> (String, Trace) {
-    let agent = AgentBuilder::with_bus_config(
-        ServingPolicy {
+    let agent = AgentBuilder::named_model("default", model_for(case))
+        .configure_bus(ServingPolicy {
             serial_per_handler: case.serial_per_handler,
             ..ServingPolicy::default()
-        },
-        "default",
-        model_for(case),
-    )
-    .tool(Alpha)
-    .tool(Beta)
-    .record_effects()
-    .build();
+        })
+        .tool(Alpha)
+        .tool(Beta)
+        .record_effects()
+        .build();
     let response = tokio::time::timeout(
         Duration::from_secs(5),
         agent
@@ -184,17 +181,14 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
     // The same program's bus — the same keys, the same handlers — driven
     // by hand: the model and the tools are reached through typed views,
     // never called directly, so the record is the bus's, as the engine's is.
-    let agent = AgentBuilder::with_bus_config(
-        ServingPolicy {
+    let agent = AgentBuilder::named_model("default", model_for(case))
+        .configure_bus(ServingPolicy {
             serial_per_handler: case.serial_per_handler,
             ..ServingPolicy::default()
-        },
-        "default",
-        model_for(case),
-    )
-    .tool(Alpha)
-    .tool(Beta)
-    .build();
+        })
+        .tool(Alpha)
+        .tool(Beta)
+        .build();
     let model_key = agent.model_key().clone();
     let parts = agent
         .into_parts()

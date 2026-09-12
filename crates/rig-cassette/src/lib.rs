@@ -6,8 +6,9 @@
 //!
 //! Every constructor and recorded-request reader receives its fixture root
 //! explicitly. The root contains provider directories; this crate does not
-//! depend on a repository layout or consumer registry. `start_at` instead takes
-//! an exact destination and mode, for controlled offline/candidate workflows.
+//! depend on a repository layout or consumer registry. The ambient
+//! [`CassetteMode`] decides recording versus replay; [`Transport`] decides how
+//! a recording reaches the provider.
 //! Enable `bedrock` to scrub binary Smithy event-stream payloads. Ordinary
 //! binary bodies and SSE work without that feature. This is native test support;
 //! invalid fixtures and failed replay assertions deliberately panic.
@@ -323,6 +324,19 @@ where
     }
 }
 
+/// How a recording session reaches the provider. Replay never reaches it,
+/// so the transport is irrelevant then.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Transport {
+    /// A local mock server proxies every request to the provider and
+    /// records the exchange (the default; the client is pointed at the
+    /// proxy's URL).
+    Proxy,
+    /// The client talks to the provider directly and the session's
+    /// [`DirectRecorder`] captures the exchanges it is handed.
+    Direct,
+}
+
 /// A recording or replay session with an explicitly located fixture.
 pub struct ProviderCassette {
     server: CassetteServer,
@@ -330,11 +344,13 @@ pub struct ProviderCassette {
     base_path: String,
     mode: CassetteMode,
     policy: CassettePolicy,
-    recording_id: Option<usize>,
 }
 
 enum CassetteServer {
-    Recording(MockServer),
+    Recording {
+        server: MockServer,
+        recording_id: usize,
+    },
     DirectRecording(DirectRecordingServer),
     Replay(ReplayServer),
 }
@@ -347,7 +363,7 @@ struct DirectRecordingServer {
 impl CassetteServer {
     fn base_url(&self) -> String {
         match self {
-            Self::Recording(server) => server.base_url(),
+            Self::Recording { server, .. } => server.base_url(),
             Self::DirectRecording(server) => server.base_url.clone(),
             Self::Replay(server) => server.base_url(),
         }
@@ -364,85 +380,30 @@ impl fmt::Debug for ProviderCassette {
 }
 
 impl ProviderCassette {
-    /// Start with an explicit cassette root containing provider directories.
+    /// Start with an explicit cassette root containing provider directories,
+    /// recording through a proxy ([`Transport::Proxy`]).
     pub async fn start(
         cassette_root: &Path,
         provider: &'static str,
         spec: impl Into<CassetteSpec>,
         real_base_url: &str,
     ) -> Self {
-        let spec = spec.into();
-        Self::start_at(
+        Self::start_via(
+            Transport::Proxy,
+            cassette_root,
             provider,
             spec,
             real_base_url,
-            CassetteMode::current(),
-            cassette_path(cassette_root, provider, spec.scenario),
         )
         .await
     }
 
-    /// Explicit mode and destination for consumers that stage candidates.
-    /// Verification callers pass Replay even if the ambient environment asks
-    /// for recording; a candidate is never implicitly promoted to a fixture.
-    pub async fn start_at(
-        provider: &'static str,
-        spec: CassetteSpec,
-        real_base_url: &str,
-        mode: CassetteMode,
-        cassette_path: PathBuf,
-    ) -> Self {
-        let scenario = spec.scenario;
-        let policy = CassettePolicy::for_scenario(provider, scenario, spec.replay_matching);
-        let upstream = UpstreamBase::parse(real_base_url);
-        let (server, recording_id) = if mode.records() {
-            let server = MockServer::start_async().await;
-            server
-                .forward_to_async(&upstream.origin, |rule| {
-                    rule.filter(|when| {
-                        when.any_request();
-                    });
-                })
-                .await;
-
-            let recorded_request_headers = policy.recorded_request_headers.to_vec();
-            let recording = server
-                .record_async(move |rule| {
-                    rule.record_request_headers(recorded_request_headers)
-                        .filter(|when| {
-                            when.any_request();
-                        });
-                })
-                .await;
-
-            let recording_id = recording.id;
-
-            (CassetteServer::Recording(server), Some(recording_id))
-        } else {
-            if !cassette_path.exists() {
-                panic!(
-                    "missing provider cassette {}; run with {MODE_ENV}=record and the real API key to create it",
-                    cassette_path.display()
-                );
-            }
-            (
-                CassetteServer::Replay(ReplayServer::start(&cassette_path, policy).await),
-                None,
-            )
-        };
-
-        Self {
-            server,
-            cassette_path,
-            base_path: upstream.path,
-            mode,
-            policy,
-            recording_id,
-        }
-    }
-
-    /// Start direct recording or replay under the supplied cassette root.
-    pub async fn start_direct_recording(
+    /// Start a session that records through `transport` when the ambient
+    /// [`CassetteMode`] records, and replays the fixture otherwise. The
+    /// mode comes from the environment either way; the transport only says
+    /// how a recording reaches the provider.
+    pub async fn start_via(
+        transport: Transport,
         cassette_root: &Path,
         provider: &'static str,
         spec: impl Into<CassetteSpec>,
@@ -454,26 +415,46 @@ impl ProviderCassette {
         let policy = CassettePolicy::for_scenario(provider, scenario, spec.replay_matching);
         let cassette_path = cassette_path(cassette_root, provider, scenario);
         let upstream = UpstreamBase::parse(real_base_url);
-        let (server, recording_id) = if mode.records() {
-            let interactions = Arc::new(Mutex::new(Vec::new()));
-            (
-                CassetteServer::DirectRecording(DirectRecordingServer {
-                    base_url: upstream.origin.clone(),
-                    interactions,
-                }),
-                None,
-            )
-        } else {
+        let server = if !mode.records() {
             if !cassette_path.exists() {
                 panic!(
                     "missing provider cassette {}; run with {MODE_ENV}=record and the real API key to create it",
                     cassette_path.display()
                 );
             }
-            (
-                CassetteServer::Replay(ReplayServer::start(&cassette_path, policy).await),
-                None,
-            )
+            CassetteServer::Replay(ReplayServer::start(&cassette_path, policy).await)
+        } else {
+            match transport {
+                Transport::Direct => CassetteServer::DirectRecording(DirectRecordingServer {
+                    base_url: upstream.origin.clone(),
+                    interactions: Arc::new(Mutex::new(Vec::new())),
+                }),
+                Transport::Proxy => {
+                    let server = MockServer::start_async().await;
+                    server
+                        .forward_to_async(&upstream.origin, |rule| {
+                            rule.filter(|when| {
+                                when.any_request();
+                            });
+                        })
+                        .await;
+
+                    let recorded_request_headers = policy.recorded_request_headers.to_vec();
+                    let recording = server
+                        .record_async(move |rule| {
+                            rule.record_request_headers(recorded_request_headers)
+                                .filter(|when| {
+                                    when.any_request();
+                                });
+                        })
+                        .await;
+                    let recording_id = recording.id;
+                    CassetteServer::Recording {
+                        server,
+                        recording_id,
+                    }
+                }
+            }
         };
 
         Self {
@@ -482,7 +463,6 @@ impl ProviderCassette {
             base_path: upstream.path,
             mode,
             policy,
-            recording_id,
         }
     }
 
@@ -525,66 +505,16 @@ impl ProviderCassette {
         }
     }
 
-    /// Retain completed, scrubbed exchanges while a live consumer is still
-    /// running. This is an unaccepted partial recording, not finalization.
-    pub async fn checkpoint_recording(&self, path: &Path) -> bool {
-        if !self.mode.records() {
-            return false;
-        }
-        let yaml = match &self.server {
-            CassetteServer::Recording(server) => {
-                let Some(id) = self.recording_id else {
-                    return false;
-                };
-                let recording = httpmock::Recording::new(id, server);
-                let Ok(Some(bytes)) = recording.export_async().await else {
-                    return false;
-                };
-                let Ok(yaml) = String::from_utf8(bytes.to_vec()) else {
-                    return false;
-                };
-                yaml
-            }
-            CassetteServer::DirectRecording(server) => {
-                let interactions = server.interactions.lock().await;
-                if interactions.is_empty() {
-                    return false;
-                }
-                serialize_cassette_interactions(&interactions)
-            }
-            CassetteServer::Replay(_) => return false,
-        };
-        // httpmock can export an empty YAML document before the first response.
-        // A best-effort snapshot must not panic or replace a previous snapshot.
-        let parsed = serde_yaml::Deserializer::from_str(&yaml)
-            .map(CassetteInteraction::deserialize)
-            .collect::<Result<Vec<_>, _>>();
-        let Ok(interactions) = parsed else {
-            return false;
-        };
-        if interactions.is_empty() {
-            return false;
-        }
-        let redacted = scrub_cassette_contents_with_policy(self.policy, &yaml);
-        if !cassette_safety_failures_with_policy(self.policy, path, &redacted).is_empty() {
-            return false;
-        }
-        write_cassette_atomically(path, redacted.as_bytes())
-            .await
-            .is_ok()
-    }
-
     /// Finalize a recording or assert complete replay consumption and shut down.
     pub async fn finish(self) {
         let Self {
             server,
             cassette_path,
             policy,
-            recording_id,
             ..
         } = self;
 
-        let server = match server {
+        let (server, recording_id) = match server {
             CassetteServer::Replay(mut server) => {
                 let result = AssertUnwindSafe(server.assert_consumed(&cassette_path))
                     .catch_unwind()
@@ -608,11 +538,10 @@ impl ProviderCassette {
                 write_scrubbed_cassette(&cassette_path, policy, &yaml).await;
                 return;
             }
-            CassetteServer::Recording(server) => server,
-        };
-
-        let Some(recording_id) = recording_id else {
-            return;
+            CassetteServer::Recording {
+                server,
+                recording_id,
+            } => (server, recording_id),
         };
 
         let recording = httpmock::Recording::new(recording_id, &server);

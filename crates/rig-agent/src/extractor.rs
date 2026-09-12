@@ -161,8 +161,11 @@ where
         }
     }
 
-    /// Add additional preamble to the extractor
-    pub fn preamble(mut self, preamble: &str) -> Self {
+    /// Append instructions to the extractor's preamble. The extraction
+    /// preamble itself is fixed (it tells the model to call the output
+    /// tool); this adds to it, as [`AgentBuilder::append_preamble`] does,
+    /// and never replaces it.
+    pub fn append_preamble(mut self, preamble: &str) -> Self {
         self.agent_builder = self.agent_builder.append_preamble(&format!(
             "\n=============== ADDITIONAL INSTRUCTIONS ===============\n{preamble}"
         ));
@@ -173,10 +176,7 @@ where
         /// Add a context document to the extractor
         context(doc: &str);
 
-        /// Add dynamic context retrieved from a vector store on every extraction attempt.
-        ///
-        /// This delegates to [`AgentBuilder::dynamic_context`] and therefore uses the
-        /// same completion-call hook lifecycle as an agent.
+        /// Set provider-specific parameters for every extraction attempt.
         additional_params(params: serde_json::Value);
 
         /// Set the maximum number of tokens for the completion
@@ -193,6 +193,9 @@ where
     }
 
     /// Retrieve `samples` documents from `index` for every extraction.
+    ///
+    /// This delegates to [`AgentBuilder::dynamic_context`] and therefore uses
+    /// the same completion-call hook lifecycle as an agent.
     pub fn dynamic_context<I, F>(mut self, samples: usize, index: I) -> Self
     where
         I: VectorStoreIndex<Filter = F> + 'static,

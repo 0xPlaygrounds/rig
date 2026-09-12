@@ -143,6 +143,7 @@ impl EffectLogRecorder {
     /// the header. A dispatch still in flight is not in the log yet; it
     /// takes its place (ahead of everything served after it) when it
     /// resolves.
+    #[must_use = "the log is a copy of the recorder's state"]
     pub fn log(&self) -> EffectLog {
         let slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
         let records = slots.iter().filter_map(RecordSlot::record).collect();
@@ -157,6 +158,7 @@ impl EffectLogRecorder {
 
     /// Take the resolved dispatches, leaving the recorder holding only the
     /// ones still in flight; the header stays (the signature keeps growing).
+    #[must_use = "the taken log is the only copy"]
     pub fn take(&self) -> EffectLog {
         let mut slots = self.slots.lock().unwrap_or_else(PoisonError::into_inner);
         let mut taken = Vec::new();

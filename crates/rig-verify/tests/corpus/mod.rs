@@ -2508,7 +2508,7 @@ impl Replay {
                 }
             };
             if program.retrievable.contains(&name) {
-                retrievable.add_registered(tool);
+                retrievable.add_registered_tool(tool);
             } else {
                 server = server.registered_tool(tool);
             }
@@ -3647,7 +3647,10 @@ async fn hand_drive(program: &Program, resume: Resume) {
                     // preparation failure leaves it unchanged — so a resumed
                     // engine's selection hook sees it.
                     run.set_previous_model(rig_core::completion::ModelRef::new(label));
-                    run.set_output_tool_name(prepared.output_tool_name.clone());
+                    if let Some(name) = &prepared.output_tool_name {
+                        // Refused after the first turn by design: the name is pinned.
+                        let _ = run.commit_output_tool_name(name.clone());
+                    }
                     run.advertise_tools(turn, prepared.tools.clone());
                     let executable = prepared.executable_tool_names.clone();
                     let allowed = prepared.allowed_tool_names.clone();

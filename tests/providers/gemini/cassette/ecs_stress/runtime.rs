@@ -216,7 +216,7 @@ pub(super) fn install_patch(ecs: &mut EcsAgent, patch: RequestPatch, first_only:
 fn emit(world: &mut World, run: Entity, tag: &'static str, id: Option<String>) {
     let cursor = world.get::<Cursor>(run).expect("run cursor").turn;
     let streamed = world
-        .get::<rig_ecs::agent::Streamed>(run)
+        .get::<rig_ecs::agent::StreamRequested>(run)
         .expect("run stream mode")
         .0;
     let agent = world.get::<RunOf>(run).expect("agent relationship").0;

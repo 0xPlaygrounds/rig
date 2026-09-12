@@ -10,7 +10,7 @@ use crate::{
         AdditionalParams, Context, Conversation, DefaultMaxTurns, DocumentId, DocumentProps,
         DocumentText, Grant, InvalidCalls, MaxTokens, MaxTurns, Order, Output, OutputKind,
         OutputToolConfig, PolicyVersion, Preamble, Remembers, Retrievable, Retrieval, Retrieves,
-        Route, RunOf, Streamed, Temperature, ToolChoiceSpec, ToolPolicy, UsesModel,
+        Route, RunOf, StreamRequested, Temperature, ToolChoiceSpec, ToolPolicy, UsesModel,
     },
     bus::{Bound, Scope},
 };
@@ -180,7 +180,7 @@ pub fn spec_json(world: &mut World, subject: Entity) -> serde_json::Value {
         );
         fields.insert(
             "streamed".into(),
-            serde_json::json!(world.get::<Streamed>(subject).is_some_and(|v| v.0)),
+            serde_json::json!(world.get::<StreamRequested>(subject).is_some_and(|v| v.0)),
         );
         fields.insert(
             "conversation".into(),
@@ -314,12 +314,14 @@ pub fn required_row(world: &mut World, agent: Entity) -> EffectRow {
     row
 }
 
-/// Stamp `recorder`'s legacy builder header for corpus interoperability, not
-/// a claim of effective run compatibility: the builder spec hash, the
-/// program's hook list as it declares it (`hooks` — the world has no hook
-/// stack to name; a program with none passes an empty list), the required
-/// row, and the bus policy the world runs under.
-pub fn stamp_header(
+/// Stamp `recorder`'s legacy builder header for corpus interoperability with
+/// logs the classic runtime records. This is **not** a claim of run
+/// compatibility — [`check_replayable`] refuses a log that carries only this
+/// header; [`stamp_run`] is what makes a log replayable. It records the
+/// builder spec hash, the program's hook list as it declares it (`hooks` —
+/// the world has no hook stack to name; a program with none passes an empty
+/// list), the required row, and the bus policy the world runs under.
+pub fn stamp_legacy_builder_header(
     world: &mut World,
     agent: Entity,
     recorder: &EffectLogRecorder,
@@ -337,18 +339,38 @@ pub fn stamp_header(
 /// ([`rig_effect_log::LogHeader::programs`]): the effective run's required row
 /// and policy hash, keyed by the run's `Scope`. A world running several
 /// programs into one log names each this way.
-pub fn stamp_run(world: &mut World, run: Entity, recorder: &EffectLogRecorder) {
-    let Some(_) = world.get::<RunOf>(run) else {
-        return;
-    };
-    let Some(scope) = world.get::<Scope>(run).map(|scope| scope.0.clone()) else {
-        return;
-    };
-    let Some(policy) = spec_hash(world, run) else {
-        return;
-    };
+///
+/// Refused, with the same wording [`check_replayable`] uses, when `run` is
+/// not a run, has no `Scope`, or its policy does not hash: a log stamped
+/// under those conditions could never be verified, so the mistake is
+/// reported here rather than at replay time.
+pub fn stamp_run(
+    world: &mut World,
+    run: Entity,
+    recorder: &EffectLogRecorder,
+) -> Result<(), rig_core::error::ErrorReport> {
+    use rig_core::error::{ErrorKind, ErrorReport};
+    if world.get::<RunOf>(run).is_none() {
+        return Err(ErrorReport::new(
+            ErrorKind::Request,
+            "cannot stamp program identity: provide a run with an explicit Scope, not an agent",
+        ));
+    }
+    let scope = world
+        .get::<Scope>(run)
+        .ok_or_else(|| {
+            ErrorReport::new(
+                ErrorKind::Request,
+                "cannot stamp program identity: the run has no Scope",
+            )
+        })?
+        .0
+        .clone();
+    let policy = spec_hash(world, run)
+        .ok_or_else(|| ErrorReport::new(ErrorKind::Internal, "the agent's policy does not hash"))?;
     let required = required_row(world, run);
     recorder.set_program_identity(scope, rig_effect_log::ProgramIdentity { required, policy });
+    Ok(())
 }
 
 /// Check `run` against its explicitly named `Scope` in `log`, before dispatch.

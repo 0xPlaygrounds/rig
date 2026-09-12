@@ -1421,19 +1421,17 @@ fn tool_mode_finalizes_best_effort_when_output_retry_budget_exhausted() {
 }
 
 #[test]
-fn set_output_tool_name_is_idempotent_and_only_fills_when_unset() {
+fn commit_output_tool_name_pins_the_first_name() {
     // A pre-set name (e.g. via `with_output_tool_name`) is never overwritten,
-    // keeping a resumed run deterministic.
+    // keeping a resumed run deterministic; the refusal is reported.
     let mut run = AgentRun::new("x").with_output_tool_name("first");
-    run.set_output_tool_name(Some("second".to_string()));
-    run.set_output_tool_name(None);
+    assert!(!run.commit_output_tool_name("second"));
     assert_eq!(run.output_tool_name.as_deref(), Some("first"));
 
-    // When unset, the first non-None value fills it.
+    // When unset, the first commit takes and later ones are refused.
     let mut run = AgentRun::new("x");
-    run.set_output_tool_name(None);
-    assert_eq!(run.output_tool_name, None);
-    run.set_output_tool_name(Some("filled".to_string()));
+    assert!(run.commit_output_tool_name("filled"));
+    assert!(!run.commit_output_tool_name("again"));
     assert_eq!(run.output_tool_name.as_deref(), Some("filled"));
 }
 

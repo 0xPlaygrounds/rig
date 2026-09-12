@@ -1593,7 +1593,7 @@ async fn a_custom_effect_round_trips_through_a_typed_handle() {
     let _task = spawn(driver);
 
     let ask = dispatcher.bind(&key).expect("bound");
-    let reply = within(ask.custom(AskUser {
+    let reply = within(ask.dispatch(AskUser {
         prompt: "name?".into(),
     }))
     .await
@@ -1609,7 +1609,7 @@ async fn a_custom_effect_round_trips_through_a_typed_handle() {
     let ask = dispatcher
         .custom::<AskUser>(&HandlerKey::from("ask-badly"))
         .expect("the kind matches");
-    let report = within(ask.custom(AskUser { prompt: "?".into() }))
+    let report = within(ask.dispatch(AskUser { prompt: "?".into() }))
         .await
         .expect_err("not a Reply");
     assert_eq!(report.kind, ErrorKind::Internal);

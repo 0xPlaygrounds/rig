@@ -477,12 +477,12 @@ fn hold_second_call(
     for (entity, slot) in &fresh {
         if slot.index == 1 {
             commands.queue(move |world: &mut World| {
-                rig_ecs::bus::acquire_hold(
+                let _ = rig_ecs::bus::acquire_hold(
                     world,
                     entity,
                     rig_core::observe::Emitter::named("test/second"),
                 );
-                rig_ecs::bus::acquire_hold(
+                let _ = rig_ecs::bus::acquire_hold(
                     world,
                     entity,
                     rig_core::observe::Emitter::named("test/another"),
@@ -503,7 +503,7 @@ fn release_second_call(
     for (entity, slot) in &held {
         if slot.index == 1 {
             commands.queue(move |world: &mut World| {
-                rig_ecs::bus::release_hold(world, entity, "test/second");
+                let _ = rig_ecs::bus::release_hold(world, entity, "test/second");
             });
         }
     }
@@ -579,11 +579,7 @@ fn a_gate_hold_on_a_call_the_batch_also_holds_survives_the_batch_release() {
             .collect::<Vec<_>>(),
         ["test/another"]
     );
-    assert!(rig_ecs::bus::release_hold(
-        app.world_mut(),
-        second,
-        "test/another"
-    ));
+    assert!(rig_ecs::bus::release_hold(app.world_mut(), second, "test/another").is_ok());
     ended(&mut app, run, "answered");
     assert!(app.world().get::<Settled>(run).is_some());
     let requests = requests.lock().unwrap();
@@ -1066,7 +1062,7 @@ fn concurrency_and_independent_holds_survive_mid_batch_checkpoints() {
                 std::thread::yield_now();
             };
             if policy_held {
-                acquire_hold(
+                let _ = acquire_hold(
                     original.world_mut(),
                     held,
                     rig_core::observe::Emitter::named("test/policy"),
@@ -1127,7 +1123,7 @@ fn concurrency_and_independent_holds_survive_mid_batch_checkpoints() {
                     "batch release must preserve policy hold"
                 );
                 assert!(restored.world().get::<Issued>(held).is_none());
-                assert!(release_hold(restored.world_mut(), held, "test/policy"));
+                assert!(release_hold(restored.world_mut(), held, "test/policy").is_ok());
             }
             ended(&mut restored, run, "restored serial batch");
             assert!(restored.world().get::<Settled>(run).is_some());

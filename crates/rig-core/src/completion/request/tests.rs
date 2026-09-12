@@ -834,3 +834,42 @@ fn provider_response_json_returns_none_for_empty_preserved_body() {
         None
     );
 }
+
+mod additional_params_precedence {
+    use super::super::shadowed_typed_fields;
+    use serde_json::json;
+
+    /// A passthrough key names a typed field only when that field is set too;
+    /// an unset typed field is not shadowed, and a non-object passthrough
+    /// shadows nothing.
+    #[test]
+    fn shadowed_keys_are_the_intersection_with_set_typed_fields() {
+        let params = json!({"temperature": 0.9, "top_p": 0.5, "max_tokens": 10});
+        let shadowed = shadowed_typed_fields(
+            Some(&params),
+            &[
+                ("temperature", true),
+                ("max_tokens", false),
+                ("model", true),
+            ],
+        );
+        assert_eq!(shadowed, ["temperature"]);
+        assert!(shadowed_typed_fields(Some(&json!([1])), &[("temperature", true)]).is_empty());
+        assert!(shadowed_typed_fields(None, &[("temperature", true)]).is_empty());
+    }
+
+    /// `additional_params(None)` merges nothing; a second call merges into
+    /// the first rather than replacing it.
+    #[test]
+    fn additional_params_merges_and_none_is_a_no_op() {
+        let model = crate::test_utils::MockCompletionModel::text("x");
+        let request = crate::completion::CompletionRequestBuilder::new(model, "p")
+            .additional_params(json!({"a": 1}))
+            .additional_params(None)
+            .additional_params(json!({"b": 2}))
+            .temperature(None)
+            .build();
+        assert_eq!(request.additional_params, Some(json!({"a": 1, "b": 2})));
+        assert_eq!(request.temperature, None);
+    }
+}

@@ -124,19 +124,20 @@ pub use effect::{
 pub use handlers::{
     Bound, HandlerTable, Handlers, Served, WorldHandler, WorldServe, answered, unbound,
 };
-pub use hold::{HoldOwners, acquire_hold, release_hold};
+pub use hold::{HoldOwners, HoldRefused, acquire_hold, release_hold};
 pub use plugin::{
-    Bus, BusSet, Intake, Policy, Progress, QUIESCENCE_CAP, RigSchedule, install_bus,
-    run_to_quiescence,
+    Bus, BusSet, Intake, Policy, Progress, QUIESCENCE_CAP, RigSchedule, run_to_quiescence,
 };
 pub use record::{
     Observed, ObservedState, Recording, WorldObserver, record_bound, record_cancelled,
 };
 pub use scene::{Scene, SceneEffect};
-pub use witness::{AdapterOperation, BUS_EMITTER, SubjectWalk, Subjects, Witnessing, bus_emitter};
+pub use witness::{
+    AdapterOperation, BUS_EMITTER, Despawning, SubjectWalk, Subjects, Witnessing, bus_emitter,
+};
 
 #[cfg(feature = "replay")]
-pub use delivery::ReplayFailure;
+pub use delivery::{ReplayDelivery, ReplayFailure};
 #[cfg(feature = "replay")]
 pub use replay::{EffectLogResource, Replay};
 

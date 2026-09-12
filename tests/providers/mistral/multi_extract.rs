@@ -78,17 +78,17 @@ async fn batch_multi_extract_chain() -> Result<()> {
     let client = mistral::Client::from_env().expect("client should build");
     let names_extractor = client
         .extractor::<Names>(DEFAULT_MODEL)
-        .preamble("Extract names from the given text.")
+        .append_preamble("Extract names from the given text.")
         .retries(2)
         .build();
     let topics_extractor = client
         .extractor::<Topics>(DEFAULT_MODEL)
-        .preamble("Extract topics from the given text.")
+        .append_preamble("Extract topics from the given text.")
         .retries(2)
         .build();
     let sentiment_extractor = client
         .extractor::<Sentiment>(DEFAULT_MODEL)
-        .preamble(
+        .append_preamble(
             "Extract sentiment and confidence from the given text. \
              Return sentiment normalized to the range [-1.0, 1.0] and confidence normalized to [0.0, 1.0].",
         )

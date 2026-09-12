@@ -54,7 +54,7 @@ use rig_core::{
     vector_store::request::{Filter, VectorSearchRequest},
 };
 
-use super::{Dispatcher, EffectStream, Pending};
+use super::{DispatchOptions, Dispatcher, EffectStream, Pending};
 use rig_core::effect::Key;
 
 /// A typed view over the bus for the family `F`.
@@ -195,6 +195,7 @@ const F_CUSTOM: rig_core::effect::EffectFamily = rig_core::effect::EffectFamily:
 /// parameter is the narrowed answer a convenience method returns
 /// (`MemoryHandle::load` narrows `MemoryOutcome` to the messages); by
 /// default it is the family's own answer.
+#[must_use = "a dispatch does nothing until polled"]
 pub struct Typed<F: Family, T = <F as Family>::Answer> {
     pending: Pending,
     map: fn(F::Answer) -> Result<T, ErrorReport>,
@@ -257,6 +258,7 @@ pub struct ToolAnswer {
 
 /// A tool call in flight ([`ToolHandle::call`]): the result and the
 /// context the tool published. `Unpin`, cancelled by drop.
+#[must_use = "a dispatch does nothing until polled"]
 pub struct ToolCall {
     pending: Pending,
     published: Option<std::sync::Arc<rig_core::tool::PublishedContext>>,
@@ -370,14 +372,18 @@ impl ModelHandle {
         request: CompletionRequest,
         context: Option<rig_core::observe::AdapterContext>,
     ) -> Completion {
+        let options = DispatchOptions {
+            adapter_context: context,
+            ..DispatchOptions::default()
+        };
         Typed::narrow(
-            self.dispatcher.dispatch_with_context(
+            self.dispatcher.dispatch_with(
                 &self.descriptor.key,
                 EffectKind::Completion {
                     request,
                     stream: false,
                 },
-                context,
+                options,
             ),
             Ok,
         )
@@ -401,13 +407,17 @@ impl ModelHandle {
         context: Option<rig_core::observe::AdapterContext>,
     ) -> StreamingCompletionResponse {
         let provider = self.model_ref().to_string();
-        let stream: EffectStream = self.dispatcher.dispatch_stream_with_context(
+        let options = DispatchOptions {
+            adapter_context: context,
+            ..DispatchOptions::default()
+        };
+        let stream: EffectStream = self.dispatcher.dispatch_stream_with(
             &self.descriptor.key,
             EffectKind::Completion {
                 request,
                 stream: true,
             },
-            context,
+            options,
         );
         wrap_stream(provider, stream)
     }
@@ -445,11 +455,10 @@ impl ToolHandle {
         // the scope directly sees the same snapshot the adapter would.
         let inbound = context.for_dispatch();
         drop(context);
-        let pending = self.dispatcher.dispatch_tool_with_id(
-            self.dispatcher.mint_id(),
+        let pending = self.dispatcher.dispatch_with(
             &self.descriptor.key,
             kind,
-            inbound.clone(),
+            DispatchOptions::default().with_tool_context(inbound.clone()),
         );
         let published = pending.published_context();
         ToolCall {
@@ -615,20 +624,26 @@ impl EmbedHandle {
     }
 
     /// Embed one text document.
-    pub fn embed_text(
-        &self,
-        text: &str,
-    ) -> impl Future<Output = Result<Embedding, ErrorReport>> + Unpin {
-        futures::future::FutureExt::map(self.embed_texts(vec![text.to_owned()]), |result| {
-            result.and_then(|mut response| {
-                response.embeddings.pop().ok_or_else(|| {
+    pub fn embed_text(&self, text: &str) -> Typed<family::Embed, Embedding> {
+        fn first(outputs: EmbedOutputs) -> Result<Embedding, ErrorReport> {
+            match outputs {
+                EmbedOutputs::Texts(mut response) => response.embeddings.pop().ok_or_else(|| {
                     ErrorReport::new(
                         ErrorKind::Response,
                         "embedding handler returned an empty response for embed_text",
                     )
-                })
-            })
-        })
+                }),
+                EmbedOutputs::Images(_) => {
+                    Err(wrong_shape("text embeddings", family::Embed::FAMILY))
+                }
+            }
+        }
+        Typed::narrow(
+            self.dispatch_wrapped(family::Embed::wrap(EmbedInputs::Texts(vec![
+                text.to_owned(),
+            ]))),
+            first,
+        )
     }
 
     /// Embed image bytes.
@@ -688,17 +703,10 @@ impl RerankHandle {
     }
 }
 
-impl<E: CustomEffect> Handle<family::Custom<E>> {
-    /// Dispatch the host's own effect.
-    pub fn custom(&self, effect: E) -> Typed<family::Custom<E>> {
-        self.dispatch(effect)
-    }
-}
-
 /// Wrap an [`EffectStream`] back into a [`StreamingCompletionResponse`]:
 /// the B2 accumulator folds the events on this side of the bus, and errors
 /// that crossed it are the stream's own error half, [`ErrorReport`].
-pub fn wrap_stream(
+pub(crate) fn wrap_stream(
     provider: impl Into<String>,
     stream: EffectStream,
 ) -> StreamingCompletionResponse {

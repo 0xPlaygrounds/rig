@@ -24,7 +24,7 @@ use rig_ecs::{
         DefaultMaxTurns, Failed, Failure, Grant, MaxTurns, Order, Owner, Preamble, RunResult,
         Settled, UsesModel,
     },
-    bus::{Handlers, Recording, install_bus, run_to_quiescence},
+    bus::{Handlers, Recording, run_to_quiescence},
     systems::{install_agent, spawn_run},
 };
 use rig_effect_log::EffectLogRecorder;
@@ -110,7 +110,7 @@ impl EcsAgent {
         setup: impl FnOnce(&mut World),
     ) -> Self {
         let mut app = App::new();
-        install_bus(app.world_mut(), ServingPolicy::default());
+        rig_ecs::bus::Bus::with_policy(ServingPolicy::default()).install(app.world_mut());
         install_agent(app.world_mut());
         app.add_systems(Update, run_to_quiescence);
         app.finish();
@@ -264,14 +264,15 @@ impl EcsAgent {
     pub async fn wait_for_outcome(&mut self, run: Entity) -> Result<String, Failure> {
         if self.golden_identity {
             let bus = self.app.world().resource::<rig_ecs::bus::Policy>().0;
-            rig_ecs::replay::stamp_header(
+            rig_ecs::replay::stamp_legacy_builder_header(
                 self.app.world_mut(),
                 self.agent,
                 &self.recorder,
                 self.declare_bus_policy.then_some(bus),
                 self.declared_policies.clone(),
             );
-            rig_ecs::replay::stamp_run(self.app.world_mut(), run, &self.recorder);
+            rig_ecs::replay::stamp_run(self.app.world_mut(), run, &self.recorder)
+                .expect("the run stamps its program identity");
         }
         tokio::time::timeout(Duration::from_secs(30), async {
             loop {

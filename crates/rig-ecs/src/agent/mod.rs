@@ -563,12 +563,12 @@ pub struct RunSeq(pub u64);
 /// The world's one run counter.
 #[derive(Resource, Debug, Default)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Resource))]
-pub struct RunCounter(pub u64);
+pub struct RunCounter(pub(crate) u64);
 
 /// Whether the model is asked for a stream.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
-pub struct Streamed(pub bool);
+pub struct StreamRequested(pub bool);
 
 /// Where the run is: the turn it is on.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -795,6 +795,7 @@ impl RequestPatch {
     /// `additional_params` shallow-merges with later keys winning,
     /// `active_tools` intersect, every other field takes the later value
     /// when set.
+    #[must_use = "the merged patch is the returned value"]
     pub fn merge(mut self, later: Self) -> Self {
         self.extra_context.extend(later.extra_context);
         self.additional_params = match (self.additional_params.take(), later.additional_params) {

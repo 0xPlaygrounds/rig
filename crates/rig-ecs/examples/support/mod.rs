@@ -29,7 +29,7 @@ use rig_ecs::{
         AdditionalParams, DefaultMaxTurns, Failed, InvalidCalls, MaxTokens, MaxTurns, Output,
         Owner, Preamble, RunResult, Settled, Temperature, ToolChoiceSpec, UsesModel,
     },
-    bus::{Handlers, install_bus, run_to_quiescence},
+    bus::{Handlers, run_to_quiescence},
     systems::install_agent,
 };
 
@@ -222,7 +222,7 @@ pub fn send_email() -> Tool {
 pub fn app() -> App {
     let mut app = App::new();
     app.add_plugins(ScheduleRunnerPlugin::default());
-    install_bus(app.world_mut(), ServingPolicy::default());
+    rig_ecs::bus::Bus::with_policy(ServingPolicy::default()).install(app.world_mut());
     install_agent(app.world_mut());
     app.add_systems(Update, run_to_quiescence);
     app.add_observer(exit_when_failed);

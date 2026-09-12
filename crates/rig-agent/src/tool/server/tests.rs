@@ -117,7 +117,7 @@ async fn toolset_forks_the_registry() {
 
     // The fork builds a second, independent server with the same tools.
     let second = ToolServer::new().run();
-    second.append_toolset(fork);
+    second.add_tools(fork);
     assert_eq!(
         execute_tool(&second, "add", r#"{"x": 1, "y": 1}"#)
             .await
@@ -281,19 +281,19 @@ async fn definition_snapshot_pins_the_exact_tool_registration() {
 
     assert_eq!(snapshot.definitions()[0].description, "first schema");
     let dispatch = snapshot
-        .dispatch(ReplacementTool::NAME, "{}", &ToolContext::new())
+        .execute_scoped(ReplacementTool::NAME, "{}", &ToolContext::new())
         .await;
     assert_eq!(dispatch.result.output().render(), "first implementation");
 
     let live = handle
-        .dispatch(ReplacementTool::NAME, "{}", &ToolContext::new())
+        .execute_scoped(ReplacementTool::NAME, "{}", &ToolContext::new())
         .await;
     assert_eq!(live.result.output().render(), "second implementation");
 
     let next_snapshot = handle.snapshot_tool_defs(None).await.unwrap();
     assert_eq!(next_snapshot.definitions()[0].description, "second schema");
     let dispatch = next_snapshot
-        .dispatch(ReplacementTool::NAME, "{}", &ToolContext::new())
+        .execute_scoped(ReplacementTool::NAME, "{}", &ToolContext::new())
         .await;
     assert_eq!(dispatch.result.output().render(), "second implementation");
 }
@@ -313,7 +313,7 @@ pub async fn test_toolserver_append_toolset_matches_add_tool() {
         let mut toolset = ToolSet::default();
         toolset.add_tool(MockAddTool);
         toolset.add_tool(MockSubtractTool);
-        handle.append_toolset(toolset);
+        handle.add_tools(toolset);
         handle.tool_defs(None).await.unwrap()
     };
     via_append_toolset.sort_by(|a, b| a.name.cmp(&b.name));
@@ -428,7 +428,7 @@ pub async fn duplicate_registration_advertises_one_definition() {
 
     let mut toolset = ToolSet::default();
     toolset.add_tool(MockAddTool);
-    handle.append_toolset(toolset);
+    handle.add_tools(toolset);
 
     let defs = handle.tool_defs(None).await.unwrap();
     assert_eq!(

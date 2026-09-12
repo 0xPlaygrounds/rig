@@ -873,9 +873,9 @@ impl CompletionRequest {
     /// that resolved to `""`.
     ///
     /// **Where this runs.** [`CompletionRequestBuilder::send`] and
-    /// [`CompletionRequestBuilder::stream`] call it, which covers both agent
-    /// surfaces too — the blocking and streaming turn drivers both issue their
-    /// request through the builder. Handing a request straight to a
+    /// [`CompletionRequestBuilder::stream`] call it, and the agent driver
+    /// calls it on the request it builds before dispatching it over the bus,
+    /// so both agent surfaces are covered. Handing a request straight to a
     /// [`CompletionModel`] bypasses it; call this yourself there.
     pub fn validate_message_content(&self) -> Result<(), CompletionError> {
         if self.chat_history.is_empty() {
@@ -1090,6 +1090,7 @@ fn merge_provider_tools_into_additional_params(
 ///
 /// Note: It is usually unnecessary to create a completion request builder directly.
 /// Instead, use the [CompletionModel::completion_request] method.
+#[must_use = "a request builder does nothing until built or sent"]
 pub struct CompletionRequestBuilder<M = Unbound> {
     model: M,
     prompt: Message,
@@ -1153,12 +1154,6 @@ impl<M> CompletionRequestBuilder<M> {
         self
     }
 
-    /// Overrides the model used for this request.
-    pub fn model_opt(mut self, model: Option<String>) -> Self {
-        self.request_model = model;
-        self
-    }
-
     /// Adds a message to the chat history for the completion request.
     pub fn message(mut self, message: Message) -> Self {
         self.chat_history.push(message);
@@ -1210,56 +1205,47 @@ impl<M> CompletionRequestBuilder<M> {
             .fold(self, CompletionRequestBuilder::provider_tool)
     }
 
-    /// Adds additional parameters to the completion request.
-    /// This can be used to set additional provider-specific parameters. For example,
-    /// Cohere's completion models accept a `connectors` parameter that can be used to
-    /// specify the data connectors used by Cohere when executing the completion
-    /// (see `examples/cohere_connectors.rs`).
-    pub fn additional_params(mut self, additional_params: serde_json::Value) -> Self {
-        match self.additional_params {
-            Some(params) => {
-                self.additional_params = Some(json_utils::merge(params, additional_params));
-            }
-            None => {
-                self.additional_params = Some(additional_params);
-            }
-        }
+    /// Merges provider-specific parameters into the completion request
+    /// (`None` merges nothing). For example, Cohere's completion models accept
+    /// a `connectors` parameter that can be used to specify the data
+    /// connectors used by Cohere when executing the completion (see
+    /// `examples/cohere_connectors.rs`).
+    ///
+    /// These parameters are passed through to the provider's request body
+    /// **after** the typed fields, so a key that names a typed sampling field
+    /// (`temperature`, `max_tokens`, `tool_choice`, `model`) overrides the
+    /// typed value. That precedence is deliberate — it is the escape hatch for
+    /// a provider knob rig does not model — but it is easy to hit by accident,
+    /// so [`build`](Self::build) logs a warning naming each such key. `tools`
+    /// and `response_format` are the exception: most providers (OpenAI,
+    /// Gemini, Anthropic, xAI) merge a passthrough `tools` list into the
+    /// typed one, a few (Cohere) let it replace the typed list, and each
+    /// reconciles `response_format` with the typed `output_schema` its own
+    /// way — so for those two the warning only says both were supplied.
+    pub fn additional_params(
+        mut self,
+        additional_params: impl Into<Option<serde_json::Value>>,
+    ) -> Self {
+        let Some(additional_params) = additional_params.into() else {
+            return self;
+        };
+        self.additional_params = Some(match self.additional_params.take() {
+            Some(params) => json_utils::merge(params, additional_params),
+            None => additional_params,
+        });
         self
     }
 
-    /// Sets the additional parameters for the completion request.
-    /// This can be used to set additional provider-specific parameters. For example,
-    /// Cohere's completion models accept a `connectors` parameter that can be used to
-    /// specify the data connectors used by Cohere when executing the completion
-    /// (see `examples/cohere_connectors.rs`).
-    pub fn additional_params_opt(mut self, additional_params: Option<serde_json::Value>) -> Self {
-        self.additional_params = additional_params;
+    /// Sets (or, with `None`, clears) the temperature for the completion request.
+    pub fn temperature(mut self, temperature: impl Into<Option<f64>>) -> Self {
+        self.temperature = temperature.into();
         self
     }
 
-    /// Sets the temperature for the completion request.
-    pub fn temperature(mut self, temperature: f64) -> Self {
-        self.temperature = Some(temperature);
-        self
-    }
-
-    /// Sets the temperature for the completion request.
-    pub fn temperature_opt(mut self, temperature: Option<f64>) -> Self {
-        self.temperature = temperature;
-        self
-    }
-
-    /// Sets the max tokens for the completion request.
+    /// Sets (or, with `None`, clears) the max tokens for the completion request.
     /// Note: This is required if using Anthropic
-    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
-        self.max_tokens = Some(max_tokens);
-        self
-    }
-
-    /// Sets the max tokens for the completion request.
-    /// Note: This is required if using Anthropic
-    pub fn max_tokens_opt(mut self, max_tokens: Option<u64>) -> Self {
-        self.max_tokens = max_tokens;
+    pub fn max_tokens(mut self, max_tokens: impl Into<Option<u64>>) -> Self {
+        self.max_tokens = max_tokens.into();
         self
     }
 
@@ -1275,18 +1261,10 @@ impl<M> CompletionRequestBuilder<M> {
     /// with `Agent::prompt()` will still output a String at the end, it'll just be compatible with whatever
     /// type you want to use here. This method is primarily an escape hatch for agents being used as tools
     /// to still be able to leverage structured outputs.
-    pub fn output_schema(mut self, schema: schemars::Schema) -> Self {
-        self.output_schema = Some(schema);
-        self
-    }
-
-    /// Sets the output schema for structured output from an optional value.
-    /// NOTE: For direct type conversion, you may want to use `Agent::prompt_typed()` - using this method
-    /// with `Agent::prompt()` will still output a String at the end, it'll just be compatible with whatever
-    /// type you want to use here. This method is primarily an escape hatch for agents being used as tools
-    /// to still be able to leverage structured outputs.
-    pub fn output_schema_opt(mut self, schema: Option<schemars::Schema>) -> Self {
-        self.output_schema = schema;
+    ///
+    /// `None` clears a schema set earlier.
+    pub fn output_schema(mut self, schema: impl Into<Option<schemars::Schema>>) -> Self {
+        self.output_schema = schema.into();
         self
     }
 
@@ -1347,6 +1325,31 @@ impl<M> CompletionRequestBuilder<M> {
         // used to follow could never be taken — and it forced a clone of the
         // prompt to feed it.
         chat_history.push(prompt);
+        // Checked before provider tools are merged in: that merge writes a
+        // `tools` key of its own, which is not a caller collision.
+        for key in shadowed_typed_fields(
+            self.additional_params.as_ref(),
+            &[
+                ("temperature", self.temperature.is_some()),
+                ("max_tokens", self.max_tokens.is_some()),
+                ("tool_choice", self.tool_choice.is_some()),
+                ("model", self.request_model.is_some()),
+                ("tools", !self.tools.is_empty()),
+                ("response_format", self.output_schema.is_some()),
+            ],
+        ) {
+            if matches!(key, "tools" | "response_format") {
+                tracing::warn!(
+                    key,
+                    "additional_params also carries `{key}`; the provider decides how it combines with the typed field"
+                );
+            } else {
+                tracing::warn!(
+                    key,
+                    "additional_params overrides the typed `{key}` field set on the same request"
+                );
+            }
+        }
         let additional_params = merge_provider_tools_into_additional_params(
             self.additional_params,
             self.provider_tools,
@@ -1366,6 +1369,24 @@ impl<M> CompletionRequestBuilder<M> {
         };
         (model, request)
     }
+}
+
+/// The passthrough keys that will override a typed field the caller also set.
+/// The override itself is the documented precedence (see
+/// [`CompletionRequestBuilder::additional_params`]); naming the collisions
+/// makes an accidental one visible instead of silent.
+pub(crate) fn shadowed_typed_fields<'a>(
+    additional_params: Option<&serde_json::Value>,
+    typed: &[(&'a str, bool)],
+) -> Vec<&'a str> {
+    let Some(serde_json::Value::Object(params)) = additional_params else {
+        return Vec::new();
+    };
+    typed
+        .iter()
+        .filter(|(key, set)| *set && params.contains_key(*key))
+        .map(|(key, _)| *key)
+        .collect()
 }
 
 impl<M: CompletionModel> CompletionRequestBuilder<M> {

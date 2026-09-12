@@ -198,8 +198,8 @@ fn concurrent_runs_replay_the_live_tool_identities() {
     let agent = two_run_agent(&mut live, model, tool);
     let one = spawn_run(live.world_mut(), agent, &[], "one", false, None);
     let two = spawn_run(live.world_mut(), agent, &[], "two", false, None);
-    stamp_run(live.world_mut(), one, &recorder);
-    stamp_run(live.world_mut(), two, &recorder);
+    stamp_run(live.world_mut(), one, &recorder).expect("the run stamps its program identity");
+    stamp_run(live.world_mut(), two, &recorder).expect("the run stamps its program identity");
     ended(&mut live, one, "run one");
     ended(&mut live, two, "run two");
     let log: rig_effect_log::EffectLog =

@@ -151,6 +151,9 @@ pub(crate) async fn build_prepared_completion_request(
     // The agent records the input itself, so the request the provider sees
     // carries the flag off: one span, no double recording.
     let request = builder.record_content_telemetry(false).build();
+    // The same guard the builder's own `send`/`stream` apply: an empty
+    // history or content block is a local, named error, not a remote 400.
+    request.validate_message_content()?;
 
     Ok(PreparedCompletionRequest {
         request,
@@ -161,7 +164,7 @@ pub(crate) async fn build_prepared_completion_request(
         executable_tool_names,
         allowed_tool_names,
         output_tool_name,
-        // The post-patch binding from above — the one `.max_tokens_opt(..)`
+        // The post-patch binding from above — the one `.max_tokens(..)`
         // put on the request.
         max_tokens,
     })
@@ -363,29 +366,6 @@ impl AgentConfig {
             augment_output_preamble: true,
             unhandled_invalid_tool_call: crate::run::spec::UnhandledInvalidToolCall::Fail,
         }
-    }
-
-    /// Overwrite the protocol-facing fields from `spec`, leaving model, hooks,
-    /// memory and identity untouched. Fails only if `spec.output_schema` is
-    /// not a valid JSON schema.
-    pub(crate) fn apply_run_spec(
-        &mut self,
-        spec: &crate::run::spec::RunSpec,
-    ) -> Result<(), serde_json::Error> {
-        self.preamble.clone_from(&spec.preamble);
-        self.static_context.clone_from(&spec.static_context);
-        self.additional_params.clone_from(&spec.additional_params);
-        self.max_tokens = spec.max_tokens;
-        self.temperature = spec.temperature;
-        self.tool_choice.clone_from(&spec.tool_choice);
-        self.max_turns = spec.effective_max_turns();
-        self.output_schema = spec
-            .output_schema
-            .clone()
-            .map(schemars::Schema::try_from)
-            .transpose()?;
-        self.output_mode = spec.output_mode.clone();
-        Ok(())
     }
 }
 
