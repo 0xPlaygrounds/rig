@@ -37,12 +37,11 @@ pub(crate) use build_chat_span;
 ///
 /// `ambient` is the span the terminal (`run()`, `stream()`, `run_channel()`,
 /// a typed run's `into_future()`) was called in, whatever task later polls
-/// the future. Returns the span
-/// plus whether it was newly created. An enabled ambient span is adopted and
-/// reported as `false`, so the driver can avoid recording run-level usage onto
-/// a span it does not own (see the `created_agent_span` guard in both drivers'
-/// `Done` handling); a disabled one yields a root `invoke_agent`, whatever span
-/// the poller happens to be in.
+/// the future. Returns the span plus whether it was newly created. An
+/// enabled ambient span is adopted and reported as `false`, so the driver
+/// can avoid recording run-level usage onto a span it does not own (see the
+/// `created_agent_span` guard in both drivers' `Done` handling); a disabled
+/// one yields a root `invoke_agent`, whatever span the poller happens to be in.
 pub(crate) fn acquire_agent_span(
     ambient: tracing::Span,
     agent_name: &str,

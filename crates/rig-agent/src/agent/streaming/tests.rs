@@ -1410,7 +1410,7 @@ async fn unary_repaired_message_telemetry_records_canonical_output() {
     let output_messages: Vec<String> = spans
         .snapshot()
         .into_iter()
-        .filter(|span| span.name == "chat")
+        .filter(|span| span.name == "chat" && span.target == "rig::agent_chat")
         .filter_map(|span| span.string_fields.get("gen_ai.output.messages").cloned())
         .collect();
     assert!(
@@ -6092,7 +6092,10 @@ async fn a_blocking_run_belongs_to_the_span_it_was_started_in() {
         .map(|span| span.id)
         .expect("outer span captured");
     assert!(snapshot.iter().all(|span| span.name != "invoke_agent"));
-    let chat_spans: Vec<_> = snapshot.iter().filter(|span| span.name == "chat").collect();
+    let chat_spans: Vec<_> = snapshot
+        .iter()
+        .filter(|span| span.name == "chat" && span.target == "rig::agent_chat")
+        .collect();
     assert_eq!(chat_spans.len(), 1, "one model turn: {snapshot:?}");
     assert_eq!(chat_spans[0].parent_id, Some(outer_id));
 }
@@ -6134,7 +6137,10 @@ async fn a_typed_run_belongs_to_the_span_it_was_started_in() {
         .map(|span| span.id)
         .expect("outer span captured");
     assert!(snapshot.iter().all(|span| span.name != "invoke_agent"));
-    let chat_spans: Vec<_> = snapshot.iter().filter(|span| span.name == "chat").collect();
+    let chat_spans: Vec<_> = snapshot
+        .iter()
+        .filter(|span| span.name == "chat" && span.target == "rig::agent_chat")
+        .collect();
     assert_eq!(chat_spans.len(), 1, "one model turn: {snapshot:?}");
     assert_eq!(chat_spans[0].parent_id, Some(outer_id));
 }
@@ -6178,6 +6184,9 @@ async fn a_blocking_run_started_outside_a_span_stays_a_root_when_polled_inside_o
         .filter(|span| span.name == "chat" && span.target == "rig::agent_chat")
         .collect();
     assert_eq!(chat_spans.len(), 1, "one model turn: {snapshot:?}");
-    assert_eq!(chat_spans[0].parent_id, Some(invoke.id));
-    assert_ne!(chat_spans[0].parent_id, Some(poller_id));
+    assert_eq!(
+        chat_spans[0].parent_id,
+        Some(invoke.id),
+        "not the poller {poller_id}"
+    );
 }

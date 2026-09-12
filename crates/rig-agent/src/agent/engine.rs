@@ -1878,7 +1878,7 @@ fn record_tool_result(span: &tracing::Span, result: &ToolResult) {
 /// chain across chat and tool spans.
 pub(crate) struct UnaryTurnSource {
     /// Sequences chat and tool spans into a linear `follows_from` chain (the
-    /// streaming surface parents into a tree instead and does not chain).
+    /// streaming surface parents the same tree but does not chain).
     ///
     /// Atomic rather than `Cell` despite being driven by a single sequential
     /// task: `run_tool_calls` passes `chain_span` as a closure into
