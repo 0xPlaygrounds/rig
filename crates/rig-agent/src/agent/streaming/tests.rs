@@ -6037,7 +6037,7 @@ async fn a_stream_built_outside_a_span_stays_a_root_when_polled_inside_one() {
     let invoke = snapshot
         .iter()
         .find(|span| span.name == "invoke_agent")
-        .expect("a root invoke_agent is created: {snapshot:?}");
+        .unwrap_or_else(|| panic!("a root invoke_agent is created: {snapshot:?}"));
     assert_eq!(invoke.parent_id, None, "not the poller's child");
     let chat_spans: Vec<_> = snapshot
         .iter()

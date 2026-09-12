@@ -422,12 +422,15 @@ pub(crate) fn build_agent_run(
 }
 
 impl AgentRunner {
+    /// [`run_under`](Self::run_under) that also reports the usage a failed
+    /// run consumed; `ambient` is the span the typed run was started in.
     pub(crate) async fn run_with_error_usage(
         mut self,
+        ambient: tracing::Span,
     ) -> (Result<PromptResponse, PromptError>, Usage) {
         let usage = Arc::new(Mutex::new(Usage::new()));
         self.error_usage = Some(usage.clone());
-        let result = self.run().await;
+        let result = self.run_under(ambient).await;
         let observed = result.as_ref().map_or_else(
             |_| {
                 *usage

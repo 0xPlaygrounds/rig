@@ -767,9 +767,13 @@ impl Agent {
     /// [`add_hook`](AgentRunner::add_hook),
     /// [`tool_context`](AgentRunner::tool_context),
     /// [`tool_concurrency`](AgentRunner::tool_concurrency), the model
-    /// selection and telemetry settings. The unhandled-invalid-tool-call
-    /// policy is the run's on the blocking path and the runner's on the
-    /// streamed path. Conversation memory is neither loaded nor appended:
+    /// selection and telemetry settings. Two run-side values still show
+    /// through: the run's persisted tool choice is what invalid-call hooks
+    /// see and what gates a `Skip`, while the request's tool choice is the
+    /// runner's; and the output tool the run committed stays committed even
+    /// though the schema and mode advertising it are the runner's. The
+    /// unhandled-invalid-tool-call policy is the run's on the blocking path
+    /// and the runner's on the streamed path. Conversation memory is neither loaded nor appended:
     /// the history is already in the run, and the driver that persisted it
     /// owns its memory. Drive it like any runner: `.await`,
     /// [`stream`](AgentRunner::stream) or
