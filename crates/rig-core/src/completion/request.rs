@@ -1206,11 +1206,15 @@ impl<M> CompletionRequestBuilder<M> {
     /// `examples/cohere_connectors.rs`).
     ///
     /// These parameters are passed through to the provider's request body
-    /// **after** the typed fields, so a key that names a typed field
-    /// (`temperature`, `max_tokens`, `tool_choice`, …) overrides the typed
-    /// value. That precedence is deliberate — it is the escape hatch for a
-    /// provider knob rig does not model — but it is easy to hit by accident,
-    /// so [`build`](Self::build) logs a warning naming each such key.
+    /// **after** the typed fields, so a key that names a typed sampling field
+    /// (`temperature`, `max_tokens`, `tool_choice`, `model`) overrides the
+    /// typed value. That precedence is deliberate — it is the escape hatch for
+    /// a provider knob rig does not model — but it is easy to hit by accident,
+    /// so [`build`](Self::build) logs a warning naming each such key. `tools`
+    /// and `response_format` are the exception: providers merge a passthrough
+    /// `tools` list into the typed one and reconcile `response_format` with
+    /// the typed `output_schema` their own way, so for those two the warning
+    /// only says both were supplied.
     pub fn additional_params(
         mut self,
         additional_params: impl Into<Option<serde_json::Value>>,
@@ -1327,10 +1331,17 @@ impl<M> CompletionRequestBuilder<M> {
                 ("response_format", self.output_schema.is_some()),
             ],
         ) {
-            tracing::warn!(
-                key,
-                "additional_params overrides the typed `{key}` field set on the same request"
-            );
+            if matches!(key, "tools" | "response_format") {
+                tracing::warn!(
+                    key,
+                    "additional_params also carries `{key}`; the provider decides how it combines with the typed field"
+                );
+            } else {
+                tracing::warn!(
+                    key,
+                    "additional_params overrides the typed `{key}` field set on the same request"
+                );
+            }
         }
         let additional_params = merge_provider_tools_into_additional_params(
             self.additional_params,

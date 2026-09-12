@@ -1456,4 +1456,26 @@ fn a_hold_after_dispatch_is_refused_as_issued_or_settled_not_already_held() {
         acquire_hold(app.world_mut(), entity, Emitter::named("policy/late")),
         Err(HoldRefused::Settled)
     );
+
+    // A handler parked on the gate never answers, which pins the `Issued` refusal exactly.
+    let counters = Arc::new(Counters::default());
+    let mut pending_app = bus_support::app();
+    counters.hold.hold();
+    register(&mut pending_app, "model", MockModel::new(&counters));
+    let entity = pending_app
+        .world_mut()
+        .spawn(PendingEffect::new("model", completion()))
+        .id();
+    tick_until(&mut pending_app, "issued", |world| {
+        world.get::<Issued>(entity).is_some()
+    });
+    assert!(pending_app.world().get::<EffectOutcome>(entity).is_none());
+    assert_eq!(
+        acquire_hold(
+            pending_app.world_mut(),
+            entity,
+            Emitter::named("policy/late")
+        ),
+        Err(HoldRefused::Issued)
+    );
 }
