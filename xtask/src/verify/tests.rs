@@ -4,7 +4,7 @@ fn opts(mode: &str) -> Options {
     Options::parse(vec![mode.into(), "--base".into(), "HEAD".into()]).unwrap()
 }
 fn metadata() -> Value {
-    serde_json::json!({"packages":[{"name":"rig","manifest_path":"/repo/Cargo.toml","targets":[{"name":"anthropic","kind":["test"]}]},{"name":"rig-ecs","manifest_path":"/repo/crates/rig-ecs/Cargo.toml","dependencies":[]},{"name":"example","manifest_path":"/repo/examples/example/Cargo.toml","dependencies":[{"name":"rig-ecs"}]}]})
+    serde_json::json!({"packages":[{"name":"rig","manifest_path":"/repo/Cargo.toml","targets":[{"name":"anthropic","kind":["test"]}]},{"name":"rig-ecs","manifest_path":"/repo/crates/rig-ecs/Cargo.toml","dependencies":[]},{"name":"rig-sqlite","manifest_path":"/repo/crates/rig-sqlite/Cargo.toml","dependencies":[]},{"name":"example","manifest_path":"/repo/examples/example/Cargo.toml","dependencies":[{"name":"rig-ecs"}]}]})
 }
 fn ids(mode: &str, paths: &[&str]) -> BTreeSet<String> {
     selection::plan(
@@ -62,9 +62,200 @@ fn planner_and_dependency_edits_cannot_skip_checks() {
         "xtask/src/main.rs",
         "Cargo.lock",
         "crates/rig-ecs/Cargo.toml",
-        ".config/nextest.toml",
+        "examples/agent/Cargo.toml",
+        "rust-toolchain.toml",
+        ".cargo/config.toml",
+        ".github/actions/rust-setup/action.yml",
     ] {
-        assert_eq!(ids("--changed", &[p]), ids("--full", &[]));
+        assert_eq!(ids("--changed", &[p]), ids("--full", &[]), "{p}");
+    }
+    // Shared runtime inputs broaden to every runtime check, but cannot
+    // change what Cargo resolves, so the floors stay out.
+    let mut without_floors = ids("--full", &[]);
+    without_floors.remove("dependency-floors");
+    for p in [
+        ".config/nextest.toml",
+        "src/lib.rs",
+        "tests/common/mod.rs",
+        "test-support/service-tests/src/lib.rs",
+    ] {
+        assert_eq!(ids("--changed", &[p]), without_floors, "{p}");
+    }
+}
+#[test]
+fn full_and_floor_lanes_select_independently() {
+    // A storage-suite edit runs the service suites, not the floors.
+    for p in [
+        "crates/rig-sqlite/src/lib.rs",
+        "tests/integrations/sqlite.rs",
+    ] {
+        let pr = ids("--pr", &[p]);
+        assert!(pr.contains("full-tests"), "{p}: {pr:?}");
+        assert!(!pr.contains("dependency-floors"), "{p}: {pr:?}");
+    }
+    // The floor checker runs the floors and its own tests, nothing else.
+    let changed = ids("--changed", &["scripts/check-dependency-floors.py"]);
+    assert_eq!(
+        changed,
+        BTreeSet::from(["dependency-floors".into(), "fmt".into(), "tooling".into()])
+    );
+    let pr = ids("--pr", &["scripts/check-dependency-floors.py"]);
+    assert!(pr.contains("dependency-floors"));
+    assert!(!pr.contains("full-tests"));
+    // Resolver inputs run both.
+    for p in ["Cargo.lock", "crates/rig-ecs/Cargo.toml"] {
+        let pr = ids("--pr", &[p]);
+        assert!(
+            pr.contains("full-tests") && pr.contains("dependency-floors"),
+            "{p}"
+        );
+    }
+    // The lane predicates are exactly the CI path filters.
+    for p in ["crates/rig-sqlite/src/lib.rs", "tests/integrations.rs"] {
+        assert!(checks::full_lane(p) && !checks::floor_lane(p), "{p}");
+    }
+    for p in [
+        "examples/agent/Cargo.toml",
+        "rust-toolchain.toml",
+        ".cargo/config.toml",
+        "scripts/check-dependency-floors.py",
+    ] {
+        assert!(checks::floor_lane(p) && !checks::full_lane(p), "{p}");
+    }
+}
+
+/// GitHub's `paths` filter for a workflow's `pull_request` trigger, read by
+/// line scan: the lists are plain quoted scalars, and xtask carries no YAML
+/// parser.
+fn ci_path_filter(workflow: &str) -> Vec<String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let text = std::fs::read_to_string(root.join(workflow)).unwrap();
+    let mut lines = text.lines().peekable();
+    while let Some(line) = lines.next() {
+        if line.trim() != "pull_request:" {
+            continue;
+        }
+        assert_eq!(lines.next().map(str::trim), Some("paths:"), "{workflow}");
+        let mut globs = Vec::new();
+        let mut indent = None;
+        for line in lines.by_ref() {
+            let trimmed = line.trim();
+            let depth = line.len() - line.trim_start().len();
+            // Comments between items are skipped; a comment or key that
+            // dedents past the items ends the list.
+            if trimmed.starts_with('#') && indent.is_none_or(|i| depth >= i) {
+                continue;
+            }
+            let Some(glob) = trimmed.strip_prefix("- ") else {
+                break;
+            };
+            if indent.is_some_and(|i| i != depth) {
+                break;
+            }
+            indent = Some(depth);
+            globs.push(glob.trim_matches('"').to_string());
+        }
+        assert!(!globs.is_empty(), "{workflow}: empty paths filter");
+        return globs;
+    }
+    panic!("{workflow}: no pull_request paths filter");
+}
+/// `**` matches any number of segments, `*` matches within one segment.
+fn glob_matches(glob: &str, path: &str) -> bool {
+    fn segments(pattern: &[&str], path: &[&str]) -> bool {
+        match (pattern.first(), path.first()) {
+            (None, None) => true,
+            (Some(&"**"), _) => {
+                segments(&pattern[1..], path) || (!path.is_empty() && segments(pattern, &path[1..]))
+            }
+            (Some(p), Some(s)) => {
+                let ok = match p.split_once('*') {
+                    Some((prefix, suffix)) => {
+                        assert!(!suffix.contains('*'), "unsupported glob {p}");
+                        s.len() >= prefix.len() + suffix.len()
+                            && s.starts_with(prefix)
+                            && s.ends_with(suffix)
+                    }
+                    None => p == s,
+                };
+                ok && segments(&pattern[1..], &path[1..])
+            }
+            _ => false,
+        }
+    }
+    let pattern: Vec<_> = glob.split('/').collect();
+    let path: Vec<_> = path.split('/').collect();
+    segments(&pattern, &path)
+}
+#[test]
+fn lanes_mirror_ci_path_filters() {
+    assert!(glob_matches(
+        "crates/*/Cargo.toml",
+        "crates/rig-ecs/Cargo.toml"
+    ));
+    assert!(!glob_matches(
+        "crates/*/Cargo.toml",
+        "crates/rig-ecs/src/Cargo.toml"
+    ));
+    assert!(glob_matches(
+        "**/Cargo.toml",
+        "tests/fixtures/tool_facade/Cargo.toml"
+    ));
+    assert!(glob_matches(
+        "crates/rig-sqlite/**",
+        "crates/rig-sqlite/src/lib.rs"
+    ));
+    assert!(!glob_matches(
+        "crates/rig-sqlite/**",
+        "crates/rig-sqlite2/src/lib.rs"
+    ));
+    let full = ci_path_filter(".github/workflows/nightly.yaml");
+    let floors = ci_path_filter(".github/workflows/dependency-floors.yaml");
+    let corpus = [
+        "Cargo.toml",
+        "Cargo.lock",
+        "rust-toolchain.toml",
+        ".cargo/config.toml",
+        ".config/nextest.toml",
+        ".github/workflows/ci.yaml",
+        ".github/workflows/nightly.yaml",
+        ".github/workflows/dependency-floors.yaml",
+        ".github/actions/rust-setup/action.yml",
+        "README.md",
+        "DEVELOPING.md",
+        "src/lib.rs",
+        "tests/common/mod.rs",
+        "tests/integrations.rs",
+        "tests/integrations/sqlite.rs",
+        "tests/integrations/lancedb/mod.rs",
+        "tests/tool_facade_features.rs",
+        "tests/fixtures/tool_facade/Cargo.toml",
+        "tests/fixtures/tool_facade/Cargo.lock",
+        "tests/cassettes/openai/completion.yaml",
+        "tests/providers/openai/mod.rs",
+        "test-support/service-tests/Cargo.toml",
+        "test-support/service-tests/src/lib.rs",
+        "scripts/check-dependency-floors.py",
+        "scripts/test_dependency_floors.py",
+        "scripts/release-notes.sh",
+        "xtask/Cargo.toml",
+        "xtask/src/verify/checks.rs",
+        "examples/agent/Cargo.toml",
+        "examples/agent/src/main.rs",
+        "crates/rig-core/Cargo.toml",
+        "crates/rig-core/src/lib.rs",
+        "crates/rig-agent/src/bus/mod.rs",
+        "crates/rig-sqlite/src/lib.rs",
+        "crates/rig-sqlite/Cargo.toml",
+        "crates/rig-lancedb/examples/demo.rs",
+        "crates/rig-milvus/src/lib.rs",
+        "crates/rig-derive/tests/fixtures/core_renamed/Cargo.toml",
+    ];
+    for path in corpus {
+        let ci_full = full.iter().any(|g| glob_matches(g, path));
+        let ci_floors = floors.iter().any(|g| glob_matches(g, path));
+        assert_eq!(ci_full, checks::full_lane(path), "full lane: {path}");
+        assert_eq!(ci_floors, checks::floor_lane(path), "floor lane: {path}");
     }
 }
 #[test]
@@ -294,13 +485,102 @@ fn symlink_inputs_can_still_run_fresh_without_cache() {
 }
 #[test]
 fn full_covers_workspace_and_example_targets() {
+    // full-tests owns the locked-version compile of every member's lib, bin,
+    // test and example targets: Cargo's default `test` target selection,
+    // which any narrowing flag would silently drop.
     let all = checks::all();
     let c = all.iter().find(|c| c.id == "full-tests").unwrap();
-    assert!(c.steps[0].args.contains(&"--workspace".into()));
-    let c = all.iter().find(|c| c.id == "workspace-check").unwrap();
-    for flag in ["--workspace", "--all-features", "--all-targets"] {
+    for flag in ["--workspace", "--all-features"] {
         assert!(c.steps[0].args.contains(&flag.into()));
     }
+    for flag in [
+        "--lib",
+        "--bins",
+        "--bin",
+        "--tests",
+        "--test",
+        "--examples",
+        "--example",
+        "--benches",
+    ] {
+        assert!(!c.steps[0].args.contains(&flag.into()), "{flag}");
+    }
+    assert!(!all.iter().any(|c| c.id == "workspace-check"));
+    // Bench targets are the one target class outside cargo test's default
+    // selection; none exists, so nothing needs the removed workspace check.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let metadata: Value = serde_json::from_str(
+        &output(
+            root,
+            "cargo",
+            &["metadata", "--locked", "--no-deps", "--format-version", "1"],
+        )
+        .expect("cargo metadata --no-deps for the bench guard"),
+    )
+    .unwrap();
+    let packages = metadata["packages"].as_array().unwrap();
+    assert!(packages.len() > 20, "workspace members not found");
+    for package in packages {
+        let manifest = Path::new(package["manifest_path"].as_str().unwrap());
+        let benches = package["targets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["kind"].as_array().unwrap().iter().any(|k| k == "bench"));
+        assert!(
+            !benches && !manifest.with_file_name("benches").is_dir(),
+            "{} declares a bench target; full-tests does not compile benches, so a locked-version owner is needed (see checks.rs)",
+            manifest.display()
+        );
+    }
+}
+#[test]
+fn prioritized_tests_exist() {
+    // A renamed test would silently restore the all-features tail.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let config = std::fs::read_to_string(root.join(".config/nextest.toml")).unwrap();
+    let block = config
+        .split("[[profile.default.overrides]]")
+        .skip(1)
+        .find(|b| b.contains("priority = 100"))
+        .expect("a default-profile override with priority 100");
+    let config = block.split("\n[").next().unwrap();
+    let sources: Vec<String> = execute::tracked_inputs(root)
+        .unwrap()
+        .into_iter()
+        .filter(|p| p.ends_with(".rs") && p.contains("tests/"))
+        .collect();
+    let mut checked = 0;
+    for line in config
+        .lines()
+        .filter(|l| l.trim_start().starts_with("filter = "))
+    {
+        for (kind, rest) in ["test(", "binary("].into_iter().flat_map(|kind| {
+            line.match_indices(kind)
+                .map(move |(i, _)| (kind, &line[i + kind.len()..]))
+        }) {
+            let name = rest.split(')').next().unwrap();
+            if !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                continue;
+            }
+            checked += 1;
+            let found = if kind == "binary(" {
+                sources
+                    .iter()
+                    .any(|p| p.ends_with(&format!("/tests/{name}.rs")))
+            } else {
+                sources.iter().any(|p| {
+                    std::fs::read_to_string(root.join(p))
+                        .is_ok_and(|text| text.contains(&format!("fn {name}(")))
+                })
+            };
+            assert!(found, "{kind}{name}) names no tracked test");
+        }
+    }
+    assert!(
+        checked >= 2,
+        "expected the prioritized nested-Cargo tests, found {checked}"
+    );
 }
 
 #[test]
@@ -744,27 +1024,35 @@ fn tool_versions_require_the_exact_pinned_version() {
 }
 
 #[test]
-fn cache_warming_compiles_the_default_graph_without_claiming_test_execution() {
-    let mut options = Options::parse(vec!["--check".into(), "default-test-build".into()]).unwrap();
-    options.check = Some("default-test-build".into());
+fn cache_warming_compiles_the_test_graphs_without_claiming_test_execution() {
     let all = checks::all();
-    let plan = selection::plan(
-        Path::new("/repo"),
-        &metadata(),
-        &options,
-        &BTreeSet::new(),
-        &all,
-    )
-    .unwrap();
-    let default = all.iter().find(|c| c.id == "default-tests").unwrap();
-    let mut expected = default.steps[0].clone();
-    let index = expected.args.iter().position(|a| a == "--retries").unwrap();
-    expected.args.drain(index..index + 2);
-    expected.args.push("--no-run".into());
-    assert_eq!(plan[0].steps, vec![expected]);
-    assert_ne!(plan[0].id, default.id);
-    assert!(!all.iter().any(|c| c.id == "default-test-build"));
-    assert!(!default.steps[0].args.contains(&"--no-run".into()));
+    for (alias, source) in [
+        ("default-test-build", "default-tests"),
+        ("full-test-build", "full-tests"),
+    ] {
+        let options = Options::parse(vec!["--check".into(), alias.into()]).unwrap();
+        let plan = selection::plan(
+            Path::new("/repo"),
+            &metadata(),
+            &options,
+            &BTreeSet::new(),
+            &all,
+        )
+        .unwrap();
+        let executed = all.iter().find(|c| c.id == source).unwrap();
+        let mut expected = executed.steps[0].clone();
+        let index = expected.args.iter().position(|a| a == "--retries").unwrap();
+        expected.args.drain(index..index + 2);
+        expected.args.push("--no-run".into());
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].steps, vec![expected], "{alias}");
+        assert_eq!(plan[0].id, alias);
+        assert!(!all.iter().any(|c| c.id == alias));
+        assert!(!executed.steps[0].args.contains(&"--no-run".into()));
+        assert!(plan[0].reason.contains("executes no tests"));
+        // The build alone launches no nested Cargo and needs no Docker.
+        assert!(preflight::fixture_manifests(&plan).is_empty(), "{alias}");
+    }
 }
 #[test]
 fn conformance_compiles_exactly_its_executed_targets() {

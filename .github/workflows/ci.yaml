@@ -328,6 +328,45 @@ jobs:
       - name: Run Clippy
         run: cargo xtask verify --check clippy
 
+  # The `test` job's `nextest` sweep runs with `--features bedrock`, which
+  # does not compile the pure default-feature test graph. Check the root
+  # integration tests with the default feature set so feature-gated test
+  # modules cannot accidentally depend on APIs that only exist under optional
+  # features.
+  #
+  # Its own job, not a step ahead of the sweep: the two graphs share no
+  # artifacts (a different feature hash for `rig`, check mode versus build
+  # mode for the dependencies), so as a step it was ~90–100 s of serial
+  # wall-clock on the longest job of the gate — measured 84–103 s across the
+  # last five runs — for work that runs to completion in parallel here.
+  #
+  # `cargo check`, not `cargo test --no-run`: the guarded failure class is
+  # purely type-level, while `--no-run` additionally pays codegen + linking
+  # under a default-feature hash nothing else reuses. Be precise about what
+  # this trades away: the bedrock sweep and nightly's sweep link *superset*
+  # feature configurations, so no lane anywhere links the pure
+  # default-feature binaries — a default-only codegen/link break would
+  # surface first in merge_group's full run. That gap is accepted as
+  # theoretical: `bedrock` is purely additive and the workspace has no
+  # `cfg(not(feature = …))` in test code, so a break that appears only with
+  # features *removed* has no known mechanism.
+  check-default:
+    name: stable / check default features
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # cache: false — nothing warms this check-mode graph, and a per-job
+      # entry saved on every main push would only add to the contended quota.
+      - name: Install Rust stable
+        uses: ./.github/actions/rust-setup
+        with:
+          cache: "false"
+
+      - name: Check default-feature root test targets
+        run: cargo xtask verify --check default-check
+
   # The PR gate's test sweep. The full `--all-features` run (companion vector
   # stores, Docker-backed integration tests, the nested-`cargo check` facade
   # build guard) lives in nightly.yaml: it runs on a schedule, on demand via
@@ -351,7 +390,7 @@ jobs:
         uses: actions/checkout@v5
 
       # The raw database drivers live in the service-test runner, gated with
-      # their suites. Neither graph below enables those features, so a
+      # their suites. The graph below does not enable those features, so a
       # cold PR run avoids the Lance/Arrow/DataFusion graph and needs no
       # system protoc. The all-features jobs retain both.
       - name: Install Rust stable
@@ -361,25 +400,6 @@ jobs:
           nextest: "true"
           # Repository-repair tests format proposed patches inside isolation.
           components: rustfmt
-
-      # `nextest` below runs with `--features bedrock`, which does not compile
-      # the pure default-feature test graph. Check the root integration tests
-      # with the default feature set so feature-gated test modules cannot
-      # accidentally depend on APIs that only exist under optional features.
-      #
-      # `cargo check`, not `cargo test --no-run`: the guarded failure class is
-      # purely type-level, while `--no-run` additionally pays codegen +
-      # linking under a default-feature hash the `--features bedrock` step
-      # below never reuses. Be precise about what this trades away: the
-      # bedrock run below and nightly's sweep link *superset* feature
-      # configurations, so no lane anywhere links the pure default-feature
-      # binaries — a default-only codegen/link break would surface first in
-      # merge_group's full run. That gap is accepted as theoretical:
-      # `bedrock` is purely additive and the workspace has no
-      # `cfg(not(feature = …))` in test code, so a break that appears only
-      # with features *removed* has no known mechanism.
-      - name: Check default-feature root test targets
-        run: cargo xtask verify --check default-check
 
       # The workspace sweep over the default members' default features, plus
       # the facade's `bedrock` feature. `bedrock` rides along because the
@@ -580,13 +600,21 @@ jobs:
         uses: actions/checkout@v5
 
       # protoc: required because this all-features job enables rig-lancedb.
-      # No sccache: this job is off the critical path and rustdoc's doctest
-      # execution is not cacheable anyway — see the quota note on the
-      # sccache input in the rust-setup action.
+      # No sccache: rustdoc's doctest execution is not cacheable, and the
+      # quota note on the sccache input in the rust-setup action applies.
+      #
+      # `all-features`: the dependency artifacts of `cargo test --doc
+      # --workspace --all-features` are the same units nightly's
+      # `test-all-features` builds, so both restore the one entry
+      # cache-warm.yaml populates from that graph. This was the longest job
+      # of the gate at ~10 minutes, nine of them compiling dependencies cold
+      # for sixteen seconds of doctests.
       - name: Install Rust stable
         uses: ./.github/actions/rust-setup
         with:
           protoc: "true"
+          cache-shared-key: all-features
+          cache-save-if: "false"
 
       # No API keys needed: the doctests that actually execute are pure (the
       # provider examples are all `no_run`/compile-only), so this job stays

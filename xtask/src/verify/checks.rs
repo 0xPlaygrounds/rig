@@ -268,16 +268,12 @@ pub(super) fn all() -> Vec<Check> {
                 "not package(rig-derive)",
             ])],
         ),
-        check(
-            "workspace-check",
-            vec![cargo(&[
-                "check",
-                "--locked",
-                "--workspace",
-                "--all-features",
-                "--all-targets",
-            ])],
-        ),
+        // No separate `cargo check --workspace --all-features --all-targets`:
+        // full-tests compiles every workspace member's lib, bin, test and
+        // example targets under the same feature set (Cargo's default `test`
+        // target selection), clippy checks the default members' `--all-targets`,
+        // and no member declares a bench target. Keep it that way, or a bench
+        // in a non-default member needs a locked-version owner again.
         // Existing repository floor checker; new verification tooling is Rust.
         check(
             "dependency-floors",
@@ -377,19 +373,29 @@ pub(super) fn all() -> Vec<Check> {
     }
     checks
 }
+/// Inputs whose change runs the full runtime lane (`full-tests`): the
+/// service-backed integration suites, the crates they cover, the facade
+/// feature-forwarding guard, and the shared build/verification inputs whose
+/// effect on those suites cannot be narrowed. Mirrors nightly.yaml's
+/// `pull_request.paths`; `lanes_mirror_ci_path_filters` pins the agreement.
 pub(super) fn full_lane(path: &str) -> bool {
     [
         "Cargo.toml",
         "Cargo.lock",
         ".github/workflows/nightly.yaml",
-        "scripts/check-dependency-floors.py",
         "tests/tool_facade_features.rs",
         "tests/integrations.rs",
     ]
     .contains(&path)
         || path.starts_with("tests/integrations/")
         || path.starts_with("test-support/")
-        || (path.starts_with("crates/") && path.ends_with("/Cargo.toml"))
+        || path.starts_with(".github/actions/")
+        // `crates/*/Cargo.toml`: the workspace members' manifests, not the
+        // nested compile fixtures beneath them (those have their own owners).
+        || path
+            .strip_prefix("crates/")
+            .and_then(|rest| rest.strip_suffix("/Cargo.toml"))
+            .is_some_and(|name| !name.contains('/'))
         || [
             "rig-lancedb",
             "rig-mongodb",
@@ -404,4 +410,26 @@ pub(super) fn full_lane(path: &str) -> bool {
         .any(|p| path.starts_with(&format!("crates/{p}/")))
         || path.starts_with("xtask/")
         || path.starts_with(".config/")
+}
+/// Inputs whose change runs `dependency-floors`: everything Cargo's resolver
+/// reads (manifests, the lockfile, the toolchain, Cargo configuration), the
+/// floor checker, and the verification tooling that defines the check.
+/// Mirrors dependency-floors.yaml's `pull_request.paths`. A source-only edit
+/// that starts using an API newer than a declared floor is deliberately not
+/// a trigger: the scheduled run, the merge queue and the release gate still
+/// execute the floors on every landed combination.
+pub(super) fn floor_lane(path: &str) -> bool {
+    [
+        "Cargo.toml",
+        "Cargo.lock",
+        "rust-toolchain.toml",
+        "scripts/check-dependency-floors.py",
+        "scripts/test_dependency_floors.py",
+        ".github/workflows/dependency-floors.yaml",
+    ]
+    .contains(&path)
+        || path.ends_with("/Cargo.toml")
+        || path.starts_with(".cargo/")
+        || path.starts_with(".github/actions/")
+        || path.starts_with("xtask/")
 }

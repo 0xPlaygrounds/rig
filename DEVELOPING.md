@@ -22,15 +22,38 @@ manifests, dependencies, verification tooling, and unknown inputs broaden the
 plan conservatively. Read the printed selection and skip reasons.
 
 `--pr` requires an explicit intended base and includes every existing fast CI
-check. Changes affecting the full lane also select full verification. It is the
-local execution part of preparing a PR, not the independent review or remote CI
-gate. `--full` executes supported workspace tests, all example/consumer targets,
-feature combinations, documentation, dependency-floor checks, concurrency
-models, and the native/WASM matrix. Ignored tests, including live-provider,
-model, and service tests, remain opt-in; neither mode records cassettes or
-regenerates goldens.
+check, plus two independently triggered lanes. `full-tests` (the all-features
+workspace run with the Docker-backed storage suites) joins for the storage
+crates, the integration suites and their support, the facade
+feature-forwarding guard, the root manifest and lockfile, and the verification
+tooling. `dependency-floors` joins for Cargo's resolver inputs: any manifest,
+the lockfile, the toolchain, Cargo configuration, the floor checker, and the
+verification tooling. A storage-suite edit therefore runs the suites without
+resolving floors; a floor-checker edit runs the floors and its own tests
+without the suites. The predicates are `checks::full_lane` and
+`checks::floor_lane`, and a test keeps them equal to the `pull_request.paths`
+filters of `nightly.yaml` and `dependency-floors.yaml`; the conservative
+fallbacks for shared inputs (`.github/`, other `scripts/` files, unknown
+files) may select more than CI would, never less; the floor checker and its
+isolation tests select only the floors, the tooling check and formatting. A
+source-only change that starts using an API newer than a declared floor is caught by the scheduled run, the merge
+queue or the release gate rather than on its own PR; that tradeoff is
+deliberate. `--pr` is the local execution part of preparing a PR, not the
+independent review or remote CI gate. `--full` executes supported workspace
+tests, all example/consumer targets, feature combinations, documentation,
+dependency-floor checks, concurrency models, and the native/WASM matrix.
+Ignored tests, including live-provider, model, and service tests, remain
+opt-in; neither mode records cassettes or regenerates goldens.
 
-Full validation needs the repository toolchain, nextest, Clippy, rustfmt,
+There is no separate workspace-wide `cargo check --all-targets`: `full-tests`
+compiles every member's lib, bin, test and example targets under the same
+all-features graph (Cargo's default `test` target selection), and `clippy`
+checks the default members' `--all-targets`. No member declares a bench
+target; one added to a non-default member would need a locked-version owner.
+
+Full validation needs the repository toolchain, nextest (0.9.91 or newer
+honours the test priorities in `.config/nextest.toml`; older versions warn
+and run every test in default order), Clippy, rustfmt,
 protoc, Docker for service integrations, Node, and wasm-bindgen-test-runner
 matching the lockfile. The dependency-floor script and its isolation tests also need Python 3.11+.
 CI installs its required tools through `.github/actions/rust-setup`. A missing
@@ -132,19 +155,32 @@ run. Other tests retain their prior retry policy. Command-line retry settings
 would override these per-test rules, so that run deliberately does not pass
 `--retries`. See [nextest retry precedence](https://nexte.st/docs/features/retries/).
 
-Only trusted upstream pushes may write shared caches. One warming job targets
-`feat/effect-bus` and the default/bedrock test configuration; fork PRs and PR merge
-refs remain read-only. PRs can restore their base branch's caches under
+Only trusted upstream pushes may write shared caches. The warmer runs on
+pushes to `main` and `feat/effect-bus`: the default/bedrock test configuration
+under the `test` job's own key (development base only; `main`'s own CI run
+saves that one), and the all-features test graph under the shared
+`all-features` key that CI's `doctest` job and the nightly `test-all-features`
+job restore without saving (same profile, features and environment; none uses
+sccache), so the warmer is that key's only writer.
+Fork PRs and PR merge refs remain read-only. PRs can restore their base
+branch's caches under
 [GitHub's cache visibility rules](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching).
 Other matrix configurations are not multiplied into development-base caches.
-The warmer's explicit `default-test-build` check compiles the identical
-default/bedrock artifacts with nextest `--no-run`; it makes no test-execution
-claim and is never substituted for `default-tests` in verification. Conformance
-passes explicit Cargo test-target selectors matching its existing nextest
-filter, preserving the four executed binaries and their package/feature graph
-while avoiding compilation of unused harnesses.
-Cache warming still consumes runner time and quota; its benefit can only be
-measured after the workflow lands and trusted pushes populate that base cache.
+The warmer's explicit `default-test-build` and `full-test-build` checks compile
+the identical artifacts with nextest `--no-run`; they make no test-execution
+claim and are never substituted for `default-tests` or `full-tests` in
+verification. rust-cache keeps dependency artifacts only, so workspace crates
+still compile in every run. Conformance passes explicit Cargo test-target
+selectors matching its existing nextest filter, preserving the four executed
+binaries and their package/feature graph while avoiding compilation of unused
+harnesses. Cache warming still consumes runner time and quota; its benefit can
+only be measured after the workflow lands and trusted pushes populate that
+base cache.
+
+The all-features run starts its two nested-Cargo tests first (a nextest
+priority override): the facade feature-forwarding guard alone runs four
+`cargo check`s over the facade's graph and, in default order, finished
+minutes after every other test.
 
 ## PR completion
 
