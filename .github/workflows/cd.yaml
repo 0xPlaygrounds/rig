@@ -17,14 +17,18 @@ concurrency:
   group: release-plz-${{ github.ref }}
   cancel-in-progress: false
 
+# Read-only by default; a called workflow may hold no more than its caller
+# job, and all three gates declare exactly `contents: read`. release-plz
+# raises `contents`/`pull-requests: write` at job level.
+permissions:
+  contents: read
+
 jobs:
-  # No `secrets: inherit` on either gate call: the test lanes are hermetic
+  # No `secrets: inherit` on any gate call: the test lanes are hermetic
   # (cassette replay, dummy keys, `#[ignore]`-gated live tests) and reference
   # no secrets, so inheriting them into jobs that execute the whole test
   # suite would be pure exfiltration surface.
   run-ci:
-    permissions:
-      checks: write
     uses: ./.github/workflows/ci.yaml
 
   # ci.yaml is the fast PR gate; the `--all-features` suite (Docker-backed

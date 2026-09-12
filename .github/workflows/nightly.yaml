@@ -110,6 +110,11 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Read-only token: this lane builds and runs third-party code with every
+# feature enabled and needs nothing from the repository but its contents.
+permissions:
+  contents: read
+
 # The `full-` prefix keeps this group disjoint from ci.yaml's when both are
 # invoked from the same cd.yaml run (inside a called workflow,
 # `github.workflow` resolves to the CALLER's name). Keyed on the PR number
