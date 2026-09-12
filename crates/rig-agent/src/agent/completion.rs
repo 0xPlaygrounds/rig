@@ -773,9 +773,9 @@ impl Agent {
     /// runner's; and the output tool the run committed stays committed even
     /// though the schema and mode advertising it are the runner's. The
     /// unhandled-invalid-tool-call policy is the run's on the blocking path
-    /// and the runner's on the streamed path. Conversation memory is neither loaded nor appended:
-    /// the history is already in the run, and the driver that persisted it
-    /// owns its memory. Drive it like any runner: `.await`,
+    /// and the runner's on the streamed path. Conversation memory is neither
+    /// loaded nor appended: the history is already in the run, and the driver
+    /// that persisted it owns its memory. Drive it like any runner: `.await`,
     /// [`stream`](AgentRunner::stream) or
     /// [`run_channel`](AgentRunner::run_channel). The run must have been
     /// suspended by the same rig version.

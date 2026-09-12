@@ -24,6 +24,7 @@
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
+use tracing_futures::Instrument;
 
 use super::{
     completion::{Agent, AgentConfig},
@@ -529,7 +530,8 @@ impl AgentRunner {
         // Like `stream()`: the run belongs to the span it was started in,
         // not to whichever task first polls the future.
         let ambient = tracing::Span::current();
-        self.run_under(ambient)
+        let run_under = ambient.clone();
+        async move { self.run_under(run_under).await }.instrument(ambient)
     }
 
     async fn run_under(self, ambient: tracing::Span) -> Result<PromptResponse, PromptError> {

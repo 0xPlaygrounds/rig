@@ -6049,3 +6049,83 @@ async fn a_stream_built_outside_a_span_stays_a_root_when_polled_inside_one() {
         assert_ne!(chat_span.parent_id, Some(poller_id));
     }
 }
+
+/// The blocking terminal follows the same rule: `run()` called inside
+/// `outer` and awaited from a spawned task adopts `outer` — no
+/// `invoke_agent`, the chat span is `outer`'s child.
+#[tokio::test]
+async fn a_blocking_run_belongs_to_the_span_it_was_started_in() {
+    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+    let spans = CapturedSpans::default();
+    let subscriber = Registry::default().with(SpanCaptureLayer {
+        spans: spans.clone(),
+    });
+    let _default = tracing::subscriber::set_default(subscriber);
+
+    let warmup_agent = AgentBuilder::new(MockCompletionModel::text("warmup")).build();
+    warmup_agent.prompt("warmup").await.expect("warmup");
+    tracing::callsite::rebuild_interest_cache();
+    spans.clear();
+
+    let agent = AgentBuilder::new(MockCompletionModel::text("done")).build();
+    let outer_span = tracing::info_span!("outer");
+    let run = outer_span.in_scope(|| agent.prompt("go").run());
+    let response = tokio::spawn(run)
+        .await
+        .expect("join")
+        .expect("run succeeds");
+    assert_eq!(response.output(), "done");
+
+    let snapshot = spans.snapshot();
+    let outer_id = snapshot
+        .iter()
+        .find(|span| span.name == "outer")
+        .map(|span| span.id)
+        .expect("outer span captured");
+    assert!(snapshot.iter().all(|span| span.name != "invoke_agent"));
+    let chat_spans: Vec<_> = snapshot.iter().filter(|span| span.name == "chat").collect();
+    assert_eq!(chat_spans.len(), 1, "one model turn: {snapshot:?}");
+    assert_eq!(chat_spans[0].parent_id, Some(outer_id));
+}
+
+/// A typed run reaches the same rule through `IntoFuture`: the future is
+/// made inside `outer` and awaited from a spawned task.
+#[tokio::test]
+async fn a_typed_run_belongs_to_the_span_it_was_started_in() {
+    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+    let spans = CapturedSpans::default();
+    let subscriber = Registry::default().with(SpanCaptureLayer {
+        spans: spans.clone(),
+    });
+    let _default = tracing::subscriber::set_default(subscriber);
+
+    let warmup_agent = AgentBuilder::new(MockCompletionModel::text("{\"n\": 0}")).build();
+    warmup_agent
+        .prompt_typed::<serde_json::Value>("warmup")
+        .await
+        .expect("warmup");
+    tracing::callsite::rebuild_interest_cache();
+    spans.clear();
+
+    let agent = AgentBuilder::new(MockCompletionModel::text("{\"n\": 1}")).build();
+    let outer_span = tracing::info_span!("outer");
+    let run = outer_span.in_scope(|| {
+        std::future::IntoFuture::into_future(agent.prompt_typed::<serde_json::Value>("go"))
+    });
+    let response = tokio::spawn(run)
+        .await
+        .expect("join")
+        .expect("typed run succeeds");
+    assert_eq!(response.output["n"], 1);
+
+    let snapshot = spans.snapshot();
+    let outer_id = snapshot
+        .iter()
+        .find(|span| span.name == "outer")
+        .map(|span| span.id)
+        .expect("outer span captured");
+    assert!(snapshot.iter().all(|span| span.name != "invoke_agent"));
+    let chat_spans: Vec<_> = snapshot.iter().filter(|span| span.name == "chat").collect();
+    assert_eq!(chat_spans.len(), 1, "one model turn: {snapshot:?}");
+    assert_eq!(chat_spans[0].parent_id, Some(outer_id));
+}

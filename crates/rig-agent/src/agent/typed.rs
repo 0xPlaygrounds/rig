@@ -15,6 +15,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend};
+use tracing_futures::Instrument;
 
 use super::{
     Agent,
@@ -457,6 +458,7 @@ where
         // typed run belongs to the span it was started in, not to the task
         // that first polls it.
         let ambient = tracing::Span::current();
-        Box::pin(self.send(ambient))
+        let run_under = ambient.clone();
+        Box::pin(self.send(run_under).instrument(ambient))
     }
 }
