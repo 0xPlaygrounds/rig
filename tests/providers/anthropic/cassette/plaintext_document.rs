@@ -151,7 +151,7 @@ async fn streaming_document_citations_accepts_null_citation_start() {
                 .temperature(0.0)
                 .build();
 
-            let mut stream = agent.prompt(citation_prompt()).stream().await;
+            let mut stream = agent.prompt(citation_prompt()).stream();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming document citations should accept null citations on text start");

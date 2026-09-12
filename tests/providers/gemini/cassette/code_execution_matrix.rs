@@ -334,8 +334,7 @@ async fn streaming_agent_prompt_answers_after_code_execution() {
 
             let mut stream = agent
                 .prompt("Use the code execution tool to compute 2 to the power of 20. State the number in your answer.")
-                .stream()
-                .await;
+                .stream();
 
             let mut answer = String::new();
             while let Some(item) = stream.next().await {

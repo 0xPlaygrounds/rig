@@ -69,11 +69,7 @@ async fn streaming_with_events_effect_log_is_the_golden_fixture() {
             .tool(Subtract)
             .record_effects_with_events()
             .build();
-        let mut stream = agent
-            .prompt(STREAMING_TOOLS_PROMPT)
-            .max_turns(3)
-            .stream()
-            .await;
+        let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).max_turns(3).stream();
         let mut saw_final = false;
         while let Some(item) = stream.next().await {
             if let Ok(MultiTurnStreamItem::FinalResponse(_)) = item {

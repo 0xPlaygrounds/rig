@@ -211,8 +211,7 @@ async fn streamed_agent_run_hook_observes_identity() {
                 .prompt(Message::user(
                     "Reply with exactly: streamed hook identity probe",
                 ))
-                .stream()
-                .await;
+                .stream();
             while let Some(item) = stream.next().await {
                 item.expect("stream item should succeed");
             }
@@ -268,8 +267,7 @@ async fn streamed_agent_tool_run_reports_per_attempt_identity() {
                     "What is 2 + 3? Use the tool, then state the result.",
                 ))
                 .max_turns(3)
-                .stream()
-                .await;
+                .stream();
             let mut completion_calls = Vec::new();
             while let Some(item) = stream.next().await {
                 if let rig::agent::MultiTurnStreamItem::CompletionCall(call) =

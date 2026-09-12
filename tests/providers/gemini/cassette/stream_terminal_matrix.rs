@@ -285,7 +285,7 @@ async fn two_terminal_stream_agent_prompt_keeps_the_answer() {
                 .additional_params(code_execution_params())
                 .build();
 
-            let mut stream = agent.prompt(TWO_ROUND_PROMPT).stream().await;
+            let mut stream = agent.prompt(TWO_ROUND_PROMPT).stream();
             let mut answer = String::new();
             while let Some(item) = stream.next().await {
                 if let rig::agent::MultiTurnStreamItem::StreamAssistantItem(

@@ -218,8 +218,7 @@ async fn streaming_raw_model_sends_a_base64_image() -> Result<()> {
                     UserContent::text(COLOUR_PROMPT),
                     red_png(),
                 ]))
-                .stream()
-                .await;
+                .stream();
             let response = collect_stream_final_response(&mut stream).await?;
             assert_mentions(&response, "red");
             Ok::<_, anyhow::Error>(())
@@ -440,8 +439,7 @@ async fn streaming_image_survives_a_replayed_history() -> Result<()> {
             let mut stream = agent
                 .prompt("Repeat the colour you just named.")
                 .history(history)
-                .stream()
-                .await;
+                .stream();
             let response = collect_stream_final_response(&mut stream).await?;
             assert_mentions(&response, "red");
             Ok::<_, anyhow::Error>(())
@@ -539,8 +537,7 @@ async fn streaming_agent_reads_an_attached_pdf() -> Result<()> {
                     UserContent::text(DOCUMENT_PROMPT),
                     pdf_document(),
                 ]))
-                .stream()
-                .await;
+                .stream();
             let response = collect_stream_final_response(&mut stream).await?;
             assert_mentions(&response, PDF_TOKEN);
             Ok::<_, anyhow::Error>(())
@@ -728,8 +725,7 @@ async fn streaming_agent_sends_audio() -> Result<()> {
                     UserContent::text(AUDIO_PROMPT),
                     speech_audio(),
                 ]))
-                .stream()
-                .await;
+                .stream();
             let response = collect_stream_final_response(&mut stream).await?;
             assert_mentions(&response, AUDIO_KEYWORD);
             Ok::<_, anyhow::Error>(())
@@ -828,8 +824,7 @@ async fn streaming_text_only_content_still_flattens_to_a_string() -> Result<()> 
                     UserContent::text("Name the capital of France."),
                     UserContent::text(" Answer with one word."),
                 ]))
-                .stream()
-                .await;
+                .stream();
             let response = collect_stream_final_response(&mut stream).await?;
             assert_mentions(&response, "paris");
             Ok::<_, anyhow::Error>(())
@@ -980,8 +975,7 @@ async fn streaming_image_with_a_tool_configured() -> Result<()> {
                     UserContent::text("Record this image's colour."),
                     red_png(),
                 ]))
-                .stream()
-                .await;
+                .stream();
             let response = collect_stream_final_response(&mut stream).await?;
             assert_mentions(&response, "red");
             Ok::<_, anyhow::Error>(())

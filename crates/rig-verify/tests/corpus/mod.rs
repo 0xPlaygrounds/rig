@@ -2658,7 +2658,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
             runner = runner
                 .max_invalid_tool_call_retries(program.invalid_retries)
                 .unhandled_invalid_tool_call(unhandled_policy(program));
-            let mut stream = runner.stream().await;
+            let mut stream = runner.stream();
             let mut output = None;
             let mut failed_as_expected = false;
             while let Some(item) = within(stream.next()).await {
@@ -3168,7 +3168,7 @@ async fn resumed_tail(
         .max_invalid_tool_call_retries(program.invalid_retries)
         .unhandled_invalid_tool_call(unhandled_policy(program));
     let outcome = if program.streamed {
-        let mut stream = runner.stream().await;
+        let mut stream = runner.stream();
         let mut output = None;
         let mut failure = None;
         while let Some(item) = within(stream.next()).await {

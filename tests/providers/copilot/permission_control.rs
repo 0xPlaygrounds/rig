@@ -219,8 +219,7 @@ async fn permission_control_streaming_example() -> Result<()> {
         )
         .max_turns(5)
         .add_hook(hook)
-        .stream()
-        .await;
+        .stream();
 
     let final_response = stream_to_stdout(&mut stream).await?;
     let last = last_result.lock().expect("lock last_result").clone();

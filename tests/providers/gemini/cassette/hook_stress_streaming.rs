@@ -39,8 +39,7 @@ async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
                 .prompt("In one short sentence, describe the color of a clear daytime sky.")
                 .add_hook(tap)
                 .max_turns(2)
-                .stream()
-                .await;
+                .stream();
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -96,8 +95,7 @@ async fn streaming_tool_turns_fire_model_turn_finished() {
                 )
                 .add_hook(tap)
                 .max_turns(6)
-                .stream()
-                .await;
+                .stream();
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -150,8 +148,7 @@ async fn streaming_result_redaction_reaches_final_response() {
                     rewrite: ResultRewrite::Replace("STREAM-REDACTED-Q3"),
                 })
                 .max_turns(4)
-                .stream()
-                .await;
+                .stream();
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -196,8 +193,7 @@ async fn streaming_active_tools_narrowing_filters_a_tool() {
                     RequestPatch::new().active_tools(["add"]).temperature(0.0),
                 ))
                 .max_turns(5)
-                .stream()
-                .await;
+                .stream();
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -245,8 +241,7 @@ async fn streaming_skip_leaves_tool_unexecuted() {
                     reason: "the subtract tool is offline; continue without it",
                 })
                 .max_turns(5)
-                .stream()
-                .await;
+                .stream();
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -306,7 +301,7 @@ async fn blocking_and_streaming_produce_same_final_answer() {
                 .tool(add_s)
                 .tool(sub_s)
                 .build();
-            let mut stream = agent.prompt(PROMPT).max_turns(6).stream().await;
+            let mut stream = agent.prompt(PROMPT).max_turns(6).stream();
             let final_text = collect_stream_final_response(&mut stream)
                 .await
                 .expect("a final response");

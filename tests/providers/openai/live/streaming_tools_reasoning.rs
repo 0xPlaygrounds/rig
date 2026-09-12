@@ -22,8 +22,7 @@ async fn test_openai_streaming_tools_reasoning() {
         .prompt("Call my example tool")
         .history(&chat_history)
         .max_turns(5)
-        .stream()
-        .await;
+        .stream();
 
     while let Some(item) = stream.next().await {
         println!("Got item: {item:?}");

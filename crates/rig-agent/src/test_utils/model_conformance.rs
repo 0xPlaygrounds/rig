@@ -1811,8 +1811,7 @@ where
     let mut stream = agent
         .prompt("Use add to calculate 17 + 25, then state the final number.")
         .max_turns(4)
-        .stream()
-        .await;
+        .stream();
     let mut final_response = None;
     let mut final_count = 0_usize;
     let mut completion_usage = crate::completion::Usage::new();
@@ -2051,8 +2050,7 @@ where
     let mut stream = agent
         .prompt("Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.")
         .max_turns(5)
-        .stream()
-        .await;
+        .stream();
     let mut final_response = None;
     let mut final_count = 0_usize;
     while let Some(item) = stream.next().await {

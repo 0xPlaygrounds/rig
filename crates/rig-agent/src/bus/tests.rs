@@ -2072,7 +2072,7 @@ async fn concurrent_agent_wrappers_receive_distinct_recorder_contexts() {
         .build();
         let run = |agent: crate::agent::Agent| async move {
             if streamed {
-                let mut stream = agent.prompt("same prompt").stream().await;
+                let mut stream = agent.prompt("same prompt").stream();
                 let mut finished = false;
                 while let Some(event) = within(stream.next()).await {
                     if let crate::agent::MultiTurnStreamItem::FinalResponse(response) =

@@ -207,10 +207,7 @@ async fn replace_streamed_cancelled_effect_log_is_the_golden_fixture() {
         .preamble(BASIC_PREAMBLE)
         .temperature(0.0)
         .build();
-    let mut stream = agent
-        .prompt("Reply with the single word: ready.")
-        .stream()
-        .await;
+    let mut stream = agent.prompt("Reply with the single word: ready.").stream();
     let mut ending = None;
     let mut texts = String::new();
     while let Some(item) = stream.next().await {

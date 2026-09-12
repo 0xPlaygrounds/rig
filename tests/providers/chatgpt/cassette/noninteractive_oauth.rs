@@ -22,7 +22,7 @@ async fn cached_oauth_allows_noninteractive_streaming_completion() {
                 .agent(chatgpt::GPT_5_4)
                 .preamble(BASIC_PREAMBLE)
                 .build();
-            let mut stream = agent.prompt(BASIC_PROMPT).stream().await;
+            let mut stream = agent.prompt(BASIC_PROMPT).stream();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("non-interactive OAuth streaming completion should succeed");

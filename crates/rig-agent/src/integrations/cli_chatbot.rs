@@ -98,8 +98,7 @@ impl CliChat for AgentImpl {
             .prompt(prompt)
             .history(history.clone())
             .max_turns(self.max_turns)
-            .stream()
-            .await;
+            .stream();
 
         let mut acc = String::new();
         let mut messages = None;

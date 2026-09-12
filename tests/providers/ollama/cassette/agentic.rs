@@ -193,8 +193,7 @@ async fn streaming_structured_output_with_tools() {
                      the city and a one-sentence summary of the conditions.",
                 )
                 .max_turns(5)
-                .stream()
-                .await;
+                .stream();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming agentic structured output should succeed");

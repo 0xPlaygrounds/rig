@@ -47,7 +47,7 @@ fn stream_turn(events: Vec<MockStreamEvent>) -> Vec<MockStreamEvent> {
 }
 
 async fn streamed_output(agent: &rig::agent::Agent, max_turns: usize) -> String {
-    let mut stream = agent.prompt(PROMPT).max_turns(max_turns).stream().await;
+    let mut stream = agent.prompt(PROMPT).max_turns(max_turns).stream();
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
@@ -111,8 +111,7 @@ async fn invalid_streamed_retry_once_effect_log_is_the_golden_fixture() {
         .prompt(PROMPT)
         .max_turns(4)
         .max_invalid_tool_call_retries(1)
-        .stream()
-        .await;
+        .stream();
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
@@ -158,8 +157,7 @@ async fn invalid_streamed_retry_twice_effect_log_is_the_golden_fixture() {
         .prompt(PROMPT)
         .max_turns(5)
         .max_invalid_tool_call_retries(2)
-        .stream()
-        .await;
+        .stream();
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
@@ -234,8 +232,7 @@ async fn invalid_ignore_streamed_effect_log_is_the_golden_fixture() {
         .prompt(PROMPT)
         .max_turns(3)
         .unhandled_invalid_tool_call(UnhandledInvalidToolCall::Ignore)
-        .stream()
-        .await;
+        .stream();
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {
@@ -304,8 +301,7 @@ async fn invalid_mixed_ignore_streamed_effect_log_is_the_golden_fixture() {
         .prompt(PROMPT)
         .max_turns(3)
         .unhandled_invalid_tool_call(UnhandledInvalidToolCall::Ignore)
-        .stream()
-        .await;
+        .stream();
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {

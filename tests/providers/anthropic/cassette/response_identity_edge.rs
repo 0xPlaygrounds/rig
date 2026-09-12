@@ -322,8 +322,7 @@ async fn tool_error_retry_reports_distinct_ids_streamed() {
             let mut stream = agent
                 .prompt(Message::user("What is 2 + 3? Use the tool."))
                 .max_turns(5)
-                .stream()
-                .await;
+                .stream();
             while let Some(item) = stream.next().await {
                 item.expect("stream item should succeed");
             }
@@ -393,8 +392,7 @@ async fn streamed_hook_retry_uses_second_connections_id() {
             let mut stream = agent
                 .prompt(Message::user("Reply with exactly: first probe"))
                 .max_turns(3)
-                .stream()
-                .await;
+                .stream();
             while let Some(item) = stream.next().await {
                 item.expect("stream item should succeed");
             }

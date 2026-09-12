@@ -105,8 +105,7 @@ async fn main() -> Result<()> {
     println!("\nstreaming:");
     let mut stream = agent
         .prompt("What does a system fingerprint identify?")
-        .stream()
-        .await;
+        .stream();
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(final_response) = item? {
             println!("  => {}", final_response.output);

@@ -38,8 +38,7 @@ async fn two_turns_serial_effect_log_is_the_golden_fixture() {
                      subtract tool. Report the final number.",
                 )
                 .max_turns(6)
-                .stream()
-                .await;
+                .stream();
             let mut saw_final = false;
             while let Some(item) = stream.next().await {
                 if let Ok(MultiTurnStreamItem::FinalResponse(_)) = item {

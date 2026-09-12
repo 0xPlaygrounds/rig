@@ -436,7 +436,7 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
     assert_builder(AgentBuilder::new(alpha.clone()));
     assert_prompt_request(alpha_agent.prompt("typed request"));
     assert_extractor(ExtractorBuilder::<ExtractedValue>::new(alpha.clone()).build());
-    assert_agent_stream(alpha_agent.prompt("stream type").stream().await);
+    assert_agent_stream(alpha_agent.prompt("stream type").stream());
 
     let unary = alpha
         .completion(request("low-level unary"))
@@ -672,8 +672,7 @@ async fn model_selection_stop_cancels_before_provider_execution() {
         .add_hook(StopSelection {
             completion_calls: streaming_completion_calls.clone(),
         })
-        .stream()
-        .await;
+        .stream();
     let error = stream
         .next()
         .await
@@ -1010,8 +1009,7 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
                     ModelSelectionAction::select(if context.turn() == 1 { "alpha" } else { "beta" })
                 },
             ))
-            .stream()
-            .await;
+            .stream();
         let mut final_response = None;
         let mut events = Vec::new();
         let mut block_ids = Vec::new();
@@ -1231,7 +1229,7 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
     let rich = Turn::rich("final text", 13, "rich-message-id");
     let alpha = AlphaModel(Script::new("alpha", [rich.clone()], rich));
     let agent = AgentBuilder::new(alpha).build();
-    let mut stream = agent.prompt("rich stream").stream().await;
+    let mut stream = agent.prompt("rich stream").stream();
     let mut saw_reasoning = false;
     let mut saw_reasoning_delta = false;
     let mut saw_unknown = false;
@@ -1544,7 +1542,7 @@ async fn dropping_pending_unary_and_streaming_attempts_cancels_by_drop() {
         dropped: stream_dropped.clone(),
     })
     .build();
-    let pending_stream = stream_agent.prompt("pending stream").stream().await;
+    let pending_stream = stream_agent.prompt("pending stream").stream();
     let stream_task = tokio::spawn(async move {
         let mut pending_stream = pending_stream;
         pending_stream.next().await
@@ -1661,7 +1659,7 @@ async fn model_selection_hooks_observe_the_merged_request_patch_on_both_surfaces
             .build();
 
         if streaming {
-            drain_stream(agent.prompt("merged patch").stream().await)
+            drain_stream(agent.prompt("merged patch").stream())
                 .await
                 .expect("streaming patched run");
         } else {
@@ -1710,7 +1708,7 @@ async fn a_request_patch_can_influence_the_selected_model_on_both_surfaces() {
             .build();
 
         if streaming {
-            drain_stream(agent.prompt("route by patch").stream().await)
+            drain_stream(agent.prompt("route by patch").stream())
                 .await
                 .expect("streaming patch-routed run");
             assert_eq!(
@@ -1743,7 +1741,7 @@ async fn a_stopped_completion_call_hook_suppresses_selection_on_both_surfaces() 
             .build();
 
         if streaming {
-            let error = drain_stream(agent.prompt("stopped").stream().await)
+            let error = drain_stream(agent.prompt("stopped").stream())
                 .await
                 .expect_err("streaming completion-call stop");
             assert!(matches!(
@@ -1793,7 +1791,7 @@ async fn failed_preparation_follows_selection_and_does_not_issue_an_attempt() {
             .build();
 
         let failed = if streaming {
-            drain_stream(agent.prompt("prepare fails").max_turns(2).stream().await)
+            drain_stream(agent.prompt("prepare fails").max_turns(2).stream())
                 .await
                 .is_err()
         } else {
@@ -1867,7 +1865,7 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
         // provider-kind `ErrorReport` whose message is the provider's own.
         let failed_with_provider_error = if streaming {
             matches!(
-                drain_stream(agent.prompt("boom").stream().await).await,
+                drain_stream(agent.prompt("boom").stream()).await,
                 Err(StreamingError::Report(report))
                     if report.kind == ErrorKind::Provider
                         && report.message.ends_with("provider exploded")

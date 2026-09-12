@@ -480,7 +480,7 @@ async fn agent_streaming_reasoner_roundtrip_streams_reasoning_first() {
             let mut stream = agent
                 .prompt(reasoning::TOOL_USER_PROMPT).history(Vec::<Message>::new())
                 .max_turns(3)
-                .stream().await;
+                .stream();
             let observation = collect_stream_observation(&mut stream).await;
 
             let reasoning_at = observation

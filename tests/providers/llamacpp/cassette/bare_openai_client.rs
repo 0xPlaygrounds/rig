@@ -214,11 +214,7 @@ async fn a_fragmented_tool_call_stream_reassembles_without_the_provider_consts()
                 .tool(Subtract)
                 .build();
 
-            let mut stream = agent
-                .prompt(STREAMING_TOOLS_PROMPT)
-                .max_turns(4)
-                .stream()
-                .await;
+            let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).max_turns(4).stream();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");

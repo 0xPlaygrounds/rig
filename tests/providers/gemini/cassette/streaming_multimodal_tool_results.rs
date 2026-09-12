@@ -86,8 +86,7 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
         )
         .history(empty_history)
         .max_turns(4)
-        .stream()
-        .await;
+        .stream();
 
     let mut final_response = None;
     let mut final_history = None;

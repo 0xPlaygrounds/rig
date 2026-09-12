@@ -160,7 +160,7 @@ async fn streamed_run(
         Streamed::Note => NOTE_PROMPT,
     };
     {
-        let mut stream = agent.prompt(prompt).max_turns(3).stream().await;
+        let mut stream = agent.prompt(prompt).max_turns(3).stream();
         assert_eq!(streamed_cancel(&mut stream).await, reason);
     }
     for _ in 0..64 {

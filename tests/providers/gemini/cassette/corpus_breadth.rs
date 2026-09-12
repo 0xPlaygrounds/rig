@@ -113,7 +113,7 @@ async fn output_tool_streamed_effect_log_is_the_golden_fixture() {
                 .output_mode(OutputMode::Tool)
                 .record_effects_with_events()
                 .build();
-            let mut stream = agent.prompt(STRUCTURED_OUTPUT_PROMPT).stream().await;
+            let mut stream = agent.prompt(STRUCTURED_OUTPUT_PROMPT).stream();
             let output = final_output(&mut stream).await.expect("the run answers");
             drop(stream);
             assert_event(&output);
@@ -139,7 +139,7 @@ async fn text_delta_stop_effect_log_is_the_golden_fixture() {
             .add_hook(StopOnTextDelta)
             .record_effects_with_events()
             .build();
-        let mut stream = agent.prompt(ESSAY_PROMPT).stream().await;
+        let mut stream = agent.prompt(ESSAY_PROMPT).stream();
         let reason = final_output(&mut stream)
             .await
             .expect_err("the hook stops the run");

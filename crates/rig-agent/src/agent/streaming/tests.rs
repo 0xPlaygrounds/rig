@@ -60,7 +60,7 @@ async fn public_streaming_request_constructor_preserves_agent_hooks() {
             .build(),
     );
 
-    let mut stream = agent.prompt("go").stream().await;
+    let mut stream = agent.prompt("go").stream();
     let error = stream
         .try_next()
         .await
@@ -80,7 +80,7 @@ async fn text_only_stream_without_terminal_record_is_rejected_as_truncated() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::text("partial answer")]]);
     let agent = Arc::new(AgentBuilder::new(model.clone()).build());
 
-    let mut stream = agent.prompt("go").stream().await;
+    let mut stream = agent.prompt("go").stream();
     let mut saw_error = false;
     let mut saw_completion_call = false;
     while let Some(item) = stream.next().await {
@@ -124,7 +124,7 @@ async fn tool_call_stream_without_terminal_record_dispatches_no_tools() {
     )]]);
     let agent = AgentBuilder::new(model.clone()).tool(add_tool).build();
 
-    let mut stream = agent.prompt("go").max_turns(3).stream().await;
+    let mut stream = agent.prompt("go").max_turns(3).stream();
     let mut saw_error = false;
     while let Some(item) = stream.next().await {
         if item.is_err() {
@@ -860,7 +860,7 @@ async fn assert_stream_usage_recorded_on_chat_spans(
         MockStreamEvent::final_response(Usage::default()),
     ]]);
     let warmup_agent = crate::agent::AgentBuilder::new(warmup_model).build();
-    let mut warmup_stream = warmup_agent.prompt("warmup").max_turns(1).stream().await;
+    let mut warmup_stream = warmup_agent.prompt("warmup").max_turns(1).stream();
     while let Some(item) = warmup_stream
         .try_next()
         .await
@@ -883,8 +883,7 @@ async fn assert_stream_usage_recorded_on_chat_spans(
             .prompt(prompt)
             .history(empty_history)
             .max_turns(max_turns)
-            .stream()
-            .await;
+            .stream();
 
         while let Some(item) = stream.try_next().await.expect("stream should not error") {
             if matches!(item, MultiTurnStreamItem::FinalResponse(_)) {
@@ -982,7 +981,7 @@ async fn capture_stream_message_telemetry(
         MockStreamEvent::final_response(Usage::default()),
     ]]);
     let warmup_agent = crate::agent::AgentBuilder::new(warmup_model).build();
-    let mut warmup_stream = warmup_agent.prompt("warmup").max_turns(1).stream().await;
+    let mut warmup_stream = warmup_agent.prompt("warmup").max_turns(1).stream();
     while let Some(item) = warmup_stream
         .try_next()
         .await
@@ -1010,11 +1009,7 @@ async fn capture_stream_message_telemetry(
         builder.context("static stream context secret").build()
     };
 
-    let mut stream = agent
-        .prompt("stream prompt secret")
-        .max_turns(1)
-        .stream()
-        .await;
+    let mut stream = agent.prompt("stream prompt secret").max_turns(1).stream();
     while let Some(item) = stream.try_next().await.expect("stream should not error") {
         if matches!(item, MultiTurnStreamItem::FinalResponse(_)) {
             break;
@@ -1303,7 +1298,7 @@ async fn streaming_rejected_message_telemetry_does_not_record_output() {
         MockStreamEvent::final_response(Usage::default()),
     ]]);
     let warmup_agent = crate::agent::AgentBuilder::new(warmup_model).build();
-    let mut warmup_stream = warmup_agent.prompt("warmup").max_turns(1).stream().await;
+    let mut warmup_stream = warmup_agent.prompt("warmup").max_turns(1).stream();
     while let Some(item) = warmup_stream
         .try_next()
         .await
@@ -1332,8 +1327,7 @@ async fn streaming_rejected_message_telemetry_does_not_record_output() {
     let mut stream = agent
         .prompt("stream rejection prompt")
         .max_turns(1)
-        .stream()
-        .await;
+        .stream();
     let err = loop {
         match stream.try_next().await {
             Ok(Some(_)) => continue,
@@ -2007,8 +2001,7 @@ async fn stream_prompt_continues_after_tool_call_turn() {
         .prompt("do tool work")
         .history(empty_history)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut saw_tool_call = false;
     let mut saw_tool_result = false;
     let mut saw_final_response = false;
@@ -2090,8 +2083,7 @@ async fn streaming_prompt_request_tool_concurrency_runs_tools_concurrently() {
             .prompt("hit the barrier twice")
             .max_turns(3)
             .tool_concurrency(2)
-            .stream()
-            .await;
+            .stream();
         while let Some(item) = stream.next().await {
             item.unwrap_or_else(|err| panic!("unexpected streaming error: {err:?}"));
         }
@@ -2131,8 +2123,7 @@ async fn tool_context_reaches_tool_through_streaming_loop() {
         .tool_context(tool_context)
         .history(empty_history)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
 
     while let Some(item) = stream.next().await {
         match item {
@@ -2169,8 +2160,7 @@ async fn streaming_tool_runs_with_empty_context_when_none_supplied() {
         .prompt("do tool work")
         .history(empty_history)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
 
     while let Some(item) = stream.next().await {
         match item {
@@ -2206,8 +2196,7 @@ async fn unknown_tool_call_fails_before_streaming_second_request() {
         .prompt("use the tool")
         .add_hook(PanicOnUnknownToolHook)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut saw_tool_call = false;
     let mut error = None;
 
@@ -2270,8 +2259,7 @@ async fn invalid_tool_call_hook_can_repair_streaming_tool_name() {
         .add_hook(RepairDefaultApiHook)
         .max_turns(3)
         .history(Vec::<Message>::new())
-        .stream()
-        .await;
+        .stream();
     let mut saw_repaired_tool_call = false;
     let mut saw_tool_result = false;
     let mut final_response_text = None;
@@ -2335,8 +2323,7 @@ async fn invalid_tool_call_context_uses_completed_streaming_tool_call_provider_i
         .prompt("use the tool")
         .add_hook(invalid_hook.clone())
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut error = None;
 
     while let Some(item) = stream.next().await {
@@ -2393,8 +2380,7 @@ async fn invalid_tool_call_hook_skip_emits_streaming_tool_result() {
         .add_hook(SkipDefaultApiHook)
         .max_turns(3)
         .history(Vec::<Message>::new())
-        .stream()
-        .await;
+        .stream();
     let mut skipped_tool_result = None;
     let mut final_response_text = None;
 
@@ -2489,8 +2475,7 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
         .max_turns(3)
         .history(Vec::<Message>::new())
         .max_invalid_tool_call_retries(1)
-        .stream()
-        .await;
+        .stream();
     let mut completion_call_events = Vec::new();
     let mut final_response_text = None;
     let mut final_response_usage = Usage::new();
@@ -2614,8 +2599,7 @@ async fn invalid_tool_call_hook_skips_mixed_streaming_turn_without_executing_val
         .add_hook(SkipDefaultApiHook)
         .max_turns(3)
         .history(Vec::<Message>::new())
-        .stream()
-        .await;
+        .stream();
     let mut skipped_tool_result = None;
     let mut final_response_text = None;
 
@@ -2739,8 +2723,7 @@ async fn invalid_completed_tool_call_skip_preserves_streaming_reasoning_history(
         .add_hook(SkipDefaultApiHook)
         .max_turns(3)
         .history(Vec::<Message>::new())
-        .stream()
-        .await;
+        .stream();
 
     while let Some(item) = stream.next().await {
         match item {
@@ -2793,8 +2776,7 @@ async fn invalid_name_delta_retry_preserves_streaming_reasoning_history() {
         .max_turns(3)
         .history(Vec::<Message>::new())
         .max_invalid_tool_call_retries(1)
-        .stream()
-        .await;
+        .stream();
 
     while let Some(item) = stream.next().await {
         match item {
@@ -2841,8 +2823,7 @@ async fn invalid_tool_call_hook_skip_resets_streaming_text_delta_state() {
         })
         .max_turns(3)
         .history(Vec::<Message>::new())
-        .stream()
-        .await;
+        .stream();
 
     while let Some(item) = stream.next().await {
         match item {
@@ -2895,8 +2876,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
         .max_turns(3)
         .history(Vec::<Message>::new())
         .max_invalid_tool_call_retries(1)
-        .stream()
-        .await;
+        .stream();
     let mut completion_call_events = Vec::new();
     let mut final_response_text = None;
     let mut final_response_usage = Usage::new();
@@ -3026,8 +3006,7 @@ async fn invalid_tool_call_delta_context_includes_same_turn_history_and_tool_cal
         .prompt("use the tool")
         .add_hook(invalid_hook.clone())
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut error = None;
 
     while let Some(item) = stream.next().await {
@@ -3098,8 +3077,7 @@ async fn invalid_tool_call_delta_retry_resets_streaming_text_delta_state() {
         .max_turns(3)
         .history(Vec::<Message>::new())
         .max_invalid_tool_call_retries(1)
-        .stream()
-        .await;
+        .stream();
 
     while let Some(item) = stream.next().await {
         match item {
@@ -3150,8 +3128,7 @@ async fn invalid_tool_call_delta_skip_uses_structured_tool_feedback() {
         })
         .max_turns(3)
         .history(Vec::<Message>::new())
-        .stream()
-        .await;
+        .stream();
     let mut skipped_tool_result = None;
     let mut final_response_text = None;
 
@@ -3282,8 +3259,7 @@ async fn streaming_retry_budget_exhaustion_history_contains_invalid_tool_call() 
         .add_hook(RetryDefaultApiHook)
         .max_turns(3)
         .max_invalid_tool_call_retries(0)
-        .stream()
-        .await;
+        .stream();
     let mut error = None;
 
     while let Some(item) = stream.next().await {
@@ -3335,8 +3311,7 @@ async fn streaming_name_delta_retry_budget_exhaustion_history_includes_same_turn
         .add_hook(RetryDefaultApiHook)
         .max_turns(3)
         .max_invalid_tool_call_retries(0)
-        .stream()
-        .await;
+        .stream();
     let mut error = None;
 
     while let Some(item) = stream.next().await {
@@ -3395,8 +3370,7 @@ async fn completed_unknown_tool_call_after_text_fails_before_finish_hook_or_late
         .prompt("use the tool")
         .add_hook(PanicOnUnknownToolHook)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut saw_text = false;
     let mut saw_completion_call = false;
     let mut saw_final_response = false;
@@ -3490,8 +3464,7 @@ async fn mixed_streaming_tool_calls_fail_before_any_tool_execution() {
         .prompt("use tools")
         .add_hook(PanicOnUnknownToolHook)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut saw_completion_call = false;
     let mut saw_tool_call = false;
     let mut saw_tool_result = false;
@@ -3572,7 +3545,7 @@ async fn multiple_valid_streaming_tool_calls_execute_after_batch_validation() {
         })
         .build();
 
-    let mut stream = agent.prompt("use tools").max_turns(3).stream().await;
+    let mut stream = agent.prompt("use tools").max_turns(3).stream();
     let mut tool_call_names = Vec::new();
     let mut tool_result_ids = Vec::new();
     let mut final_response_text = None;
@@ -3647,8 +3620,7 @@ async fn disallowed_specific_tool_call_fails_before_streaming_second_request() {
         .prompt("use the allowed tool")
         .add_hook(PanicOnUnknownToolHook)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut saw_tool_call = false;
     let mut error = None;
 
@@ -3723,8 +3695,7 @@ async fn mixed_specific_tool_calls_fail_before_any_tool_execution() {
         .prompt("use the allowed tool")
         .add_hook(PanicOnUnknownToolHook)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut saw_tool_call = false;
     let mut saw_tool_result = false;
     let mut error = None;
@@ -3794,8 +3765,7 @@ async fn tool_choice_none_rejects_streaming_tool_call() {
         .prompt("do not use tools")
         .add_hook(PanicOnUnknownToolHook)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut saw_tool_call = false;
     let mut error = None;
 
@@ -3857,8 +3827,7 @@ async fn tool_choice_none_rejects_streaming_tool_call_name_delta_before_hook_or_
         .prompt("do not use tools")
         .add_hook(PanicOnUnknownToolHook)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut saw_delta = false;
     let mut error = None;
 
@@ -3920,8 +3889,7 @@ async fn unknown_tool_call_name_delta_fails_before_streaming_delta_hook_or_emit(
         .prompt("stream a bad tool call")
         .add_hook(PanicOnUnknownToolHook)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut saw_delta = false;
     let mut error = None;
 
@@ -3983,8 +3951,7 @@ async fn tool_call_args_delta_before_unknown_name_fails_before_hook_or_emit() {
         .prompt("stream a bad tool call")
         .add_hook(PanicOnUnknownToolHook)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut saw_delta = false;
     let mut error = None;
 
@@ -4040,8 +4007,7 @@ async fn tool_call_args_delta_before_valid_name_buffers_then_emits_in_safe_order
     let mut stream = agent
         .prompt("stream a tool call")
         .add_hook(hook.clone())
-        .stream()
-        .await;
+        .stream();
     let mut stream_deltas = Vec::new();
 
     while let Some(item) = stream.next().await {
@@ -4117,8 +4083,7 @@ async fn tool_call_args_delta_without_name_errors_at_stream_end() {
         .prompt("stream an incomplete tool call")
         .add_hook(PanicOnUnknownToolHook)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut saw_delta = false;
     let mut saw_completion_call = false;
     let mut saw_final_response = false;
@@ -4188,8 +4153,7 @@ async fn tool_choice_none_buffers_args_then_rejects_name_without_emit() {
         .prompt("do not use tools")
         .add_hook(PanicOnUnknownToolHook)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut saw_delta = false;
     let mut error = None;
 
@@ -4246,8 +4210,7 @@ async fn stream_prompt_observes_interleaved_reasoning_deltas_before_unchanged_em
     let mut stream = agent
         .prompt("reason about this")
         .add_hook(hook.clone())
-        .stream()
-        .await;
+        .stream();
     let mut stream_deltas = Vec::new();
     let mut completed_reasoning = 0;
     // The durable provider id travels on the block start; a delta carries
@@ -4337,8 +4300,7 @@ async fn stream_prompt_reasoning_delta_stop_prevents_emit_and_later_hook_dispatc
         .prompt("reason about this")
         .add_hook(stopping.clone())
         .add_hook(later.clone())
-        .stream()
-        .await;
+        .stream();
     let mut saw_delta = false;
     let mut saw_final_response = false;
     let mut error_message = None;
@@ -4386,8 +4348,7 @@ async fn stream_prompt_skips_reasoning_delta_hook_without_observation_interest()
     let mut stream = agent
         .prompt("reason about this")
         .add_hook(hook.clone())
-        .stream()
-        .await;
+        .stream();
     let mut emitted = Vec::new();
 
     while let Some(item) = stream.next().await {
@@ -4425,8 +4386,7 @@ async fn stream_prompt_reasoning_delta_hook_observes_retried_turns_as_provisiona
         .prompt("reason about this")
         .add_hook(hook.clone())
         .max_turns(2)
-        .stream()
-        .await;
+        .stream();
     let mut order = Vec::new();
 
     while let Some(item) = stream.next().await {
@@ -4463,7 +4423,7 @@ async fn stream_prompt_emits_tool_call_deltas_without_hook() {
     ]]);
     let agent = AgentBuilder::new(model).tool(MockAddTool).build();
 
-    let mut stream = agent.prompt("stream a tool call").stream().await;
+    let mut stream = agent.prompt("stream a tool call").stream();
     let mut deltas = Vec::new();
 
     while let Some(item) = stream.next().await {
@@ -4526,8 +4486,7 @@ async fn stream_prompt_emits_tool_call_deltas_after_hook_continue() {
     let mut stream = agent
         .prompt("stream a tool call")
         .add_hook(hook.clone())
-        .stream()
-        .await;
+        .stream();
     let mut stream_deltas = Vec::new();
 
     while let Some(item) = stream.next().await {
@@ -4597,8 +4556,7 @@ async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
     let mut stream = agent
         .prompt("stream a tool call")
         .add_hook(hook.clone())
-        .stream()
-        .await;
+        .stream();
     let mut saw_delta = false;
     let mut saw_final_response = false;
     let mut error_message = None;
@@ -4662,8 +4620,7 @@ async fn stream_prompt_exposes_completion_calls() {
         .prompt("do tool work")
         .history(empty_history)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut completion_calls_events = Vec::new();
     let mut final_response = None;
 
@@ -4761,8 +4718,7 @@ async fn stream_prompt_emits_completion_call_before_finish_hook_termination() {
     let mut stream = agent
         .prompt("say done")
         .add_hook(TerminateOnCompletionOutcome)
-        .stream()
-        .await;
+        .stream();
     let mut completion_calls = Vec::new();
     let mut saw_error = false;
 
@@ -4810,8 +4766,7 @@ async fn stream_prompt_completion_calls_records_unreported_usage() {
         .prompt("do tool work")
         .history(empty_history)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut completion_calls_events = Vec::new();
     let mut final_response = None;
 
@@ -4843,7 +4798,7 @@ async fn stream_prompt_completion_calls_records_unreported_usage() {
 async fn final_response_matches_streamed_text_when_provider_final_is_textless() {
     let agent = AgentBuilder::new(streaming_text_then_final_model()).build();
 
-    let mut stream = agent.prompt("say hello").stream().await;
+    let mut stream = agent.prompt("say hello").stream();
     let mut streamed_text = String::new();
     let mut final_response_text = None;
 
@@ -4870,7 +4825,7 @@ async fn final_response_matches_streamed_text_when_provider_final_is_textless() 
 async fn final_response_preserves_structured_text_metadata() {
     let agent = AgentBuilder::new(streaming_cited_text_then_final_model()).build();
 
-    let mut stream = agent.prompt("answer with citations").stream().await;
+    let mut stream = agent.prompt("answer with citations").stream();
     let mut final_response = None;
 
     while let Some(item) = stream.next().await {
@@ -4902,8 +4857,7 @@ async fn final_response_history_preserves_structured_text_metadata() {
     let mut stream = agent
         .prompt("answer with citations")
         .history(empty_history)
-        .stream()
-        .await;
+        .stream();
     let mut final_response = None;
 
     while let Some(item) = stream.next().await {
@@ -4947,8 +4901,7 @@ async fn tool_follow_up_history_preserves_structured_text_metadata() {
         .prompt("use a tool with citations")
         .history(empty_history)
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
 
     while let Some(item) = stream.next().await {
         match item {
@@ -4980,7 +4933,7 @@ async fn tool_follow_up_history_preserves_structured_text_metadata() {
 async fn final_response_can_remain_empty_for_truly_textless_turns() {
     let agent = AgentBuilder::new(streaming_final_only_model()).build();
 
-    let mut stream = agent.prompt("say nothing").stream().await;
+    let mut stream = agent.prompt("say nothing").stream();
     let mut streamed_text = String::new();
     let mut final_response_text = None;
 
@@ -5021,7 +4974,7 @@ async fn empty_turn_truncated_at_max_tokens_is_an_error_not_an_empty_answer() {
     )]]);
     let agent = AgentBuilder::new(model).build();
 
-    let mut stream = agent.prompt("write a long essay").stream().await;
+    let mut stream = agent.prompt("write a long essay").stream();
     let mut error = None;
     let mut final_response_text = None;
 
@@ -5072,7 +5025,7 @@ async fn partial_output_truncated_at_max_tokens_stays_a_valid_answer() {
     ]]);
     let agent = AgentBuilder::new(model).build();
 
-    let mut stream = agent.prompt("write a long essay").stream().await;
+    let mut stream = agent.prompt("write a long essay").stream();
     let mut final_response = None;
 
     while let Some(item) = stream.next().await {
@@ -5116,7 +5069,7 @@ async fn empty_content_filtered_turn_is_an_error_not_an_empty_answer() {
     )]]);
     let agent = AgentBuilder::new(model).build();
 
-    let mut stream = agent.prompt("something the filter rejects").stream().await;
+    let mut stream = agent.prompt("something the filter rejects").stream();
     let mut errored = None;
 
     while let Some(item) = stream.next().await {
@@ -5159,7 +5112,7 @@ async fn empty_turn_with_unmodeled_finish_reason_still_finalizes() {
     )]]);
     let agent = AgentBuilder::new(model).build();
 
-    let mut stream = agent.prompt("say nothing").stream().await;
+    let mut stream = agent.prompt("say nothing").stream();
     let mut final_response_text = None;
 
     while let Some(item) = stream.next().await {
@@ -5200,7 +5153,7 @@ async fn reasoning_only_turn_truncated_at_max_tokens_is_an_error() {
     ]]);
     let agent = AgentBuilder::new(model).build();
 
-    let mut stream = agent.prompt("solve this carefully").stream().await;
+    let mut stream = agent.prompt("solve this carefully").stream();
     let mut error = None;
 
     while let Some(item) = stream.next().await {
@@ -5239,7 +5192,7 @@ async fn reasoning_only_turn_content_filtered_is_an_error() {
     ]]);
     let agent = AgentBuilder::new(model).build();
 
-    let mut stream = agent.prompt("something borderline").stream().await;
+    let mut stream = agent.prompt("something borderline").stream();
     let mut errored = None;
 
     while let Some(item) = stream.next().await {
@@ -5284,7 +5237,7 @@ async fn reasoning_then_text_truncated_stays_a_valid_answer() {
     ]]);
     let agent = AgentBuilder::new(model).build();
 
-    let mut stream = agent.prompt("solve this").stream().await;
+    let mut stream = agent.prompt("solve this").stream();
     let mut final_response = None;
 
     while let Some(item) = stream.next().await {
@@ -5324,7 +5277,7 @@ async fn reasoning_only_turn_that_stopped_naturally_still_finalizes() {
     ]]);
     let agent = AgentBuilder::new(model).build();
 
-    let mut stream = agent.prompt("say nothing").stream().await;
+    let mut stream = agent.prompt("say nothing").stream();
     let mut final_response_text = None;
 
     while let Some(item) = stream.next().await {
@@ -5359,7 +5312,7 @@ async fn reasoning_survives_into_history_when_the_truncated_turn_errors() {
     ]]);
     let agent = AgentBuilder::new(model).build();
 
-    let mut stream = agent.prompt("solve this").stream().await;
+    let mut stream = agent.prompt("solve this").stream();
     let mut streamed_reasoning = String::new();
 
     while let Some(item) = stream.next().await {
@@ -5446,10 +5399,7 @@ async fn test_span_context_isolation() -> anyhow::Result<()> {
         .max_tokens(100)
         .build();
 
-    let mut stream = agent
-        .prompt("Say 'hello world' and nothing else.")
-        .stream()
-        .await;
+    let mut stream = agent.prompt("Say 'hello world' and nothing else.").stream();
 
     let mut full_content = String::new();
     while let Some(item) = stream.next().await {
@@ -5511,8 +5461,7 @@ async fn test_chat_history_in_final_response() -> anyhow::Result<()> {
     let mut stream = agent
         .prompt("Say 'hello' and nothing else.")
         .history(empty_history)
-        .stream()
-        .await;
+        .stream();
 
     // Consume the stream and collect FinalResponse
     let mut response_text = String::new();
@@ -5576,8 +5525,7 @@ async fn streaming_appends_to_memory_after_final_response() {
     let mut stream = agent
         .prompt("hi there")
         .conversation("stream-thread")
-        .stream()
-        .await;
+        .stream();
 
     let mut history_in_final = None;
     while let Some(item) = stream.next().await {
@@ -5617,8 +5565,7 @@ async fn streaming_reasoning_without_tools_does_not_duplicate_final_history() {
     let mut stream = agent
         .prompt("think before answering")
         .history(Vec::<Message>::new())
-        .stream()
-        .await;
+        .stream();
 
     let mut history_in_final = None;
     while let Some(item) = stream.next().await {
@@ -5711,8 +5658,7 @@ async fn streaming_with_history_overrides_memory() {
         .prompt("hi")
         .conversation("t1")
         .history(vec![Message::user("from-caller")])
-        .stream()
-        .await;
+        .stream();
 
     while let Some(item) = stream.next().await {
         if let Ok(MultiTurnStreamItem::FinalResponse(_)) = item {
@@ -5738,7 +5684,7 @@ async fn streaming_without_memory_disables_for_request() {
         .conversation("default")
         .build();
 
-    let mut stream = agent.prompt("hi").without_memory().stream().await;
+    let mut stream = agent.prompt("hi").without_memory().stream();
 
     while let Some(item) = stream.next().await {
         if let Ok(MultiTurnStreamItem::FinalResponse(_)) = item {
@@ -5756,7 +5702,7 @@ async fn streaming_load_error_yields_memory_error() {
         .memory(FailingMemory::default())
         .build();
 
-    let mut stream = agent.prompt("hi").conversation("t1").stream().await;
+    let mut stream = agent.prompt("hi").conversation("t1").stream();
 
     let first = stream.next().await.expect("at least one item");
     match first {
@@ -5796,7 +5742,7 @@ async fn streaming_with_filter_shapes_loaded_history() {
     let recorded = model.clone();
     let agent = AgentBuilder::new(model).memory(memory).build();
 
-    let mut stream = agent.prompt("ping").conversation("t1").stream().await;
+    let mut stream = agent.prompt("ping").conversation("t1").stream();
     while let Some(item) = stream.next().await {
         if let Ok(MultiTurnStreamItem::FinalResponse(_)) = item {
             break;
@@ -5817,7 +5763,7 @@ async fn streaming_append_error_does_not_suppress_final_response() {
         .memory(AppendFailingMemory::default())
         .build();
 
-    let mut stream = agent.prompt("hi").conversation("t1").stream().await;
+    let mut stream = agent.prompt("hi").conversation("t1").stream();
 
     let mut saw_final = false;
     while let Some(item) = stream.next().await {

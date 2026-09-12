@@ -50,7 +50,7 @@ async fn agent_max_tokens_reaches_generation_config_without_additional_params() 
                 .max_tokens(512)
                 .build();
 
-            let mut stream = agent.prompt(STREAMING_PROMPT).stream().await;
+            let mut stream = agent.prompt(STREAMING_PROMPT).stream();
             let (_response, provider_final): (_, rig::streaming::StreamFinal) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await
@@ -269,7 +269,7 @@ async fn streaming_structured_output_without_max_tokens_sends_no_sampling_fields
                 .output_mode(OutputMode::Native)
                 .build();
 
-            let mut stream = agent.prompt(STRUCTURED_OUTPUT_PROMPT).stream().await;
+            let mut stream = agent.prompt(STRUCTURED_OUTPUT_PROMPT).stream();
             let (_response, provider_final): (_, rig::streaming::StreamFinal) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await

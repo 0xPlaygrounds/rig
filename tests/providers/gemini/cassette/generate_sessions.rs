@@ -158,8 +158,7 @@ async fn sequential_tool_calls_ordering_streaming() {
                 .prompt(SEQUENTIAL_TOOLS_PROMPT)
                 .history(Vec::<Message>::new())
                 .max_turns(6)
-                .stream()
-                .await;
+                .stream();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(

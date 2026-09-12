@@ -162,11 +162,7 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
                         .additional_params(no_thinking())
                         .build();
 
-                    let mut stream = agent
-                        .prompt(TRUNCATING_PROMPT)
-                        .add_hook(probe)
-                        .stream()
-                        .await;
+                    let mut stream = agent.prompt(TRUNCATING_PROMPT).add_hook(probe).stream();
                     let _ = collect_stream_final_response(&mut stream).await;
                 }
             },
@@ -249,7 +245,7 @@ async fn streaming_completed_turn_reports_stop_and_cap() {
                         .additional_params(no_thinking())
                         .build();
 
-                    let mut stream = agent.prompt(SHORT_PROMPT).add_hook(probe).stream().await;
+                    let mut stream = agent.prompt(SHORT_PROMPT).add_hook(probe).stream();
                     let _ = collect_stream_final_response(&mut stream).await;
                 }
             },
@@ -341,8 +337,7 @@ async fn streaming_tool_turn_reports_tool_calls() {
                         .prompt(TOOL_PROMPT)
                         .add_hook(probe)
                         .max_turns(3)
-                        .stream()
-                        .await;
+                        .stream();
                     let _ = collect_stream_final_response(&mut stream).await;
                 }
             },
@@ -451,8 +446,7 @@ async fn streaming_escalating_retry_reports_each_attempts_own_cap() {
                         .add_hook(probe)
                         .add_hook(escalate)
                         .max_turns(2)
-                        .stream()
-                        .await;
+                        .stream();
                     let _ = collect_stream_final_response(&mut stream).await;
                 }
             },

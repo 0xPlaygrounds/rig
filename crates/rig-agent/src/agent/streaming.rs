@@ -253,16 +253,34 @@ impl From<rig_core::memory::MemoryError> for StreamingError {
 }
 
 impl AgentRunner {
-    /// Drive the agent loop, streaming assistant content, tool activity, and a
-    /// final response. Hooks fire at every observable point, including streamed
-    /// text and tool-call deltas. Returns the stream after loading any
-    /// configured conversation memory.
+    /// Drive the agent loop as a stream of assistant content, tool activity
+    /// and, last, the [`FinalResponse`](MultiTurnStreamItem::FinalResponse).
+    /// Hooks fire at every observable point, including streamed text and
+    /// tool-call deltas.
+    ///
+    /// Like [`run`](AgentRunner::run), this is lazy: nothing — not the memory
+    /// load, not the agent span — happens until the stream is first polled,
+    /// and a stream that is dropped unpolled has done nothing. A memory-load
+    /// failure is the stream's first (and only) item. The stream is `Send` on
+    /// native targets, so it can be built in synchronous code and handed to
+    /// whatever polls it.
     ///
     /// Shares the drive loop, run construction, tool execution and fail-closed
     /// hook handling with the blocking [`run`](AgentRunner::run) via
     /// `drive_agent`, so the two behave identically apart from the streamed
     /// delta events.
-    pub async fn stream(self) -> StreamingResult {
+    pub fn stream(self) -> StreamingResult {
+        Box::pin(async_stream::stream! {
+            let mut inner = self.start_stream().await;
+            while let Some(item) = inner.next().await {
+                yield item;
+            }
+        })
+    }
+
+    /// The eager half of [`stream`](Self::stream): resolve memory, build the
+    /// run and return the driver as a stream. Called on the first poll.
+    async fn start_stream(self) -> StreamingResult {
         let (agent_span, created_agent_span) = self.open_agent_span();
 
         let bus = self.config.bus.clone();
@@ -405,7 +423,7 @@ impl AgentRunner {
     ) {
         let (mut sender, receiver) = mpsc::channel(RUN_EVENTS_CAPACITY);
         let future = async move {
-            let mut stream = self.stream().await;
+            let mut stream = self.stream();
             let mut response = None;
             let mut forward = true;
             while let Some(item) = stream.next().await {

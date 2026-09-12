@@ -109,7 +109,7 @@ async fn tool_streamed_effect_log_is_the_golden_fixture() {
             .output_mode(OutputMode::Tool)
             .record_effects_with_events()
             .build();
-        let mut stream = agent.prompt(STRUCTURED_OUTPUT_PROMPT).stream().await;
+        let mut stream = agent.prompt(STRUCTURED_OUTPUT_PROMPT).stream();
         let output = final_output(&mut stream).await;
         drop(stream);
         assert_event(&output);
@@ -170,7 +170,7 @@ async fn prompted_streamed_effect_log_is_the_golden_fixture() {
             .output_mode(OutputMode::Prompted)
             .record_effects_with_events()
             .build();
-        let mut stream = agent.prompt(STRUCTURED_OUTPUT_PROMPT).stream().await;
+        let mut stream = agent.prompt(STRUCTURED_OUTPUT_PROMPT).stream();
         let output = final_output(&mut stream).await;
         drop(stream);
         assert_event(&output);

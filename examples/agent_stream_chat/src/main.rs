@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
         .build();
 
     let history = sample_history();
-    let mut stream = agent.prompt(PROMPT).history(&history).stream().await;
+    let mut stream = agent.prompt(PROMPT).history(&history).stream();
     let response = collect_stream_final_response(&mut stream).await?;
     println!("{response}");
 

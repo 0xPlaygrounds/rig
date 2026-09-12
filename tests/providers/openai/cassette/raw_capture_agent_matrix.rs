@@ -309,7 +309,7 @@ fn streamed_body(sink: Observed, route: Route, tools: bool, probe: RawProbe) -> 
     Box::new(move |client| {
         Box::pin(async move {
             let (agent, prompt) = build_agent(route, client, tools, probe);
-            let mut stream = agent.prompt(prompt).max_turns(3).stream().await;
+            let mut stream = agent.prompt(prompt).max_turns(3).stream();
             let mut observation = RunObservation::default();
             let mut final_response = None;
             while let Some(item) = stream.next().await {

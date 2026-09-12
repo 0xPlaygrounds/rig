@@ -82,8 +82,7 @@ async fn streaming() {
             .prompt(reasoning::TOOL_USER_PROMPT)
             .history(Vec::<Message>::new())
             .max_turns(3)
-            .stream()
-            .await;
+            .stream();
 
         let stats = reasoning::collect_stream_stats(stream, "ollama").await;
         reasoning::assert_universal(&stats, &call_count, "ollama");

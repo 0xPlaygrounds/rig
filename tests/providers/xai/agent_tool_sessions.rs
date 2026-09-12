@@ -510,8 +510,7 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
                 .prompt(COMPLEX_SESSION_PROMPT)
                 .history(Vec::<Message>::new())
                 .max_turns(10)
-                .stream()
-                .await;
+                .stream();
             let observation = collect_stream_observation(&mut stream).await;
 
             anyhow::ensure!(
@@ -611,11 +610,7 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
                 .additional_params(json!({"parallel_tool_calls": true}))
                 .build();
 
-            let mut stream = agent
-                .prompt(TWO_TOOL_STREAM_PROMPT)
-                .max_turns(5)
-                .stream()
-                .await;
+            let mut stream = agent.prompt(TWO_TOOL_STREAM_PROMPT).max_turns(5).stream();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_two_tool_roundtrip_contract(

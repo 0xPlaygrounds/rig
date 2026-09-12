@@ -532,8 +532,7 @@ async fn model_turn_finished_identity_streamed_tool_only_and_text() {
         .build()
         .prompt(Message::user("add 2 and 3"))
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
@@ -575,8 +574,7 @@ async fn model_turn_finished_identity_streamed_reasoning_only() {
         .add_hook(hook.clone())
         .build()
         .prompt(Message::user("think"))
-        .stream()
-        .await;
+        .stream();
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
@@ -776,8 +774,7 @@ async fn hook_events_carry_raw_streamed() {
     .add_hook(hook.clone())
     .build()
     .prompt("prompt")
-    .stream()
-    .await;
+    .stream();
     let mut finals = Vec::new();
     let mut final_response = None;
     while let Some(item) = stream.next().await {
@@ -862,8 +859,7 @@ async fn completion_calls_carry_each_attempts_own_raw_streamed() {
         .build()
         .prompt("add 2 and 3")
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
 
     let mut forwarded_calls = Vec::new();
     let mut finals = Vec::new();
@@ -991,8 +987,7 @@ async fn retried_turn_records_the_retried_attempts_own_raw_streamed() {
         .build()
         .prompt("prompt")
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
 
     let mut finals = Vec::new();
     let mut final_response = None;
@@ -1092,8 +1087,7 @@ async fn streaming_completion_response_receives_canonical_fields() {
     .add_hook(hook.clone())
     .build()
     .prompt(prompt.clone())
-    .stream()
-    .await;
+    .stream();
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
@@ -1119,8 +1113,7 @@ async fn streaming_completion_response_without_provider_message_id_reports_none(
     .add_hook(hook.clone())
     .build()
     .prompt("canonical prompt")
-    .stream()
-    .await;
+    .stream();
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
@@ -1141,8 +1134,7 @@ async fn streaming_completion_response_runs_before_buffered_final_is_exposed() {
     .add_hook(hook.clone())
     .build()
     .prompt("canonical prompt")
-    .stream()
-    .await;
+    .stream();
     let mut provider_finals = 0;
     while let Some(item) = stream.next().await {
         if matches!(
@@ -1182,8 +1174,7 @@ async fn streaming_completion_response_stop_preserves_provider_final() {
     .add_hook(hook.clone())
     .build()
     .prompt(prompt.clone())
-    .stream()
-    .await;
+    .stream();
     let mut saw_provider_final = false;
     let mut saw_run_final = false;
     let mut error = None;
@@ -1241,8 +1232,7 @@ async fn streaming_model_turn_stop_preserves_completed_provider_final() {
     .add_hook(StopCompletedModelTurn)
     .build()
     .prompt(prompt.clone())
-    .stream()
-    .await;
+    .stream();
 
     let mut provider_finals = 0;
     let mut saw_retry = false;
@@ -1285,8 +1275,7 @@ async fn provider_error_after_final_suppresses_finish_hook_and_buffered_final() 
     .add_hook(hook.clone())
     .build()
     .prompt("canonical prompt")
-    .stream()
-    .await;
+    .stream();
     let mut saw_provider_final = false;
     let mut error = None;
     while let Some(item) = stream.next().await {
@@ -1340,8 +1329,7 @@ async fn visible_assistant_items_after_final_are_rejected() {
         .add_hook(hook.clone())
         .build()
         .prompt("canonical prompt")
-        .stream()
-        .await;
+        .stream();
         let mut saw_provider_final = false;
         let mut error = None;
         while let Some(item) = stream.next().await {
@@ -1385,8 +1373,7 @@ async fn visible_item_after_non_emittable_final_is_rejected() {
     .add_hook(hook.clone())
     .build()
     .prompt("canonical prompt")
-    .stream()
-    .await;
+    .stream();
     let mut error = None;
     while let Some(item) = stream.next().await {
         if let Err(err) = item {
@@ -1423,8 +1410,7 @@ async fn streaming_completion_response_normalizes_interleaved_content() {
     .build()
     .prompt("go")
     .max_turns(3)
-    .stream()
-    .await;
+    .stream();
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
@@ -1491,8 +1477,7 @@ async fn streamed_tool_call_items_share_one_block_id() {
         .build()
         .prompt("add 2 and 3")
         .max_turns(2)
-        .stream()
-        .await;
+        .stream();
 
     let mut delta_ids = Vec::new();
     let mut completed_ids = Vec::new();
@@ -1627,11 +1612,7 @@ async fn prompt_surfaces_reject_second_tool_roundtrip_request_at_budget_one() {
     let streaming_model = streaming_model();
     let streaming_recorded = streaming_model.clone();
     let streaming_agent = AgentBuilder::new(streaming_model).tool(MockAddTool).build();
-    let mut stream = streaming_agent
-        .prompt("add 2 and 3")
-        .max_turns(1)
-        .stream()
-        .await;
+    let mut stream = streaming_agent.prompt("add 2 and 3").max_turns(1).stream();
     let mut streaming_err = None;
     while let Some(item) = stream.next().await {
         if let Err(err) = item {
@@ -1674,8 +1655,7 @@ async fn run_and_stream_behave_identically_for_a_tool_call() {
         .prompt("add 2 and 3")
         .max_turns(2)
         .add_hook(streaming_hook.clone())
-        .stream()
-        .await;
+        .stream();
 
     let mut final_response = None;
     while let Some(item) = stream.next().await {
@@ -2104,8 +2084,7 @@ mod structured_tool_results {
                     .build()
                     .prompt("go")
                     .max_turns(3)
-                    .stream()
-                    .await;
+                    .stream();
                 while let Some(item) = stream.next().await {
                     if let Err(err) = item {
                         panic!("stream item errored: {err}");
@@ -2220,8 +2199,7 @@ mod structured_tool_results {
                     .build()
                     .prompt("go")
                     .max_turns(3)
-                    .stream()
-                    .await;
+                    .stream();
                 while let Some(item) = stream.next().await {
                     if let Err(err) = item {
                         panic!("stream item errored: {err}");
@@ -2321,8 +2299,7 @@ mod structured_tool_results {
                     .build()
                     .prompt("go")
                     .max_turns(3)
-                    .stream()
-                    .await;
+                    .stream();
                 while let Some(item) = stream.next().await {
                     if let Err(error) = item {
                         panic!("stream item errored: {error}");
@@ -2420,8 +2397,7 @@ mod structured_tool_results {
             .build()
             .prompt("go")
             .max_turns(3)
-            .stream()
-            .await;
+            .stream();
         while let Some(item) = stream.next().await {
             if let Err(err) = item {
                 panic!("stream item errored: {err}");
@@ -2760,8 +2736,7 @@ mod span_safety_net {
         .build()
         .prompt("question")
         .max_turns(2)
-        .stream()
-        .await;
+        .stream();
 
         let mut saw_final = false;
         while let Some(item) = stream.next().await {
@@ -2803,8 +2778,7 @@ mod span_safety_net {
         .add_hook(StopCompletedModelTurn)
         .build()
         .prompt("question")
-        .stream()
-        .await;
+        .stream();
 
         let mut provider_finals = 0;
         let mut agent_finals = 0;
@@ -3473,8 +3447,7 @@ async fn run_and_stream_same_message_history_for_parallel_tool_calls() {
         .build()
         .prompt("add two pairs")
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
@@ -3668,8 +3641,7 @@ async fn stream_and_run_same_message_history_for_parallel_tool_calls_under_concu
         .prompt("add two pairs")
         .max_turns(3)
         .tool_concurrency(4)
-        .stream()
-        .await;
+        .stream();
     let final_response = drive_to_final_response(stream).await;
 
     let blocking_messages = blocking.messages.expect("blocking messages");
@@ -3710,8 +3682,7 @@ async fn stream_preserves_history_order_under_out_of_order_completion() {
         .prompt("go")
         .max_turns(3)
         .tool_concurrency(4)
-        .stream()
-        .await;
+        .stream();
     // Timeout so a regression to sequential execution fails cleanly instead
     // of hanging (the first call only completes once the second runs).
     let final_response = tokio::time::timeout(
@@ -3755,8 +3726,7 @@ async fn stream_emits_tool_results_in_call_order_after_batch_settles_under_concu
         .prompt("go")
         .max_turns(3)
         .tool_concurrency(4)
-        .stream()
-        .await;
+        .stream();
 
     let mut streamed_result_ids = Vec::new();
     let mut final_response = None;
@@ -3819,8 +3789,7 @@ async fn stream_executes_tools_concurrently_under_concurrency() {
         .prompt("hit the barrier twice")
         .max_turns(3)
         .tool_concurrency(2)
-        .stream()
-        .await;
+        .stream();
 
     tokio::time::timeout(
         std::time::Duration::from_secs(5),
@@ -3856,8 +3825,7 @@ async fn stream_emits_model_tool_calls_then_atomic_execution_items() {
             .prompt("add two pairs")
             .max_turns(3)
             .tool_concurrency(concurrency)
-            .stream()
-            .await;
+            .stream();
         let mut markers = Vec::new();
         while let Some(item) = stream.next().await {
             match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
@@ -3992,8 +3960,7 @@ async fn stream_concurrent_tool_result_terminate_drains_in_flight_siblings() {
         .add_hook(TerminateAfterSiblingStartedHook {
             sibling_started: slow_started,
         })
-        .stream()
-        .await;
+        .stream();
 
     let (saw_error, saw_final_response) =
         tokio::time::timeout(std::time::Duration::from_secs(5), async move {
@@ -4121,8 +4088,7 @@ async fn concurrent_simultaneous_tool_terminations_pick_call_order_on_both_drive
         .add_hook(OrderedTerminateHook {
             gate: Arc::new(tokio::sync::Notify::new()),
         })
-        .stream()
-        .await;
+        .stream();
 
     let stream_err = tokio::time::timeout(std::time::Duration::from_secs(5), async move {
         while let Some(item) = stream.next().await {
@@ -4204,8 +4170,7 @@ async fn default_concurrency_terminate_skips_remaining_tools_on_both_drivers() {
         .prompt("go")
         .max_turns(3)
         .add_hook(TerminateOnFirstToolHook)
-        .stream()
-        .await;
+        .stream();
     let mut saw_error = false;
     while let Some(item) = stream.next().await {
         if let Err(err) = item {
@@ -4334,8 +4299,7 @@ async fn concurrent_terminate_drops_beyond_window_sibling_but_drains_in_flight()
         .max_turns(3)
         .tool_concurrency(2)
         .add_hook(TerminateOnArgZeroAfterSiblingHook { sibling_started })
-        .stream()
-        .await;
+        .stream();
 
     let (saw_error, saw_final) =
         tokio::time::timeout(std::time::Duration::from_secs(5), async move {
@@ -4462,8 +4426,7 @@ async fn concurrent_termination_surfaces_no_execution_items() {
         .add_hook(TerminateAfterSiblingDoneHook {
             a_done: a_done.clone(),
         })
-        .stream()
-        .await;
+        .stream();
 
     let (exec_commits, results, saw_error, saw_final) =
         tokio::time::timeout(std::time::Duration::from_secs(5), async move {
@@ -4527,8 +4490,7 @@ async fn stream_tool_execution_committed_carries_effective_rewritten_args() {
         .build()
         .prompt("go")
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
 
     let mut model_args = None;
     let mut exec_args = None;
@@ -4594,8 +4556,7 @@ async fn stream_hook_skip_surfaces_result_without_execution_commit() {
         .build()
         .prompt("go")
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
 
     let mut exec_commits = 0;
     let mut results = 0;
@@ -4899,8 +4860,7 @@ async fn observes_gates_text_delta_dispatch() {
         .build()
         .prompt("hi")
         .add_hook(hook.clone())
-        .stream()
-        .await;
+        .stream();
     while stream.next().await.is_some() {}
 
     assert_eq!(
@@ -4995,8 +4955,7 @@ async fn stream_terminates_from_each_shared_event() {
             .prompt("add 2 and 3")
             .max_turns(3)
             .add_hook(TerminateOn(kind))
-            .stream()
-            .await;
+            .stream();
 
         let mut saw_error = false;
         let mut saw_final = false;
@@ -5042,8 +5001,7 @@ async fn multi_hook_stack_parity_across_run_and_stream() {
         .max_turns(3)
         .add_hook(a_stream.clone())
         .add_hook(b_stream.clone())
-        .stream()
-        .await;
+        .stream();
     while stream.next().await.is_some() {}
 
     // Both hooks in the stack saw the same events (both ran on every Continue).
@@ -5146,8 +5104,7 @@ async fn invalid_tool_call_repair_parity_across_run_and_stream() {
         .max_turns(3)
         .add_hook(streaming_hook.clone())
         .add_hook(RepairInvalidToHook("add"))
-        .stream()
-        .await;
+        .stream();
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
@@ -5231,8 +5188,7 @@ async fn invalid_tool_call_scalar_args_are_canonical_across_run_and_complete_str
         replacement: EchoStringArgs::NAME,
         args: streaming_args.clone(),
     })
-    .stream()
-    .await;
+    .stream();
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) =
@@ -5397,8 +5353,7 @@ async fn run_streaming_scenario(
         .prompt(prompt)
         .max_turns(8)
         .add_hook(hook.clone())
-        .stream()
-        .await;
+        .stream();
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
@@ -5564,8 +5519,7 @@ async fn invalid_tool_call_skip_parity_across_run_and_stream() {
         .max_turns(3)
         .add_hook(streaming_hook.clone())
         .add_hook(SkipInvalidHook("tool not permitted"))
-        .stream()
-        .await;
+        .stream();
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
@@ -5655,8 +5609,7 @@ async fn recovered_turn_suppresses_completion_response_on_both_drivers() {
         .max_turns(3)
         .add_hook(streaming_hook.clone())
         .add_hook(RepairInvalidToHook("add"))
-        .stream()
-        .await;
+        .stream();
     while stream.next().await.is_some() {}
 
     // Recovery still reaches the same final answer.
@@ -5793,8 +5746,7 @@ async fn valid_tool_call_skip_parity_across_run_and_stream() {
         .max_turns(3)
         .add_hook(streaming_hook.clone())
         .add_hook(SkipToolCallHook("skipped by policy"))
-        .stream()
-        .await;
+        .stream();
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
@@ -5939,7 +5891,7 @@ async fn check_tool_target_patch_is_refused(streaming: bool) {
         .add_hook(policy.clone())
         .add_hook(observed.clone());
     if streaming {
-        let mut stream = runner.stream().await;
+        let mut stream = runner.stream();
         let mut finished = false;
         while let Some(item) = stream.next().await {
             if let MultiTurnStreamItem::FinalResponse(response) =
@@ -6206,8 +6158,7 @@ async fn valid_tool_call_rewrite_args_parity_across_run_and_stream() {
         .max_turns(3)
         .add_hook(streaming_hook.clone())
         .add_hook(RewriteToolArgsHook(replacement))
-        .stream()
-        .await;
+        .stream();
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
@@ -6265,8 +6216,7 @@ async fn string_tool_call_without_rewrite_is_canonical_across_run_and_stream() {
     .prompt("echo a string")
     .max_turns(3)
     .add_hook(streaming_hook.clone())
-    .stream()
-    .await;
+    .stream();
     let mut final_output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) =
@@ -6320,8 +6270,7 @@ async fn string_tool_call_rewrite_is_canonical_json_across_run_and_stream() {
     .max_turns(3)
     .add_hook(streaming_hook.clone())
     .add_hook(RewriteToolArgsHook(replacement))
-    .stream()
-    .await;
+    .stream();
     let mut final_output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) =
@@ -6405,7 +6354,7 @@ async fn streaming_turn_dispatches_the_registry_generation_it_advertised() {
         .max_turns(3);
 
     let drive = async {
-        let mut stream = runner.stream().await;
+        let mut stream = runner.stream();
         let mut final_output = None;
         while let Some(item) = stream.next().await {
             if let MultiTurnStreamItem::FinalResponse(response) =
@@ -6485,8 +6434,7 @@ async fn valid_tool_result_rewrite_parity_across_run_and_stream() {
         .max_turns(3)
         .add_hook(streaming_hook.clone())
         .add_hook(RewriteToolResultHook("redacted-result"))
-        .stream()
-        .await;
+        .stream();
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
@@ -6671,8 +6619,7 @@ async fn patch_request_parity_across_run_and_stream() {
         .prompt("go")
         .replace_additional_params(json!({"runner": "keep", "injected": false}))
         .max_turns(2)
-        .stream()
-        .await;
+        .stream();
     while let Some(item) = stream.next().await {
         let _ = item.map_err(|err| panic!("stream item errored: {err}"));
     }
@@ -6867,8 +6814,7 @@ async fn extra_context_appears_after_static_context_on_both_surfaces() {
         })
         .build()
         .prompt("go")
-        .stream()
-        .await;
+        .stream();
     while let Some(item) = stream.next().await {
         let _ = item.map_err(|err| panic!("stream item errored: {err}"));
     }
@@ -6968,8 +6914,7 @@ async fn dynamic_context_preserves_query_selection_formatting_and_order_on_both_
             Message::user("older history query"),
             Message::user("latest history query"),
         ])
-        .stream()
-        .await;
+        .stream();
     while let Some(item) = stream.next().await {
         item.expect("streaming dynamic-context run should succeed");
     }
@@ -7089,8 +7034,7 @@ async fn dynamic_context_retrieval_failure_stops_before_provider_io_on_both_surf
         .dynamic_context(1, FailingContextIndex)
         .build()
         .prompt("retrieve this")
-        .stream()
-        .await;
+        .stream();
     let error = stream
         .next()
         .await
@@ -7163,8 +7107,7 @@ async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
     .build()
     .prompt("streaming retrieval query")
     .history(vec![Message::user("streaming history query")])
-    .stream()
-    .await;
+    .stream();
     while let Some(item) = stream.next().await {
         item.expect("stream item should succeed");
     }
@@ -7191,8 +7134,7 @@ async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
         Message::user("older streaming history query"),
         Message::user("latest streaming history query"),
     ])
-    .stream()
-    .await;
+    .stream();
     while let Some(item) = stream.next().await {
         item.expect("stream item should succeed");
     }
@@ -7247,8 +7189,7 @@ async fn extra_context_is_per_turn_non_sticky() {
         .build()
         .prompt("add 2 and 3")
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     while let Some(item) = stream.next().await {
         let _ = item.map_err(|err| panic!("stream item errored: {err}"));
     }
@@ -7318,8 +7259,7 @@ async fn history_patch_changes_sent_messages_not_transcript_on_both_surfaces() {
         .add_hook(HistoryOverrideHook)
         .build()
         .prompt("real prompt")
-        .stream()
-        .await;
+        .stream();
     let final_response = drive_to_final_response(stream).await;
     assert!(
         request_has_sentinel(streaming_probe.requests().first().expect("one request")),
@@ -7364,8 +7304,7 @@ async fn model_turn_finished_fires_once_per_accepted_turn_including_tool_only() 
         .build()
         .prompt("add 2 and 3")
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     while let Some(item) = stream.next().await {
         let _ = item.map_err(|err| panic!("stream item errored: {err}"));
     }
@@ -7394,8 +7333,7 @@ async fn reasoning_only_turn_fires_completion_response() {
     .add_hook(hook.clone())
     .build()
     .prompt("reason")
-    .stream()
-    .await;
+    .stream();
     while let Some(item) = stream.next().await {
         item.expect("reasoning-only stream item");
     }
@@ -7474,8 +7412,7 @@ async fn streaming_model_turn_finished_carries_canonical_committed_content() {
         .build()
         .prompt("go")
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     let _ = drive_to_final_response(stream).await;
 
     assert_eq!(
@@ -7576,8 +7513,7 @@ async fn chained_rewrites_compose_across_hooks() {
         .build()
         .prompt("add 2 and 3")
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     while let Some(item) = stream.next().await {
         let _ = item.map_err(|err| panic!("stream item errored: {err}"));
     }
@@ -7861,8 +7797,7 @@ async fn late_output_tool_collision_fails_before_streaming_provider() {
         .build()
         .prompt("go")
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
 
     let mut collisions = Vec::new();
     let mut saw_final_response = false;
@@ -8148,8 +8083,7 @@ async fn model_turn_finished_content_carries_output_tool_call_in_tool_mode() {
     .build()
     .prompt("go")
     .max_turns(2)
-    .stream()
-    .await;
+    .stream();
     while stream.next().await.is_some() {}
     assert!(
         *s_hook.saw_output_tool_call.lock().expect("lock"),
@@ -8173,8 +8107,7 @@ async fn output_tool_finalization_emits_no_complete_tool_call_stream_item() {
     .build()
     .prompt("go")
     .max_turns(2)
-    .stream()
-    .await;
+    .stream();
 
     let mut saw_complete_output_tool_call = false;
     let mut final_has_output = false;
@@ -8320,8 +8253,7 @@ async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
         .max_turns(3)
         .add_hook(streaming_recorder.clone())
         .add_hook(streaming_approver.clone())
-        .stream()
-        .await;
+        .stream();
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         if let Ok(MultiTurnStreamItem::FinalResponse(resp)) =
@@ -8442,8 +8374,7 @@ async fn human_in_the_loop_abort_terminates_the_run() {
         .prompt("do the sensitive thing")
         .max_turns(3)
         .add_hook(HumanApprovalHook::new([Decision::Abort(ABORT_REASON)]))
-        .stream()
-        .await;
+        .stream();
     let mut stream_error = None;
     while let Some(item) = stream.next().await {
         match item {
@@ -8814,8 +8745,7 @@ async fn model_turn_finished_reports_termination_and_effective_max_tokens_stream
         .add_hook(probe.clone())
         .build()
         .prompt("question")
-        .stream()
-        .await;
+        .stream();
     while let Some(item) = stream.next().await {
         item.expect("streaming item");
     }
@@ -8904,8 +8834,7 @@ async fn model_turn_finished_reports_tool_calls_for_a_mislabelled_streamed_tool_
         .build()
         .prompt("question")
         .max_turns(2)
-        .stream()
-        .await;
+        .stream();
     while let Some(item) = stream.next().await {
         item.expect("streaming item");
     }
@@ -8982,8 +8911,7 @@ async fn streaming_retry_reports_the_second_attempts_own_effective_max_tokens() 
         .build()
         .prompt("question")
         .max_turns(2)
-        .stream()
-        .await;
+        .stream();
     while let Some(item) = stream.next().await {
         item.expect("streaming item");
     }
@@ -9224,8 +9152,7 @@ async fn streaming_model_turn_retry_marks_rollback_and_matches_blocking_accounti
         .build()
         .prompt("question")
         .max_turns(2)
-        .stream()
-        .await;
+        .stream();
 
     let mut retries = Vec::new();
     let mut provider_finals = 0;
@@ -9298,8 +9225,7 @@ async fn streaming_feedback_retry_matches_blocking_history_and_usage() {
     .build()
     .prompt("question")
     .max_turns(2)
-    .stream()
-    .await;
+    .stream();
     let mut saw_retry = false;
     let mut streaming = None;
     while let Some(item) = stream.next().await {
@@ -9357,8 +9283,7 @@ async fn streaming_empty_feedback_retry_omits_empty_assistant_history() {
         .build()
         .prompt("question")
         .max_turns(2)
-        .stream()
-        .await;
+        .stream();
 
     let mut retries = Vec::new();
     let mut provider_finals = 0;
@@ -9441,8 +9366,7 @@ async fn response_retry_preserves_model_turn_hook_order_across_surfaces() {
     .build()
     .prompt("question")
     .max_turns(2)
-    .stream()
-    .await;
+    .stream();
     while let Some(item) = stream.next().await {
         item.expect("streaming retry item");
     }
@@ -9514,8 +9438,7 @@ async fn streaming_model_turn_retry_respects_max_turns() {
         .build()
         .prompt("question")
         .max_turns(1)
-        .stream()
-        .await;
+        .stream();
 
     let mut saw_rollback = false;
     let mut error = None;
@@ -9599,8 +9522,7 @@ async fn streaming_model_turn_retry_rejects_tool_turn_without_committed_executio
     .build()
     .prompt("add")
     .max_turns(2)
-    .stream()
-    .await;
+    .stream();
 
     let mut execution_commits = 0;
     let mut tool_results = 0;
@@ -9930,8 +9852,7 @@ mod run_lifecycle {
             .add_hook(hook.clone())
             .build()
             .prompt(Message::user("hi"))
-            .stream()
-            .await;
+            .stream();
         while let Some(item) = stream.next().await {
             item.expect("stream item");
         }
@@ -9976,8 +9897,7 @@ mod run_lifecycle {
             .add_hook(hook.clone())
             .build()
             .prompt(Message::user("hi"))
-            .stream()
-            .await;
+            .stream();
         let first = stream.next().await.expect("terminal item");
         assert!(matches!(
             first,
@@ -10014,8 +9934,7 @@ mod run_lifecycle {
             .build()
             .prompt(Message::user("add 2 and 3"))
             .max_turns(1)
-            .stream()
-            .await;
+            .stream();
         let mut saw_error = false;
         while let Some(item) = stream.next().await {
             if item.is_err() {
@@ -10079,8 +9998,7 @@ mod run_lifecycle {
             .build()
             .prompt(Message::user("add 2 and 3"))
             .max_turns(3)
-            .stream()
-            .await;
+            .stream();
         while let Some(item) = stream.next().await {
             item.expect("stream item");
         }
@@ -10143,8 +10061,7 @@ async fn outcome_replacement_preserves_tool_execution_commit_disposition() {
             .build()
             .prompt("go")
             .max_turns(3)
-            .stream()
-            .await;
+            .stream();
         let mut committed = 0;
         let mut results = 0;
         while let Some(item) = stream.next().await {
@@ -10223,7 +10140,7 @@ async fn outcome_stop_is_terminal_through_nested_hooks_on_both_surfaces() {
                 .add_hook(stack)
                 .build();
             let error = if streaming {
-                let mut stream = agent.prompt("go").max_turns(3).stream().await;
+                let mut stream = agent.prompt("go").max_turns(3).stream();
                 let mut error = None;
                 while let Some(item) = stream.next().await {
                     match item {

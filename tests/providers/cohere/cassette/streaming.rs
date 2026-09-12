@@ -19,7 +19,7 @@ async fn streaming_smoke() {
             .max_tokens(64)
             .build();
 
-        let mut stream = agent.prompt(STREAMING_PROMPT).stream().await;
+        let mut stream = agent.prompt(STREAMING_PROMPT).stream();
         let (response, provider_final) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await

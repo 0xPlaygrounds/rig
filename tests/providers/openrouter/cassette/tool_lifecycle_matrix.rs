@@ -364,8 +364,7 @@ async fn run_agent(client: openrouter::Client, cell: Cell) -> Observation {
                 .prompt(prompt(cell.shape))
                 .history(Vec::<rig::completion::Message>::new())
                 .max_turns(1)
-                .stream()
-                .await;
+                .stream();
             errors = crate::support::collect_stream_observation(&mut stream)
                 .await
                 .errors;

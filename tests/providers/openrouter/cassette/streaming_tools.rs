@@ -35,7 +35,7 @@ async fn streaming_tools_smoke() {
                 .default_max_turns(2)
                 .build();
 
-            let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream().await;
+            let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");

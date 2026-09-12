@@ -35,8 +35,7 @@ async fn max_tokens_truncation_surfaces_as_length() {
 
         let mut stream = agent
             .prompt("Write a detailed five paragraph essay about the ocean.")
-            .stream()
-            .await;
+            .stream();
         let (_response, provider_final): (_, rig::streaming::StreamFinal) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await
@@ -65,7 +64,7 @@ async fn natural_stop_surfaces_as_stop() {
             .max_tokens(512)
             .build();
 
-        let mut stream = agent.prompt(STREAMING_PROMPT).stream().await;
+        let mut stream = agent.prompt(STREAMING_PROMPT).stream();
         let (_response, provider_final): (_, rig::streaming::StreamFinal) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await
@@ -123,8 +122,7 @@ async fn cache_hit_turn_reports_uncached_remainder_not_prompt_size() {
                     .build();
                 let mut stream = agent
                     .prompt("Reply with exactly: cache probe ready")
-                    .stream()
-                    .await;
+                    .stream();
                 let (_text, provider_final): (_, rig::streaming::StreamFinal) =
                     collect_stream_final_response_and_provider_final(&mut stream)
                         .await

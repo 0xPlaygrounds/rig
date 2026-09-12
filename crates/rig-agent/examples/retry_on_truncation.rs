@@ -180,8 +180,7 @@ async fn main() -> Result<()> {
     let mut stream = streaming_agent
         .prompt("Explain Rig's finish reasons.")
         .max_turns(8)
-        .stream()
-        .await;
+        .stream();
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(final_response) = item? {
             println!("  => {}", final_response.output);

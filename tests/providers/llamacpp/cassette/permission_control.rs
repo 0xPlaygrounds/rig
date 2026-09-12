@@ -253,8 +253,7 @@ async fn permission_control_streaming_example() -> Result<()> {
                 )
                 .max_turns(5)
                 .add_hook(hook)
-                .stream()
-                .await;
+                .stream();
 
             let observation = collect_stream_observation(&mut stream).await;
             anyhow::ensure!(

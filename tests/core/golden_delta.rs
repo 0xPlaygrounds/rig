@@ -64,8 +64,7 @@ async fn streamed(
         .max_turns(max_turns)
         .max_invalid_tool_call_retries(retries)
         .unhandled_invalid_tool_call(unhandled)
-        .stream()
-        .await;
+        .stream();
     let mut output = None;
     let mut failure = None;
     while let Some(item) = stream.next().await {
@@ -342,8 +341,7 @@ async fn delta_output_tool_effect_log_is_the_golden_fixture() {
     .build();
     let mut stream = agent
         .prompt("Return a concise event object for a local Rust meetup in Seattle.")
-        .stream()
-        .await;
+        .stream();
     let mut output = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {

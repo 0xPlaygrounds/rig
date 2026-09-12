@@ -181,8 +181,7 @@ async fn sequential_tool_calls_streaming() {
                 .prompt(SEQUENTIAL_TOOLS_PROMPT)
                 .history(Vec::<Message>::new())
                 .max_turns(6)
-                .stream()
-                .await;
+                .stream();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(
@@ -286,11 +285,7 @@ async fn parallel_tool_calls_single_turn_streaming() {
                 .tool(BetaSignal)
                 .build();
 
-            let mut stream = agent
-                .prompt(TWO_TOOL_STREAM_PROMPT)
-                .max_turns(5)
-                .stream()
-                .await;
+            let mut stream = agent.prompt(TWO_TOOL_STREAM_PROMPT).max_turns(5).stream();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_two_tool_roundtrip_contract(
@@ -425,8 +420,7 @@ async fn reasoning_session_two_tool_calls_streaming() {
                 )
                 .history(Vec::<Message>::new())
                 .max_turns(5)
-                .stream()
-                .await;
+                .stream();
 
             let stats = reasoning::collect_stream_stats(stream, "chatgpt").await;
 
@@ -488,8 +482,7 @@ async fn usage_accumulates_across_streaming_multi_turn() {
             let mut stream = agent
                 .prompt(ORDERED_TOOL_STREAM_PROMPT)
                 .max_turns(5)
-                .stream()
-                .await;
+                .stream();
 
             let mut saw_tool_result = false;
             let mut final_usage = None;

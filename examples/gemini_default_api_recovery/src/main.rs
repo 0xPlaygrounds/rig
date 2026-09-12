@@ -355,8 +355,7 @@ async fn run_workspace_canary_attempt(
         .prompt(workspace_canary_prompt(attempt))
         .add_hook(repair_hook.clone())
         .history(Vec::<rig::message::Message>::new())
-        .stream()
-        .await;
+        .stream();
 
     let mut observation = consume_workspace_like_stream(stream).await?;
     observation.invalid_tool_names = repair_hook.invalid_tool_names();

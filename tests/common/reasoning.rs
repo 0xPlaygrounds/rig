@@ -118,8 +118,7 @@ pub(crate) async fn run_reasoning_delta_hook_streaming<M>(
     let mut stream = agent
         .prompt(REASONING_DELTA_HOOK_PROMPT)
         .add_hook(hook)
-        .stream()
-        .await;
+        .stream();
     let mut final_text = None;
     // The provider reasoning id is announced once at the block's start; the
     // deltas carry only the block id.

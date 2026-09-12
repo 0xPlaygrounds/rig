@@ -53,7 +53,7 @@ async fn middleware_response_phase_precedes_stream_consumption() {
                 .preamble(STREAMING_PREAMBLE)
                 .add_hook(settle_hook)
                 .build();
-            let mut stream = agent.prompt(STREAMING_PROMPT).stream().await;
+            let mut stream = agent.prompt(STREAMING_PROMPT).stream();
             let (response, provider_final): (_, rig::streaming::StreamFinal) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await
@@ -119,8 +119,7 @@ async fn entry_log_orders_and_turn_stamps_across_a_streamed_tool_run() {
             let mut stream = agent
                 .prompt("What is 9 + 16? Use the add tool, then reply with just the number.")
                 .max_turns(3)
-                .stream()
-                .await;
+                .stream();
             let (response, _final): (_, rig::streaming::StreamFinal) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await

@@ -195,8 +195,7 @@ async fn streamed_agent_run_failure_exposes_error_identity_accessors() {
 
             let mut stream = agent
                 .prompt(rig::completion::Message::user("Never authenticated"))
-                .stream()
-                .await;
+                .stream();
             let mut surfaced = None;
             while let Some(item) = stream.next().await {
                 if let Err(error) = item {

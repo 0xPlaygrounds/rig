@@ -207,7 +207,7 @@ async fn reasoning_gpt5_nano_agent_streaming_cap() {
                 .max_tokens(CAP)
                 .build();
 
-            let mut stream = agent.prompt(PROMPT).stream().await;
+            let mut stream = agent.prompt(PROMPT).stream();
             let observed = collect_stream_observation(&mut stream).await;
 
             assert!(observed.errors.is_empty(), "{:?}", observed.errors);
@@ -256,7 +256,7 @@ async fn reasoning_gpt5_nano_tool_turn_streaming_cap() {
                 .tool(Adder)
                 .build();
 
-            let mut stream = agent.prompt("What is 3 + 4?").max_turns(3).stream().await;
+            let mut stream = agent.prompt("What is 3 + 4?").max_turns(3).stream();
             let observed = collect_stream_observation(&mut stream).await;
 
             assert!(observed.errors.is_empty(), "{:?}", observed.errors);

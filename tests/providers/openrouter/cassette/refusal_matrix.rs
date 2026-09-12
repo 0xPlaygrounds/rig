@@ -507,7 +507,7 @@ async fn streaming_agent_surfaces_refusal() {
                 .additional_params(refusal_request_params("OpenAI"))
                 .build();
 
-            let mut stream = agent.prompt(REFUSED_PROMPT).stream().await;
+            let mut stream = agent.prompt(REFUSED_PROMPT).stream();
             let observed = collect_stream_observation(&mut stream).await;
 
             assert!(observed.errors.is_empty(), "{:?}", observed.errors);

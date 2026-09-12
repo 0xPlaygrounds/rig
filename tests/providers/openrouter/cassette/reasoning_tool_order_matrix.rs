@@ -210,8 +210,7 @@ async fn run_signed_agent(
                 .prompt(prompt(Shape::Single))
                 .history(Vec::<rig::completion::Message>::new())
                 .max_turns(2)
-                .stream()
-                .await;
+                .stream();
             while let Some(item) = stream.next().await {
                 item?;
             }

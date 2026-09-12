@@ -359,8 +359,7 @@ async fn blocking_and_streaming_preserve_raw_failure_while_rewriting_presentatio
         .build()
         .prompt("go")
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }

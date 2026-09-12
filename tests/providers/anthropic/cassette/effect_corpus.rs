@@ -68,8 +68,7 @@ async fn cancelled_stream_effect_log_is_the_golden_fixture() {
         {
             let mut stream = agent
                 .prompt("Write a 600-word essay on the history of the Rust programming language.")
-                .stream()
-                .await;
+                .stream();
             while let Some(item) = stream.next().await {
                 if let Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
                     delta: Delta::Text { .. },

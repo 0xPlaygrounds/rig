@@ -305,7 +305,7 @@ async fn agent_stream_empty_stop_sequence() {
                 .additional_params(json!({ "stop_sequences": ["alpha"] }))
                 .build();
 
-            let mut stream = agent.prompt(IMMEDIATE_PROMPT).stream().await;
+            let mut stream = agent.prompt(IMMEDIATE_PROMPT).stream();
             let mut errors = Vec::new();
             let mut final_output = None;
             let mut completion_finish = None;

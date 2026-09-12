@@ -126,7 +126,7 @@ async fn over_host(
     };
     let prompt = if host.with_tool { ADD_PROMPT } else { PROMPT };
     let output = if host.streamed {
-        let mut stream = agent.prompt(prompt).max_turns(3).stream().await;
+        let mut stream = agent.prompt(prompt).max_turns(3).stream();
         let output = final_output(&mut stream).await;
         drop(stream);
         output

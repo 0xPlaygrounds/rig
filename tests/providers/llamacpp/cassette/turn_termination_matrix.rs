@@ -173,11 +173,7 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
                 .max_tokens(TINY_CAP)
                 .build();
 
-            let mut stream = agent
-                .prompt(TRUNCATING_PROMPT)
-                .add_hook(probe)
-                .stream()
-                .await;
+            let mut stream = agent.prompt(TRUNCATING_PROMPT).add_hook(probe).stream();
             let _ = collect_stream_final_response(&mut stream).await;
         },
     )
