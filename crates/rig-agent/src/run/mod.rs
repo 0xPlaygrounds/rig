@@ -30,11 +30,11 @@
 //! hook stack. Hand-driving it is a low-level provider integration: the caller
 //! owns all IO and any lifecycle policy. To execute a configured `Agent`
 //! with its hooks, tools, retrieval, and memory, use
-//! `Agent::runner`; constructing an `AgentRun`
+//! `Agent::prompt`; constructing an `AgentRun`
 //! directly is not an alternate way to execute an `Agent`.
 //!
 //! `Prompt::prompt` and
-//! `Agent::runner` drive this machine internally;
+//! `Agent::prompt` drive this machine internally;
 //! the same machine can be driven by hand for custom provider control flow.
 //! A host that does so (an ECS schedule, a job system) depends on `rig-agent`
 //! with default features off — that graph carries no async runtime, transport

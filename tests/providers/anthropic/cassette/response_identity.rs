@@ -208,7 +208,7 @@ async fn streamed_agent_run_hook_observes_identity() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(Message::user(
+                .prompt(Message::user(
                     "Reply with exactly: streamed hook identity probe",
                 ))
                 .stream()
@@ -264,7 +264,7 @@ async fn streamed_agent_tool_run_reports_per_attempt_identity() {
                 .build();
 
             let mut stream = agent
-                .runner(Message::user(
+                .prompt(Message::user(
                     "What is 2 + 3? Use the tool, then state the result.",
                 ))
                 .max_turns(3)

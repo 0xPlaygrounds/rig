@@ -67,9 +67,7 @@ async fn cancelled_stream_effect_log_is_the_golden_fixture() {
             .build();
         {
             let mut stream = agent
-                .stream_prompt(
-                    "Write a 600-word essay on the history of the Rust programming language.",
-                )
+                .prompt("Write a 600-word essay on the history of the Rust programming language.")
                 .stream()
                 .await;
             while let Some(item) = stream.next().await {

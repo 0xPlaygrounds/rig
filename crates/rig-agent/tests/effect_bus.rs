@@ -382,7 +382,7 @@ async fn streaming_runs_drive_the_bus_too() {
         rig_core::test_utils::MockStreamEvent::final_response_with_total_tokens(3),
     ]]))
     .build();
-    let mut stream = agent.stream_prompt("go").stream().await;
+    let mut stream = agent.prompt("go").stream().await;
     let mut output = None;
     while let Some(item) = within(stream.next()).await {
         if let rig_agent::agent::MultiTurnStreamItem::FinalResponse(response) = item.expect("item")
@@ -422,7 +422,7 @@ async fn a_finished_stream_kept_in_scope_does_not_block_the_next_run() {
     )
     .model_route("unary", MockCompletionModel::text("second"))
     .build();
-    let mut stream = agent.stream_prompt("go").stream().await;
+    let mut stream = agent.prompt("go").stream().await;
     assert_eq!(drain(&mut stream).await.as_deref(), Some("first"));
     // `stream` is still alive here.
     let response = within(agent.prompt("again").using_model("unary").run())
@@ -439,8 +439,8 @@ async fn two_streams_polled_alternately_both_complete() {
         streamed_text("two"),
     ]))
     .build();
-    let mut first = agent.stream_prompt("a").stream().await;
-    let mut second = agent.stream_prompt("b").stream().await;
+    let mut first = agent.prompt("a").stream().await;
+    let mut second = agent.prompt("b").stream().await;
     let (mut out_first, mut out_second) = (None, None);
     let (mut done_first, mut done_second) = (false, false);
     while !(done_first && done_second) {
@@ -483,7 +483,7 @@ async fn a_prompt_awaited_inside_a_stream_loop_on_a_clone_resolves() {
     .model_route("unary", MockCompletionModel::text("inner"))
     .build();
     let clone = agent.clone();
-    let mut stream = agent.stream_prompt("go").stream().await;
+    let mut stream = agent.prompt("go").stream().await;
     let mut inner = None;
     let mut outer = None;
     while let Some(item) = within(stream.next()).await {
@@ -1032,7 +1032,7 @@ async fn hook_sequence_streaming_turn_with_one_tool_call() {
     .tool(Slow::default())
     .add_hook(sequence.clone())
     .build();
-    let mut stream = agent.stream_prompt("go").max_turns(3).stream().await;
+    let mut stream = agent.prompt("go").max_turns(3).stream().await;
     assert_eq!(drain(&mut stream).await.as_deref(), Some("done"));
     let recorded = sequence.take();
     // Deltas are provisional observations between a completion's dispatch
@@ -1212,7 +1212,7 @@ async fn a_cancelling_replacement_on_a_completion_outcome_stops_the_run_on_both_
     )]))
     .add_hook(StopOnAnswer)
     .build();
-    let mut stream = streaming.stream_prompt("go").stream().await;
+    let mut stream = streaming.prompt("go").stream().await;
     let mut cancelled = false;
     while let Some(item) = within(stream.next()).await {
         if let Err(rig_agent::agent::StreamingError::Prompt(err)) = item
@@ -1252,7 +1252,7 @@ async fn a_replacement_on_a_streamed_completion_is_what_the_run_keeps() {
     )]))
     .add_hook(ReplaceAnswer)
     .build();
-    let mut stream = agent.stream_prompt("go").stream().await;
+    let mut stream = agent.prompt("go").stream().await;
     assert_eq!(drain(&mut stream).await.as_deref(), Some("replaced"));
 }
 
@@ -1643,7 +1643,7 @@ async fn anonymous_models_are_scoped_to_the_values_that_selected_them() {
 
     for _ in 0..1_000 {
         let runner = agent
-            .runner("hello")
+            .prompt("hello")
             .using_model_value(MockCompletionModel::text("anonymous"));
         assert_eq!(
             anonymous(&dispatcher),
@@ -1848,7 +1848,7 @@ async fn a_model_registered_through_the_parts_registrar_serves_the_next_run() {
         dispatcher.descriptor(&key).is_some(),
         "the descriptor is visible at once"
     );
-    let response = within(agent.runner("hello").using_model("late").run())
+    let response = within(agent.prompt("hello").using_model("late").run())
         .await
         .expect("the next run selects it");
     assert_eq!(response.output, "late");
@@ -1957,7 +1957,7 @@ async fn a_hook_binds_a_run_scoped_view_and_dispatches_through_it() {
     )));
     let response = within(
         agent
-            .runner("hello")
+            .prompt("hello")
             .add_hook(AsksTheModel {
                 key,
                 seen: seen.clone(),

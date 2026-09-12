@@ -54,7 +54,7 @@ async fn rejected_response_is_retried_with_feedback() {
                 )
                 .temperature(0.0)
                 .build()
-                .runner("Begin the retry-hook demonstration.")
+                .prompt("Begin the retry-hook demonstration.")
                 .max_turns(2)
                 .add_hook(RetryOnceOnMarker)
                 .run()

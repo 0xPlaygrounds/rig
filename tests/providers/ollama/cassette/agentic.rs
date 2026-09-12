@@ -188,7 +188,7 @@ async fn streaming_structured_output_with_tools() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(
+                .prompt(
                     "What is the current weather in Tokyo? Use the get_weather tool, then return \
                      the city and a one-sentence summary of the conditions.",
                 )

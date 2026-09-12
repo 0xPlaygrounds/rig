@@ -33,7 +33,7 @@ async fn main() -> Result<()> {
         .build();
 
     let mut first = agent
-        .stream_prompt("My name is Alice.")
+        .prompt("My name is Alice.")
         .conversation("user-123")
         .stream()
         .await;
@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
     println!("turn 1: {reply1}");
 
     let mut second = agent
-        .stream_prompt("What's my name?")
+        .prompt("What's my name?")
         .conversation("user-123")
         .stream()
         .await;

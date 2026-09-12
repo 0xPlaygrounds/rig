@@ -5,15 +5,14 @@
 //! performs no IO and carries no hooks. `AgentRunner` pairs that machine with
 //! the side-effecting concerns — building and sending completion requests,
 //! executing tools, loading/saving conversation memory — and fires an
-//! [`AgentHook`] at every observable point. [`Agent::prompt`] and
-//! [`Agent::stream_prompt`] both return an `AgentRunner`, and you can build
-//! one directly to drive an agent with custom, composable hooks:
+//! [`AgentHook`] at every observable point. [`Agent::prompt`] returns an
+//! `AgentRunner`; configure it and drive it with custom, composable hooks:
 //!
 //! ```rust,no_run
 //! # use rig_agent::Agent;
 //! # async fn example(agent: Agent) -> Result<(), Box<dyn std::error::Error>> {
 //! let response = agent
-//!     .runner("What is 2 + 2?")
+//!     .prompt("What is 2 + 2?")
 //!     .max_turns(3)
 //!     .run()
 //!     .await?;
@@ -44,7 +43,7 @@ use super::UNKNOWN_AGENT_NAME;
 
 /// A hook-aware driver over [`AgentRun`].
 ///
-/// Construct one from an [`Agent`] with [`Agent::runner`], attach hooks with
+/// Construct one from an [`Agent`] with [`Agent::prompt`], attach hooks with
 /// [`add_hook`](Self::add_hook), then call
 /// [`run`](Self::run) (blocking) or
 /// [`stream`](Self::stream)
@@ -85,8 +84,9 @@ pub(crate) type HistoryAndMemory = (
 
 impl AgentRunner {
     /// Build a runner from an agent, seeding it with the agent's default hook
-    /// stack. Prefer [`Agent::runner`].
-    pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
+    /// stack. The one construction site behind [`Agent::prompt`] and the
+    /// typed and extractor runs.
+    pub(crate) fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
         Self {
             config: agent.config.clone(),
             prompt: prompt.into(),

@@ -2645,7 +2645,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
     let mut output = None;
     for prompt in prompts {
         output = if program.streamed {
-            let mut runner = agent.stream_prompt(prompt);
+            let mut runner = agent.prompt(prompt);
             if let Some(history) = program.history {
                 runner = runner.history(history());
             }
@@ -3157,7 +3157,7 @@ async fn resumed_tail(
     }
     let restored: AgentRun = serde_json::from_str(&state).expect("the run state restores");
     let agent = build_agent(replay, program, server, &tail_log);
-    let mut runner = agent.runner("ignored").resume(restored);
+    let mut runner = agent.prompt("ignored").resume(restored);
     if let Some(max_turns) = program.max_turns {
         runner = runner.max_turns(max_turns);
     }

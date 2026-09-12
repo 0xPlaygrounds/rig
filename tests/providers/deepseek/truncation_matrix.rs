@@ -1132,7 +1132,8 @@ async fn agent_streaming_truncated_call_is_not_invoked() {
                 .build();
 
             let mut stream = agent
-                .stream_chat(INCIDENT_PROMPT, Vec::<rig::completion::Message>::new())
+                .prompt(INCIDENT_PROMPT)
+                .history(Vec::<rig::completion::Message>::new())
                 .max_turns(1)
                 .stream()
                 .await;
@@ -1221,7 +1222,8 @@ async fn agent_streaming_empty_arguments_on_length_are_not_invoked() {
                 .build();
 
             let mut stream = agent
-                .stream_chat(INCIDENT_PROMPT, Vec::<rig::completion::Message>::new())
+                .prompt(INCIDENT_PROMPT)
+                .history(Vec::<rig::completion::Message>::new())
                 .max_turns(1)
                 .stream()
                 .await;

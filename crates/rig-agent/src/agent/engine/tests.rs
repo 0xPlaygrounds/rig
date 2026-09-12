@@ -332,7 +332,7 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
         .with_provider_request_id("req_1")]))
     .add_hook(hook.clone())
     .build()
-    .runner(Message::user("prompt"))
+    .prompt(Message::user("prompt"))
     .run()
     .await
     .expect("blocking response");
@@ -357,7 +357,7 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
 async fn absent_identity_metadata_stays_none() {
     let response = AgentBuilder::new(MockCompletionModel::new([MockTurn::text("reply")]))
         .build()
-        .runner(Message::user("prompt"))
+        .prompt(Message::user("prompt"))
         .run()
         .await
         .expect("blocking response");
@@ -387,7 +387,7 @@ async fn failed_attempt_error_carries_its_own_request_id() {
     .tool(crate::test_utils::MockAddTool)
     .add_hook(hook.clone())
     .build()
-    .runner(Message::user("add 2 and 3"))
+    .prompt(Message::user("add 2 and 3"))
     .max_turns(4)
     .run()
     .await
@@ -479,7 +479,7 @@ async fn model_turn_finished_identity_blocking_tool_only_and_text() {
     .tool(crate::test_utils::MockAddTool)
     .add_hook(hook.clone())
     .build()
-    .runner(Message::user("add 2 and 3"))
+    .prompt(Message::user("add 2 and 3"))
     .max_turns(3)
     .run()
     .await
@@ -530,7 +530,7 @@ async fn model_turn_finished_identity_streamed_tool_only_and_text() {
         .tool(crate::test_utils::MockAddTool)
         .add_hook(hook.clone())
         .build()
-        .runner(Message::user("add 2 and 3"))
+        .prompt(Message::user("add 2 and 3"))
         .max_turns(3)
         .stream()
         .await;
@@ -574,7 +574,7 @@ async fn model_turn_finished_identity_streamed_reasoning_only() {
     let mut stream = AgentBuilder::new(model)
         .add_hook(hook.clone())
         .build()
-        .runner(Message::user("think"))
+        .prompt(Message::user("think"))
         .stream()
         .await;
     while let Some(item) = stream.next().await {
@@ -632,7 +632,7 @@ async fn retried_turn_reports_the_retried_attempts_own_identity() {
     ]))
     .add_hook(hook.clone())
     .build()
-    .runner(Message::user("prompt"))
+    .prompt(Message::user("prompt"))
     .max_turns(3)
     .run()
     .await
@@ -775,7 +775,7 @@ async fn hook_events_carry_raw_streamed() {
     ]]))
     .add_hook(hook.clone())
     .build()
-    .stream_prompt("prompt")
+    .prompt("prompt")
     .stream()
     .await;
     let mut finals = Vec::new();
@@ -860,7 +860,7 @@ async fn completion_calls_carry_each_attempts_own_raw_streamed() {
         .tool(crate::test_utils::MockAddTool)
         .add_hook(hook.clone())
         .build()
-        .stream_prompt("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .stream()
         .await;
@@ -989,7 +989,7 @@ async fn retried_turn_records_the_retried_attempts_own_raw_streamed() {
         .add_hook(probe.clone())
         .add_hook(retry.clone())
         .build()
-        .stream_prompt("prompt")
+        .prompt("prompt")
         .max_turns(3)
         .stream()
         .await;
@@ -1038,7 +1038,7 @@ async fn response_scoped_id_is_not_promoted_into_history() {
         MockTurn::text("reply").with_response_id("chatcmpl-123")
     ]))
     .build()
-    .runner(prompt)
+    .prompt(prompt)
     .run()
     .await
     .expect("blocking response");
@@ -1061,7 +1061,7 @@ async fn message_id_is_promoted_into_history() {
         MockTurn::text("reply").with_message_id("msg_abc")
     ]))
     .build()
-    .runner(prompt)
+    .prompt(prompt)
     .run()
     .await
     .expect("blocking response");
@@ -1091,7 +1091,7 @@ async fn streaming_completion_response_receives_canonical_fields() {
     ]]))
     .add_hook(hook.clone())
     .build()
-    .runner(prompt.clone())
+    .prompt(prompt.clone())
     .stream()
     .await;
     while let Some(item) = stream.next().await {
@@ -1118,7 +1118,7 @@ async fn streaming_completion_response_without_provider_message_id_reports_none(
     ]]))
     .add_hook(hook.clone())
     .build()
-    .runner("canonical prompt")
+    .prompt("canonical prompt")
     .stream()
     .await;
     while let Some(item) = stream.next().await {
@@ -1140,7 +1140,7 @@ async fn streaming_completion_response_runs_before_buffered_final_is_exposed() {
     ]]))
     .add_hook(hook.clone())
     .build()
-    .runner("canonical prompt")
+    .prompt("canonical prompt")
     .stream()
     .await;
     let mut provider_finals = 0;
@@ -1181,7 +1181,7 @@ async fn streaming_completion_response_stop_preserves_provider_final() {
     ]]))
     .add_hook(hook.clone())
     .build()
-    .runner(prompt.clone())
+    .prompt(prompt.clone())
     .stream()
     .await;
     let mut saw_provider_final = false;
@@ -1240,7 +1240,7 @@ async fn streaming_model_turn_stop_preserves_completed_provider_final() {
     ]]))
     .add_hook(StopCompletedModelTurn)
     .build()
-    .runner(prompt.clone())
+    .prompt(prompt.clone())
     .stream()
     .await;
 
@@ -1284,7 +1284,7 @@ async fn provider_error_after_final_suppresses_finish_hook_and_buffered_final() 
     ]]))
     .add_hook(hook.clone())
     .build()
-    .runner("canonical prompt")
+    .prompt("canonical prompt")
     .stream()
     .await;
     let mut saw_provider_final = false;
@@ -1339,7 +1339,7 @@ async fn visible_assistant_items_after_final_are_rejected() {
         ]]))
         .add_hook(hook.clone())
         .build()
-        .runner("canonical prompt")
+        .prompt("canonical prompt")
         .stream()
         .await;
         let mut saw_provider_final = false;
@@ -1384,7 +1384,7 @@ async fn visible_item_after_non_emittable_final_is_rejected() {
     ]]))
     .add_hook(hook.clone())
     .build()
-    .runner("canonical prompt")
+    .prompt("canonical prompt")
     .stream()
     .await;
     let mut error = None;
@@ -1421,7 +1421,7 @@ async fn streaming_completion_response_normalizes_interleaved_content() {
     .tool(MockAddTool)
     .add_hook(hook.clone())
     .build()
-    .runner("go")
+    .prompt("go")
     .max_turns(3)
     .stream()
     .await;
@@ -1489,7 +1489,7 @@ async fn streamed_tool_call_items_share_one_block_id() {
     let mut stream = AgentBuilder::new(streaming_model())
         .tool(MockAddTool)
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(2)
         .stream()
         .await;
@@ -1577,7 +1577,7 @@ async fn per_run_overrides_do_not_mutate_the_source_agent() {
         .build();
 
     let overridden = agent
-        .runner("prompt")
+        .prompt("prompt")
         .max_turns(7)
         .preamble("overridden preamble")
         .temperature(0.9)
@@ -1599,7 +1599,7 @@ async fn per_run_overrides_do_not_mutate_the_source_agent() {
     assert!(agent.config.conversation_id.is_none());
 
     // ...so a fresh runner still sees the agent's baseline.
-    let fresh = agent.runner("another prompt");
+    let fresh = agent.prompt("another prompt");
     assert_eq!(fresh.config.max_turns, 2);
     assert_eq!(fresh.config.preamble.as_deref(), Some("original preamble"));
     assert_eq!(fresh.config.temperature, Some(0.2));
@@ -1628,7 +1628,7 @@ async fn prompt_surfaces_reject_second_tool_roundtrip_request_at_budget_one() {
     let streaming_recorded = streaming_model.clone();
     let streaming_agent = AgentBuilder::new(streaming_model).tool(MockAddTool).build();
     let mut stream = streaming_agent
-        .stream_prompt("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(1)
         .stream()
         .await;
@@ -1658,7 +1658,7 @@ async fn run_and_stream_behave_identically_for_a_tool_call() {
     let blocking = AgentBuilder::new(blocking_model())
         .tool(MockAddTool)
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(2)
         .add_hook(blocking_hook.clone())
         .run()
@@ -1671,7 +1671,7 @@ async fn run_and_stream_behave_identically_for_a_tool_call() {
     let mut stream = AgentBuilder::new(streaming_model())
         .tool(MockAddTool)
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(2)
         .add_hook(streaming_hook.clone())
         .stream()
@@ -1826,7 +1826,7 @@ mod structured_tool_results {
             .tool(MockFailingTool::new(ToolErrorKind::Timeout))
             .add_hook(hook.clone())
             .build()
-            .runner("go")
+            .prompt("go")
             .max_turns(3)
             .run()
             .await
@@ -1877,7 +1877,7 @@ mod structured_tool_results {
         .add_hook(observer.clone())
         .add_hook(TimeoutTerminator)
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(5)
         .run()
         .await
@@ -1921,7 +1921,7 @@ mod structured_tool_results {
             .add_hook(hook.clone())
             .add_hook(StatusProbe(status.clone()))
             .build()
-            .runner("go")
+            .prompt("go")
             .max_turns(3)
             .run()
             .await
@@ -1944,7 +1944,7 @@ mod structured_tool_results {
             .tool(MockHandledFailureTool)
             .add_hook(hook.clone())
             .build()
-            .runner("go")
+            .prompt("go")
             .max_turns(3)
             .run()
             .await
@@ -1983,7 +1983,7 @@ mod structured_tool_results {
             .add_hook(SkipHook)
             .add_hook(observer.clone())
             .build()
-            .runner("go")
+            .prompt("go")
             .max_turns(3)
             .run()
             .await
@@ -2007,7 +2007,7 @@ mod structured_tool_results {
             .tool(MockDeniedTool)
             .add_hook(hook.clone())
             .build()
-            .runner("go")
+            .prompt("go")
             .max_turns(3)
             .run()
             .await
@@ -2028,7 +2028,7 @@ mod structured_tool_results {
             .tool(MockFailingTool::new(ToolErrorKind::PermissionDenied))
             .add_hook(hook.clone())
             .build()
-            .runner("go")
+            .prompt("go")
             .max_turns(3)
             .run()
             .await
@@ -2102,7 +2102,7 @@ mod structured_tool_results {
                     .add_hook(SkipHook)
                     .add_hook(probe.clone())
                     .build()
-                    .runner("go")
+                    .prompt("go")
                     .max_turns(3)
                     .stream()
                     .await;
@@ -2118,7 +2118,7 @@ mod structured_tool_results {
                     .add_hook(SkipHook)
                     .add_hook(probe.clone())
                     .build()
-                    .runner("go")
+                    .prompt("go")
                     .max_turns(3)
                     .run()
                     .await
@@ -2218,7 +2218,7 @@ mod structured_tool_results {
                     .add_hook(nested_stack())
                     .add_hook(probe.clone())
                     .build()
-                    .runner("go")
+                    .prompt("go")
                     .max_turns(3)
                     .stream()
                     .await;
@@ -2233,7 +2233,7 @@ mod structured_tool_results {
                     .add_hook(nested_stack())
                     .add_hook(probe.clone())
                     .build()
-                    .runner("go")
+                    .prompt("go")
                     .max_turns(3)
                     .run()
                     .await
@@ -2269,7 +2269,7 @@ mod structured_tool_results {
         .tool(MockAddTool)
         .add_hook(hook.clone())
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .run()
         .await
@@ -2319,7 +2319,7 @@ mod structured_tool_results {
                     .tool(MockMetadataTool)
                     .add_hook(probe)
                     .build()
-                    .runner("go")
+                    .prompt("go")
                     .max_turns(3)
                     .stream()
                     .await;
@@ -2333,7 +2333,7 @@ mod structured_tool_results {
                     .tool(MockMetadataTool)
                     .add_hook(probe)
                     .build()
-                    .runner("go")
+                    .prompt("go")
                     .max_turns(3)
                     .run()
                     .await
@@ -2388,7 +2388,7 @@ mod structured_tool_results {
             .add_hook(Redact)
             .add_hook(observer.clone())
             .build()
-            .runner("go")
+            .prompt("go")
             .max_turns(3)
             .run()
             .await
@@ -2407,7 +2407,7 @@ mod structured_tool_results {
             .tool(MockFailingTool::new(ToolErrorKind::Timeout))
             .add_hook(blocking.clone())
             .build()
-            .runner("go")
+            .prompt("go")
             .max_turns(3)
             .run()
             .await
@@ -2418,7 +2418,7 @@ mod structured_tool_results {
             .tool(MockFailingTool::new(ToolErrorKind::Timeout))
             .add_hook(streaming.clone())
             .build()
-            .runner("go")
+            .prompt("go")
             .max_turns(3)
             .stream()
             .await;
@@ -2461,7 +2461,7 @@ mod structured_tool_results {
         .tool(MockFailingTool::new(ToolErrorKind::Timeout))
         .add_hook(observer.clone())
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .tool_concurrency(2)
         .run()
@@ -2718,7 +2718,7 @@ mod span_safety_net {
             .record_content_telemetry(true)
             .tool(MockAddTool)
             .build();
-        let _ = agent.runner("add 2 and 3").max_turns(3).run().await;
+        let _ = agent.prompt("add 2 and 3").max_turns(3).run().await;
     }
 
     async fn run_blocking_response_retry_with_content_telemetry() {
@@ -2733,7 +2733,7 @@ mod span_safety_net {
             TestRetryMode::Repeat,
         ))
         .build()
-        .runner("question")
+        .prompt("question")
         .max_turns(2)
         .run()
         .await
@@ -2758,7 +2758,7 @@ mod span_safety_net {
             TestRetryMode::Repeat,
         ))
         .build()
-        .runner("question")
+        .prompt("question")
         .max_turns(2)
         .stream()
         .await;
@@ -2782,7 +2782,7 @@ mod span_safety_net {
         .record_content_telemetry(true)
         .add_hook(StopCompletedModelTurn)
         .build()
-        .runner("question")
+        .prompt("question")
         .run()
         .await
         .expect_err("blocking model-turn stop should cancel the run");
@@ -2802,7 +2802,7 @@ mod span_safety_net {
         .record_content_telemetry(true)
         .add_hook(StopCompletedModelTurn)
         .build()
-        .runner("question")
+        .prompt("question")
         .stream()
         .await;
 
@@ -2856,7 +2856,7 @@ mod span_safety_net {
             let agent = AgentBuilder::new(MockCompletionModel::text("done"))
                 .name("contract-agent")
                 .build();
-            let runner = agent.runner("hello");
+            let runner = agent.prompt("hello");
             let span = build_chat_span!(runner, None, "chat", "chat");
             let Some(metadata) = span.metadata() else {
                 panic!("chat span was disabled");
@@ -3050,7 +3050,7 @@ mod span_safety_net {
             .tool(MockAddTool)
             .build();
         let response = agent
-            .runner("add 2 and 3")
+            .prompt("add 2 and 3")
             .max_turns(3)
             .run()
             .await
@@ -3186,7 +3186,7 @@ mod span_safety_net {
                 .tool(MockAddTool)
                 .build();
             agent
-                .runner("add 2 and 3")
+                .prompt("add 2 and 3")
                 .max_turns(3)
                 .run()
                 .await
@@ -3325,7 +3325,7 @@ mod span_safety_net {
             .tool(RawOutputTool)
             .add_hook(RedactResultHook)
             .build()
-            .runner("go")
+            .prompt("go")
             .max_turns(3)
             .run()
             .await
@@ -3368,7 +3368,7 @@ mod span_safety_net {
         .tool(RawOutputTool)
         .add_hook(StopOnResultHook)
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(2)
         .run()
         .await;
@@ -3450,7 +3450,7 @@ async fn run_and_stream_same_message_history_for_parallel_tool_calls() {
     let blocking = AgentBuilder::new(blocking_model)
         .tool(MockAddTool)
         .build()
-        .runner("add two pairs")
+        .prompt("add two pairs")
         .max_turns(3)
         .tool_concurrency(4)
         .run()
@@ -3471,7 +3471,7 @@ async fn run_and_stream_same_message_history_for_parallel_tool_calls() {
     let mut stream = AgentBuilder::new(streaming_model)
         .tool(MockAddTool)
         .build()
-        .runner("add two pairs")
+        .prompt("add two pairs")
         .max_turns(3)
         .stream()
         .await;
@@ -3558,7 +3558,7 @@ async fn run_preserves_tool_call_order_under_out_of_order_completion() {
             order: Arc::new(AtomicU32::new(0)),
         })
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .tool_concurrency(4)
         .run()
@@ -3644,7 +3644,7 @@ async fn stream_and_run_same_message_history_for_parallel_tool_calls_under_concu
     let blocking = AgentBuilder::new(blocking_model)
         .tool(MockAddTool)
         .build()
-        .runner("add two pairs")
+        .prompt("add two pairs")
         .max_turns(3)
         .tool_concurrency(4)
         .run()
@@ -3665,7 +3665,7 @@ async fn stream_and_run_same_message_history_for_parallel_tool_calls_under_concu
     let stream = AgentBuilder::new(streaming_model)
         .tool(MockAddTool)
         .build()
-        .runner("add two pairs")
+        .prompt("add two pairs")
         .max_turns(3)
         .tool_concurrency(4)
         .stream()
@@ -3707,7 +3707,7 @@ async fn stream_preserves_history_order_under_out_of_order_completion() {
             order: Arc::new(AtomicU32::new(0)),
         })
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .tool_concurrency(4)
         .stream()
@@ -3752,7 +3752,7 @@ async fn stream_emits_tool_results_in_call_order_after_batch_settles_under_concu
             order: Arc::new(AtomicU32::new(0)),
         })
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .tool_concurrency(4)
         .stream()
@@ -3816,7 +3816,7 @@ async fn stream_executes_tools_concurrently_under_concurrency() {
     let stream = AgentBuilder::new(model)
         .tool(MockBarrierTool::new(barrier))
         .build()
-        .runner("hit the barrier twice")
+        .prompt("hit the barrier twice")
         .max_turns(3)
         .tool_concurrency(2)
         .stream()
@@ -3853,7 +3853,7 @@ async fn stream_emits_model_tool_calls_then_atomic_execution_items() {
         let mut stream = AgentBuilder::new(model)
             .tool(MockAddTool)
             .build()
-            .runner("add two pairs")
+            .prompt("add two pairs")
             .max_turns(3)
             .tool_concurrency(concurrency)
             .stream()
@@ -3986,7 +3986,7 @@ async fn stream_concurrent_tool_result_terminate_drains_in_flight_siblings() {
             slow_started: slow_started.clone(),
         })
         .build()
-        .runner("add two pairs")
+        .prompt("add two pairs")
         .max_turns(3)
         .tool_concurrency(2)
         .add_hook(TerminateAfterSiblingStartedHook {
@@ -4100,7 +4100,7 @@ async fn concurrent_simultaneous_tool_terminations_pick_call_order_on_both_drive
         AgentBuilder::new(two_terminating_tools_blocking_model())
             .tool(MockAddTool)
             .build()
-            .runner("go")
+            .prompt("go")
             .max_turns(3)
             .tool_concurrency(2)
             .add_hook(OrderedTerminateHook {
@@ -4115,7 +4115,7 @@ async fn concurrent_simultaneous_tool_terminations_pick_call_order_on_both_drive
     let mut stream = AgentBuilder::new(two_terminating_tools_streaming_model())
         .tool(MockAddTool)
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .tool_concurrency(2)
         .add_hook(OrderedTerminateHook {
@@ -4183,7 +4183,7 @@ async fn default_concurrency_terminate_skips_remaining_tools_on_both_drivers() {
             calls: blocking_calls.clone(),
         })
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .add_hook(TerminateOnFirstToolHook)
         .run()
@@ -4201,7 +4201,7 @@ async fn default_concurrency_terminate_skips_remaining_tools_on_both_drivers() {
             calls: streaming_calls.clone(),
         })
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .add_hook(TerminateOnFirstToolHook)
         .stream()
@@ -4330,7 +4330,7 @@ async fn concurrent_terminate_drops_beyond_window_sibling_but_drains_in_flight()
             sibling_started: sibling_started.clone(),
         })
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .tool_concurrency(2)
         .add_hook(TerminateOnArgZeroAfterSiblingHook { sibling_started })
@@ -4456,7 +4456,7 @@ async fn concurrent_termination_surfaces_no_execution_items() {
             a_done: a_done.clone(),
         })
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .tool_concurrency(2)
         .add_hook(TerminateAfterSiblingDoneHook {
@@ -4525,7 +4525,7 @@ async fn stream_tool_execution_committed_carries_effective_rewritten_args() {
         .tool(MockAddTool)
         .add_hook(RewriteToolArgsHook(json!({"x": 2, "y": 40})))
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .stream()
         .await;
@@ -4592,7 +4592,7 @@ async fn stream_hook_skip_surfaces_result_without_execution_commit() {
         })
         .add_hook(SkipHook)
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .stream()
         .await;
@@ -4658,7 +4658,7 @@ async fn required_with_empty_active_tools_errors_locally_without_provider_call()
         .tool_choice(ToolChoice::Required)
         .add_hook(EmptyActiveToolsHook)
         .build()
-        .runner("go")
+        .prompt("go")
         .run()
         .await
         .expect_err("Required with an empty active_tools filter must fail locally");
@@ -4707,7 +4707,7 @@ async fn specific_naming_filtered_out_tool_errors_locally_without_provider_call(
         })
         .add_hook(FilterToAddHook)
         .build()
-        .runner("go")
+        .prompt("go")
         .run()
         .await
         .expect_err("Specific naming a filtered-out tool must fail locally");
@@ -4791,7 +4791,7 @@ async fn concurrent_tool_execution_stays_within_the_configured_bound() {
     let _ = AgentBuilder::new(model)
         .tool(probe)
         .build()
-        .runner("probe concurrency")
+        .prompt("probe concurrency")
         .max_turns(3)
         .tool_concurrency(cap)
         .run()
@@ -4822,7 +4822,7 @@ async fn tool_concurrency_zero_is_clamped_and_does_not_hang() {
     let run = AgentBuilder::new(model)
         .tool(MockAddTool)
         .build()
-        .runner("add")
+        .prompt("add")
         .max_turns(3)
         .tool_concurrency(0)
         .run();
@@ -4897,7 +4897,7 @@ async fn observes_gates_text_delta_dispatch() {
     let hook = ToolOnlyHook::default();
     let mut stream = AgentBuilder::new(model)
         .build()
-        .runner("hi")
+        .prompt("hi")
         .add_hook(hook.clone())
         .stream()
         .await;
@@ -4967,7 +4967,7 @@ async fn run_terminates_from_each_shared_event() {
         let err = AgentBuilder::new(blocking_model())
             .tool(MockAddTool)
             .build()
-            .runner("add 2 and 3")
+            .prompt("add 2 and 3")
             .max_turns(3)
             .add_hook(TerminateOn(kind))
             .run()
@@ -4992,7 +4992,7 @@ async fn stream_terminates_from_each_shared_event() {
         let mut stream = AgentBuilder::new(streaming_model())
             .tool(MockAddTool)
             .build()
-            .runner("add 2 and 3")
+            .prompt("add 2 and 3")
             .max_turns(3)
             .add_hook(TerminateOn(kind))
             .stream()
@@ -5025,7 +5025,7 @@ async fn multi_hook_stack_parity_across_run_and_stream() {
     let blocking = AgentBuilder::new(blocking_model())
         .tool(MockAddTool)
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .add_hook(a_block.clone())
         .add_hook(b_block.clone())
@@ -5038,7 +5038,7 @@ async fn multi_hook_stack_parity_across_run_and_stream() {
     let mut stream = AgentBuilder::new(streaming_model())
         .tool(MockAddTool)
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .add_hook(a_stream.clone())
         .add_hook(b_stream.clone())
@@ -5115,7 +5115,7 @@ async fn invalid_tool_call_repair_parity_across_run_and_stream() {
     let blocking = AgentBuilder::new(blocking_model)
         .tool(MockAddTool)
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .add_hook(blocking_hook.clone())
         .add_hook(RepairInvalidToHook("add"))
@@ -5142,7 +5142,7 @@ async fn invalid_tool_call_repair_parity_across_run_and_stream() {
     let mut stream = AgentBuilder::new(streaming_model)
         .tool(MockAddTool)
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .add_hook(streaming_hook.clone())
         .add_hook(RepairInvalidToHook("add"))
@@ -5199,7 +5199,7 @@ async fn invalid_tool_call_scalar_args_are_canonical_across_run_and_complete_str
     ]))
     .tool(EchoStringArgs)
     .build()
-    .runner("echo a string")
+    .prompt("echo a string")
     .max_turns(3)
     .add_hook(blocking_hook.clone())
     .add_hook(CaptureAndRepairInvalidHook {
@@ -5224,7 +5224,7 @@ async fn invalid_tool_call_scalar_args_are_canonical_across_run_and_complete_str
     ]))
     .tool(EchoStringArgs)
     .build()
-    .runner("echo a string")
+    .prompt("echo a string")
     .max_turns(3)
     .add_hook(streaming_hook.clone())
     .add_hook(CaptureAndRepairInvalidHook {
@@ -5368,7 +5368,7 @@ async fn run_blocking_scenario(prompt: &'static str, turns: &[ScriptedTurn]) -> 
     let response = AgentBuilder::new(model)
         .tool(MockAddTool)
         .build()
-        .runner(prompt)
+        .prompt(prompt)
         .max_turns(8)
         .add_hook(hook.clone())
         .run()
@@ -5394,7 +5394,7 @@ async fn run_streaming_scenario(
     let mut stream = AgentBuilder::new(model)
         .tool(MockAddTool)
         .build()
-        .runner(prompt)
+        .prompt(prompt)
         .max_turns(8)
         .add_hook(hook.clone())
         .stream()
@@ -5536,7 +5536,7 @@ async fn invalid_tool_call_skip_parity_across_run_and_stream() {
     let blocking = AgentBuilder::new(blocking_model)
         .tool(MockAddTool)
         .build()
-        .runner("do the thing")
+        .prompt("do the thing")
         .max_turns(3)
         .add_hook(blocking_hook.clone())
         .add_hook(SkipInvalidHook("tool not permitted"))
@@ -5560,7 +5560,7 @@ async fn invalid_tool_call_skip_parity_across_run_and_stream() {
     let mut stream = AgentBuilder::new(streaming_model)
         .tool(MockAddTool)
         .build()
-        .runner("do the thing")
+        .prompt("do the thing")
         .max_turns(3)
         .add_hook(streaming_hook.clone())
         .add_hook(SkipInvalidHook("tool not permitted"))
@@ -5628,7 +5628,7 @@ async fn recovered_turn_suppresses_completion_response_on_both_drivers() {
     let blocking = AgentBuilder::new(blocking_model)
         .tool(MockAddTool)
         .build()
-        .runner("compute")
+        .prompt("compute")
         .max_turns(3)
         .add_hook(blocking_hook.clone())
         .add_hook(RepairInvalidToHook("add"))
@@ -5651,7 +5651,7 @@ async fn recovered_turn_suppresses_completion_response_on_both_drivers() {
     let mut stream = AgentBuilder::new(streaming_model)
         .tool(MockAddTool)
         .build()
-        .runner("compute")
+        .prompt("compute")
         .max_turns(3)
         .add_hook(streaming_hook.clone())
         .add_hook(RepairInvalidToHook("add"))
@@ -5717,7 +5717,7 @@ async fn runner_add_hook_appends_to_agent_default_hooks() {
         .tool(MockAddTool)
         .add_hook(agent_hook.clone())
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .add_hook(runner_hook.clone())
         .run()
@@ -5772,7 +5772,7 @@ async fn valid_tool_call_skip_parity_across_run_and_stream() {
     let blocking = AgentBuilder::new(blocking_model)
         .tool(MockAddTool)
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .add_hook(blocking_hook.clone())
         .add_hook(SkipToolCallHook("skipped by policy"))
@@ -5789,7 +5789,7 @@ async fn valid_tool_call_skip_parity_across_run_and_stream() {
     let mut stream = AgentBuilder::new(streaming_model)
         .tool(MockAddTool)
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .add_hook(streaming_hook.clone())
         .add_hook(SkipToolCallHook("skipped by policy"))
@@ -5933,7 +5933,7 @@ async fn check_tool_target_patch_is_refused(streaming: bool) {
         .tool(RenameBoundaryTool::<false>(original.clone()))
         .tool(RenameBoundaryTool::<true>(safe.clone()))
         .build()
-        .runner("perform the requested operation")
+        .prompt("perform the requested operation")
         .max_turns(3)
         .add_hook(RenameToolTargetHook)
         .add_hook(policy.clone())
@@ -6185,7 +6185,7 @@ async fn valid_tool_call_rewrite_args_parity_across_run_and_stream() {
     let blocking = AgentBuilder::new(blocking_model)
         .tool(MockAddTool)
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .add_hook(blocking_hook.clone())
         .add_hook(RewriteToolArgsHook(replacement.clone()))
@@ -6202,7 +6202,7 @@ async fn valid_tool_call_rewrite_args_parity_across_run_and_stream() {
     let mut stream = AgentBuilder::new(streaming_model)
         .tool(MockAddTool)
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .add_hook(streaming_hook.clone())
         .add_hook(RewriteToolArgsHook(replacement))
@@ -6247,7 +6247,7 @@ async fn string_tool_call_without_rewrite_is_canonical_across_run_and_stream() {
     ))
     .tool(EchoStringArgs)
     .build()
-    .runner("echo a string")
+    .prompt("echo a string")
     .max_turns(3)
     .add_hook(blocking_hook.clone())
     .run()
@@ -6262,7 +6262,7 @@ async fn string_tool_call_without_rewrite_is_canonical_across_run_and_stream() {
     ))
     .tool(EchoStringArgs)
     .build()
-    .runner("echo a string")
+    .prompt("echo a string")
     .max_turns(3)
     .add_hook(streaming_hook.clone())
     .stream()
@@ -6300,7 +6300,7 @@ async fn string_tool_call_rewrite_is_canonical_json_across_run_and_stream() {
     ))
     .tool(EchoStringArgs)
     .build()
-    .runner("echo a string")
+    .prompt("echo a string")
     .max_turns(3)
     .add_hook(blocking_hook.clone())
     .add_hook(RewriteToolArgsHook(replacement.clone()))
@@ -6316,7 +6316,7 @@ async fn string_tool_call_rewrite_is_canonical_json_across_run_and_stream() {
     ))
     .tool(EchoStringArgs)
     .build()
-    .runner("echo a string")
+    .prompt("echo a string")
     .max_turns(3)
     .add_hook(streaming_hook.clone())
     .add_hook(RewriteToolArgsHook(replacement))
@@ -6356,7 +6356,7 @@ async fn blocking_turn_dispatches_the_registry_generation_it_advertised() {
     let runner = AgentBuilder::new(model)
         .tool_server_handle(handle.clone())
         .build()
-        .runner("use the generation tool")
+        .prompt("use the generation tool")
         .max_turns(3);
 
     let run = runner.run();
@@ -6401,7 +6401,7 @@ async fn streaming_turn_dispatches_the_registry_generation_it_advertised() {
     let runner = AgentBuilder::new(model)
         .tool_server_handle(handle.clone())
         .build()
-        .runner("use the generation tool")
+        .prompt("use the generation tool")
         .max_turns(3);
 
     let drive = async {
@@ -6464,7 +6464,7 @@ async fn valid_tool_result_rewrite_parity_across_run_and_stream() {
     let blocking = AgentBuilder::new(blocking_model)
         .tool(MockAddTool)
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .add_hook(blocking_hook.clone())
         .add_hook(RewriteToolResultHook("redacted-result"))
@@ -6481,7 +6481,7 @@ async fn valid_tool_result_rewrite_parity_across_run_and_stream() {
     let mut stream = AgentBuilder::new(streaming_model)
         .tool(MockAddTool)
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .add_hook(streaming_hook.clone())
         .add_hook(RewriteToolResultHook("redacted-result"))
@@ -6543,7 +6543,7 @@ async fn rewrite_result_is_delivered_verbatim_not_reparsed() {
     let result = AgentBuilder::new(model)
         .tool(MockAddTool)
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .add_hook(RewriteToolResultHook(IMAGE_JSON))
         .run()
@@ -6644,7 +6644,7 @@ async fn patch_request_parity_across_run_and_stream() {
         .additional_params(json!({"baseline": "keep"}))
         .add_hook(PatchRequestHook)
         .build()
-        .runner("go")
+        .prompt("go")
         .replace_additional_params(json!({"runner": "keep", "injected": false}))
         .max_turns(2)
         .run()
@@ -6668,7 +6668,7 @@ async fn patch_request_parity_across_run_and_stream() {
         .additional_params(json!({"baseline": "keep"}))
         .add_hook(PatchRequestHook)
         .build()
-        .runner("go")
+        .prompt("go")
         .replace_additional_params(json!({"runner": "keep", "injected": false}))
         .max_turns(2)
         .stream()
@@ -6851,7 +6851,7 @@ async fn extra_context_appears_after_static_context_on_both_surfaces() {
             text: "injected",
         })
         .build()
-        .runner("go")
+        .prompt("go")
         .run()
         .await
         .expect("blocking run should succeed");
@@ -6866,7 +6866,7 @@ async fn extra_context_appears_after_static_context_on_both_surfaces() {
             text: "injected",
         })
         .build()
-        .runner("go")
+        .prompt("go")
         .stream()
         .await;
     while let Some(item) = stream.next().await {
@@ -6890,7 +6890,7 @@ async fn multiple_hooks_extra_context_append_in_registration_order() {
             text: "2",
         })
         .build()
-        .runner("go")
+        .prompt("go")
         .run()
         .await
         .expect("run should succeed");
@@ -6934,7 +6934,7 @@ async fn dynamic_context_preserves_query_selection_formatting_and_order_on_both_
             },
         )
         .build()
-        .runner("current blocking query")
+        .prompt("current blocking query")
         .history(vec![Message::user("ignored history query")])
         .run()
         .await
@@ -6957,7 +6957,7 @@ async fn dynamic_context_preserves_query_selection_formatting_and_order_on_both_
             },
         )
         .build()
-        .runner(Message::User {
+        .prompt(Message::User {
             content: vec![UserContent::image_url(
                 "https://example.com/prompt.png",
                 None,
@@ -7021,7 +7021,7 @@ async fn dynamic_context_and_application_hooks_follow_registration_order() {
             text: "after dynamic context",
         })
         .build()
-        .runner("query")
+        .prompt("query")
         .run()
         .await
         .expect("run should succeed");
@@ -7057,7 +7057,7 @@ async fn dynamic_context_and_application_hooks_follow_registration_order() {
             },
         )
         .build()
-        .runner("query")
+        .prompt("query")
         .run()
         .await
         .expect_err("an earlier stop hook should terminate before retrieval");
@@ -7072,7 +7072,7 @@ async fn dynamic_context_retrieval_failure_stops_before_provider_io_on_both_surf
     let error = AgentBuilder::new(blocking_model)
         .dynamic_context(1, FailingContextIndex)
         .build()
-        .runner("retrieve this")
+        .prompt("retrieve this")
         .run()
         .await
         .expect_err("failed retrieval should stop the run");
@@ -7088,7 +7088,7 @@ async fn dynamic_context_retrieval_failure_stops_before_provider_io_on_both_surf
     let mut stream = AgentBuilder::new(streaming_model)
         .dynamic_context(1, FailingContextIndex)
         .build()
-        .runner("retrieve this")
+        .prompt("retrieve this")
         .stream()
         .await;
     let error = stream
@@ -7120,7 +7120,7 @@ async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
             ToolSet::from_tools(vec![MockAddTool]),
         )
         .build()
-        .runner("blocking retrieval query")
+        .prompt("blocking retrieval query")
         .history(vec![Message::user("blocking history query")])
         .run()
         .await
@@ -7135,7 +7135,7 @@ async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
             ToolSet::from_tools(vec![MockAddTool]),
         )
         .build()
-        .runner(Message::User {
+        .prompt(Message::User {
             content: vec![UserContent::image_url(
                 "https://example.com/blocking.png",
                 None,
@@ -7161,7 +7161,7 @@ async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
         ToolSet::from_tools(vec![MockAddTool]),
     )
     .build()
-    .runner("streaming retrieval query")
+    .prompt("streaming retrieval query")
     .history(vec![Message::user("streaming history query")])
     .stream()
     .await;
@@ -7180,7 +7180,7 @@ async fn retrieved_tool_query_selection_is_unchanged_on_both_surfaces() {
         ToolSet::from_tools(vec![MockAddTool]),
     )
     .build()
-    .runner(Message::User {
+    .prompt(Message::User {
         content: vec![UserContent::image_url(
             "https://example.com/streaming.png",
             None,
@@ -7232,7 +7232,7 @@ async fn extra_context_is_per_turn_non_sticky() {
         .tool(MockAddTool)
         .add_hook(ExtraContextTurnOneHook)
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .run()
         .await
@@ -7245,7 +7245,7 @@ async fn extra_context_is_per_turn_non_sticky() {
         .tool(MockAddTool)
         .add_hook(ExtraContextTurnOneHook)
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .stream()
         .await;
@@ -7299,7 +7299,7 @@ async fn history_patch_changes_sent_messages_not_transcript_on_both_surfaces() {
     let blocking = AgentBuilder::new(blocking_model)
         .add_hook(HistoryOverrideHook)
         .build()
-        .runner("real prompt")
+        .prompt("real prompt")
         .run()
         .await
         .expect("blocking run should succeed");
@@ -7317,7 +7317,7 @@ async fn history_patch_changes_sent_messages_not_transcript_on_both_surfaces() {
     let stream = AgentBuilder::new(streaming_model)
         .add_hook(HistoryOverrideHook)
         .build()
-        .runner("real prompt")
+        .prompt("real prompt")
         .stream()
         .await;
     let final_response = drive_to_final_response(stream).await;
@@ -7341,7 +7341,7 @@ async fn model_turn_finished_fires_once_per_accepted_turn_including_tool_only() 
         .tool(MockAddTool)
         .add_hook(blocking_hook.clone())
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .run()
         .await
@@ -7362,7 +7362,7 @@ async fn model_turn_finished_fires_once_per_accepted_turn_including_tool_only() 
         .tool(MockAddTool)
         .add_hook(streaming_hook.clone())
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .stream()
         .await;
@@ -7393,7 +7393,7 @@ async fn reasoning_only_turn_fires_completion_response() {
     ]]))
     .add_hook(hook.clone())
     .build()
-    .runner("reason")
+    .prompt("reason")
     .stream()
     .await;
     while let Some(item) = stream.next().await {
@@ -7472,7 +7472,7 @@ async fn streaming_model_turn_finished_carries_canonical_committed_content() {
         .tool(MockAddTool)
         .add_hook(hook.clone())
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .stream()
         .await;
@@ -7546,7 +7546,7 @@ async fn chained_rewrites_compose_across_hooks() {
         .add_hook(WrapResult("B"))
         .add_hook(recorder.clone())
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .run()
         .await
@@ -7574,7 +7574,7 @@ async fn chained_rewrites_compose_across_hooks() {
         .add_hook(WrapResult("B"))
         .add_hook(stream_recorder.clone())
         .build()
-        .runner("add 2 and 3")
+        .prompt("add 2 and 3")
         .max_turns(3)
         .stream()
         .await;
@@ -7718,7 +7718,7 @@ async fn initial_output_tool_collision_uses_a_unique_synthetic_name() {
         .output_schema::<Answer>()
         .output_mode(OutputMode::Tool)
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(2)
         .run()
         .await
@@ -7808,7 +7808,7 @@ async fn late_output_tool_collision_fails_before_blocking_provider_for_all_choic
                 second_turn_patch,
             })
             .build()
-            .runner("go")
+            .prompt("go")
             .max_turns(3)
             .run()
             .await
@@ -7859,7 +7859,7 @@ async fn late_output_tool_collision_fails_before_streaming_provider() {
             second_turn_patch: None,
         })
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .stream()
         .await;
@@ -7924,7 +7924,7 @@ async fn late_output_tool_collision_is_checked_after_active_tools_filtering() {
             second_turn_patch: Some(RequestPatch::new().active_tools(["add"])),
         })
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(4)
         .run()
         .await
@@ -7981,7 +7981,7 @@ async fn retrieved_output_tool_collision_fails_before_provider_request() {
         .output_schema::<Answer>()
         .output_mode(OutputMode::Tool)
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .run()
         .await
@@ -8045,7 +8045,7 @@ async fn active_tools_filter_does_not_let_output_tool_collide_with_a_filtered_re
         .output_mode(OutputMode::Tool)
         .add_hook(ActiveToolsAddOnly)
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(2)
         .run()
         .await
@@ -8121,7 +8121,7 @@ async fn model_turn_finished_content_carries_output_tool_call_in_tool_mode() {
     .output_mode(OutputMode::Tool)
     .add_hook(hook.clone())
     .build()
-    .runner("go")
+    .prompt("go")
     .max_turns(2)
     .run()
     .await
@@ -8146,7 +8146,7 @@ async fn model_turn_finished_content_carries_output_tool_call_in_tool_mode() {
     .output_mode(OutputMode::Tool)
     .add_hook(s_hook.clone())
     .build()
-    .runner("go")
+    .prompt("go")
     .max_turns(2)
     .stream()
     .await;
@@ -8171,7 +8171,7 @@ async fn output_tool_finalization_emits_no_complete_tool_call_stream_item() {
     .output_schema::<Answer>()
     .output_mode(OutputMode::Tool)
     .build()
-    .runner("go")
+    .prompt("go")
     .max_turns(2)
     .stream()
     .await;
@@ -8298,7 +8298,7 @@ async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
     let blocking = AgentBuilder::new(blocking_model)
         .tool(MockAddTool)
         .build()
-        .runner("carry out the plan")
+        .prompt("carry out the plan")
         .max_turns(3)
         .add_hook(blocking_recorder.clone())
         .add_hook(blocking_approver.clone())
@@ -8316,7 +8316,7 @@ async fn human_in_the_loop_approve_deny_edit_parity_across_run_and_stream() {
     let mut stream = AgentBuilder::new(streaming_model)
         .tool(MockAddTool)
         .build()
-        .runner("carry out the plan")
+        .prompt("carry out the plan")
         .max_turns(3)
         .add_hook(streaming_recorder.clone())
         .add_hook(streaming_approver.clone())
@@ -8418,7 +8418,7 @@ async fn human_in_the_loop_abort_terminates_the_run() {
     let err = AgentBuilder::new(blocking_model)
         .tool(MockAddTool)
         .build()
-        .runner("do the sensitive thing")
+        .prompt("do the sensitive thing")
         .max_turns(3)
         .add_hook(HumanApprovalHook::new([Decision::Abort(ABORT_REASON)]))
         .run()
@@ -8439,7 +8439,7 @@ async fn human_in_the_loop_abort_terminates_the_run() {
     let mut stream = AgentBuilder::new(streaming_model)
         .tool(MockAddTool)
         .build()
-        .runner("do the sensitive thing")
+        .prompt("do the sensitive thing")
         .max_turns(3)
         .add_hook(HumanApprovalHook::new([Decision::Abort(ABORT_REASON)]))
         .stream()
@@ -8540,7 +8540,7 @@ async fn approval_policy_allow_list_with_sticky_decisions() {
         .tool(MockAddTool)
         .tool(MockSubtractTool)
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .add_hook(recorder.clone())
         .add_hook(policy.clone())
@@ -8785,7 +8785,7 @@ async fn model_turn_finished_reports_termination_and_effective_max_tokens_blocki
         .max_tokens(64)
         .add_hook(probe.clone())
         .build()
-        .runner("question")
+        .prompt("question")
         .run()
         .await
         .expect("truncated turn is still an answer");
@@ -8813,7 +8813,7 @@ async fn model_turn_finished_reports_termination_and_effective_max_tokens_stream
         .max_tokens(64)
         .add_hook(probe.clone())
         .build()
-        .runner("question")
+        .prompt("question")
         .stream()
         .await;
     while let Some(item) = stream.next().await {
@@ -8838,7 +8838,7 @@ async fn model_turn_finished_reports_absent_reason_and_absent_cap_as_none() {
     AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]))
         .add_hook(probe.clone())
         .build()
-        .runner("question")
+        .prompt("question")
         .run()
         .await
         .expect("run");
@@ -8862,7 +8862,7 @@ async fn model_turn_finished_reports_tool_calls_for_a_mislabelled_tool_turn() {
     .tool(MockAddTool)
     .add_hook(probe.clone())
     .build()
-    .runner("question")
+    .prompt("question")
     .max_turns(2)
     .run()
     .await
@@ -8902,7 +8902,7 @@ async fn model_turn_finished_reports_tool_calls_for_a_mislabelled_streamed_tool_
         .tool(MockAddTool)
         .add_hook(probe.clone())
         .build()
-        .runner("question")
+        .prompt("question")
         .max_turns(2)
         .stream()
         .await;
@@ -8933,7 +8933,7 @@ async fn model_turn_finished_passes_an_unmapped_reason_through_verbatim() {
     ]))
     .add_hook(probe.clone())
     .build()
-    .runner("question")
+    .prompt("question")
     .run()
     .await
     .expect("run");
@@ -8980,7 +8980,7 @@ async fn streaming_retry_reports_the_second_attempts_own_effective_max_tokens() 
             TestRetryMode::Repeat,
         ))
         .build()
-        .runner("question")
+        .prompt("question")
         .max_turns(2)
         .stream()
         .await;
@@ -9015,7 +9015,7 @@ async fn a_portable_hook_can_retry_a_truncated_tool_free_turn() {
     let response = AgentBuilder::new(model.clone())
         .add_hook(hook.clone())
         .build()
-        .runner("question")
+        .prompt("question")
         .max_turns(2)
         .run()
         .await
@@ -9054,7 +9054,7 @@ async fn retry_reports_the_second_attempts_own_effective_max_tokens() {
             TestRetryMode::Repeat,
         ))
         .build()
-        .runner("question")
+        .prompt("question")
         .max_turns(2)
         .run()
         .await
@@ -9092,7 +9092,7 @@ async fn blocking_model_turn_repeat_preserves_prompt_history_with_fresh_preparat
             TestRetryMode::Repeat,
         ))
         .build()
-        .runner("question")
+        .prompt("question")
         .max_turns(2)
         .run()
         .await
@@ -9132,7 +9132,7 @@ async fn blocking_model_turn_feedback_preserves_rejected_response() {
             TestRetryMode::Feedback("try another approach"),
         ))
         .build()
-        .runner("question")
+        .prompt("question")
         .max_turns(2)
         .run()
         .await
@@ -9174,7 +9174,7 @@ async fn blocking_empty_feedback_retry_omits_empty_assistant_history() {
             TestRetryMode::Feedback("provide an answer"),
         ))
         .build()
-        .runner("question")
+        .prompt("question")
         .max_turns(2)
         .run()
         .await
@@ -9222,7 +9222,7 @@ async fn streaming_model_turn_retry_marks_rollback_and_matches_blocking_accounti
             TestRetryMode::Repeat,
         ))
         .build()
-        .runner("question")
+        .prompt("question")
         .max_turns(2)
         .stream()
         .await;
@@ -9274,7 +9274,7 @@ async fn streaming_feedback_retry_matches_blocking_history_and_usage() {
         TestRetryMode::Feedback("correct the answer"),
     ))
     .build()
-    .runner("question")
+    .prompt("question")
     .max_turns(2)
     .run()
     .await
@@ -9296,7 +9296,7 @@ async fn streaming_feedback_retry_matches_blocking_history_and_usage() {
         TestRetryMode::Feedback("correct the answer"),
     ))
     .build()
-    .runner("question")
+    .prompt("question")
     .max_turns(2)
     .stream()
     .await;
@@ -9355,7 +9355,7 @@ async fn streaming_empty_feedback_retry_omits_empty_assistant_history() {
             TestRetryMode::Feedback("provide an answer"),
         ))
         .build()
-        .runner("question")
+        .prompt("question")
         .max_turns(2)
         .stream()
         .await;
@@ -9415,7 +9415,7 @@ async fn response_retry_preserves_model_turn_hook_order_across_surfaces() {
         TestRetryMode::Repeat,
     ))
     .build()
-    .runner("question")
+    .prompt("question")
     .max_turns(2)
     .run()
     .await
@@ -9439,7 +9439,7 @@ async fn response_retry_preserves_model_turn_hook_order_across_surfaces() {
         TestRetryMode::Repeat,
     ))
     .build()
-    .runner("question")
+    .prompt("question")
     .max_turns(2)
     .stream()
     .await;
@@ -9512,7 +9512,7 @@ async fn streaming_model_turn_retry_respects_max_turns() {
             TestRetryMode::Repeat,
         ))
         .build()
-        .runner("question")
+        .prompt("question")
         .max_turns(1)
         .stream()
         .await;
@@ -9561,7 +9561,7 @@ async fn model_turn_retry_rejects_tool_turn_before_tool_hooks_or_execution() {
     .add_hook(recorder.clone())
     .add_hook(AlwaysRepeatModelTurn)
     .build()
-    .runner("add")
+    .prompt("add")
     .max_turns(2)
     .run()
     .await
@@ -9597,7 +9597,7 @@ async fn streaming_model_turn_retry_rejects_tool_turn_without_committed_executio
     .add_hook(recorder.clone())
     .add_hook(AlwaysRepeatModelTurn)
     .build()
-    .runner("add")
+    .prompt("add")
     .max_turns(2)
     .stream()
     .await;
@@ -9683,8 +9683,8 @@ async fn concurrent_runs_of_same_agent_have_independent_retry_budgets() {
     .add_hook(hook)
     .build();
 
-    let first = agent.runner("first").max_turns(2).run();
-    let second = agent.runner("second").max_turns(2).run();
+    let first = agent.prompt("first").max_turns(2).run();
+    let second = agent.prompt("second").max_turns(2).run();
     let (first, second) = tokio::join!(first, second);
     let first = first.expect("first run");
     let second = second.expect("second run");
@@ -9929,7 +9929,7 @@ mod run_lifecycle {
         let mut stream = AgentBuilder::new(model)
             .add_hook(hook.clone())
             .build()
-            .runner(Message::user("hi"))
+            .prompt(Message::user("hi"))
             .stream()
             .await;
         while let Some(item) = stream.next().await {
@@ -9975,7 +9975,7 @@ mod run_lifecycle {
         let mut stream = AgentBuilder::new(model)
             .add_hook(hook.clone())
             .build()
-            .runner(Message::user("hi"))
+            .prompt(Message::user("hi"))
             .stream()
             .await;
         let first = stream.next().await.expect("terminal item");
@@ -10012,7 +10012,7 @@ mod run_lifecycle {
             .tool(crate::test_utils::MockAddTool)
             .add_hook(hook.clone())
             .build()
-            .runner(Message::user("add 2 and 3"))
+            .prompt(Message::user("add 2 and 3"))
             .max_turns(1)
             .stream()
             .await;
@@ -10077,7 +10077,7 @@ mod run_lifecycle {
             .tool(crate::test_utils::MockAddTool)
             .add_hook(probe.clone())
             .build()
-            .runner(Message::user("add 2 and 3"))
+            .prompt(Message::user("add 2 and 3"))
             .max_turns(3)
             .stream()
             .await;
@@ -10141,7 +10141,7 @@ async fn outcome_replacement_preserves_tool_execution_commit_disposition() {
             })
             .add_hook(ReplaceOutcome { skip_dispatch })
             .build()
-            .runner("go")
+            .prompt("go")
             .max_turns(3)
             .stream()
             .await;
@@ -10223,7 +10223,7 @@ async fn outcome_stop_is_terminal_through_nested_hooks_on_both_surfaces() {
                 .add_hook(stack)
                 .build();
             let error = if streaming {
-                let mut stream = agent.runner("go").max_turns(3).stream().await;
+                let mut stream = agent.prompt("go").max_turns(3).stream().await;
                 let mut error = None;
                 while let Some(item) = stream.next().await {
                     match item {
@@ -10238,7 +10238,7 @@ async fn outcome_stop_is_terminal_through_nested_hooks_on_both_surfaces() {
                 error.expect("stream must stop")
             } else {
                 agent
-                    .runner("go")
+                    .prompt("go")
                     .max_turns(3)
                     .run()
                     .await

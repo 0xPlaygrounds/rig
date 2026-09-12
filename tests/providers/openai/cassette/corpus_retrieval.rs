@@ -88,7 +88,7 @@ async fn dynamic_context_one_streamed_effect_log_is_the_golden_fixture() {
                 .dynamic_context(1, index)
                 .record_effects_with_events()
                 .build();
-            let mut stream = agent.stream_prompt(FACT_PROMPT).stream().await;
+            let mut stream = agent.prompt(FACT_PROMPT).stream().await;
             let output = final_output(&mut stream).await;
             drop(stream);
             assert!(!output.is_empty());
@@ -158,11 +158,7 @@ async fn retrieved_tools_one_streamed_effect_log_is_the_golden_fixture() {
                 .retrieved_tools(1, index, toolset)
                 .record_effects_with_events()
                 .build();
-            let mut stream = agent
-                .stream_prompt(SUBTRACT_PROMPT)
-                .max_turns(3)
-                .stream()
-                .await;
+            let mut stream = agent.prompt(SUBTRACT_PROMPT).max_turns(3).stream().await;
             let output = final_output(&mut stream).await;
             drop(stream);
             assert!(output.contains("42"), "{output}");

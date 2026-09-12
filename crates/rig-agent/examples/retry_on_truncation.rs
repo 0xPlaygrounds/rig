@@ -178,7 +178,7 @@ async fn main() -> Result<()> {
         .add_hook(GrowCapOnTruncation::new(8, 256))
         .build();
     let mut stream = streaming_agent
-        .stream_prompt("Explain Rig's finish reasons.")
+        .prompt("Explain Rig's finish reasons.")
         .max_turns(8)
         .stream()
         .await;

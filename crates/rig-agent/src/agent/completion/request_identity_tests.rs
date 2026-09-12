@@ -72,7 +72,7 @@ fn golden_agent(model: MockCompletionModel) -> Agent {
 async fn scripted_tool_turn_requests_match_golden() {
     let model = golden_model();
     let agent = golden_agent(model.clone());
-    let _ = agent.runner("add 2 and 3").max_turns(3).run().await;
+    let _ = agent.prompt("add 2 and 3").max_turns(3).run().await;
 
     let requests = model
         .requests()

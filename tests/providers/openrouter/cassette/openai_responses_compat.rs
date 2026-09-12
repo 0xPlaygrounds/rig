@@ -82,7 +82,7 @@ async fn openai_responses_stream_against_openrouter_completes() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("In one sentence, confirm this streaming response works.")
+                .prompt("In one sentence, confirm this streaming response works.")
                 .stream()
                 .await;
             let response = collect_stream_final_response(&mut stream)

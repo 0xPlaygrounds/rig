@@ -42,7 +42,7 @@ async fn streaming_smoke_through_boxed_transport() {
             .preamble(STREAMING_PREAMBLE)
             .build();
 
-        let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
+        let mut stream = agent.prompt(STREAMING_PROMPT).stream().await;
         let (response, provider_final): (_, rig::streaming::StreamFinal) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await

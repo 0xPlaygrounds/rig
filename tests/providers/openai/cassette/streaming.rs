@@ -17,7 +17,7 @@ async fn streaming_smoke() {
             .preamble(STREAMING_PREAMBLE)
             .build();
 
-        let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
+        let mut stream = agent.prompt(STREAMING_PROMPT).stream().await;
         let (response, provider_final) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await
@@ -43,7 +43,7 @@ async fn example_streaming_prompt() {
             .build();
 
         let mut stream = agent
-            .stream_prompt("When and where and what type is the next solar eclipse?")
+            .prompt("When and where and what type is the next solar eclipse?")
             .stream()
             .await;
         let response = collect_stream_final_response(&mut stream)

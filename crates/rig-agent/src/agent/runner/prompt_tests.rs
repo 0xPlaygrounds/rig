@@ -37,7 +37,7 @@ use std::sync::{
 ///
 /// The premise of the whole fix is that the two surfaces disagreeing is
 /// what let truncation surface as a blank answer, yet every other guard
-/// test drives `stream_prompt`. Until `MockTurn::with_finish_reason`
+/// test drives the streamed surface. Until `MockTurn::with_finish_reason`
 /// existed the blocking mock could not report a reason at all, so
 /// `runner.rs`'s `.with_finish_reason(resp.finish_reason())` — and its
 /// propagation through `model_response` → `record_completion_call` → this

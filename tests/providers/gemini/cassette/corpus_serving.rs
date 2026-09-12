@@ -33,7 +33,7 @@ async fn two_turns_serial_effect_log_is_the_golden_fixture() {
                 .record_effects()
                 .build();
             let mut stream = agent
-                .stream_prompt(
+                .prompt(
                     "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the \
                      subtract tool. Report the final number.",
                 )

@@ -55,7 +55,7 @@ async fn messages_streaming_prompt_smoke() {
                 .preamble(STREAMING_PREAMBLE)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
+            let mut stream = agent.prompt(STREAMING_PROMPT).stream().await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");
@@ -104,7 +104,7 @@ async fn messages_streaming_tools_smoke() {
                 .default_max_turns(2)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
+            let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream().await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");
@@ -332,7 +332,8 @@ async fn messages_adaptive_thinking_streaming_tool_roundtrip_smoke() {
                 .build();
 
             let stream = agent
-                .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
+                .prompt(reasoning::TOOL_USER_PROMPT)
+                .history(Vec::<Message>::new())
                 .max_turns(3)
                 .stream()
                 .await;

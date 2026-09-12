@@ -167,7 +167,7 @@ async fn extra_context_streamed_effect_log_is_the_golden_fixture() {
                 .add_hook(PatchExtraContext)
                 .record_effects_with_events()
                 .build();
-            let mut stream = agent.stream_prompt(CONTEXT_PROMPT).stream().await;
+            let mut stream = agent.prompt(CONTEXT_PROMPT).stream().await;
             let mut output = None;
             while let Some(item) = stream.next().await {
                 if let MultiTurnStreamItem::FinalResponse(response) =

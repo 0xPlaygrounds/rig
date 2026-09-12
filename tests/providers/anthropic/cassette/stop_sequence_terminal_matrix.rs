@@ -836,7 +836,7 @@ async fn agent_stream_single_sequence() {
                 .additional_params(json!({ "stop_sequences": ["charlie"] }))
                 .build();
 
-            let mut stream = agent.stream_prompt(LIST_PROMPT).stream().await;
+            let mut stream = agent.prompt(LIST_PROMPT).stream().await;
             let (_response, provider_final): (_, rig::streaming::StreamFinal) =
                 crate::support::collect_stream_final_response_and_provider_final(&mut stream)
                     .await

@@ -32,7 +32,7 @@ async fn default_instructions_fill_required_instructions() {
 
     let agent = client.agent(LIVE_MODEL).build();
     let mut stream = agent
-        .stream_prompt("Reply with the exact word from the instructions.")
+        .prompt("Reply with the exact word from the instructions.")
         .stream()
         .await;
     let response = collect_stream_final_response(&mut stream)

@@ -1,4 +1,4 @@
-//! Demonstrates `stream_chat` with prior conversation history.
+//! Demonstrates a streamed run over prior conversation history.
 //! Requires `OPENAI_API_KEY`.
 //! Run it to see a streamed continuation of an existing exchange.
 
@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
         .build();
 
     let history = sample_history();
-    let mut stream = agent.stream_chat(PROMPT, &history).stream().await;
+    let mut stream = agent.prompt(PROMPT).history(&history).stream().await;
     let response = collect_stream_final_response(&mut stream).await?;
     println!("{response}");
 

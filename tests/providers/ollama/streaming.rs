@@ -16,7 +16,7 @@ async fn example_streaming_prompt() {
         .build();
 
     let mut stream = agent
-        .stream_prompt("When and where and what type is the next solar eclipse?")
+        .prompt("When and where and what type is the next solar eclipse?")
         .stream()
         .await;
     let response = collect_stream_final_response(&mut stream)

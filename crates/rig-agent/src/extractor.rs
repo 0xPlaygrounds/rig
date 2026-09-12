@@ -96,7 +96,7 @@ where
     /// billed response but failed extraction; attempts whose completion call
     /// itself errored contribute no usage.
     pub fn extract(&self, text: impl Into<Message>) -> TypedRun<T> {
-        let runner = self.agent.runner(text).max_turns(1).output_tool(
+        let runner = self.agent.prompt(text).max_turns(1).output_tool(
             SUBMIT_TOOL_NAME,
             "Submit the structured data you extracted from the provided text.",
             false,

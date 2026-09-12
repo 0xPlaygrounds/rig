@@ -186,11 +186,7 @@ async fn tool_result_redacted_by_hook_streaming() {
                 .add_hook(RedactSsnFromResult)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(LOOKUP_PROMPT)
-                .max_turns(5)
-                .stream()
-                .await;
+            let mut stream = agent.prompt(LOOKUP_PROMPT).max_turns(5).stream().await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming lookup should succeed");

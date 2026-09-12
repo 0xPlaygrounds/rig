@@ -215,7 +215,7 @@ async fn a_fragmented_tool_call_stream_reassembles_without_the_provider_consts()
                 .build();
 
             let mut stream = agent
-                .stream_prompt(STREAMING_TOOLS_PROMPT)
+                .prompt(STREAMING_TOOLS_PROMPT)
                 .max_turns(4)
                 .stream()
                 .await;

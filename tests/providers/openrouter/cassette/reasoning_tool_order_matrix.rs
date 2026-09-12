@@ -207,10 +207,8 @@ async fn run_signed_agent(
         }
         Transport::Streaming => {
             let mut stream = agent
-                .stream_chat(
-                    prompt(Shape::Single),
-                    Vec::<rig::completion::Message>::new(),
-                )
+                .prompt(prompt(Shape::Single))
+                .history(Vec::<rig::completion::Message>::new())
                 .max_turns(2)
                 .stream()
                 .await;

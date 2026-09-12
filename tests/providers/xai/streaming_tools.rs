@@ -91,7 +91,7 @@ async fn responses_stream_preserves_tool_result_flow() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(XAI_STATUS_TOOL_PROMPT)
+                .prompt(XAI_STATUS_TOOL_PROMPT)
                 .max_turns(5)
                 .stream()
                 .await;

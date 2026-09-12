@@ -70,7 +70,7 @@ async fn cancel_after_tool_call_delta_effect_log_is_the_golden_fixture() {
                 .record_effects_with_events()
                 .build();
             {
-                let mut stream = agent.stream_prompt(NOTE_PROMPT).max_turns(3).stream().await;
+                let mut stream = agent.prompt(NOTE_PROMPT).max_turns(3).stream().await;
                 while let Some(item) = stream.next().await {
                     if let Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
                         delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
@@ -148,7 +148,7 @@ async fn tool_error_streamed_effect_log_is_the_golden_fixture() {
                 .tool(FailingAdd)
                 .record_effects_with_events()
                 .build();
-            let mut stream = agent.stream_prompt(ADD_PROMPT).max_turns(3).stream().await;
+            let mut stream = agent.prompt(ADD_PROMPT).max_turns(3).stream().await;
             let output = final_output(&mut stream).await;
             drop(stream);
             assert!(!output.is_empty());
@@ -214,7 +214,7 @@ async fn model_error_streamed_effect_log_is_the_golden_fixture() {
             .temperature(0.0)
             .record_effects_with_events()
             .build();
-        let mut stream = agent.stream_prompt(BASIC_PROMPT).stream().await;
+        let mut stream = agent.prompt(BASIC_PROMPT).stream().await;
         let mut kinds = Vec::new();
         while let Some(item) = stream.next().await {
             if let Err(error) = item {

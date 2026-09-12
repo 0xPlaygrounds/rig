@@ -95,7 +95,7 @@ impl CliChat for AgentImpl {
     ) -> Result<String, PromptError> {
         let mut response_stream = self
             .agent
-            .stream_prompt(prompt)
+            .prompt(prompt)
             .history(history.clone())
             .max_turns(self.max_turns)
             .stream()

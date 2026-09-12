@@ -36,7 +36,7 @@ async fn streaming_tools_smoke() {
                 .default_max_turns(2)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
+            let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream().await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");
@@ -60,7 +60,7 @@ async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message()
                 .build();
 
             let mut stream = agent
-                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+                .prompt(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(8)
                 .stream()
                 .await;
@@ -131,7 +131,7 @@ async fn serial_serving_reproduces_the_recorded_request_order() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+                .prompt(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(8)
                 .tool_concurrency(2)
                 .stream()
@@ -176,7 +176,7 @@ async fn streaming_tool_concurrency_surfaces_results_in_call_order_after_batch_s
             .build();
 
         let mut stream = agent
-            .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+            .prompt(TWO_TOOL_STREAM_PROMPT)
             .max_turns(8)
             .tool_concurrency(2)
             .stream()
@@ -665,7 +665,7 @@ async fn streaming_tools_effect_log_is_the_golden_fixture() {
                 .default_max_turns(2)
                 .record_effects_with_events()
                 .build();
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
+            let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream().await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");
@@ -706,7 +706,7 @@ async fn concurrent_tools_serial_effect_log_is_the_golden_fixture() {
                 .record_effects()
                 .build();
             let mut stream = agent
-                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+                .prompt(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(8)
                 .tool_concurrency(2)
                 .stream()

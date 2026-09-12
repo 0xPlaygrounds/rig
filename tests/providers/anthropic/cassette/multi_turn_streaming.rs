@@ -180,7 +180,7 @@ async fn multi_turn_streaming_tools() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(MULTI_TURN_STREAMING_PROMPT)
+                .prompt(MULTI_TURN_STREAMING_PROMPT)
                 .max_turns(10)
                 .stream()
                 .await;

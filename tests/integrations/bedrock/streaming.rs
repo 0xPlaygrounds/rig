@@ -23,7 +23,7 @@ async fn streaming_smoke() {
         .preamble(STREAMING_PREAMBLE)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
+    let mut stream = agent.prompt(STREAMING_PROMPT).stream().await;
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming prompt should succeed");
@@ -42,7 +42,7 @@ async fn streaming_tools_smoke() {
         .tool(Subtract)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
+    let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream().await;
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming tool prompt should succeed");

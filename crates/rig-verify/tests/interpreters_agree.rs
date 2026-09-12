@@ -1,6 +1,6 @@
 //! Two interpreters of the agent program agree (Swierstra: any two
 //! interpreters of one syntax tree must). The bus-driven engine
-//! (`Agent::runner`) and a hand driver of `AgentRun::next_step` (the shape
+//! (`Agent::prompt`) and a hand driver of `AgentRun::next_step` (the shape
 //! of `tests/fixtures/agent_run_stepper`) run the same scripted model and
 //! the same tools **over the same bus keys**, and produce the same sequence
 //! of effects — every request and every outcome as data, in order, not

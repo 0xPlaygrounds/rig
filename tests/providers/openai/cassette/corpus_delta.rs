@@ -29,7 +29,7 @@ async fn chat_baseline_effect_log_is_the_golden_fixture() {
             .tool(Adder)
             .record_effects_with_events()
             .build();
-        let mut stream = agent.stream_prompt(ADD_PROMPT).max_turns(3).stream().await;
+        let mut stream = agent.prompt(ADD_PROMPT).max_turns(3).stream().await;
         let mut output = None;
         while let Some(item) = stream.next().await {
             if let MultiTurnStreamItem::FinalResponse(response) = item.expect("the stream yields") {

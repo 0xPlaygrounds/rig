@@ -213,7 +213,7 @@ async fn permission_control_streaming_example() -> Result<()> {
     };
 
     let mut stream = agent
-        .stream_prompt(
+        .prompt(
             "Use the available tools to read test.txt now. \
              Do not ask any follow-up questions; just read the file and report its content.",
         )

@@ -304,12 +304,12 @@ fn blocking_body(sink: Observed, route: Route, tools: bool, probe: RawProbe) -> 
     })
 }
 
-/// A streamed `stream_prompt(..)` run, drained to its `FinalResponse`.
+/// A streamed `prompt(..).stream()` run, drained to its `FinalResponse`.
 fn streamed_body(sink: Observed, route: Route, tools: bool, probe: RawProbe) -> Body {
     Box::new(move |client| {
         Box::pin(async move {
             let (agent, prompt) = build_agent(route, client, tools, probe);
-            let mut stream = agent.stream_prompt(prompt).max_turns(3).stream().await;
+            let mut stream = agent.prompt(prompt).max_turns(3).stream().await;
             let mut observation = RunObservation::default();
             let mut final_response = None;
             while let Some(item) = stream.next().await {
@@ -677,7 +677,7 @@ async fn chat_retried_turn_records_retried_attempt_raw() {
                 )
                 .temperature(0.0)
                 .build()
-                .runner("Begin the retry-hook demonstration.")
+                .prompt("Begin the retry-hook demonstration.")
                 .max_turns(2)
                 .add_hook(hook_probe)
                 .add_hook(RetryOnceOnMarker)

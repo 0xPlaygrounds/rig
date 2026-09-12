@@ -214,7 +214,7 @@ async fn streaming_raw_model_sends_a_base64_image() -> Result<()> {
         |client| async move {
             let agent = client.agent(VISION_MODEL).temperature(0.0).build();
             let mut stream = agent
-                .stream_prompt(user_message(vec![
+                .prompt(user_message(vec![
                     UserContent::text(COLOUR_PROMPT),
                     red_png(),
                 ]))
@@ -438,7 +438,8 @@ async fn streaming_image_survives_a_replayed_history() -> Result<()> {
                 Message::assistant("Red."),
             ];
             let mut stream = agent
-                .stream_chat("Repeat the colour you just named.", history)
+                .prompt("Repeat the colour you just named.")
+                .history(history)
                 .stream()
                 .await;
             let response = collect_stream_final_response(&mut stream).await?;
@@ -534,7 +535,7 @@ async fn streaming_agent_reads_an_attached_pdf() -> Result<()> {
         |client| async move {
             let agent = client.agent(VISION_MODEL).temperature(0.0).build();
             let mut stream = agent
-                .stream_prompt(user_message(vec![
+                .prompt(user_message(vec![
                     UserContent::text(DOCUMENT_PROMPT),
                     pdf_document(),
                 ]))
@@ -723,7 +724,7 @@ async fn streaming_agent_sends_audio() -> Result<()> {
         |client| async move {
             let agent = client.agent(AUDIO_MODEL).temperature(0.0).build();
             let mut stream = agent
-                .stream_prompt(user_message(vec![
+                .prompt(user_message(vec![
                     UserContent::text(AUDIO_PROMPT),
                     speech_audio(),
                 ]))
@@ -823,7 +824,7 @@ async fn streaming_text_only_content_still_flattens_to_a_string() -> Result<()> 
                 .temperature(0.0)
                 .build();
             let mut stream = agent
-                .stream_prompt(user_message(vec![
+                .prompt(user_message(vec![
                     UserContent::text("Name the capital of France."),
                     UserContent::text(" Answer with one word."),
                 ]))
@@ -975,7 +976,7 @@ async fn streaming_image_with_a_tool_configured() -> Result<()> {
                 .default_max_turns(3)
                 .build();
             let mut stream = agent
-                .stream_prompt(user_message(vec![
+                .prompt(user_message(vec![
                     UserContent::text("Record this image's colour."),
                     red_png(),
                 ]))

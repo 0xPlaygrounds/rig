@@ -122,7 +122,7 @@ mod slow_stream {
         let agent = AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), "golden", key)
             .add_hook(StopOnTextDelta)
             .build();
-        let mut stream = agent.stream_prompt("go").stream().await;
+        let mut stream = agent.prompt("go").stream().await;
         let mut stopped = false;
         while let Some(item) = stream.next().await {
             if let Err(crate::agent::StreamingError::Prompt(error)) = item {
@@ -170,7 +170,7 @@ mod slow_stream {
             .add_hook(StopOnTextDelta)
             .record_effects()
             .build();
-        let mut stream = agent.stream_prompt("go").stream().await;
+        let mut stream = agent.prompt("go").stream().await;
         while let Some(item) = stream.next().await {
             if let Err(crate::agent::StreamingError::Prompt(error)) = item {
                 assert!(matches!(

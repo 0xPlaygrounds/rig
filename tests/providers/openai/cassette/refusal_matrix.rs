@@ -305,7 +305,7 @@ async fn chat_streaming_agent_surfaces_refusal() {
                 .additional_params(chat_response_format())
                 .build();
 
-            let mut stream = agent.stream_prompt(REFUSED_PROMPT).stream().await;
+            let mut stream = agent.prompt(REFUSED_PROMPT).stream().await;
             let observed = collect_stream_observation(&mut stream).await;
 
             assert!(observed.errors.is_empty(), "{:?}", observed.errors);
@@ -666,7 +666,7 @@ async fn responses_agent_streaming_refusal_surfaces() {
                 .additional_params(responses_text_format())
                 .build();
 
-            let mut stream = agent.stream_prompt(REFUSED_PROMPT).stream().await;
+            let mut stream = agent.prompt(REFUSED_PROMPT).stream().await;
             let observed = collect_stream_observation(&mut stream).await;
 
             assert!(observed.errors.is_empty(), "{:?}", observed.errors);

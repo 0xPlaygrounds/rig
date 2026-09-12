@@ -60,7 +60,7 @@ async fn streamed(
     retries: usize,
 ) -> Result<String, rig::agent::StreamingError> {
     let mut stream = agent
-        .stream_prompt(PROMPT)
+        .prompt(PROMPT)
         .max_turns(max_turns)
         .max_invalid_tool_call_retries(retries)
         .unhandled_invalid_tool_call(unhandled)
@@ -341,7 +341,7 @@ async fn delta_output_tool_effect_log_is_the_golden_fixture() {
     .record_effects_with_events()
     .build();
     let mut stream = agent
-        .stream_prompt("Return a concise event object for a local Rust meetup in Seattle.")
+        .prompt("Return a concise event object for a local Rust meetup in Seattle.")
         .stream()
         .await;
     let mut output = None;

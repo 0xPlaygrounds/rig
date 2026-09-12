@@ -503,7 +503,7 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("What is 21 + 21? Use the add tool.")
+                .prompt("What is 21 + 21? Use the add tool.")
                 .max_turns(2)
                 .stream()
                 .await;
@@ -577,7 +577,7 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("What is 21 + 21? Use the add tool.")
+                .prompt("What is 21 + 21? Use the add tool.")
                 .add_hook(CancelOnToolCall)
                 .max_turns(2)
                 .stream()

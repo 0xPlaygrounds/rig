@@ -61,7 +61,7 @@ async fn embeds_over_host(client: openai::Client, streamed: bool) -> rig::effect
         .add_hook(EmbedPrompt)
         .build();
     let output = if streamed {
-        let mut stream = agent.stream_prompt(PROMPT).stream().await;
+        let mut stream = agent.prompt(PROMPT).stream().await;
         let output = final_output(&mut stream).await;
         drop(stream);
         output

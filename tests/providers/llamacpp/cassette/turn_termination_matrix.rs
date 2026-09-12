@@ -127,7 +127,7 @@ async fn blocking_truncated_turn_reports_length_and_cap() {
                 .max_tokens(TINY_CAP)
                 .add_hook(probe)
                 .build()
-                .runner(TRUNCATING_PROMPT)
+                .prompt(TRUNCATING_PROMPT)
                 .run()
                 .await
                 .expect("a partially truncated turn still carries an answer");
@@ -174,7 +174,7 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(TRUNCATING_PROMPT)
+                .prompt(TRUNCATING_PROMPT)
                 .add_hook(probe)
                 .stream()
                 .await;
@@ -211,7 +211,7 @@ async fn blocking_completed_turn_reports_stop() {
                 .max_tokens(ROOMY_CAP)
                 .add_hook(probe)
                 .build()
-                .runner(SHORT_PROMPT)
+                .prompt(SHORT_PROMPT)
                 .run()
                 .await
                 .expect("a short prompt under a roomy cap should finish");
@@ -251,7 +251,7 @@ async fn blocking_tool_turn_reports_tool_calls() {
                 .tool(Adder)
                 .add_hook(probe)
                 .build()
-                .runner(TOOL_PROMPT)
+                .prompt(TOOL_PROMPT)
                 .max_turns(4)
                 .run()
                 .await
@@ -296,7 +296,7 @@ async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
                 .add_hook(probe)
                 .add_hook(escalate)
                 .build()
-                .runner(TRUNCATING_PROMPT)
+                .prompt(TRUNCATING_PROMPT)
                 .max_turns(2)
                 .run()
                 .await

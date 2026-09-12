@@ -178,7 +178,8 @@ async fn sequential_tool_calls_streaming() {
                 .build();
 
             let mut stream = agent
-                .stream_chat(SEQUENTIAL_TOOLS_PROMPT, Vec::<Message>::new())
+                .prompt(SEQUENTIAL_TOOLS_PROMPT)
+                .history(Vec::<Message>::new())
                 .max_turns(6)
                 .stream()
                 .await;
@@ -286,7 +287,7 @@ async fn parallel_tool_calls_single_turn_streaming() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+                .prompt(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(5)
                 .stream()
                 .await;
@@ -417,12 +418,12 @@ async fn reasoning_session_two_tool_calls_streaming() {
                 .build();
 
             let stream = agent
-                .stream_chat(
+                .prompt(
                     "I need the current weather in Tokyo and in Paris. Use the get_weather \
                      tool once per city, then compare the two cities in one short paragraph \
                      that mentions both city names.",
-                    Vec::<Message>::new(),
                 )
+                .history(Vec::<Message>::new())
                 .max_turns(5)
                 .stream()
                 .await;
@@ -485,7 +486,7 @@ async fn usage_accumulates_across_streaming_multi_turn() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
+                .prompt(ORDERED_TOOL_STREAM_PROMPT)
                 .max_turns(5)
                 .stream()
                 .await;

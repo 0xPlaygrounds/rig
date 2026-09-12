@@ -22,7 +22,7 @@ async fn example_streaming_with_tools() {
         .tool(Subtract)
         .build();
 
-    let mut stream = agent.stream_prompt("Calculate 2 - 5").stream().await;
+    let mut stream = agent.prompt("Calculate 2 - 5").stream().await;
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming prompt should succeed");

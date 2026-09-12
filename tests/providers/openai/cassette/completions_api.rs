@@ -92,7 +92,7 @@ async fn completions_api_streams_two_tool_calls_before_final_answer() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+                .prompt(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(8)
                 .stream()
                 .await;
@@ -198,7 +198,7 @@ async fn completions_api_stream_emits_tool_call_before_later_text() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
+                .prompt(ORDERED_TOOL_STREAM_PROMPT)
                 .max_turns(5)
                 .stream()
                 .await;

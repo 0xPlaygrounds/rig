@@ -421,13 +421,6 @@ impl Agent {
         self.name().unwrap_or(UNKNOWN_AGENT_NAME)
     }
 
-    /// Build a hook-aware [`AgentRunner`] for this agent, seeded with the
-    /// agent's default hook stack. Attach more hooks with
-    /// [`AgentRunner::add_hook`], then call [`AgentRunner::run`].
-    pub fn runner(&self, prompt: impl Into<Message>) -> AgentRunner {
-        AgentRunner::from_agent(self, prompt)
-    }
-
     /// The key of this agent's default model on its bus (a completion key;
     /// `.raw()` for the wire string).
     pub fn model_key(&self) -> &Key<family::Completion> {
@@ -716,7 +709,7 @@ impl Agent {
     /// Resolve the provider-facing tool definitions available for a prompt.
     ///
     /// This read-only view does not expose tool dispatch. Agent execution and
-    /// tool lifecycle hooks remain owned by [`Self::runner`].
+    /// tool lifecycle hooks remain owned by [`Self::prompt`].
     pub async fn tool_definitions(
         &self,
         prompt: Option<String>,
@@ -726,16 +719,33 @@ impl Agent {
 }
 
 impl Agent {
-    /// Run `prompt` through the agent loop. The returned [`AgentRunner`] is the
-    /// run: configure it (history, turn budget, tool context, hooks, …) and
-    /// `.await` it for the [`PromptResponse`], whose `output` is the accepted
-    /// assistant text.
+    /// Start a run from `prompt`. The returned [`AgentRunner`] is the run:
+    /// configure it (history, turn budget, tool context, hooks, …), then pick
+    /// how to drive it. Nothing happens until it is driven.
+    ///
+    /// - `.await` (or [`run`](AgentRunner::run)) folds the whole loop to a
+    ///   [`PromptResponse`], whose `output` is the accepted assistant text.
+    /// - [`stream`](AgentRunner::stream) yields every provider delta, tool
+    ///   event and the final response as a stream.
+    /// - [`run_channel`](AgentRunner::run_channel) splits the run into a
+    ///   future and an event feed for a host with its own executor or tick.
+    ///
+    /// The medium is chosen by the terminal call alone: an awaited runner asks
+    /// the provider for a complete response, a streamed one for a stream.
+    /// Hooks, tools, memory and the resulting history are the same in each.
     ///
     /// ```rust,no_run
     /// # use rig_agent::Agent;
+    /// # use futures::StreamExt;
     /// # async fn example(agent: Agent) -> Result<(), Box<dyn std::error::Error>> {
     /// let response = agent.prompt("What is 2 + 2?").max_turns(3).await?;
     /// println!("{}", response.output);
+    ///
+    /// let mut stream = agent.prompt("And 3 + 3?").stream().await;
+    /// while let Some(item) = stream.next().await {
+    ///     let item = item?;
+    ///     // text deltas, tool calls and results, then `FinalResponse`
+    /// }
     /// # Ok(())
     /// # }
     /// ```
@@ -743,9 +753,10 @@ impl Agent {
         AgentRunner::from_agent(self, prompt)
     }
 
-    /// Run one turn against caller-owned history, appending only the messages
-    /// the run committed. Returns the same [`PromptResponse`] as
-    /// [`prompt`](Self::prompt).
+    /// Run `prompt` against caller-owned history with the agent's defaults,
+    /// then append the messages the run committed to `chat_history`. This is
+    /// [`prompt`](Self::prompt) with [`history`](AgentRunner::history) plus
+    /// the write-back; the runner form is the one to configure or stream.
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name_or_default()))]
     pub async fn chat(
         &self,
@@ -759,21 +770,6 @@ impl Agent {
             chat_history.extend(messages);
         }
         Ok(response)
-    }
-
-    /// Run `prompt` as a stream: configure the returned runner, then call
-    /// [`AgentRunner::stream`] or [`AgentRunner::run_channel`].
-    pub fn stream_prompt(&self, prompt: impl Into<Message>) -> AgentRunner {
-        AgentRunner::from_agent(self, prompt)
-    }
-
-    /// [`stream_prompt`](Self::stream_prompt) with canonical chat history.
-    pub fn stream_chat<I, T>(&self, prompt: impl Into<Message>, chat_history: I) -> AgentRunner
-    where
-        I: IntoIterator<Item = T>,
-        T: Into<Message>,
-    {
-        AgentRunner::from_agent(self, prompt).history(chat_history)
     }
 
     /// Run `prompt` and deserialize the accepted structured response as `T`.

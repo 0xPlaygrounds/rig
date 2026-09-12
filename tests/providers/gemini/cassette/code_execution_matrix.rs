@@ -27,7 +27,7 @@
 //! | 1 | `blocking_raw_model_answers_after_code_execution` | blocking | `CompletionModel::completion` | baseline: code parts skipped, text survives |
 //! | 2 | `streaming_raw_model_answers_after_code_execution` | streaming | `CompletionModel::stream` | parity twin of 1 |
 //! | 3 | `blocking_agent_prompt_answers_after_code_execution` | blocking | `Agent::prompt` | agent surface |
-//! | 4 | `streaming_agent_prompt_answers_after_code_execution` | streaming | `Agent::stream_prompt` | parity twin of 3 |
+//! | 4 | `streaming_agent_prompt_answers_after_code_execution` | streaming | `Agent::prompt` | parity twin of 3 |
 //! | 5 | `blocking_raw_completion_keeps_native_code_parts` | blocking | `CompletionModel::raw_completion` | escape hatch still exposes the parts |
 //! | 6 | `blocking_failed_code_execution_outcome` | blocking | `completion` | `OUTCOME_FAILED` result part |
 //! | 7 | `streaming_failed_code_execution_outcome` | streaming | `stream` | parity twin of 6 |
@@ -333,7 +333,7 @@ async fn streaming_agent_prompt_answers_after_code_execution() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("Use the code execution tool to compute 2 to the power of 20. State the number in your answer.")
+                .prompt("Use the code execution tool to compute 2 to the power of 20. State the number in your answer.")
                 .stream()
                 .await;
 

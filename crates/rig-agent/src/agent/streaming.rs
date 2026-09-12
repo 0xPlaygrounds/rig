@@ -11,12 +11,9 @@ use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use tracing_futures::Instrument;
 
+use crate::completion::{CompletionError, PromptError};
 use crate::run::response::{CompletionCall, PromptResponse};
 use crate::run::transcript::assistant_text_from_choice;
-use crate::{
-    agent::Agent,
-    completion::{CompletionError, PromptError},
-};
 use rig_core::message::Message;
 
 // The `Send` bound is dropped exactly where `rig-core`'s `WasmCompat*` markers
@@ -336,8 +333,7 @@ impl AgentRunner {
 /// it parks on back-pressure.
 pub const RUN_EVENTS_CAPACITY: usize = 32;
 
-/// Event feed of an agent run started with [`AgentRunner::run_channel`] or
-/// [`Agent::run_channel`].
+/// Event feed of an agent run started with [`AgentRunner::run_channel`].
 ///
 /// Every [`MultiTurnStreamItem`] the run would have streamed is delivered here
 /// in order, ending with [`MultiTurnStreamItem::FinalResponse`]. The feed is a
@@ -442,23 +438,6 @@ impl AgentRunner {
             })
         };
         (future, RunEvents { receiver })
-    }
-}
-
-impl Agent {
-    /// Run `prompt` with the agent's defaults, returning the driving future and
-    /// a [`RunEvents`] feed. See [`AgentRunner::run_channel`]; to configure the
-    /// run first (history, turn budget, tool context, …), configure the runner
-    /// from [`Agent::stream_prompt`] and call its
-    /// [`run_channel`](AgentRunner::run_channel).
-    pub fn run_channel<P: Into<Message> + WasmCompatSend>(
-        &self,
-        prompt: P,
-    ) -> (
-        impl Future<Output = Result<PromptResponse, PromptError>> + WasmCompatSend + use<P>,
-        RunEvents,
-    ) {
-        AgentRunner::from_agent(self, prompt).run_channel()
     }
 }
 

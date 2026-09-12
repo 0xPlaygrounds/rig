@@ -1422,7 +1422,7 @@ where
 
     let captured = Arc::new(Mutex::new(None));
     let stopped = agent
-        .runner(PROMPT)
+        .prompt(PROMPT)
         .add_hook(CaptureTurn(captured.clone()))
         .run()
         .await;
@@ -1809,7 +1809,7 @@ where
         .default_max_turns(4)
         .build();
     let mut stream = agent
-        .stream_prompt("Use add to calculate 17 + 25, then state the final number.")
+        .prompt("Use add to calculate 17 + 25, then state the final number.")
         .max_turns(4)
         .stream()
         .await;
@@ -2049,9 +2049,7 @@ where
         .default_max_turns(5)
         .build();
     let mut stream = agent
-        .stream_prompt(
-            "Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.",
-        )
+        .prompt("Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.")
         .max_turns(5)
         .stream()
         .await;

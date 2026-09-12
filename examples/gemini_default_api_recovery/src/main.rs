@@ -352,7 +352,7 @@ async fn run_workspace_canary_attempt(
     let repair_hook = DefaultApiRepairHook::default();
 
     let stream = agent
-        .stream_prompt(workspace_canary_prompt(attempt))
+        .prompt(workspace_canary_prompt(attempt))
         .add_hook(repair_hook.clone())
         .history(Vec::<rig::message::Message>::new())
         .stream()

@@ -320,7 +320,7 @@ async fn thinking_streamed_effect_log_is_the_golden_fixture() {
                 .additional_params(thinking_params())
                 .record_effects_with_events()
                 .build();
-            let mut stream = agent.stream_prompt(THINKING_PROMPT).stream().await;
+            let mut stream = agent.prompt(THINKING_PROMPT).stream().await;
             let mut output = None;
             while let Some(item) = stream.next().await {
                 if let MultiTurnStreamItem::FinalResponse(response) =
@@ -476,7 +476,7 @@ async fn output_schema_streamed_effect_log_is_the_golden_fixture() {
                 .output_schema_raw(event_schema())
                 .record_effects_with_events()
                 .build();
-            let mut stream = agent.stream_prompt(STRUCTURED_OUTPUT_PROMPT).stream().await;
+            let mut stream = agent.prompt(STRUCTURED_OUTPUT_PROMPT).stream().await;
             let mut output = None;
             while let Some(item) = stream.next().await {
                 if let MultiTurnStreamItem::FinalResponse(response) =

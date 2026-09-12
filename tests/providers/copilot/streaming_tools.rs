@@ -28,7 +28,7 @@ async fn streaming_tools_smoke() {
                 .default_max_turns(2)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
+            let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream().await;
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");
@@ -54,7 +54,7 @@ async fn example_streaming_with_tools() {
             .default_max_turns(2)
             .build();
 
-        let mut stream = agent.stream_prompt("Calculate 2 - 5").stream().await;
+        let mut stream = agent.prompt("Calculate 2 - 5").stream().await;
         let response = collect_stream_final_response(&mut stream)
             .await
             .expect("streaming tools prompt should succeed");
@@ -126,7 +126,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+                .prompt(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(8)
                 .stream()
                 .await;

@@ -70,7 +70,7 @@ async fn streaming_with_events_effect_log_is_the_golden_fixture() {
             .record_effects_with_events()
             .build();
         let mut stream = agent
-            .stream_prompt(STREAMING_TOOLS_PROMPT)
+            .prompt(STREAMING_TOOLS_PROMPT)
             .max_turns(3)
             .stream()
             .await;

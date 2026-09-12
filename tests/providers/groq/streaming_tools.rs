@@ -71,7 +71,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
         .build();
 
     let mut stream = agent
-        .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+        .prompt(TWO_TOOL_STREAM_PROMPT)
         .max_turns(8)
         .stream()
         .await;
@@ -95,7 +95,7 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
         .build();
 
     let mut stream = agent
-        .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
+        .prompt(ORDERED_TOOL_STREAM_PROMPT)
         .max_turns(5)
         .stream()
         .await;

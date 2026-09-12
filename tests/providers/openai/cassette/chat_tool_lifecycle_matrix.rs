@@ -356,7 +356,8 @@ async fn run_agent(client: openai::Client, cell: Cell) -> Observation {
         }
         Transport::Streaming => {
             let mut stream = agent
-                .stream_chat(prompt(cell.shape), Vec::<rig::completion::Message>::new())
+                .prompt(prompt(cell.shape))
+                .history(Vec::<rig::completion::Message>::new())
                 .max_turns(1)
                 .stream()
                 .await;

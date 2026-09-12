@@ -198,7 +198,7 @@ async fn patch_tool_args_streamed_effect_log_is_the_golden_fixture() {
                 .add_hook(PatchAddArgs)
                 .record_effects_with_events()
                 .build();
-            let mut stream = agent.stream_prompt(ADD_PROMPT).max_turns(3).stream().await;
+            let mut stream = agent.prompt(ADD_PROMPT).max_turns(3).stream().await;
             let output = final_output(&mut stream).await;
             drop(stream);
             assert!(output.contains("42"), "{output}");
@@ -263,7 +263,7 @@ async fn deny_tool_streamed_effect_log_is_the_golden_fixture() {
             .add_hook(DenyAdd)
             .record_effects_with_events()
             .build();
-        let mut stream = agent.stream_prompt(ADD_PROMPT).max_turns(3).stream().await;
+        let mut stream = agent.prompt(ADD_PROMPT).max_turns(3).stream().await;
         let output = final_output(&mut stream).await;
         drop(stream);
         assert!(!output.is_empty());

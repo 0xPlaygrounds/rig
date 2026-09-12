@@ -365,13 +365,7 @@ async fn hooks_observe_raw_streamed() {
                 .additional_params(json!({ "think": false }))
                 .add_hook(hook)
                 .build();
-            let run = drain(
-                agent
-                    .stream_prompt(Message::user(TEXT_PROMPT))
-                    .stream()
-                    .await,
-            )
-            .await;
+            let run = drain(agent.prompt(Message::user(TEXT_PROMPT)).stream().await).await;
             assert!(run.output.is_some(), "the run finished");
             assert_eq!(run.finals.len(), 1, "one text turn, one terminal record");
             assert!(
@@ -502,7 +496,7 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
                 .build();
             let run = drain(
                 agent
-                    .stream_prompt(Message::user(TOOL_PROMPT))
+                    .prompt(Message::user(TOOL_PROMPT))
                     .max_turns(3)
                     .stream()
                     .await,

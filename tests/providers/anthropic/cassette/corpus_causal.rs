@@ -86,7 +86,7 @@ async fn over_host(
         .tool_server_handle(server)
         .build();
     let output = if host.streamed {
-        let mut stream = agent.stream_prompt(PROMPT).max_turns(3).stream().await;
+        let mut stream = agent.prompt(PROMPT).max_turns(3).stream().await;
         let output = final_output(&mut stream).await;
         drop(stream);
         output
