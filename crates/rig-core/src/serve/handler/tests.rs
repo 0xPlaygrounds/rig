@@ -517,10 +517,7 @@ fn an_observer_never_changes_what_the_consumer_receives() {
         )))
     }
     fn text(fragment: &str) -> Result<StreamEvent, ErrorReport> {
-        Ok(StreamEvent::text(
-            BlockId::minted(crate::streaming::MintKind::Text, 0),
-            fragment,
-        ))
+        Ok(StreamEvent::text(BlockId::wire("text-0"), fragment))
     }
     fn items(items: Vec<Result<StreamEvent, ErrorReport>>) -> Reply {
         Reply::Stream(Box::pin(futures::stream::iter(items)))
