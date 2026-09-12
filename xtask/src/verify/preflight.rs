@@ -253,8 +253,8 @@ pub(super) fn run(root: &Path, plan: &[Check]) -> Result<()> {
             "clippy",
             "doctests",
             "docs",
-            "workspace-check",
             "full-tests",
+            "full-test-build",
             "dependency-floors",
         ]
         .contains(&check.id.as_str())

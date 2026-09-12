@@ -11,6 +11,10 @@
 #   * every root test binary's `--all-features` configuration — the PR gate
 #     runs the default feature set plus `bedrock`.
 #
+# The declared dependency floors are a separate lane with their own path
+# filter (dependency-floors.yaml): they change with Cargo's resolver inputs,
+# not with the storage crates' source.
+#
 # The PR gate still COMPILES all of the above on every PR: ci.yaml's clippy
 # job lints `--all-features --all-targets`, and doctest/doc build all
 # features, so a nightly failure is almost always a runtime regression rather
@@ -29,8 +33,7 @@
 #     `crates/rig-qdrant/` or bumping its driver in Cargo.toml merges with
 #     zero runtime coverage of the code it changed, and the breakage surfaces
 #     either at 06:00 or, worse, in cd.yaml's `run-full-ci`, where it blocks
-#     release-plz on an already-merged commit. These PRs share the scheduled
-#     run's rust-cache entry, so the common PR pays nothing;
+#     release-plz on an already-merged commit;
 #   * in the merge queue (`merge_group`), because the squashed batch that
 #     actually lands on main is not any PR head the filters above validated;
 #   * on demand via `gh workflow run nightly.yaml`;
@@ -82,7 +85,8 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "crates/*/Cargo.toml"
-      - "scripts/check-dependency-floors.py"
+      # The setup every lane shares; editing it must run the lane.
+      - ".github/actions/**"
   # The repo merges through a merge queue (ALLGREEN, squash, batches up to
   # 5), so the commit that actually lands on main is the merge-group commit —
   # not the PR head that the `pull_request` triggers above validated. Without
@@ -144,6 +148,12 @@ jobs:
       # per-compilation-unit cache entries, this lane is not
       # latency-critical, and the repo's 10GB Actions cache quota is
       # contended — see the sccache input's note in the rust-setup action.
+      #
+      # `all-features` is the rust-cache key cache-warm.yaml populates from
+      # exactly this build graph (profile, features, environment) on trusted
+      # pushes; ci.yaml's doctest job restores the same entry. Without it
+      # every run compiled the ~970 dependency crates cold before the first
+      # test started.
       - name: Install Rust stable
         uses: ./.github/actions/rust-setup
         with:
@@ -151,6 +161,9 @@ jobs:
           protoc: "true"
           # Repository-repair tests format proposed patches inside isolation.
           components: rustfmt
+          cache-shared-key: all-features
+          # The warmer is the key's only writer (see cache-warm.yaml).
+          cache-save-if: "false"
 
       # The workspace-wide sweep over every feature. This is the step that
       # was ci.yaml's `Test with latest nextest release` before the fast/full
@@ -163,33 +176,3 @@ jobs:
       # archived in 2023 and pins Node 20.
       - name: Test with all features
         run: cargo xtask verify --check full-tests
-
-  # The declared dependency requirements are floors, not pins (`tokio = "1"`
-  # is `^1`), and a downstream resolves anywhere inside them — usually to
-  # whatever its own lockfile already holds. So rig has to actually build at
-  # the lowest version it declares, or the floor is a lie that surfaces as a
-  # build break in someone else's tree (#2195). Cargo's `-Zdirect-minimal-
-  # versions` is nightly-only and dead-ends in this workspace's transitive
-  # graph, so `scripts/check-dependency-floors.py` does the equivalent on
-  # stable: `cargo update --precise` every direct dependency down to the
-  # lowest version the tree admits, then `cargo check --workspace
-  # --all-features --all-targets`. It runs here rather than on the PR gate
-  # because it is a full all-features build; the `pull_request` paths above
-  # still run it on every PR that touches a manifest, the lockfile, or the
-  # script itself, which is where a floor can silently rot (a PR that starts
-  # using an API newer than the declared floor).
-  dependency-floors:
-    name: stable / dependency floors
-    runs-on: ubuntu-latest
-    if: github.repository == '0xPlaygrounds/rig'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install Rust stable
-        uses: ./.github/actions/rust-setup
-        with:
-          protoc: "true"
-
-      - name: Build against the declared dependency floors
-        run: cargo xtask verify --check dependency-floors

@@ -118,7 +118,7 @@ edition = "2024"
 # raised floors, forcing downstream users to `cargo update` a dozen crates
 # just to take a point release (#2195). Raise a floor when rig starts using
 # an API the old floor lacks, and say so in the changelog.
-# `scripts/check-dependency-floors.py` (CI: nightly.yaml `dependency-floors`)
+# `scripts/check-dependency-floors.py` (CI: dependency-floors.yaml)
 # downgrades every direct dependency to its floor and builds the workspace,
 # so a floor that has silently rotted fails there rather than downstream.
 #
