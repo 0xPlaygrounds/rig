@@ -9,7 +9,7 @@
 //!
 //! The interruption is a hand driver of `AgentRun` over the agent's own bus
 //! keys (the sans-IO machine is the only place a run can be suspended
-//! mid-flight today); the resumption goes through `Agent::prompt(..).resume`
+//! mid-flight today); the resumption goes through `Agent::resume(run)`
 //! — the bus-driven engine — so the property crosses the two interpreters.
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]

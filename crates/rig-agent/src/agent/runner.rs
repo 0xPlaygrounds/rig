@@ -374,8 +374,11 @@ impl AgentRunner {
     /// streaming driver.
     pub(crate) fn build_run(&self, history_override: Option<Vec<Message>>) -> AgentRun {
         let prompt = match &self.origin {
-            // Cloned, not moved: the runner stays whole for the driver that
-            // takes it next.
+            // Cloned, not moved: `build_run` is shared by both drivers over
+            // `&self`, and the runner is handed whole to the driver next. The
+            // copy is one transcript per resumed run — the order of the runner
+            // clone a typed run already makes per attempt — and it spares a
+            // "taken" placeholder state in `RunOrigin`.
             RunOrigin::Resume(run) => return (**run).clone(),
             RunOrigin::Prompt(prompt) => prompt.clone(),
         };
@@ -438,8 +441,9 @@ impl AgentRunner {
 
     /// Open the per-run agent span, recording the prompt when content
     /// telemetry is enabled. Shared by the blocking and streaming surfaces.
-    pub(crate) fn open_agent_span(&self) -> (tracing::Span, bool) {
+    pub(crate) fn open_agent_span(&self, ambient: tracing::Span) -> (tracing::Span, bool) {
         let (agent_span, created_agent_span) = acquire_agent_span(
+            ambient,
             self.agent_name_or_default(),
             self.config.preamble.as_deref(),
             self.config.record_telemetry_content,
@@ -515,7 +519,7 @@ impl AgentRunner {
     /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
     /// to terminate cancels the run.
     pub async fn run(self) -> Result<PromptResponse, PromptError> {
-        let (agent_span, created_agent_span) = self.open_agent_span();
+        let (agent_span, created_agent_span) = self.open_agent_span(tracing::Span::current());
         let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(false);
         // A resumed run brought its history with it: nothing is loaded and

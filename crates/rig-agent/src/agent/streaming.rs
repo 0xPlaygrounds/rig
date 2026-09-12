@@ -263,7 +263,9 @@ impl AgentRunner {
     /// and a stream that is dropped unpolled has done nothing. A memory-load
     /// failure is the stream's first (and only) item. The stream is `Send` on
     /// native targets, so it can be built in synchronous code and handed to
-    /// whatever polls it.
+    /// whatever polls it; it runs under the span it was built in (a caller's
+    /// enabled span is adopted, otherwise a root `invoke_agent` is created),
+    /// not under whichever span first polls it.
     ///
     /// ```rust,no_run
     /// # use rig_agent::{Agent, agent::StreamingResult};
@@ -277,19 +279,27 @@ impl AgentRunner {
     /// hook handling with the blocking [`run`](AgentRunner::run) via
     /// `drive_agent`, so the two behave identically apart from the streamed
     /// delta events.
+    #[must_use = "a stream does nothing until polled"]
     pub fn stream(self) -> StreamingResult {
-        Box::pin(async_stream::stream! {
-            let mut inner = self.start_stream().await;
+        // The span the stream is built under is the one it runs under, not
+        // whichever span first polls it: a host may build the stream in a
+        // request span and hand it to a task of its own.
+        let ambient = tracing::Span::current();
+        let run_under = ambient.clone();
+        let stream = async_stream::stream! {
+            let mut inner = self.start_stream(run_under).await;
             while let Some(item) = inner.next().await {
                 yield item;
             }
-        })
+        };
+        Box::pin(stream.instrument(ambient))
     }
 
     /// The eager half of [`stream`](Self::stream): resolve memory, build the
-    /// run and return the driver as a stream. Called on the first poll.
-    async fn start_stream(self) -> StreamingResult {
-        let (agent_span, created_agent_span) = self.open_agent_span();
+    /// run and return the driver as a stream. Called on the first poll,
+    /// under `ambient` — the span the stream was built in.
+    async fn start_stream(self, ambient: tracing::Span) -> StreamingResult {
+        let (agent_span, created_agent_span) = self.open_agent_span(ambient);
 
         let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(true);
@@ -423,6 +433,7 @@ impl AgentRunner {
     /// The feed is bounded ([`RUN_EVENTS_CAPACITY`]); when it is full the run
     /// waits for the consumer rather than dropping events. Dropping the feed
     /// lets the run continue to completion unobserved.
+    #[must_use = "the run does nothing until the future is driven"]
     pub fn run_channel(
         self,
     ) -> (

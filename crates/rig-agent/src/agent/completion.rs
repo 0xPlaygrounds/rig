@@ -757,13 +757,21 @@ impl Agent {
     ///
     /// The state a driver serialized between steps (see [`AgentRun`]) is
     /// picked up where it stopped — its pending tool calls execute, its next
-    /// model turn is asked for — under this agent's hooks, tools, bus and
-    /// settings, plus whatever the returned runner is configured with. The
-    /// run carries its own prompt and history, so neither
-    /// [`history`](AgentRunner::history) nor conversation memory applies:
-    /// nothing is loaded, and the run's messages are not appended a second
-    /// time. Drive it like any runner: `.await`, [`stream`](AgentRunner::stream)
-    /// or [`run_channel`](AgentRunner::run_channel). The run must have been
+    /// model turn is asked for — under this agent's hooks, tools and bus.
+    /// The run is authoritative for everything it carries: its prompt, its
+    /// history, its turn budget, its invalid-tool-call budget and policy,
+    /// its output schema and tool choice. The runner supplies only what a
+    /// run does not persist: [`add_hook`](AgentRunner::add_hook),
+    /// [`tool_context`](AgentRunner::tool_context),
+    /// [`tool_concurrency`](AgentRunner::tool_concurrency), the model
+    /// selection ([`using_model`](AgentRunner::using_model)) and telemetry
+    /// settings; the run-shaping setters ([`max_turns`](AgentRunner::max_turns),
+    /// [`history`](AgentRunner::history), …) have no effect on a resumed
+    /// run. Conversation memory is neither loaded nor appended: the history
+    /// is already in the run, and the driver that persisted it owns its
+    /// memory. Drive it like any runner: `.await`,
+    /// [`stream`](AgentRunner::stream) or
+    /// [`run_channel`](AgentRunner::run_channel). The run must have been
     /// suspended by the same rig version.
     ///
     /// ```rust,no_run

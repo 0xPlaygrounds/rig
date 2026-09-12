@@ -89,13 +89,20 @@ async fn the_terminal_alone_chooses_the_medium() {
     let agent = AgentBuilder::new(unary_model()).build();
     let mut stream = agent.prompt("go").stream();
     let first = stream.next().await.expect("the stream yields its error");
-    assert!(first.is_err(), "a unary-only mock cannot serve a stream");
+    let error = first.expect_err("a unary-only mock cannot serve a stream");
+    assert!(
+        error.to_string().contains("no scripted streaming turn"),
+        "the provider was asked for a stream: {error}"
+    );
 
     let agent = AgentBuilder::new(streaming_model()).build();
-    let result = agent.prompt("go").await;
+    let error = agent
+        .prompt("go")
+        .await
+        .expect_err("a stream-only mock cannot serve a unary call");
     assert!(
-        result.is_err(),
-        "a stream-only mock cannot serve a unary call"
+        error.to_string().contains("no scripted completion turn"),
+        "the provider was asked for a completion: {error}"
     );
 }
 
@@ -125,22 +132,27 @@ async fn a_stream_does_nothing_until_polled() {
 }
 
 /// `Agent::resume` continues a run from its own state: no prompt is
-/// supplied, the run's prompt reaches the provider, and the runner's
-/// per-run settings still apply.
+/// supplied, the run's prompt reaches the provider, and what the runner
+/// still supplies — its hooks — applies.
 #[tokio::test]
 async fn resume_continues_a_run_without_a_prompt() {
     let model = unary_model();
     let recorded = model.clone();
+    let probe = MediumProbe::default();
     let agent = AgentBuilder::new(model).build();
     let run = AgentRun::from_spec(&agent.run_spec(), Message::user("from the run"), None);
 
     let response = agent
         .resume(run)
-        .max_turns(2)
+        .add_hook(probe.clone())
         .await
         .expect("the resumed run completes");
 
     assert_eq!(response.output, "collected");
+    assert!(
+        probe.seen.load(Ordering::SeqCst),
+        "a hook added on the resuming runner fires"
+    );
     let requests = recorded.requests();
     assert_eq!(requests.len(), 1);
     assert_eq!(
@@ -154,8 +166,40 @@ async fn resume_continues_a_run_without_a_prompt() {
     );
 }
 
+/// The streamed twin of the above: a resumed run streams from its own
+/// state, its prompt reaches the provider, and its hooks see the medium.
+#[tokio::test]
+async fn resume_streams_a_run_without_a_prompt() {
+    let model = streaming_model();
+    let recorded = model.clone();
+    let probe = MediumProbe::default();
+    let agent = AgentBuilder::new(model).build();
+    let run = AgentRun::from_spec(&agent.run_spec(), Message::user("from the run"), None);
+
+    let mut stream = agent.resume(run).add_hook(probe.clone()).stream();
+    let mut final_output = None;
+    while let Some(item) = stream.next().await {
+        if let MultiTurnStreamItem::FinalResponse(response) = item.expect("a stream item") {
+            final_output = Some(response.output);
+        }
+    }
+
+    assert_eq!(final_output.as_deref(), Some("streamed"));
+    assert!(probe.streaming.load(Ordering::SeqCst));
+    let requests = recorded.requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        requests[0]
+            .chat_history
+            .last()
+            .and_then(Message::rag_text)
+            .as_deref(),
+        Some("from the run")
+    );
+}
+
 /// A resumed run carries its history: even with memory and a conversation
-/// configured, nothing is loaded and nothing is appended.
+/// configured, nothing is loaded and nothing is appended — on either medium.
 #[tokio::test]
 async fn resume_neither_loads_nor_saves_memory() {
     let memory = CountingMemory::default();
@@ -171,6 +215,15 @@ async fn resume_neither_loads_nor_saves_memory() {
         .expect("the resumed run completes");
 
     assert_eq!(response.output, "collected");
+    assert_eq!(memory.load_count(), 0);
+    assert_eq!(memory.append_count(), 0);
+
+    let agent = AgentBuilder::new(streaming_model())
+        .memory(memory.clone())
+        .build();
+    let run = AgentRun::from_spec(&agent.run_spec(), Message::user("from the run"), None);
+    let mut stream = agent.resume(run).conversation("thread").stream();
+    while stream.next().await.is_some() {}
     assert_eq!(memory.load_count(), 0);
     assert_eq!(memory.append_count(), 0);
 }

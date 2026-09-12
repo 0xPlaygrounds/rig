@@ -5868,3 +5868,67 @@ async fn run_channel_reports_stream_errors_on_the_future() {
             .any(|item| matches!(item, MultiTurnStreamItem::FinalResponse(_)))
     );
 }
+
+/// A stream runs under the span it was built in, not the span that first
+/// polls it: built inside `outer` and drained from a spawned task (no span
+/// of its own), the run adopts `outer` — no `invoke_agent` is created and
+/// every chat span is `outer`'s child. Under a poll-site rule the spawned
+/// task's disabled span would have produced a root `invoke_agent`.
+#[tokio::test]
+async fn a_stream_runs_under_the_span_it_was_built_in() {
+    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+    let spans = CapturedSpans::default();
+    let subscriber = Registry::default().with(SpanCaptureLayer {
+        spans: spans.clone(),
+    });
+    let _default = tracing::subscriber::set_default(subscriber);
+
+    // Same callsite-interest warm-up as `assert_stream_usage_recorded_on_chat_spans`.
+    let warmup_agent = AgentBuilder::new(streaming_tool_then_text_model()).build();
+    let mut warmup_stream = warmup_agent.prompt("warmup").max_turns(1).stream();
+    while warmup_stream.next().await.is_some() {}
+    tracing::callsite::rebuild_interest_cache();
+    spans.clear();
+
+    let agent = AgentBuilder::new(streaming_tool_then_text_model())
+        .tool(MockAddTool)
+        .build();
+    let outer_span = tracing::info_span!("outer");
+    let stream = outer_span.in_scope(|| agent.prompt("do tool work").max_turns(3).stream());
+
+    // A current-thread runtime: the spawned task shares this thread's
+    // default subscriber but starts with no current span.
+    let items = tokio::spawn(async move {
+        let mut stream = stream;
+        let mut items = Vec::new();
+        while let Some(item) = stream.next().await {
+            items.push(item.expect("stream item"));
+        }
+        items
+    })
+    .await
+    .expect("join");
+    assert!(matches!(
+        items.last(),
+        Some(MultiTurnStreamItem::FinalResponse(_))
+    ));
+
+    let snapshot = spans.snapshot();
+    let outer_id = snapshot
+        .iter()
+        .find(|span| span.name == "outer")
+        .map(|span| span.id)
+        .expect("outer span captured");
+    assert!(
+        snapshot.iter().all(|span| span.name != "invoke_agent"),
+        "the build-site span is adopted; no invoke_agent is created"
+    );
+    let chat_spans: Vec<_> = snapshot
+        .iter()
+        .filter(|span| span.name == "chat_streaming")
+        .collect();
+    assert_eq!(chat_spans.len(), 2, "two model turns: {snapshot:?}");
+    for chat_span in chat_spans {
+        assert_eq!(chat_span.parent_id, Some(outer_id));
+    }
+}
