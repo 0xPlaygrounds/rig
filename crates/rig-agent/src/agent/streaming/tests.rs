@@ -5636,7 +5636,7 @@ async fn streaming_reports_a_refused_append_on_the_final_response() {
         .build();
 
     let mut stream = agent
-        .stream_prompt("hi there")
+        .prompt("hi there")
         .conversation("stream-thread")
         .stream()
         .await;

@@ -165,13 +165,15 @@ pub struct PromptResponse {
 /// flight produces no response at all. Nothing here is exactly-once: a
 /// backend may have written before it failed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "memory_append", rename_all = "snake_case")]
+#[serde(tag = "status", rename_all = "snake_case")]
 pub enum MemoryAppend {
     /// The backend acknowledged the append of [`PromptResponse::messages`].
     Acknowledged,
     /// The append was refused — by the backend, a layer on the memory key
     /// or an outcome hook — and the transcript was not persisted. The
-    /// report is the one the effect log records for the dispatch.
+    /// report is what the dispatch settled with, after outcome hooks; the
+    /// effect log records what the handler answered, which an outcome hook
+    /// may have replaced.
     Failed {
         /// Why the append failed.
         report: rig_core::error::ErrorReport,

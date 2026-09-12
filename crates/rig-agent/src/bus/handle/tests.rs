@@ -341,8 +341,12 @@ impl rig_core::tool::ContextValue for Stale {
     const KEY: &'static str = "test.stale";
 }
 
-/// A tool-family handler that is not a tool adapter and publishes nothing.
-struct Silent;
+/// A tool-family handler that is not a tool adapter and publishes nothing;
+/// it records what the dispatch's own `ToolContext` scope held.
+struct Silent {
+    /// `(session seen, stale result metadata seen)` on the dispatch scope.
+    seen: std::sync::Arc<std::sync::Mutex<Option<(bool, bool)>>>,
+}
 
 impl rig_core::serve::Serve for Silent {
     type Family = family::Tool;
@@ -363,22 +367,32 @@ impl rig_core::serve::Serve for Silent {
     async fn serve(
         &self,
         _kind: rig_core::effect::EffectKind,
-        _dispatch: rig_core::serve::Dispatch,
+        dispatch: rig_core::serve::Dispatch,
     ) -> rig_core::serve::Reply {
+        let scope = dispatch.scope::<ToolContext>();
+        *self.seen.lock().expect("seen") = scope.map(|context| {
+            (
+                context.get::<Session>().ok().flatten().is_some(),
+                context.result::<Stale>().ok().flatten().is_some(),
+            )
+        });
         rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::ToolResult {
             result: rig_core::tool::ToolResult::success(rig_core::tool::ToolOutput::text("silent")),
         }))
     }
 }
 
-/// The answer's context is the dispatch snapshot the call ran under when
-/// the handler published nothing: the inbound values it ran with, no
-/// result metadata — never an empty context, and never the caller's
-/// stale result metadata.
+/// The tool runs on a dispatch snapshot — the caller's inbound values, none
+/// of its stale result metadata — whether or not the handler is a tool
+/// adapter; and the answer's context is that snapshot when the handler
+/// published nothing: never an empty context, never stale metadata.
 #[tokio::test]
 async fn a_tool_answer_keeps_inbound_values_when_the_handler_publishes_nothing() {
     let (dispatcher, _registrar, mut driver) = Bus::channel();
-    driver.register("silent", Silent).expect("register");
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(None));
+    driver
+        .register("silent", Silent { seen: seen.clone() })
+        .expect("register");
     let task = tokio::spawn(driver);
 
     let tool: ToolHandle = dispatcher
@@ -391,6 +405,11 @@ async fn a_tool_answer_keeps_inbound_values_when_the_handler_publishes_nothing()
         .await
         .expect("called");
     assert_eq!(answer.result.output().as_text(), Some("silent"));
+    assert_eq!(
+        *seen.lock().expect("seen"),
+        Some((true, false)),
+        "the handler's scope holds the inbound snapshot, not the caller's result metadata"
+    );
     assert_eq!(
         answer.context.get::<Session>().expect("decodes"),
         Some(Session("s-1".into()))

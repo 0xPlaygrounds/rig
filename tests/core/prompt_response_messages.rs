@@ -495,7 +495,7 @@ fn memory_append_is_absent_without_memory_and_round_trips_through_serde() {
     let json = serde_json::to_value(&acknowledged).expect("serializes");
     assert_eq!(
         json["memory_append"],
-        serde_json::json!({"memory_append": "acknowledged"})
+        serde_json::json!({"status": "acknowledged"})
     );
     let restored: PromptResponse = serde_json::from_value(json).expect("deserializes");
     assert_eq!(restored.memory_append, Some(MemoryAppend::Acknowledged));
@@ -504,7 +504,7 @@ fn memory_append_is_absent_without_memory_and_round_trips_through_serde() {
         report: rig::error::ErrorReport::new(rig::error::ErrorKind::MemoryBackend, "boom"),
     }));
     let json = serde_json::to_value(&failed).expect("serializes");
-    assert_eq!(json["memory_append"]["memory_append"], "failed");
+    assert_eq!(json["memory_append"]["status"], "failed");
     let restored: PromptResponse = serde_json::from_value(json).expect("deserializes");
     assert_eq!(restored.memory_append, failed.memory_append);
     assert_eq!(

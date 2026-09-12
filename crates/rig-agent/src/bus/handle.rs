@@ -295,14 +295,18 @@ impl Future for ToolCall {
             Poll::Pending => Poll::Pending,
             Poll::Ready(Err(report)) => Poll::Ready(Err(report)),
             Poll::Ready(Ok(outcome)) => Poll::Ready(family::Tool::unwrap(outcome).map(|result| {
-                ToolAnswer {
-                    result,
-                    context: this
-                        .published
-                        .as_ref()
-                        .and_then(|published| published.take())
-                        .unwrap_or_else(|| this.inbound.for_dispatch()),
-                }
+                // Ready is polled once: the snapshot moves out, and like a
+                // published context it is data again — no live scopes.
+                let context = this
+                    .published
+                    .as_ref()
+                    .and_then(|published| published.take())
+                    .unwrap_or_else(|| {
+                        let mut inbound = std::mem::take(&mut this.inbound);
+                        inbound.clear_scope();
+                        inbound
+                    });
+                ToolAnswer { result, context }
             })),
         }
     }
@@ -436,12 +440,16 @@ impl ToolHandle {
             name: name.into(),
             args: args.into(),
         };
+        // The tool runs on a dispatch snapshot (inbound values, no result
+        // metadata a previous call left on `context`); a handler that reads
+        // the scope directly sees the same snapshot the adapter would.
         let inbound = context.for_dispatch();
+        drop(context);
         let pending = self.dispatcher.dispatch_tool_with_id(
             self.dispatcher.mint_id(),
             &self.descriptor.key,
             kind,
-            context,
+            inbound.clone(),
         );
         let published = pending.published_context();
         ToolCall {
