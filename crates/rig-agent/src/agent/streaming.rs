@@ -3,6 +3,7 @@ use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
 
 use crate::{
     agent::engine::{DriveItem, StreamingTurnSource, drive_agent, streaming_error_into_prompt},
+    agent::hook::{AgentHook, RunSettled, SettledOutcome, StepEventKind},
     agent::runner::{AgentRunner, RunOrigin},
     streaming::{BlockClose, Delta, StreamEvent, StreamedUserContent},
 };
@@ -336,8 +337,25 @@ impl AgentRunner {
         let (history_override, memory_handle) = match resolved {
             Ok(resolved) => resolved,
             Err(err) => {
+                // A run that never reached the engine still settles: the
+                // load failure is its ending, reported before the one item
+                // the stream yields so a consumer that stops at the first
+                // `Err` has already seen it.
+                let hooks = self.config.hooks.clone();
                 let stream = async_stream::stream! {
-                    yield Err(StreamingError::from(err));
+                    let err = StreamingError::from(err);
+                    if hooks.observes(StepEventKind::RunSettled) {
+                        let reason = err.to_string();
+                        hooks
+                            .on_run_settled(
+                                &hook_ctx,
+                                RunSettled {
+                                    outcome: SettledOutcome::Error(&reason),
+                                },
+                            )
+                            .await;
+                    }
+                    yield Err(err);
                 };
                 // Instrument under the agent span like the success path so
                 // a load failure stays tied to invoke_agent.
@@ -472,7 +490,20 @@ impl AgentRunner {
             let mut response = None;
             let mut forward = true;
             while let Some(item) = stream.next().await {
-                let item = item.map_err(streaming_error_into_prompt)?;
+                let item = match item {
+                    Ok(item) => item,
+                    Err(err) => {
+                        // The engine settles an error ending *after*
+                        // yielding it (`on_run_settled` with
+                        // `SettledOutcome::Error`), so the forwarder drains
+                        // the stream before returning, as `run` does: a
+                        // return here dropped the engine at the yield and
+                        // the settled hook never fired for a channelled run.
+                        let error = streaming_error_into_prompt(err);
+                        while stream.next().await.is_some() {}
+                        return Err(error);
+                    }
+                };
                 match item {
                     MultiTurnStreamItem::FinalResponse(done) => {
                         if forward {

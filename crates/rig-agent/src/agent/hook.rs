@@ -287,15 +287,20 @@ impl Scratchpad {
         self.lock().remove::<T>()
     }
 
-    /// Atomically update a value, starting at `Default`.
+    /// Update a value, starting at `Default`: the value is taken out under
+    /// the lock, `update` runs with the lock released, and the result is
+    /// written back. So `update` may read or write the scratchpad itself
+    /// (a hook that inserts a sibling value from inside the closure does
+    /// not deadlock the run), and two concurrent updates of one type are
+    /// last-writer-wins, not serialized — a per-run hook stack is polled
+    /// from one task, where that never arises.
     pub fn update<T, R>(&self, update: impl FnOnce(&mut T) -> R) -> R
     where
         T: Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
     {
-        let mut guard = self.lock();
-        let mut value = guard.remove::<T>().unwrap_or_default();
+        let mut value = self.lock().remove::<T>().unwrap_or_default();
         let result = update(&mut value);
-        guard.insert(value);
+        self.lock().insert(value);
         result
     }
 }

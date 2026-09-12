@@ -216,10 +216,28 @@ where
                 }
             };
         }
-        // Rendered terminal-error text, set on every error path before its
-        // yield so the run-settled hook below can report the outcome after
-        // the error itself has been moved into the stream.
-        let mut settled_error: Option<String> = None;
+        // Every error ending settles *before* its error is yielded: a
+        // consumer that stops at the first `Err` — the idiomatic
+        // `while let Some(item) = stream.next().await { let item = item?; }`
+        // — has then already seen `on_run_settled`, and "exactly once per
+        // run" holds without asking anyone to poll to `None`.
+        macro_rules! settle_error {
+            ($err:expr) => {{
+                if runner.config.hooks.observes(StepEventKind::RunSettled) {
+                    let reason = $err.to_string();
+                    runner
+                        .config
+                        .hooks
+                        .on_run_settled(
+                            &hook_ctx,
+                            RunSettled {
+                                outcome: SettledOutcome::Error(&reason),
+                            },
+                        )
+                        .await;
+                }
+            }};
+        }
         // Set only after a model turn commits successfully and consumed by its
         // immediately following CallTools step. This keeps the sans-IO run state
         // serializable while pinning execution to the definitions sent that turn.
@@ -266,20 +284,8 @@ where
             };
             if let Some(err) = early_stop {
                 store_error_usage(&runner, &run);
-                let reason = err.to_string();
+                settle_error!(err);
                 yield Err(err);
-                if runner.config.hooks.observes(StepEventKind::RunSettled) {
-                    runner
-                        .config
-                        .hooks
-                        .on_run_settled(
-                            &hook_ctx,
-                            RunSettled {
-                                outcome: SettledOutcome::Error(&reason),
-                            },
-                        )
-                        .await;
-                }
                 return;
             }
         }
@@ -304,7 +310,7 @@ where
                 drop(step_stream);
                 if let Some(err) = step_error {
                     store_error_usage(&runner, &run);
-                    settled_error = Some(err.to_string());
+                    settle_error!(err);
                     yield Err(err);
                     break $label;
                 }
@@ -318,7 +324,7 @@ where
                 Err(err) => {
                     store_error_usage(&runner, &run);
                     let err: StreamingError = Box::new(err).into();
-                    settled_error = Some(err.to_string());
+                    settle_error!(err);
                     yield Err(err);
                     break 'outer;
                 }
@@ -340,7 +346,7 @@ where
                             CompletionCallOutcome::Terminate(reason) => {
                                 store_error_usage(&runner, &run);
                                 let err = StreamingError::Prompt(Box::new(run.cancel_error(reason)));
-                                settled_error = Some(err.to_string());
+                                settle_error!(err);
                                 yield Err(err);
                                 break 'outer;
                             }
@@ -369,7 +375,7 @@ where
                         ModelSelectionAction::Stop(reason) => {
                             store_error_usage(&runner, &run);
                             let err = StreamingError::Prompt(Box::new(run.cancel_error(reason)));
-                            settled_error = Some(err.to_string());
+                            settle_error!(err);
                             yield Err(err);
                             break 'outer;
                         }
@@ -386,7 +392,7 @@ where
                         Err(report) => {
                             store_error_usage(&runner, &run);
                             let err = StreamingError::Report(report);
-                            settled_error = Some(err.to_string());
+                            settle_error!(err);
                             yield Err(err);
                             break 'outer;
                         }
@@ -421,7 +427,7 @@ where
                         Err(err) => {
                             store_error_usage(&runner, &run);
                             let err: StreamingError = err.into();
-                            settled_error = Some(err.to_string());
+                            settle_error!(err);
                             yield Err(err);
                             break 'outer;
                         }
@@ -486,7 +492,7 @@ where
                             "agent requested tool execution without a prepared registry snapshot"
                                 .to_string(),
                         ));
-                        settled_error = Some(err.to_string());
+                        settle_error!(err);
                         yield Err(err);
                         break 'outer;
                     };
@@ -521,7 +527,7 @@ where
                     .await;
                     let response = response.with_memory_append(memory_append);
                     // The run has settled successfully: nothing follows this
-                    // response — the error endings settle after the loop.
+                    // response — the error endings settle before their yield.
                     if runner.config.hooks.observes(StepEventKind::RunSettled) {
                         runner
                             .config
@@ -546,22 +552,6 @@ where
             }
         }
 
-        // Terminal settle for the error endings; the success ending settles in
-        // the `Done` arm above, so exactly one settle fires per run.
-        if let Some(reason) = settled_error
-            && runner.config.hooks.observes(StepEventKind::RunSettled)
-        {
-            runner
-                .config
-                .hooks
-                .on_run_settled(
-                    &hook_ctx,
-                    RunSettled {
-                        outcome: SettledOutcome::Error(&reason),
-                    },
-                )
-                .await;
-        }
     }
 }
 

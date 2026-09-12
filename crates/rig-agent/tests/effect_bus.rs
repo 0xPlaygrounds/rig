@@ -2060,3 +2060,79 @@ async fn id_less_calls_across_turns_keep_the_history_canonical() {
     expected_call_ids(&messages.expect("streamed history"));
     assert_eq!(tool.completed.lock().expect("lock").len(), 4);
 }
+
+/// `RunSettled` fires exactly once per run, before the run's error reaches
+/// the consumer, on every surface and for every error ending: a provider
+/// refusal and a memory load that fails before the engine starts, through
+/// `run()`, `run_channel()`, and a stream a consumer drops at its first
+/// `Err` (the idiomatic `let item = item?;` loop, which this crate's own
+/// CLI chatbot uses).
+#[tokio::test]
+async fn run_settled_fires_once_before_every_error_ending_on_every_surface() {
+    use std::sync::atomic::AtomicUsize;
+
+    #[derive(Clone, Default)]
+    struct Settles(Arc<AtomicUsize>, Arc<Mutex<Vec<String>>>);
+    impl AgentHook for Settles {
+        async fn on_run_settled(&self, _ctx: &HookContext, event: RunSettled<'_>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            if let rig_agent::agent::SettledOutcome::Error(reason) = event.outcome {
+                self.1.lock().expect("lock").push(reason.to_owned());
+            }
+        }
+    }
+
+    enum Ending {
+        Provider,
+        MemoryLoad,
+    }
+    let agent = |ending: &Ending, hook: Settles| {
+        let model = MockCompletionModel::from_turns([MockTurn::error("boom")]);
+        let builder = AgentBuilder::new(model).add_hook(hook);
+        match ending {
+            Ending::Provider => builder.build(),
+            Ending::MemoryLoad => builder
+                .memory(rig_core::test_utils::FailingMemory::new("load boom"))
+                .conversation("settled-once")
+                .build(),
+        }
+    };
+    let expected = |ending: &Ending| match ending {
+        Ending::Provider => "boom",
+        Ending::MemoryLoad => "load boom",
+    };
+
+    for ending in [Ending::Provider, Ending::MemoryLoad] {
+        // Blocking.
+        let hook = Settles::default();
+        let error = within(agent(&ending, hook.clone()).prompt("go").run())
+            .await
+            .expect_err("the run fails");
+        assert!(error.to_string().contains(expected(&ending)), "{error}");
+        assert_eq!(hook.0.load(Ordering::SeqCst), 1, "run(): settled once");
+        assert!(hook.1.lock().expect("lock")[0].contains(expected(&ending)));
+
+        // Channelled: the future is the run; the events are dropped.
+        let hook = Settles::default();
+        let (future, events) = agent(&ending, hook.clone()).prompt("go").run_channel();
+        drop(events);
+        within(future).await.expect_err("the run fails");
+        assert_eq!(
+            hook.0.load(Ordering::SeqCst),
+            1,
+            "run_channel(): settled once"
+        );
+
+        // Streamed, dropped at the first `Err`.
+        let hook = Settles::default();
+        let mut stream = agent(&ending, hook.clone()).prompt("go").stream();
+        let first = within(stream.next()).await.expect("an item");
+        assert!(first.is_err(), "the first item is the ending");
+        drop(stream);
+        assert_eq!(
+            hook.0.load(Ordering::SeqCst),
+            1,
+            "stream(): settled before the error was yielded"
+        );
+    }
+}

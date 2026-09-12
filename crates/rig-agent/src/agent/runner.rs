@@ -29,7 +29,7 @@ use tracing_futures::Instrument;
 use super::{
     completion::{Agent, AgentConfig},
     engine::{DriveItem, UnaryTurnSource, drive_agent, streaming_error_into_prompt},
-    hook::{AgentHook, HookContext},
+    hook::{AgentHook, HookContext, RunSettled, SettledOutcome, StepEventKind},
     run::{AgentRun, response::PromptResponse, spec::UnhandledInvalidToolCall},
     telemetry::acquire_agent_span,
 };
@@ -560,7 +560,24 @@ impl AgentRunner {
                 futures::pin_mut!(resolve);
                 let mut driven = bus.drive(futures::stream::once(resolve));
                 match driven.next().await {
-                    Some(resolved) => resolved?,
+                    Some(Ok(resolved)) => resolved,
+                    // A run that never reached the engine still settles:
+                    // the load failure is its ending.
+                    Some(Err(err)) => {
+                        if self.config.hooks.observes(StepEventKind::RunSettled) {
+                            let reason = err.to_string();
+                            self.config
+                                .hooks
+                                .on_run_settled(
+                                    &hook_ctx,
+                                    RunSettled {
+                                        outcome: SettledOutcome::Error(&reason),
+                                    },
+                                )
+                                .await;
+                        }
+                        return Err(err.into());
+                    }
                     None => (None, None),
                 }
             }
