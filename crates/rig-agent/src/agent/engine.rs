@@ -26,7 +26,7 @@ use std::{collections::VecDeque, pin::Pin};
 use futures::{Stream, StreamExt, stream};
 use tracing::{Instrument, span::Id};
 
-use crate::bus::MemoryHandle;
+use crate::bus::{DispatchOptions, MemoryHandle};
 use rig_core::{
     completion::{FinishReason, ModelRef, ResponseIdentity},
     effect::{EffectId, EffectKind, Outcome},
@@ -1725,7 +1725,9 @@ pub(crate) async fn dispatch_effect(
         DispatchAction::Patch(other) => return Err(wrong_family_patch(kind.name(), &other)),
         DispatchAction::Deny(report) => return Err(report),
     };
-    let outcome = dispatcher.dispatch_with_id(id, key, kind.clone()).await;
+    let outcome = dispatcher
+        .dispatch_with(key, kind.clone(), DispatchOptions::default().with_id(id))
+        .await;
     match hooks
         .on_outcome(
             ctx,
@@ -2218,7 +2220,11 @@ pub(crate) async fn dispatch_completion(
     };
     if stream {
         let provider = model.model_ref().to_string();
-        let events = dispatcher.dispatch_stream_with_id(id, model.key(), kind.clone());
+        let events = dispatcher.dispatch_stream_with(
+            model.key(),
+            kind.clone(),
+            DispatchOptions::default().with_id(id),
+        );
         return Ok(CompletionDispatch::Stream {
             id,
             kind: Box::new(kind),
@@ -2226,7 +2232,11 @@ pub(crate) async fn dispatch_completion(
         });
     }
     let outcome = dispatcher
-        .dispatch_with_id(id, model.key(), kind.clone())
+        .dispatch_with(
+            model.key(),
+            kind.clone(),
+            DispatchOptions::default().with_id(id),
+        )
         .await;
     match outcome {
         Ok(Outcome::Completion(response)) => Ok(CompletionDispatch::Response {
@@ -2335,8 +2345,13 @@ pub(crate) async fn dispatch_tool_call(
         }),
         None => match tool_snapshot.key(tool_name) {
             Some(key) => {
-                let pending =
-                    dispatcher.dispatch_tool_with_id(id, key.raw(), kind.clone(), inbound.clone());
+                let pending = dispatcher.dispatch_with(
+                    key.raw(),
+                    kind.clone(),
+                    DispatchOptions::default()
+                        .with_id(id)
+                        .with_tool_context(inbound.clone()),
+                );
                 let published_at = pending.published_context();
                 let outcome = pending.await;
                 executed =

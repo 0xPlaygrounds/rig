@@ -54,7 +54,7 @@ use rig_core::{
     vector_store::request::{Filter, VectorSearchRequest},
 };
 
-use super::{Dispatcher, EffectStream, Pending};
+use super::{DispatchOptions, Dispatcher, EffectStream, Pending};
 use rig_core::effect::Key;
 
 /// A typed view over the bus for the family `F`.
@@ -372,14 +372,18 @@ impl ModelHandle {
         request: CompletionRequest,
         context: Option<rig_core::observe::AdapterContext>,
     ) -> Completion {
+        let options = DispatchOptions {
+            adapter_context: context,
+            ..DispatchOptions::default()
+        };
         Typed::narrow(
-            self.dispatcher.dispatch_with_context(
+            self.dispatcher.dispatch_with(
                 &self.descriptor.key,
                 EffectKind::Completion {
                     request,
                     stream: false,
                 },
-                context,
+                options,
             ),
             Ok,
         )
@@ -403,13 +407,17 @@ impl ModelHandle {
         context: Option<rig_core::observe::AdapterContext>,
     ) -> StreamingCompletionResponse {
         let provider = self.model_ref().to_string();
-        let stream: EffectStream = self.dispatcher.dispatch_stream_with_context(
+        let options = DispatchOptions {
+            adapter_context: context,
+            ..DispatchOptions::default()
+        };
+        let stream: EffectStream = self.dispatcher.dispatch_stream_with(
             &self.descriptor.key,
             EffectKind::Completion {
                 request,
                 stream: true,
             },
-            context,
+            options,
         );
         wrap_stream(provider, stream)
     }
@@ -447,11 +455,10 @@ impl ToolHandle {
         // the scope directly sees the same snapshot the adapter would.
         let inbound = context.for_dispatch();
         drop(context);
-        let pending = self.dispatcher.dispatch_tool_with_id(
-            self.dispatcher.mint_id(),
+        let pending = self.dispatcher.dispatch_with(
             &self.descriptor.key,
             kind,
-            inbound.clone(),
+            DispatchOptions::default().with_tool_context(inbound.clone()),
         );
         let published = pending.published_context();
         ToolCall {
@@ -617,20 +624,26 @@ impl EmbedHandle {
     }
 
     /// Embed one text document.
-    pub fn embed_text(
-        &self,
-        text: &str,
-    ) -> impl Future<Output = Result<Embedding, ErrorReport>> + Unpin {
-        futures::future::FutureExt::map(self.embed_texts(vec![text.to_owned()]), |result| {
-            result.and_then(|mut response| {
-                response.embeddings.pop().ok_or_else(|| {
+    pub fn embed_text(&self, text: &str) -> Typed<family::Embed, Embedding> {
+        fn first(outputs: EmbedOutputs) -> Result<Embedding, ErrorReport> {
+            match outputs {
+                EmbedOutputs::Texts(mut response) => response.embeddings.pop().ok_or_else(|| {
                     ErrorReport::new(
                         ErrorKind::Response,
                         "embedding handler returned an empty response for embed_text",
                     )
-                })
-            })
-        })
+                }),
+                EmbedOutputs::Images(_) => {
+                    Err(wrong_shape("text embeddings", family::Embed::FAMILY))
+                }
+            }
+        }
+        Typed::narrow(
+            self.dispatch_wrapped(family::Embed::wrap(EmbedInputs::Texts(vec![
+                text.to_owned(),
+            ]))),
+            first,
+        )
     }
 
     /// Embed image bytes.

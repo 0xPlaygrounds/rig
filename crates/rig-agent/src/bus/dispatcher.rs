@@ -818,45 +818,43 @@ impl Dispatcher {
         self.mint()
     }
 
-    /// Dispatch a unary effect. The returned [`Pending`] resolves to the
-    /// handler's outcome, or to `BusClosed` / `HandlerUnavailable`.
+    /// Dispatch a unary effect with the default [`DispatchOptions`]: a fresh
+    /// id, no tool context, no adapter context. The returned [`Pending`]
+    /// resolves to the handler's outcome, or to `BusClosed` /
+    /// `HandlerUnavailable`.
     ///
     /// A streaming kind (`Completion { stream: true }`) may be dispatched
     /// unary: the driver folds the handler's events and resolves the
     /// aggregated completion at `Final`.
     pub fn dispatch(&self, key: &HandlerKey, kind: EffectKind) -> Pending {
-        self.dispatch_with_id(self.mint(), key, kind)
+        self.dispatch_with(key, kind, DispatchOptions::default())
     }
 
-    /// Dispatch with explicit invocation observation state. This takes precedence
-    /// over recorder context and is not inherited by subsequent calls.
-    pub fn dispatch_with_context(
+    /// [`dispatch`](Self::dispatch) with explicit [`DispatchOptions`]: an id
+    /// minted earlier with [`mint_id`](Self::mint_id), a [`ToolContext`]
+    /// that travels beside a tool call to the handler (never on the wire;
+    /// what the tool publishes comes back through
+    /// [`Pending::published_context`]), and adapter observation context,
+    /// which takes precedence over recorder context and is not inherited by
+    /// later calls.
+    pub fn dispatch_with(
         &self,
         key: &HandlerKey,
         kind: EffectKind,
-        context: Option<rig_core::observe::AdapterContext>,
+        options: DispatchOptions,
     ) -> Pending {
-        self.dispatch_in(self.mint(), key, kind, None, context)
-    }
-
-    /// [`Dispatcher::dispatch`] under an id minted earlier with
-    /// [`Dispatcher::mint_id`].
-    pub fn dispatch_with_id(&self, id: EffectId, key: &HandlerKey, kind: EffectKind) -> Pending {
-        self.dispatch_in(id, key, kind, None, None)
-    }
-
-    /// A tool call under `context`: the context travels beside the effect
-    /// to the handler's dispatch context (never on the wire), and what the tool
-    /// publishes comes back through [`Pending::published_context`] once
-    /// the dispatch resolved.
-    pub fn dispatch_tool_with_id(
-        &self,
-        id: EffectId,
-        key: &HandlerKey,
-        kind: EffectKind,
-        context: ToolContext,
-    ) -> Pending {
-        self.dispatch_in(id, key, kind, Some(context), None)
+        let DispatchOptions {
+            id,
+            tool_context,
+            adapter_context,
+        } = options;
+        self.dispatch_in(
+            id.unwrap_or_else(|| self.mint()),
+            key,
+            kind,
+            tool_context,
+            adapter_context,
+        )
     }
 
     fn dispatch_in(
@@ -922,29 +920,31 @@ impl Dispatcher {
     /// dispatch of a unary kind resolves as one failed item with an
     /// invalid-dispatch report and never reaches a handler.
     pub fn dispatch_stream(&self, key: &HandlerKey, kind: EffectKind) -> EffectStream {
-        self.dispatch_stream_with_id(self.mint(), key, kind)
+        self.dispatch_stream_with(key, kind, DispatchOptions::default())
     }
 
-    /// [`Dispatcher::dispatch_stream`] under an id minted earlier with
-    /// [`Dispatcher::mint_id`].
-    pub fn dispatch_stream_with_id(
-        &self,
-        id: EffectId,
-        key: &HandlerKey,
-        kind: EffectKind,
-    ) -> EffectStream {
-        self.dispatch_stream_in(id, key, kind, None)
-    }
-
-    /// Stream with explicit invocation observation state, retained through
-    /// lazy startup and stream consumption. Caller context wins over recording.
-    pub fn dispatch_stream_with_context(
+    /// [`dispatch_stream`](Self::dispatch_stream) with explicit
+    /// [`DispatchOptions`]: an id minted earlier and adapter observation
+    /// context, retained through lazy startup and stream consumption
+    /// (caller context wins over recording). A stream carries no tool
+    /// context; `tool_context` is ignored.
+    pub fn dispatch_stream_with(
         &self,
         key: &HandlerKey,
         kind: EffectKind,
-        context: Option<rig_core::observe::AdapterContext>,
+        options: DispatchOptions,
     ) -> EffectStream {
-        self.dispatch_stream_in(self.mint(), key, kind, context)
+        let DispatchOptions {
+            id,
+            adapter_context,
+            ..
+        } = options;
+        self.dispatch_stream_in(
+            id.unwrap_or_else(|| self.mint()),
+            key,
+            kind,
+            adapter_context,
+        )
     }
 
     fn dispatch_stream_in(
@@ -1099,6 +1099,42 @@ enum PendingState {
 /// dispatch (the owned reply is dropped). A host that ticks rather
 /// than awaits does not hold one: it holds effects as entities
 /// (`rig_ecs::bus`).
+/// What a dispatch may carry beside the effect. Every field is optional and
+/// they compose: [`Dispatcher::dispatch_with`] and
+/// [`Dispatcher::dispatch_stream_with`] take one value in place of a method
+/// per combination.
+#[derive(Debug, Default)]
+pub struct DispatchOptions {
+    /// An id minted earlier with [`Dispatcher::mint_id`], so the caller can
+    /// name the effect before it is sent; a fresh one otherwise.
+    pub id: Option<EffectId>,
+    /// The tool context a tool call travels with (unary dispatch only).
+    pub tool_context: Option<ToolContext>,
+    /// Invocation observation state for the adapter; takes precedence over
+    /// recorder context and is not inherited by later calls.
+    pub adapter_context: Option<rig_core::observe::AdapterContext>,
+}
+
+impl DispatchOptions {
+    /// Dispatch under `id`.
+    pub fn with_id(mut self, id: EffectId) -> Self {
+        self.id = Some(id);
+        self
+    }
+
+    /// Carry `context` to the tool handler.
+    pub fn with_tool_context(mut self, context: ToolContext) -> Self {
+        self.tool_context = Some(context);
+        self
+    }
+
+    /// Observe the dispatch under `context`.
+    pub fn with_adapter_context(mut self, context: rig_core::observe::AdapterContext) -> Self {
+        self.adapter_context = Some(context);
+        self
+    }
+}
+
 #[must_use = "a dispatch does nothing until polled"]
 pub struct Pending {
     id: EffectId,

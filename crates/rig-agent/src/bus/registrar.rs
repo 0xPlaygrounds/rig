@@ -248,6 +248,12 @@ impl Registrar {
         self.shared.keys()
     }
 
+    /// Every registered descriptor, in key order — the same snapshot
+    /// [`Dispatcher::descriptors`](super::Dispatcher::descriptors) reads.
+    pub fn descriptors(&self) -> Vec<HandlerDescriptor> {
+        self.shared.descriptors()
+    }
+
     /// Whether the driver has been dropped. A registration on a closed bus
     /// still writes its descriptor but its handler is dropped.
     pub fn is_closed(&self) -> bool {

@@ -15,7 +15,7 @@ use futures::{StreamExt, channel::oneshot};
 
 use serde_json::json;
 
-use crate::bus::{Bus, BusDriver};
+use crate::bus::{Bus, BusDriver, DispatchOptions};
 
 use rig_effect_log::{EffectLog, EffectLogRecorder};
 
@@ -945,14 +945,13 @@ async fn a_tool_call_under_a_different_context_is_the_same_record() {
     other_context
         .insert(Tag("arrived".into()))
         .expect("context value");
-    let outcome = within(dispatcher.dispatch_tool_with_id(
-        dispatcher.mint_id(),
+    let outcome = within(dispatcher.dispatch_with(
         &key,
         EffectKind::ToolCall {
             name: "echo".into(),
             args: "{}".into(),
         },
-        other_context,
+        DispatchOptions::default().with_tool_context(other_context),
     ))
     .await
     .expect("the context is not the effect: the record answers");
