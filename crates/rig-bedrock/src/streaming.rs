@@ -11,12 +11,10 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_core::providers::internal::adapter::{AdapterOutput, WireAdapter, run_wire_stream};
 use rig_core::providers::internal::tool_call_bridge::ToolCallBridge;
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
-use rig_core::streaming::StreamingCompletionResponse;
+use rig_core::streaming::{StreamFinal, StreamingCompletionResponse};
 use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use rig_core::{
-    completion::CompletionError,
-    message::ReasoningContent,
-    streaming::{RawStreamingChoice, ToolCallDeltaContent, UnparseableToolInput},
+    completion::CompletionError, message::ReasoningContent, streaming::UnparseableToolInput,
     wasm_compat::WasmCompatSend,
 };
 use serde::{Deserialize, Serialize};
@@ -30,9 +28,10 @@ pub struct BedrockStreamingResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stop_reason: Option<StopReason>,
     /// The AWS request id from the converse-stream response's metadata
-    /// (`x-amzn-RequestId`) — not part of any stream event; stamped by
-    /// `raw_stream` from the SDK operation output, matching the unary
-    /// surface's semantics. `None` when the SDK reported none.
+    /// (`x-amzn-RequestId`) — not part of any stream event; captured by
+    /// `CompletionModel::stream` from the SDK operation output and carried on
+    /// the adapter state, matching the unary surface's semantics. `None`
+    /// when the SDK reported none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
 }
@@ -47,13 +46,27 @@ impl From<&BedrockStreamingResponse> for rig_core::completion::Usage {
     }
 }
 
+/// Map Bedrock's terminal record onto rig's, serializing the native record
+/// onto [`StreamFinal::raw`].
+fn terminal_record(response: BedrockStreamingResponse) -> Result<StreamFinal, serde_json::Error> {
+    let usage = (&response).into();
+    let finish_reason = response.stop_reason.as_ref().map(map_stop_reason);
+    let raw = serde_json::to_value(&response)?;
+    Ok(StreamFinal::new(PROVIDER_NAME, usage)
+        .with_optional_provider_request_id(response.provider_request_id)
+        .with_optional_finish_reason(finish_reason)
+        .with_raw(raw))
+}
+
 #[derive(Default)]
 struct ReasoningState {
-    /// Signature carried by this block's `signature` delta — the only
-    /// adapter-side state, because the wire delivers it out of band from the
-    /// thinking text. Thinking TEXT accumulates in the shared accumulator via
-    /// `ReasoningDelta`s; no restatement buffer exists.
+    /// Signature carried by this block's `signature` delta — delivered out
+    /// of band from the thinking text. Thinking TEXT accumulates in the
+    /// shared accumulator via reasoning deltas; no restatement buffer exists.
     signature: Option<String>,
+    /// Whether a non-empty text delta was emitted for this block, so a
+    /// wholly empty block (no text, no signature) can close without opening.
+    streamed: bool,
 }
 
 /// Minted block identity for a Converse `contentBlockIndex`.
@@ -63,7 +76,7 @@ struct ReasoningState {
 /// negative index yields a distinct, well-formed minted identity instead of
 /// a rendering the identity machinery could disagree about — the mint stays
 /// total instead of trusting the wire.
-fn block_id(content_block_index: i32) -> rig_core::streaming::StreamPartId {
+fn block_id(content_block_index: i32) -> rig_core::streaming::BlockId {
     let index = (i64::from(content_block_index) - i64::from(i32::MIN)) as u64;
     rig_core::streaming::MintKind::Block.for_wire_index(index)
 }
@@ -71,28 +84,30 @@ fn block_id(content_block_index: i32) -> rig_core::streaming::StreamPartId {
 /// Close the open thinking block for `content_block_index`.
 ///
 /// The end carries no restatement — the shared accumulator already holds every
-/// `ReasoningDelta` this block streamed, so restating the text would supersede
+/// reasoning delta this block streamed, so restating the text would supersede
 /// the accumulation with a second copy of itself — only the signature, which
 /// the wire never restates. Adaptive-thinking blocks can even be
 /// signature-only (a `Signature` delta with no non-empty `Text` delta), and
 /// dropping that signature makes the next turn fail with
 /// `messages.N.content.0.thinking.signature: Field required` on replay. A
-/// wholly empty block still lands nowhere: a payload-less end creates no part.
-fn reasoning_end(
-    state: ReasoningState,
-    content_block_index: i32,
-) -> RawStreamingChoice<BedrockStreamingResponse> {
-    RawStreamingChoice::ReasoningEnd {
+/// wholly empty block still lands nowhere: nothing was emitted for it, and
+/// closing it would open it first (an end for an unseen id is preceded by
+/// its start), which would publish an empty block instead of none.
+fn reasoning_end(state: ReasoningState, content_block_index: i32, out: &mut AdapterOutput) {
+    if !state.streamed && state.signature.is_none() {
+        return;
+    }
+    out.reasoning_end(
         // Bedrock has no reasoning item id; the block's `contentBlockIndex`
         // is stable across its deltas and its close.
-        id: block_id(content_block_index),
-        reasoning: None,
-        signature: state.signature,
+        block_id(content_block_index),
+        None,
+        state.signature,
         // Both call sites close on a frame the wire actually sent — its own
         // `contentBlockStop`, or the redacted sibling delta that ends the
         // plaintext block — so the completed block reaches the consumer.
-        wire_sent: true,
-    }
+        true,
+    );
 }
 
 /// Accumulated per-stream state for [`process_event`].
@@ -102,14 +117,17 @@ fn reasoning_end(
 /// block, and a message may open several tool-use blocks before it stops, so
 /// a single "current" slot would let a later block silently overwrite an
 /// earlier one. Fragment assembly, internal-id minting, and finalize policy
-/// live in the shared accumulator (`PartsAccumulator::tool_input_*`); the
-/// bridge keeps only the index → identity mapping (and the name, for the
-/// dropped-block warning).
+/// live in the shared accumulator; the bridge keeps only the index → identity
+/// mapping (and the name, for the dropped-block warning).
 #[derive(Default)]
 struct StreamState {
     tool_calls: ToolCallBridge<i32>,
     current_reasoning: Option<ReasoningState>,
     final_stop_reason: Option<StopReason>,
+    /// The AWS request id read off the SDK operation output before the event
+    /// stream is opened; stamped onto the terminal record. `None` on the
+    /// events-first seam, where no SDK operation exists.
+    provider_request_id: Option<String>,
 }
 
 /// A static, log-safe label for a stop reason: known variants map to their
@@ -127,51 +145,45 @@ fn stop_reason_label(stop_reason: &StopReason) -> &'static str {
     }
 }
 
-/// Handle one Converse stream event, returning the items to yield in order.
+/// Handle one Converse stream event, pushing the items to yield in order.
 ///
 /// Kept as a plain function over [`StreamState`] so the event bookkeeping can
 /// be unit-tested without an AWS event receiver.
 fn process_event(
     state: &mut StreamState,
     output: aws_bedrock::ConverseStreamOutput,
-) -> Vec<Result<RawStreamingChoice<BedrockStreamingResponse>, CompletionError>> {
-    let mut items = Vec::new();
+    out: &mut AdapterOutput,
+) {
     match output {
         aws_bedrock::ConverseStreamOutput::ContentBlockDelta(event) => {
             let Some(delta) = event.delta else {
                 tracing::warn!("skipping ContentBlockDelta with a missing delta");
-                return items;
+                return;
             };
             match delta {
                 aws_bedrock::ContentBlockDelta::Text(text) => {
-                    items.push(Ok(RawStreamingChoice::Message(text)));
+                    out.text(text);
                 }
                 aws_bedrock::ContentBlockDelta::ToolUse(tool) => {
                     if let Some(tool_call) = state.tool_calls.get(event.content_block_index) {
                         // Emit the delta so UI can show progress; the shared
                         // accumulator assembles the fragments.
-                        items.push(Ok(RawStreamingChoice::ToolCallDelta {
-                            id: tool_call.key().to_owned(),
-                            content: ToolCallDeltaContent::Delta(tool.input().to_string()),
-                        }));
+                        out.tool_arguments(tool_call.key(), tool.input());
                     }
                 }
                 aws_bedrock::ContentBlockDelta::ReasoningContent(reasoning) => match reasoning {
                     aws_bedrock::ReasoningContentBlockDelta::Text(text) => {
                         // Marks the block open so its stop emits an end; the
                         // text itself belongs to the shared accumulator.
-                        state
+                        let open = state
                             .current_reasoning
                             .get_or_insert_with(ReasoningState::default);
 
                         if !text.is_empty() {
-                            items.push(Ok(RawStreamingChoice::ReasoningDelta {
-                                reasoning: text,
-                                // Derive identity from `contentBlockIndex`
-                                // (no wire id on Converse reasoning blocks).
-                                id: block_id(event.content_block_index),
-                                provider_id: None,
-                            }));
+                            open.streamed = true;
+                            // Derive identity from `contentBlockIndex` (no
+                            // wire id on Converse reasoning blocks).
+                            out.reasoning_delta(&block_id(event.content_block_index), None, text);
                         }
                     }
                     aws_bedrock::ReasoningContentBlockDelta::Signature(signature) => {
@@ -188,23 +200,23 @@ fn process_event(
                         // *replace* the delta-built thinking part instead of
                         // landing beside it as a sibling.
                         if let Some(open) = state.current_reasoning.take() {
-                            items.push(Ok(reasoning_end(open, event.content_block_index)));
+                            reasoning_end(open, event.content_block_index, out);
                         }
 
-                        items.push(Ok(RawStreamingChoice::Reasoning {
+                        out.reasoning_block(
                             // Same minted block identity as the sibling
                             // reasoning paths, so provenance and boundary
                             // semantics stay uniform.
-                            id: block_id(event.content_block_index),
-                            provider_id: None,
-                            content: ReasoningContent::Redacted {
+                            block_id(event.content_block_index),
+                            None,
+                            ReasoningContent::Redacted {
                                 // The wire carries raw bytes; rig's canonical
                                 // reasoning content is a string, so the blob
                                 // travels base64-encoded and decodes back on
                                 // the way out.
                                 data: BASE64_STANDARD.encode(blob.as_ref()),
                             },
-                        }));
+                        );
                     }
                     unknown => {
                         tracing::warn!(
@@ -224,7 +236,7 @@ fn process_event(
         aws_bedrock::ConverseStreamOutput::ContentBlockStart(event) => {
             let Some(start) = event.start else {
                 tracing::warn!("skipping ContentBlockStart with no data");
-                return items;
+                return;
             };
             match start {
                 aws_bedrock::ContentBlockStart::ToolUse(tool_use) => {
@@ -236,10 +248,7 @@ fn process_event(
                         Some(&tool_use.tool_use_id),
                         Some(&tool_use.name),
                     );
-                    items.push(Ok(RawStreamingChoice::ToolCallDelta {
-                        id: slot.key().to_owned(),
-                        content: ToolCallDeltaContent::Name(tool_use.name),
-                    }));
+                    out.tool_name(slot.key(), tool_use.name);
                 }
                 // `ContentBlockStart` is a union: `toolUse` is the only
                 // variant modeled today, and a future one is not a stream
@@ -255,10 +264,7 @@ fn process_event(
         }
         aws_bedrock::ConverseStreamOutput::ContentBlockStop(event) => {
             if let Some(reasoning_state) = state.current_reasoning.take() {
-                items.push(Ok(reasoning_end(
-                    reasoning_state,
-                    event.content_block_index,
-                )));
+                reasoning_end(reasoning_state, event.content_block_index, out);
             }
             // A closed tool-use block is complete: finalize and emit it here,
             // mirroring the reasoning close above, so every call in a
@@ -269,9 +275,7 @@ fn process_event(
             // than a silent drop, so the terminal can never report tool use
             // whose calls the consumer never saw.
             if let Some(tool_call) = state.tool_calls.remove(event.content_block_index) {
-                items.push(Ok(RawStreamingChoice::ToolInputEnd(
-                    tool_call.end_event(UnparseableToolInput::Error),
-                )));
+                out.push(Ok(tool_call.end_event(UnparseableToolInput::Error)));
             }
         }
         aws_bedrock::ConverseStreamOutput::MessageStop(message_stop_event) => {
@@ -296,9 +300,7 @@ fn process_event(
             // which the Metadata path emits via `final_stop_reason`.
             if matches!(state.final_stop_reason, Some(StopReason::ToolUse)) {
                 for tool_call in state.tool_calls.drain_ordered() {
-                    items.push(Ok(RawStreamingChoice::ToolInputEnd(
-                        tool_call.end_event(UnparseableToolInput::Error),
-                    )));
+                    out.push(Ok(tool_call.end_event(UnparseableToolInput::Error)));
                 }
             } else if !state.tool_calls.is_empty() {
                 // Structural metadata only: tool names can be model-chosen
@@ -319,28 +321,30 @@ fn process_event(
         }
         aws_bedrock::ConverseStreamOutput::Metadata(metadata_event) => {
             // Extract usage information from metadata; a missing usage still
-            // yields a terminal record so the stream ends with a FinalResponse.
+            // yields a terminal record so the stream ends with a `Final`.
             let final_response = BedrockStreamingResponse {
                 // The mirror conversion is infallible for `TokenUsage`.
                 usage: metadata_event
                     .usage
                     .and_then(|usage| TokenUsage::try_from(usage).ok()),
                 stop_reason: state.final_stop_reason.clone(),
-                // Stamped by `raw_stream`; the adapter never sees the SDK
-                // operation output's metadata.
-                provider_request_id: None,
+                provider_request_id: state.provider_request_id.clone(),
             };
-            items.push(Ok(RawStreamingChoice::FinalResponse(final_response)));
+            match terminal_record(final_response) {
+                Ok(record) => {
+                    tracing::Span::current().record_token_usage(&record.usage);
+                    out.final_record(record);
+                }
+                Err(err) => out.error(err.into()),
+            }
         }
         _ => {}
     }
-    items
 }
 
 impl WireAdapter for StreamState {
     type Frame = aws_bedrock::ConverseStreamOutput;
     type Event = aws_bedrock::ConverseStreamOutput;
-    type Response = BedrockStreamingResponse;
 
     fn classify(&self, frame: Self::Frame) -> WireEvent<Self::Event> {
         // The AWS SDK already deserialized the event-stream frame, so the
@@ -358,16 +362,11 @@ impl WireAdapter for StreamState {
         })
     }
 
-    fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput<Self::Response>) {
-        for item in process_event(self, event) {
-            if let Ok(RawStreamingChoice::FinalResponse(final_response)) = &item {
-                tracing::Span::current().record_token_usage(&final_response.into());
-            }
-            out.push(item);
-        }
+    fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput) {
+        process_event(self, event, out);
     }
 
-    fn finish(&mut self, _out: &mut AdapterOutput<Self::Response>) {
+    fn finish(&mut self, _out: &mut AdapterOutput) {
         // EOF without Bedrock's `Metadata` terminal is truncation: in-flight
         // blocks drop and no terminal record may be synthesized.
     }
@@ -384,29 +383,19 @@ pub fn stream_from_events(
     + WasmCompatSend
     + 'static,
 ) -> StreamingCompletionResponse {
-    let raw = run_wire_stream(events, StreamState::default());
-    StreamingCompletionResponse::stream(PROVIDER_NAME, normalize_bedrock_stream(raw))
-}
-
-fn normalize_bedrock_stream(
-    raw: rig_core::streaming::RawStreamingResult<BedrockStreamingResponse>,
-) -> rig_core::streaming::StreamingResult {
-    rig_core::streaming::normalize_stream(raw, |response| {
-        let usage = (&response).into();
-        let finish_reason = response.stop_reason.as_ref().map(map_stop_reason);
-        Ok(rig_core::streaming::StreamFinal::new(PROVIDER_NAME, usage)
-            .with_optional_provider_request_id(response.provider_request_id)
-            .with_optional_finish_reason(finish_reason))
-    })
+    StreamingCompletionResponse::stream(
+        PROVIDER_NAME,
+        run_wire_stream(events, StreamState::default()),
+    )
 }
 
 impl CompletionModel {
-    /// Open a stream whose terminal record stays Bedrock's own response type.
-    pub async fn raw_stream(
+    /// Open a stream normalized to rig's terminal record; the adapter maps
+    /// Bedrock's own terminal onto [`StreamFinal::raw`].
+    pub(crate) async fn stream(
         &self,
         completion_request: rig_core::completion::CompletionRequest,
-    ) -> Result<rig_core::streaming::RawStreamingResult<BedrockStreamingResponse>, CompletionError>
-    {
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let system_instructions = completion_request.system_instructions().map(str::to_owned);
         let record_telemetry_content = completion_request.record_telemetry_content;
@@ -453,7 +442,9 @@ impl CompletionModel {
 
         // Read the AWS request id off the operation output *before* the event
         // stream is moved — `ConverseStreamOutput` implements the SDK
-        // `RequestId` trait on the whole output, not on stream events.
+        // `RequestId` trait on the whole output, not on stream events. The
+        // adapter stamps it onto the terminal record, mirroring the unary
+        // surface (`InternalConverseOutput::request_id`).
         let provider_request_id =
             aws_sdk_bedrockruntime::operation::RequestId::request_id(&response).map(str::to_string);
 
@@ -474,34 +465,14 @@ impl CompletionModel {
             }
         };
 
-        // Stamp the terminal record with the id captured above, mirroring the
-        // unary surface (`InternalConverseOutput::request_id`).
-        use futures::StreamExt as _;
-        let stream = run_wire_stream(transport, StreamState::default()).instrument(span);
-        Ok(Box::pin(stream.map(move |item| {
-            item.map(|choice| match choice {
-                RawStreamingChoice::FinalResponse(mut response) => {
-                    response
-                        .provider_request_id
-                        .clone_from(&provider_request_id);
-                    RawStreamingChoice::FinalResponse(response)
-                }
-                other => other,
-            })
-        })))
-    }
-
-    /// Open a stream normalized to rig's terminal record. Delegates to
-    /// [`CompletionModel::raw_stream`] — one request either way.
-    pub(crate) async fn stream(
-        &self,
-        completion_request: rig_core::completion::CompletionRequest,
-    ) -> Result<StreamingCompletionResponse, CompletionError> {
-        let raw = self.raw_stream(completion_request).await?;
-
+        let state = StreamState {
+            provider_request_id,
+            ..StreamState::default()
+        };
+        let stream = run_wire_stream(transport, state).instrument(span);
         Ok(StreamingCompletionResponse::stream(
             PROVIDER_NAME,
-            normalize_bedrock_stream(raw),
+            Box::pin(stream),
         ))
     }
 }

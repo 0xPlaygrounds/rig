@@ -6,22 +6,22 @@
 //! the same bridge: a per-stream map from the wire's index to the identity the
 //! adapter established for that call. [`ToolCallBridge`] is that map, shared
 //! so the mandatory-identity invariant on
-//! [`RawStreamingChoice::ToolCallDelta`](crate::streaming::RawStreamingChoice)
+//! tool-call [`BlockDelta`](crate::streaming::StreamEvent::BlockDelta)
 //! is enforced in exactly one place: when the wire supplies no id, the slot's
-//! grammar id is a `StreamPartId::Minted` from the bridge's [`SyntheticIds`]
+//! grammar id is a `BlockId::Minted` from the bridge's [`SyntheticIds`]
 //! counter, so parallel id-less calls can never share an assembly key
 //! downstream — and a minted id structurally cannot serialize upstream as a
 //! wire-genuine one.
 //!
 //! Only the *bridging state* lives here. Argument assembly, internal-id
 //! minting for finalized calls, and finalize policy stay in the shared
-//! accumulator (`PartsAccumulator`); frame triage stays in the driver.
+//! accumulator (`BlockAccumulator`); frame triage stays in the driver.
 
 use std::collections::HashMap;
 use std::hash::Hash;
 
 use crate::streaming::{
-    StreamPartId, SyntheticIds, ToolCallDecoration, ToolInputEnd, UnparseableToolInput,
+    BlockId, StreamEvent, SyntheticIds, ToolCallDecoration, ToolCallEnd, UnparseableToolInput,
 };
 
 /// Wire identity of a tool call whose input is streaming, as tracked by an
@@ -33,7 +33,7 @@ pub struct ToolCallSlot {
     /// Fixed at open: the first-seen provider id, or a minted identity when
     /// the wire omits one — so parallel id-less calls can never share an
     /// assembly key downstream.
-    key: StreamPartId,
+    key: BlockId,
     /// Established provider id: updated when a later chunk carries one.
     /// Empty until the wire supplies one.
     pub id: String,
@@ -64,7 +64,7 @@ pub struct ToolCallSlot {
 
 impl ToolCallSlot {
     /// The assembly id this call's fragments are emitted under.
-    pub fn key(&self) -> &StreamPartId {
+    pub fn key(&self) -> &BlockId {
         &self.key
     }
 
@@ -81,20 +81,30 @@ impl ToolCallSlot {
         self.saw_non_whitespace_arguments_delta || self.announce_arguments.is_some()
     }
 
-    /// Build the end event that closes this call's assembly in the shared
+    /// The end payload that closes this call's assembly in the shared
     /// accumulator, carrying the established provider id and any decoration.
-    pub fn end_event(&self, on_unparseable: UnparseableToolInput) -> ToolInputEnd {
-        let mut end = ToolInputEnd::new(self.key.clone(), on_unparseable);
+    pub fn end(&self, on_unparseable: UnparseableToolInput) -> ToolCallEnd {
+        let mut end = ToolCallEnd::new(on_unparseable);
         // Only an established provider id overrides the assembly key; a
         // call whose wire never supplied one carries no durable handle at
-        // all (`WireId::new` rejects the empty string by construction).
-        end.tool_id = crate::streaming::WireId::new(self.id.clone());
+        // all (`non_empty_id` rejects the empty string by construction).
+        end.tool_id = crate::streaming::non_empty_id(self.id.clone());
         end.signature.clone_from(&self.signature);
         end.additional_params.clone_from(&self.additional_params);
         if !self.saw_arguments_delta {
             end.arguments.clone_from(&self.announce_arguments);
         }
         end
+    }
+
+    /// The end event that closes this call's assembly, keyed by the slot's
+    /// assembly id.
+    pub fn end_event(&self, on_unparseable: UnparseableToolInput) -> StreamEvent {
+        StreamEvent::BlockEnd {
+            id: self.key.clone(),
+            end: crate::streaming::BlockClose::ToolCall(self.end(on_unparseable)),
+            block: None,
+        }
     }
 }
 
@@ -157,7 +167,7 @@ where
         let minted = &mut self.minted;
         let slot = self.slots.entry(index).or_insert_with(|| ToolCallSlot {
             key: match wire_id {
-                Some(id) if !id.is_empty() => StreamPartId::wire(id),
+                Some(id) if !id.is_empty() => BlockId::wire(id),
                 // Id-less wires (several llama.cpp/vllm-style gateways) key
                 // tool calls by index alone; the slot identity is minted so
                 // it can never collide with a wire-genuine id — and can

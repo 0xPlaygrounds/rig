@@ -18,7 +18,7 @@ use async_stream::stream;
 use futures::{Stream, StreamExt};
 use tracing_futures::Instrument;
 
-use super::adapter::{WireAdapter, WireFrame, run_wire_stream};
+use super::adapter::{WireAdapter, WireFrame, run_wire_stream_observed};
 use crate::completion::CompletionError;
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -96,6 +96,7 @@ where
     F: FnMut(String) -> FrameDisposition + WasmCompatSend + 'static,
 {
     stream! {
+        let observation = event_source.observation();
         let mut event_source = Box::pin(event_source);
         while let Some(event_result) = event_source.next().await {
             match event_result {
@@ -104,12 +105,17 @@ where
                     OpenLog::Trace => tracing::trace!("SSE connection opened"),
                     OpenLog::Debug => tracing::debug!("SSE connection opened"),
                 },
-                Ok(Event::Message(message)) => match triage(message.data) {
+                Ok(Event::Message(message)) => {
+                    if let Some(observation) = &observation {
+                        observation.payload(message.data.as_bytes());
+                    }
+                    match triage(message.data) {
                     FrameDisposition::Skip => {}
                     FrameDisposition::Frame(data) => yield Ok(WireFrame::Text(data)),
                     FrameDisposition::Fail(error) => {
                         yield Err(error);
                         break;
+                    }
                     }
                 },
                 Err(crate::http_client::Error::StreamEnded)
@@ -138,69 +144,41 @@ where
 /// connection that delivered it. With no slot (provider reports no request-id
 /// header), the stream passes through untouched and the terminal's id stays
 /// `None`.
-pub(crate) fn stamp_terminal_request_id<R>(
-    stream: crate::streaming::RawStreamingResult<R>,
+pub(crate) fn stamp_terminal_request_id(
+    stream: crate::streaming::StreamingResult,
     slot: Option<crate::http_client::sse::RequestIdSlot>,
     request_id_header: Option<&'static str>,
-    stamp: impl Fn(&mut R, String) + WasmCompatSend + 'static,
-) -> crate::streaming::RawStreamingResult<R>
-where
-    R: 'static,
-{
+) -> crate::streaming::StreamingResult {
     let Some(slot) = slot else {
         return stream;
     };
     Box::pin(stream.map(move |item| {
         let request_id = slot.lock().ok().and_then(|guard| guard.clone());
         match item {
-            Ok(crate::streaming::RawStreamingChoice::FinalResponse(mut response)) => {
-                if let Some(id) = request_id {
-                    stamp(&mut response, id);
-                }
-                Ok(crate::streaming::RawStreamingChoice::FinalResponse(
-                    response,
-                ))
+            Ok(crate::streaming::StreamEvent::Final(response)) => {
+                Ok(crate::streaming::StreamEvent::Final(match request_id {
+                    Some(id) if response.provider_request_id.is_none() => {
+                        response.with_provider_request_id(id)
+                    }
+                    _ => response,
+                }))
             }
-            // A mid-stream in-band provider error envelope (yielded as an
-            // error item) also came over this connection: attach the same
-            // connection's transport id so a failed stream reports the id
-            // support asks for (rig#2314). Only the ProviderResponse variant
-            // has a slot for it; transport-level failures stay untouched.
-            // A failed SSE handshake (connect-time non-success) surfaces as
-            // a details-preserving transport error; this helper is installed
-            // exactly by providers with a request-id contract, so classify it
-            // like the unary driver would — ProviderResponse with the failed
-            // response's own id (rig#2314 follow-up: the streaming 4xx now
-            // matches its blocking twin instead of losing body and id).
-            Err(crate::completion::CompletionError::HttpError(
-                crate::http_client::Error::InvalidStatusCodeWithDetails {
-                    status,
-                    body,
-                    headers,
-                },
-            )) if request_id_header.is_some() => {
-                let provider_request_id = request_id_header
-                    .and_then(|header| headers.get(header))
-                    .and_then(|value| value.to_str().ok())
-                    .filter(|value| !value.is_empty())
-                    .map(str::to_string);
-                Err(
-                    crate::completion::CompletionError::from_http_response_with_request_id(
-                        status,
-                        body,
-                        provider_request_id,
-                    )
-                    // The handshake's headers ride along too, so a streamed
-                    // 429 exposes `Retry-After` exactly like its blocking
-                    // twin (rig#2210).
-                    .with_response_headers(Some(headers)),
-                )
-            }
+            // A failed SSE handshake (connect-time non-success) is the
+            // provider's reply: `from_transport_error` already classified it
+            // as ProviderResponse with the handshake's headers (rig#2210);
+            // stamp the id read off those headers, like the unary driver
+            // (rig#2314). An in-band envelope yielded as an error item came
+            // over the same connection and takes the slot's id below.
             Err(crate::completion::CompletionError::ProviderResponse(response)) => {
                 // Never clear an id an upstream constructor already attached;
-                // the slot only fills the gap.
+                // the slot only fills the gap, and a handshake rejection's own
+                // headers fill it before the slot does.
+                let from_headers = response
+                    .headers
+                    .as_deref()
+                    .and_then(|headers| super::request_id_from_headers(headers, request_id_header));
                 let stamped = if response.provider_request_id.is_none() {
-                    response.with_provider_request_id(request_id)
+                    response.with_provider_request_id(from_headers.or(request_id))
                 } else {
                     response
                 };
@@ -223,21 +201,21 @@ pub(crate) fn open_wire_stream<HttpClient, RequestBody, A, F>(
     triage: F,
     adapter: A,
     span: tracing::Span,
-) -> crate::streaming::RawStreamingResult<A::Response>
+) -> crate::streaming::StreamingResult
 where
     HttpClient: HttpClientExt + Clone + 'static,
     RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
     A: WireAdapter<Frame = WireFrame> + WasmCompatSend + 'static,
     A::Event: WasmCompatSend,
-    A::Response: WasmCompatSend + 'static,
     F: FnMut(String) -> FrameDisposition + WasmCompatSend + 'static,
 {
     // Transport layer: SSE events → `WireFrame`s. Byte splitting, framing,
     // and any in-band provider-error pre-filter carried by `triage` —
     // classification and policy live downstream.
+    let observation = event_source.observation();
     let transport = sse_frames(event_source, options, triage);
 
-    Box::pin(run_wire_stream(transport, adapter).instrument(span))
+    Box::pin(run_wire_stream_observed(transport, adapter, observation).instrument(span))
 }
 
 #[cfg(test)]

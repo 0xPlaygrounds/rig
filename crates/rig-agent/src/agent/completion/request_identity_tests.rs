@@ -72,7 +72,7 @@ fn golden_agent(model: MockCompletionModel) -> Agent {
 async fn scripted_tool_turn_requests_match_golden() {
     let model = golden_model();
     let agent = golden_agent(model.clone());
-    let _ = agent.runner("add 2 and 3").max_turns(3).run().await;
+    let _ = agent.prompt("add 2 and 3").max_turns(3).run().await;
 
     let requests = model
         .requests()
@@ -205,7 +205,10 @@ const GOLDEN: &str = r#"
               },
               "name": "add"
             },
-            "id": "tc1",
+            "id": {
+              "id": "tc1",
+              "origin": "explicit"
+            },
             "provider": {
               "call_id": "tc1"
             },
@@ -219,7 +222,10 @@ const GOLDEN: &str = r#"
       {
         "content": [
           {
-            "call": "tc1",
+            "call": {
+              "id": "tc1",
+              "origin": "explicit"
+            },
             "content": [
               {
                 "type": "json",
@@ -321,7 +327,10 @@ const GOLDEN: &str = r#"
               },
               "name": "add"
             },
-            "id": "tc1",
+            "id": {
+              "id": "tc1",
+              "origin": "explicit"
+            },
             "provider": {
               "call_id": "tc1"
             },
@@ -335,7 +344,10 @@ const GOLDEN: &str = r#"
       {
         "content": [
           {
-            "call": "tc1",
+            "call": {
+              "id": "tc1",
+              "origin": "explicit"
+            },
             "content": [
               {
                 "type": "json",

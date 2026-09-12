@@ -26,11 +26,7 @@ async fn streaming_tools_smoke() {
                 .additional_params(serde_json::json!({ "think": false }))
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(STREAMING_TOOLS_PROMPT)
-                .max_turns(3)
-                .stream()
-                .await;
+            let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).max_turns(3).stream();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");

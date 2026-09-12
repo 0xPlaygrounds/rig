@@ -1,14 +1,27 @@
 # Test Suites
 
+For the fast edit/check loop, run `cargo xtask verify --changed`. Before publishing, run `cargo xtask verify --pr --base <intended-base-ref>` and complete independent review and committed-head CI. See [development verification](../DEVELOPING.md) for modes, prerequisites, result invalidation, and measurements.
+
 Rig's root crate uses integration test targets under `tests/`.
 
 - `tests/<provider>.rs` are provider-specific test targets.
 - `tests/providers/<provider>/cassette/` contains provider tests backed by committed HTTP cassettes.
 - `tests/providers/<provider>/live/` contains provider tests that still require a real service.
-- `tests/integrations.rs` is the vector-store and external-service integration target.
+- `test-support/service-tests/integrations.rs` runs the vector-store suites from `tests/integrations/` as the unpublished `rig-service-tests` package. `tests/integrations.rs` retains the root Bedrock integrations.
 - `tests/core.rs` contains provider-agnostic core behavior tests.
+- The [ECS consumer harness](https://github.com/gold-silver-copper/rigcoder/tree/main/crates/rigcoder-verify)
+  is owned by rigcoder. Run `cargo run --locked -p rigcoder-verify -- verify`
+  there for its maintenance/repair cases, replay and supported resume checks.
+  Rig retains its runtime and provider conformance suites.
 
 Most provider tests are ignored live tests unless they have been migrated to cassettes.
+
+Cassette suites require a checkout of this repository: their shared engine is
+the unpublished `rig-cassette` workspace crate, and their fixtures are excluded
+from the published `rig` archive. Cargo omits the path-only engine dev-dependency
+when packaging `rig`, so the archive's remaining cassette test sources are not
+standalone test targets. Run these suites from the workspace. The engine is not
+a normal dependency of the published facade.
 
 ## Testing Doctrine
 
@@ -369,15 +382,15 @@ feature flags.
 Run all enabled non-ignored integration tests with:
 
 ```bash
-cargo test -p rig --all-features --test integrations
+cargo test -p rig-service-tests --all-features --test integrations
 ```
 
 Run one feature-gated integration group with:
 
 ```bash
-cargo test -p rig --features qdrant --test integrations qdrant -- --nocapture
-cargo test -p rig --features mongodb --test integrations mongodb -- --nocapture
-cargo test -p rig --features sqlite --test integrations sqlite -- --nocapture
+cargo test -p rig-service-tests --features qdrant --test integrations qdrant -- --nocapture
+cargo test -p rig-service-tests --features mongodb --test integrations mongodb -- --nocapture
+cargo test -p rig-service-tests --features sqlite --test integrations sqlite -- --nocapture
 ```
 
 Some integration tests start Docker containers through `testcontainers`; Docker must be running.
@@ -386,9 +399,79 @@ Run ignored integration tests explicitly:
 
 ```bash
 cargo test -p rig --features bedrock --test integrations bedrock -- --ignored --nocapture --test-threads=1
-cargo test -p rig --features vectorize --test integrations vectorize -- --ignored --nocapture --test-threads=1
+cargo test -p rig-service-tests --features vectorize --test integrations vectorize -- --ignored --nocapture --test-threads=1
 ```
 
 Check each integration module for required environment variables. For example, Vectorize requires
 `VECTORIZE_INDEX_NAME`, and Bedrock tests require AWS credentials plus access to the configured
 Bedrock models.
+
+## Agent/ECS regression scenarios
+
+Native ECS tests execute real provider adapters against the same cassettes as
+rig-agent tests. Original and native golden comparisons retain their complete
+assertions. The [scenario catalog](ecs_parity/scenarios.json) records current
+test correspondences, classifications and configuration, with a deduplicated
+source/helper/fixture inventory. The [comparison guide](ecs_parity/README.md)
+describes shared boundaries and family-specific limitations. It is not a passing
+result or proof of an exhaustive functional superset.
+
+The catalog includes unmapped and unclassified cases. Further migration and
+broader capability comparisons remain follow-up work. Shared-provider tests do
+not count as native agent migrations, and live or capability-gated cases must
+not be reported as exercised merely because the test runner lists them.
+
+Check maintained files and a fresh compiled listing:
+
+```sh
+cargo xtask check-ecs-scenarios
+cargo nextest list --locked -p rig --features bedrock --message-format json > target/ecs-tests.json
+cargo xtask check-ecs-scenarios target/ecs-tests.json
+cargo test --locked -p xtask
+```
+
+The checker rejects duplicate mappings, missing source/helper/fixture files,
+missing compiled mapped original/native tests, and filtered listings. Unmapped
+source-only or feature-gated scenarios outside the listing are counted explicitly.
+Ignored registrations are not execution results. The checker does not
+certify execution or behavioral equivalence. Maintain behavioral obligations
+alongside the corresponding tests; current test runs and CI
+establish which tests pass.
+
+Run a native family using its catalog binary and test module, for example:
+
+```sh
+cargo test --locked -p rig --test anthropic ecs_outcome -- --nocapture
+```
+
+### Stream-fault cells
+
+`tests/providers/{gemini,openai}/cassette/stream_faults.rs` and their
+`ecs_stream_faults.rs` twins drive the runner and the native runtime through
+the real adapter into a stream that ends badly: the committed error
+recordings for a setup failure, the committed text stream dropped by its
+consumer, and scripted faults served by `rig::test_utils`'s sequenced
+transport — a recording cut before its terminal (`tests/common/stream_faults.rs`),
+a Gemini refusal, an in-band error after content. Every scripted frame is a
+labelled constant with its provenance beside the cell; no cassette is
+hand-edited and no new fixture is committed. A scripted cell pins what the
+runtime does with the fault (the failure kind, the record, the committed
+history, the tools that never ran, the witness's facts); the request shape it
+would have sent is pinned by the recording's owning test, not by the cell.
+Every HTTP wire threads the witness's `AdapterContext` through its request,
+so a native cell reads the adapter's boundary facts (the request, the
+status, the provider's verdict, usage and error envelope, the closure) for
+Gemini, the OpenAI Chat Completions and Responses wires and Anthropic;
+Cohere, Ollama and the Gemini Interactions wire report the transport facts
+without a payload projection.
+A provider's error reply classifies the same on every wire —
+`ErrorKind::ProviderResponse`, status, body, headers and request id on the
+report — through the one funnel in `rig_core::provider_response`;
+`ErrorKind::Http` is a transport failure that produced no reply and carries
+no status: a transport never reports a status without the reply behind it.
+
+Historical execution logs, proof snapshots, review-application commands and
+archive infrastructure are intentionally not maintained. No historical download
+or cache is required for regression tests. Consumed cassettes and goldens remain
+in Git. Removing proof files from the current tree does not remove the old blobs
+from published Git history.

@@ -34,6 +34,69 @@ fn test_generate_content_response_deserializes_without_candidates_or_response_id
     assert!(response.response_id.is_empty());
     assert!(response.candidates.is_empty());
 
+    // A set `blockReason` is the provider's verdict on the prompt: the
+    // error names it instead of reporting a generic missing-candidate parse
+    // failure.
+    let error = completion::CompletionResponse::try_from(response)
+        .expect_err("a blocked prompt is an error");
+    assert!(
+        matches!(&error, CompletionError::ProviderError(message) if message.contains("blocked the prompt") && message.contains("SAFETY")),
+        "{error}"
+    );
+}
+
+#[test]
+fn test_blocked_prompt_error_carries_the_safety_ratings() {
+    let response: GenerateContentResponse = serde_json::from_value(json!({
+        "promptFeedback": {
+            "blockReason": "PROHIBITED_CONTENT",
+            "safetyRatings": [
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "probability": "HIGH"}
+            ]
+        },
+        "usageMetadata": {"promptTokenCount": 12, "totalTokenCount": 12}
+    }))
+    .expect("blocked prompt response should deserialize");
+    let error = completion::CompletionResponse::try_from(response).expect_err("blocked");
+    let message = error.to_string();
+    assert!(message.contains("PROHIBITED_CONTENT"), "{message}");
+    assert!(
+        message.contains("HARM_CATEGORY_DANGEROUS_CONTENT"),
+        "{message}"
+    );
+    assert!(message.contains("HIGH"), "{message}");
+}
+
+#[test]
+fn test_unknown_block_reason_reaches_the_error_verbatim() {
+    let response: GenerateContentResponse = serde_json::from_value(json!({
+        "promptFeedback": {"blockReason": "SOMETHING_NEW"}
+    }))
+    .unwrap();
+    let error = completion::CompletionResponse::try_from(response).expect_err("blocked");
+    assert!(
+        error.to_string().contains("block_reason=SOMETHING_NEW"),
+        "{error}"
+    );
+}
+
+#[test]
+fn test_unspecified_block_reason_is_not_a_block() {
+    let response: GenerateContentResponse = serde_json::from_value(json!({
+        "promptFeedback": {"blockReason": "BLOCK_REASON_UNSPECIFIED"}
+    }))
+    .unwrap();
+    let error = completion::CompletionResponse::try_from(response).expect_err("no candidates");
+    assert!(
+        error.to_string().contains("No response candidates"),
+        "{error}"
+    );
+}
+
+#[test]
+fn test_no_candidates_without_prompt_feedback_is_still_a_response_error() {
+    let response: GenerateContentResponse =
+        serde_json::from_value(json!({})).expect("empty response should deserialize");
     let error = completion::CompletionResponse::try_from(response)
         .expect_err("empty candidates should become a response error");
     assert!(error.to_string().contains("No response candidates"));
@@ -818,7 +881,7 @@ fn test_response_function_call_preserves_correlation_id() {
     let Some(message::AssistantContent::ToolCall(tool_call)) = converted.choice.first() else {
         panic!("expected a tool call");
     };
-    assert_eq!(tool_call.id, "call-123");
+    assert_eq!(tool_call.id.explicit(), Some("call-123"));
     assert_eq!(
         tool_call.provider.as_ref().expect("wire id").call_id,
         "call-123"
@@ -1060,7 +1123,7 @@ fn test_tool_result_with_image_content() {
 
     // Create a tool result with both text and image content
     let tool_result = ToolResult {
-        call: message::ToolCallId::new_or_mint("call-123"),
+        call: message::ToolCallId::new_or_minted("call-123", 0),
         provider: message::ProviderCallId::new("call-123"),
         name: "test_tool".to_string(),
         content: vec![
@@ -1125,7 +1188,7 @@ fn mixed_inline_images_and_text_keep_text_response_and_ordered_parts() {
 
     let message = message::Message::User {
         content: vec![message::UserContent::ToolResult(ToolResult {
-            call: message::ToolCallId::mint(),
+            call: message::ToolCallId::minted(0),
             provider: None,
             name: "ordered_tool".to_string(),
             content: vec![
@@ -1167,7 +1230,7 @@ fn mixed_inline_image_and_json_keep_structured_value_and_media_part() {
 
     let message = message::Message::User {
         content: vec![message::UserContent::ToolResult(ToolResult {
-            call: message::ToolCallId::mint(),
+            call: message::ToolCallId::minted(0),
             provider: None,
             name: "ordered_tool".to_string(),
             content: vec![
@@ -1202,7 +1265,7 @@ fn mixed_url_image_and_response_value_is_rejected() {
 
     let tool_result = message::Message::User {
         content: vec![message::UserContent::ToolResult(message::ToolResult {
-            call: message::ToolCallId::mint(),
+            call: message::ToolCallId::minted(0),
             provider: None,
             name: "url_tool".to_string(),
             content: vec![
@@ -1239,7 +1302,7 @@ fn tool_result_rejects_unsupported_image_media_types() {
     ] {
         let message = message::Message::User {
             content: vec![message::UserContent::ToolResult(ToolResult {
-                call: message::ToolCallId::mint(),
+                call: message::ToolCallId::minted(0),
                 provider: None,
                 name: "image_tool".to_string(),
                 content: vec![ToolResultContent::image_base64(
@@ -1267,7 +1330,7 @@ fn structured_json_refs_remain_literal_with_unreferenced_image_parts() {
 
     let message = message::Message::User {
         content: vec![message::UserContent::ToolResult(ToolResult {
-            call: message::ToolCallId::mint(),
+            call: message::ToolCallId::minted(0),
             provider: None,
             name: "collision_tool".to_string(),
             content: vec![
@@ -1325,7 +1388,7 @@ fn tool_result_literal_text_and_structured_json_remain_distinct() {
     for (tool_content, expected) in cases {
         let message = message::Message::User {
             content: vec![message::UserContent::ToolResult(ToolResult {
-                call: message::ToolCallId::mint(),
+                call: message::ToolCallId::minted(0),
                 provider: None,
                 name: "test_tool".to_string(),
                 content: vec![tool_content],
@@ -1350,7 +1413,7 @@ fn echoed_minted_handle_never_reaches_the_function_response_id() {
 
     // An id-less wire minted the handle (Gemini REST issued no id).
     let call = ToolCall::new(
-        ToolCallId::mint(),
+        ToolCallId::minted(0),
         ToolFunction {
             name: "lookup".to_string(),
             arguments: json!({}),
@@ -1358,11 +1421,12 @@ fn echoed_minted_handle_never_reaches_the_function_response_id() {
     );
 
     let message = message::Message::User {
-        content: vec![message::UserContent::tool_result(
-            call.id.as_str(),
-            "lookup",
-            vec![ToolResultContent::text("out")],
-        )],
+        content: vec![message::UserContent::ToolResult(message::ToolResult {
+            call: call.id.clone(),
+            provider: None,
+            name: "lookup".into(),
+            content: vec![ToolResultContent::text("out")],
+        })],
     };
     let content: Content = message.try_into().expect("tool result should convert");
     let PartKind::FunctionResponse(response) = &content.parts[0].part else {
@@ -1514,7 +1578,7 @@ fn test_tool_result_with_url_image_is_rejected() {
     };
 
     let tool_result = ToolResult {
-        call: message::ToolCallId::mint(),
+        call: message::ToolCallId::minted(0),
         provider: None,
         name: "screenshot_tool".to_string(),
         content: vec![ToolResultContent::Image(Image {
@@ -1699,7 +1763,7 @@ async fn completion_non_success_preserves_status_and_body() {
         .await
         .expect_err("should fail with non-success status");
 
-    assert!(matches!(error, CompletionError::HttpError(_)));
+    assert!(matches!(error, CompletionError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)

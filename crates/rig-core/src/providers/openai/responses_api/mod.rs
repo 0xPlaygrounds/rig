@@ -477,7 +477,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             // Provider-issued call id when one exists, else
                             // rig's minted handle — always present and
                             // non-empty.
-                            let call_id = tool_result.wire_call_id().to_owned();
+                            let call_id = tool_result.wire_call_id().into_owned();
                             let output = responses_tool_result_output(tool_result.content)
                                 .map_err(|error| {
                                     CompletionError::ProviderError(error.to_string())
@@ -593,7 +593,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                     let item_id = provider.item_id.clone().unwrap_or_default();
                                     (provider.call_id, item_id)
                                 }
-                                None => (id.into_string(), String::new()),
+                                None => (id.wire_hint().into_owned(), String::new()),
                             };
                             other_items.push(InputItem {
                                 role: None,
@@ -682,7 +682,7 @@ pub(crate) fn reasoning_content_blocks(
 
 fn openai_reasoning_from_core(reasoning: &crate::message::Reasoning) -> Option<OpenAIReasoning> {
     // Only wire-genuine ids exist in durable histories: the streaming layer
-    // populates `Reasoning::id` exclusively from `StreamPartId::Wire`, so an
+    // populates `Reasoning::id` exclusively from `BlockId::Wire`, so an
     // id-less (rig-keyed) reasoning item arrives here as `None` and drops
     // from request input, mirroring main's handling. No provenance gate is
     // needed — a fabricated id structurally cannot reach this function.
@@ -1161,7 +1161,7 @@ impl<'de> Deserialize<'de> for ResponseStatus {
 /// [`completion::FinishReason::ToolCalls`] for a turn that emitted function
 /// calls is applied once, centrally, by
 /// [`completion::CompletionResponse::with_optional_finish_reason`] (and, for
-/// streams, by [`crate::streaming::normalize_stream`]).
+/// streams, by [`crate::streaming::StreamingCompletionResponse`]).
 ///
 /// Anything unrecognized — a new `incomplete_details.reason`, or a terminal
 /// status such as `failed`/`cancelled` that has no normalized counterpart — is
@@ -1341,8 +1341,22 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
         let mut instruction_parts = Vec::new();
         let mut input = {
             let mut full_history: Vec<InputItem> = Vec::new();
-            for history_item in chat_history {
-                full_history.extend(<Vec<InputItem>>::try_from(history_item)?);
+            let tool_ids =
+                crate::providers::internal::tool_call_ids::ToolCallIds::new(&chat_history)
+                    .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+            for (position, history_item) in chat_history.into_iter().enumerate() {
+                let mut items = <Vec<InputItem>>::try_from(history_item)?;
+                tool_ids
+                    .apply(
+                        position,
+                        items.iter_mut().filter_map(|item| match &mut item.input {
+                            InputContent::FunctionCall(call) => Some(&mut call.call_id),
+                            InputContent::FunctionCallOutput(result) => Some(&mut result.call_id),
+                            _ => None,
+                        }),
+                    )
+                    .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+                full_history.extend(items);
             }
             full_history
         };
@@ -2517,6 +2531,16 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
+        self.raw_completion_observed(completion_request, None).await
+    }
+
+    /// [`Self::raw_completion`] with observation context owned by this
+    /// invocation.
+    async fn raw_completion_observed(
+        &self,
+        completion_request: crate::completion::CompletionRequest,
+        observation: Option<crate::observe::AdapterContext>,
+    ) -> Result<CompletionResponse, CompletionError> {
         let system_instructions = completion_request.system_instructions().map(str::to_owned);
         let record_telemetry_content = completion_request.record_telemetry_content;
         let (request_model, request) = self.create_provider_request(completion_request, false)?;
@@ -2535,11 +2559,18 @@ where
             &request,
         );
 
-        let req = self
+        let mut req = self
             .client
             .post(Ext::RESPONSES_PATH)?
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
+        if let Some(observation) = observation {
+            crate::providers::openai::observation::attach_responses(
+                observation,
+                &mut req,
+                "/responses",
+            );
+        }
 
         fn record_response(response: &CompletionResponse) {
             let span = tracing::Span::current();
@@ -2610,17 +2641,35 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Capture before `normalize` consumes the raw value.
-        let response = self.raw_completion(completion_request).await?;
-        let captured = serde_json::to_value(&response)?;
-        Ok(response.normalize(Ext::PROVIDER_NAME)?.with_raw(captured))
+        self.completion_with_context(completion_request, None).await
     }
 
     async fn stream(
         &self,
         request: crate::completion::CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        GenericResponsesCompletionModel::stream(self, request).await
+        self.stream_with_context(request, None).await
+    }
+
+    async fn completion_with_context(
+        &self,
+        completion_request: crate::completion::CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        // Capture before `normalize` consumes the raw value.
+        let response = self
+            .raw_completion_observed(completion_request, context)
+            .await?;
+        let captured = serde_json::to_value(&response)?;
+        Ok(response.normalize(Ext::PROVIDER_NAME)?.with_raw(captured))
+    }
+
+    async fn stream_with_context(
+        &self,
+        request: crate::completion::CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+        GenericResponsesCompletionModel::stream_observed(self, request, context).await
     }
 }
 
@@ -2652,7 +2701,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             .output
             .iter()
             .any(|item| matches!(item, Output::Reasoning { .. }));
-        let content = response
+        let mut content = response
             .provider_reasoning
             .as_ref()
             .filter(|reasoning| !has_structured_reasoning && !reasoning.is_empty())
@@ -2665,6 +2714,8 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                 content
             })
             .unwrap_or(output_content);
+
+        crate::message::normalize_missing_tool_call_ids(&mut content);
 
         let finish_reason =
             map_finish_reason(&response.status, response.incomplete_details.as_ref());

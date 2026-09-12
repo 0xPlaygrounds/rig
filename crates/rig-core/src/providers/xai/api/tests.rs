@@ -7,6 +7,22 @@ use crate::message::{
 use crate::providers::openai::responses_api::ReasoningSummary;
 use crate::test_utils::MockCompletionModel;
 
+/// Synthetic request history covers correlation without requiring a live provider.
+#[test]
+fn full_request_preserves_typed_tool_pairs_across_turns() {
+    use crate::providers::internal::tool_call_ids::tests::{
+        adapter_requests, assert_adapter_pairs,
+    };
+    for request in adapter_requests() {
+        for stream in [false, true] {
+            let (_, wire) =
+                create_completion_request("test".into(), request.clone(), &[], false, stream)
+                    .unwrap();
+            assert_adapter_pairs(wire);
+        }
+    }
+}
+
 fn request_value(request: CompletionRequest) -> serde_json::Value {
     create_completion_request("grok-4-0709".to_string(), request, &[], false, false)
         .expect("request conversion should succeed")

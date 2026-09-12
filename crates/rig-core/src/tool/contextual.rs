@@ -1,16 +1,14 @@
-//! Contextual tool authoring, the erased tool set, and canonical dispatch.
+//! Contextual tool authoring and the erased tool.
 //!
 //! A typed [`Tool`] implements one [`Tool::call`] method. Rig erases it
-//! once ([`ErasedTool`]), stores it in an ordered [`ToolSet`], executes it
-//! through one structured path ([`dispatch_tool`]), and exposes a single
+//! once ([`ErasedTool`]) into a tool-family handler and exposes a single
 //! [`ToolResult`] view to hooks and runtime callers. [`ToolContext`] is the sole
 //! path for typed inbound context and host-only result metadata.
 //!
-//! None of this is runtime-specific: the futures agent driver (`rig-agent`)
-//! layers its live registry, retrieval indexes, and managed tool sources over
-//! these types, and a systems driver can hold a [`ToolSet`] or a
-//! [`ToolCatalog`] in shared state and dispatch by name
-//! without depending on either.
+//! None of this is runtime-specific: a registry that holds tools by name,
+//! pins them per turn and dispatches to them is a driver's business
+//! (`rig_agent::tool::{ToolSet, ToolCatalog}` for the futures agent); this
+//! module has only what a tool author implements and what a bus takes.
 //!
 //! # Implementing a typed tool
 //!
@@ -33,8 +31,12 @@
 //!     value: i64,
 //! }
 //!
-//! #[derive(Clone, Debug, PartialEq)]
+//! #[derive(Serialize, Deserialize)]
 //! struct AuditRecord(i64);
+//!
+//! impl rig_core::tool::ContextValue for AuditRecord {
+//!     const KEY: &'static str = "audit_record";
+//! }
 //!
 //! struct Add;
 //!
@@ -65,7 +67,7 @@
 //!         args: Self::Args,
 //!     ) -> Result<Self::Output, Self::Error> {
 //!         let value = args.left + args.right;
-//!         context.insert_result(AuditRecord(value));
+//!         let _ = context.insert_result(AuditRecord(value));
 //!         Ok(Sum { value })
 //!     }
 //! }
@@ -109,26 +111,25 @@
 //! | Parallel error and failure types | [`ToolExecutionError`] and [`ToolErrorKind`](super::ToolErrorKind) |
 //! | Author-facing outcome enums | Ordinary `Result<T, Self::Error>` normalized at dispatch |
 //! | Separate call/result extension maps | [`ToolContext`] |
-//! | Parallel string/structured dispatch | [`ToolSet::execute`] (and the registry handle's `execute` in `rig-agent`) |
+//! | Parallel string/structured dispatch | `ToolSet::execute` and the registry handle's `execute`, both in `rig-agent` |
 //!
 //! Model-visible output remains typed throughout dispatch. Rendering to text is
 //! a terminal provider or telemetry concern; Rig does not reconstruct rich
 //! content by parsing a returned string.
 
-use std::{collections::HashMap, future::Future, sync::Arc};
+use std::future::Future;
 
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    completion::{self, ToolDefinition},
-    embeddings::{embed::EmbedError, tool::ToolSchema},
+    completion::ToolDefinition,
+    serve::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
 use super::{
     IntoToolOutput, PortableDynamicTool, ToolContext, ToolExecutionError, ToolOutput, ToolResult,
-    catalog::ToolCatalog,
+    portable::LivenessFn,
 };
 
 /// A typed LLM tool.
@@ -271,6 +272,26 @@ where
 /// Output conversion happens here rather than in each [`ErasedTool::execute`] so
 /// a conversion failure and an execution failure reach the runtime as the same
 /// kind of failed result.
+/// Run a runtime-defined tool callback over raw JSON arguments: the parse
+/// and result-shaping every tool shares, for the bus's `ToolFn` handler.
+pub(crate) async fn execute_callback<F>(
+    callback: &F,
+    args: String,
+    context: &mut ToolContext,
+) -> ToolResult
+where
+    F: for<'a> Fn(
+        &'a mut ToolContext,
+        serde_json::Value,
+    ) -> WasmBoxedFuture<'a, Result<ToolOutput, ToolExecutionError>>,
+{
+    let args = match parse_tool_args::<serde_json::Value>(&args) {
+        Ok(args) => args,
+        Err(error) => return ToolResult::failed(error),
+    };
+    tool_result_from(callback(context, args).await)
+}
+
 fn tool_result_from<O>(outcome: Result<O, ToolExecutionError>) -> ToolResult
 where
     O: IntoToolOutput,
@@ -281,21 +302,17 @@ where
     }
 }
 
-/// Object-safe dispatch boundary.
-///
-/// Every [`Tool`] erases into it; adapters for remote tool protocols (MCP,
-/// for example) implement it directly.
+/// The object-safe form of [`Tool`]: raw JSON arguments in, a
+/// [`ToolResult`] out. This is the impl-side contract the bus's
+/// `ToolAdapter` calls; nothing stores it behind a vtable.
 pub trait ErasedTool: WasmCompatSend + WasmCompatSync {
+    /// The tool's name.
     fn name(&self) -> String;
+    /// The tool's description.
     fn description(&self) -> String;
+    /// The JSON schema of the tool's arguments.
     fn parameters(&self) -> serde_json::Value;
-    /// Whether the runtime backing this registration can still accept calls.
-    ///
-    /// In-process tools are always live. Remote adapters override this so the
-    /// registry can retire disconnected owners without probing by execution.
-    fn is_live(&self) -> bool {
-        true
-    }
+    /// Run the tool on raw arguments, shaping the answer into a result.
     fn execute<'a>(
         &'a self,
         args: String,
@@ -338,42 +355,18 @@ where
     }
 }
 
-trait DynamicCallback:
-    for<'a> Fn(
-        &'a mut ToolContext,
-        serde_json::Value,
-    ) -> WasmBoxedFuture<'a, Result<ToolOutput, ToolExecutionError>>
-    + WasmCompatSend
-    + WasmCompatSync
-{
-}
-
-impl<F> DynamicCallback for F where
-    F: for<'a> Fn(
-            &'a mut ToolContext,
-            serde_json::Value,
-        ) -> WasmBoxedFuture<'a, Result<ToolOutput, ToolExecutionError>>
-        + WasmCompatSend
-        + WasmCompatSync
-{
-}
-
-/// A runtime-defined tool backed by one closure.
-///
-/// This is the only public dynamic execution surface; users never implement
-/// Rig's object-safe dispatch mirror.
+/// A tool defined at runtime: a name, a schema and a callback. The callback
+/// is the handler ([`ToolFn`]); this struct is its definition plus the
+/// erased handler a registry stages until a bus takes it.
 #[derive(Clone)]
 pub struct DynamicTool {
-    name: String,
-    description: String,
-    parameters: serde_json::Value,
-    callback: Arc<dyn DynamicCallback>,
-    /// Liveness source inherited from a portable tool, if any.
-    liveness: Option<PortableDynamicTool>,
+    definition: ToolDefinition,
+    handler: ErasedHandler,
+    liveness: Option<LivenessFn>,
 }
 
 impl DynamicTool {
-    /// Create a runtime-defined tool.
+    /// Define a tool from a callback over the dispatch-scoped context.
     pub fn new<F>(
         name: impl Into<String>,
         description: impl Into<String>,
@@ -381,57 +374,69 @@ impl DynamicTool {
         callback: F,
     ) -> Self
     where
-        F: for<'a> Fn(
-                &'a mut ToolContext,
-                serde_json::Value,
-            ) -> WasmBoxedFuture<'a, Result<ToolOutput, ToolExecutionError>>
-            + WasmCompatSend
-            + WasmCompatSync
-            + 'static,
+        F: ToolCallback + 'static,
     {
+        let name = name.into();
+        let description = description.into();
+        let handler = ErasedHandler::new(ToolFn::new(
+            name.clone(),
+            description.clone(),
+            parameters.clone(),
+            callback,
+        ));
         Self {
-            name: name.into(),
-            description: description.into(),
-            parameters,
-            callback: Arc::new(callback),
+            definition: ToolDefinition {
+                name,
+                description,
+                parameters,
+            },
+            handler,
             liveness: None,
         }
     }
 
-    /// Adapt a portable dynamic tool for the classic contextual registry.
-    ///
-    /// The portable callback receives the same parsed JSON value **and the
-    /// dispatch's [`ToolContext`]** (so context-aware portable tools see the
-    /// agent's per-call values and their result inserts reach hooks); its
-    /// [`ToolOutput`] or [`ToolExecutionError`] is forwarded unchanged.
+    /// Adopt a portable tool, keeping its liveness probe.
     pub fn from_portable(tool: PortableDynamicTool) -> Self {
-        let definition = tool.definition();
-        let probe = tool.clone();
-        let mut adapted = Self::new(
-            definition.name,
-            definition.description,
-            definition.parameters,
-            move |context, arguments| {
-                let tool = tool.clone();
-                Box::pin(async move { tool.execute_with(context, arguments).await })
-            },
-        );
-        adapted.liveness = Some(probe);
-        adapted
-    }
-
-    /// Runtime name.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// Provider-facing definition.
-    pub fn definition(&self) -> ToolDefinition {
-        ToolDefinition {
-            name: self.name.clone(),
-            description: self.description.clone(),
-            parameters: self.parameters.clone(),
+        let (definition, handler, liveness) = tool.into_parts();
+        Self {
+            definition,
+            handler,
+            liveness,
         }
+    }
+
+    /// The tool's name.
+    pub fn name(&self) -> &str {
+        &self.definition.name
+    }
+
+    /// The tool's definition.
+    pub fn definition(&self) -> ToolDefinition {
+        self.definition.clone()
+    }
+
+    /// The erased handler behind this definition.
+    pub fn handler(&self) -> &ErasedHandler {
+        &self.handler
+    }
+
+    /// The definition, the handler and the liveness probe, by value — what
+    /// a registry stages from a runtime-defined tool.
+    pub fn into_parts(self) -> (ToolDefinition, ErasedHandler, Option<LivenessFn>) {
+        (self.definition, self.handler, self.liveness)
+    }
+
+    /// Whether the tool's owner still serves it (`true` without a probe).
+    pub fn is_live(&self) -> bool {
+        self.liveness.as_ref().is_none_or(|probe| probe())
+    }
+}
+
+impl std::fmt::Debug for DynamicTool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DynamicTool")
+            .field("name", &self.definition.name)
+            .finish_non_exhaustive()
     }
 }
 
@@ -441,41 +446,7 @@ impl From<PortableDynamicTool> for DynamicTool {
     }
 }
 
-impl ErasedTool for DynamicTool {
-    fn name(&self) -> String {
-        self.name.clone()
-    }
-
-    fn is_live(&self) -> bool {
-        self.liveness
-            .as_ref()
-            .is_none_or(PortableDynamicTool::is_live)
-    }
-
-    fn description(&self) -> String {
-        self.description.clone()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        self.parameters.clone()
-    }
-
-    fn execute<'a>(
-        &'a self,
-        args: String,
-        context: &'a mut ToolContext,
-    ) -> WasmBoxedFuture<'a, ToolResult> {
-        Box::pin(async move {
-            let args = match parse_tool_args::<serde_json::Value>(&args) {
-                Ok(args) => args,
-                Err(error) => return ToolResult::failed(error),
-            };
-            tool_result_from((self.callback)(context, args).await)
-        })
-    }
-}
-
-/// Generate the provider-facing definition for a typed tool.
+/// A tool's [`ToolDefinition`] from a typed tool.
 pub fn tool_definition<T: Tool>(tool: &T) -> ToolDefinition {
     ToolDefinition {
         name: T::NAME.to_string(),
@@ -483,370 +454,3 @@ pub fn tool_definition<T: Tool>(tool: &T) -> ToolDefinition {
         parameters: tool.parameters(),
     }
 }
-
-fn definition_with_name(name: impl Into<String>, tool: &dyn ErasedTool) -> ToolDefinition {
-    ToolDefinition {
-        name: name.into(),
-        description: tool.description(),
-        parameters: tool.parameters(),
-    }
-}
-
-/// The erased twin of [`ToolEmbedding`]: an [`ErasedTool`] that can also hand
-/// its context and documents to a vector store.
-pub trait ErasedEmbeddingTool: ErasedTool {
-    fn serialized_context(&self) -> serde_json::Result<serde_json::Value>;
-    fn embedding_docs(&self) -> Vec<String>;
-}
-
-impl<T> ErasedEmbeddingTool for T
-where
-    T: ToolEmbedding + 'static,
-{
-    fn serialized_context(&self) -> serde_json::Result<serde_json::Value> {
-        serde_json::to_value(ToolEmbedding::context(self))
-    }
-
-    fn embedding_docs(&self) -> Vec<String> {
-        ToolEmbedding::embedding_docs(self)
-    }
-}
-
-/// One erased tool as a [`ToolSet`] holds it: either a plain erased tool or
-/// one that also carries embedding context for retrieval.
-#[derive(Clone)]
-pub enum RegisteredTool {
-    /// A tool that is always dispatchable and carries no embedding context.
-    Static(Arc<dyn ErasedTool>),
-    /// A tool that can also be stored in, and retrieved from, a vector index.
-    Embedding(Arc<dyn ErasedEmbeddingTool>),
-}
-
-impl RegisteredTool {
-    fn erased(&self) -> &dyn ErasedTool {
-        match self {
-            Self::Static(tool) => &**tool,
-            Self::Embedding(tool) => &**tool,
-        }
-    }
-
-    /// The tool's own name.
-    pub fn name(&self) -> String {
-        self.erased().name()
-    }
-
-    /// The provider-facing definition, advertised under `name`.
-    pub fn definition_with_name(&self, name: impl Into<String>) -> ToolDefinition {
-        definition_with_name(name, self.erased())
-    }
-
-    /// Whether the backing runtime can still accept calls.
-    pub fn is_live(&self) -> bool {
-        self.erased().is_live()
-    }
-
-    /// Execute through the erased boundary.
-    pub async fn execute(&self, args: String, context: &mut ToolContext) -> ToolResult {
-        self.erased().execute(args, context).await
-    }
-}
-
-/// One authoritative registry entry for execution and provider exposure.
-#[derive(Clone)]
-pub(crate) struct ToolRegistration {
-    tool: RegisteredTool,
-    always_exposed: bool,
-}
-
-impl ToolRegistration {
-    fn new(tool: RegisteredTool, always_exposed: bool) -> Self {
-        Self {
-            tool,
-            always_exposed,
-        }
-    }
-}
-
-/// The outcome of one isolated tool dispatch.
-pub struct ToolDispatch {
-    /// The canonical result.
-    pub result: ToolResult,
-    /// The per-dispatch context the tool ran against (inbound snapshot plus
-    /// whatever result metadata it inserted).
-    pub context: ToolContext,
-}
-
-impl ToolDispatch {
-    /// Publish the dispatch's result metadata back to the caller's context and
-    /// surface the result. Mutations to the tool's inbound snapshot are
-    /// discarded.
-    pub fn publish_to(self, context: &mut ToolContext) -> ToolResult {
-        context.accept_dispatch_result(self.context);
-        self.result
-    }
-}
-
-/// Execute a resolved registry entry through the single dispatch boundary.
-///
-/// Every surface enters here with its caller-owned context. The helper clones
-/// inbound values exactly once, clears prior result metadata, and returns the
-/// per-dispatch context so callers can expose its metadata without publishing
-/// mutations the tool made to its local inbound snapshot.
-pub async fn dispatch_tool(
-    name: &str,
-    args: String,
-    tool: Option<RegisteredTool>,
-    context: &ToolContext,
-) -> ToolDispatch {
-    let mut dispatch_context = context.for_dispatch();
-    let result = match tool {
-        Some(tool) => {
-            tracing::debug!(target: "rig", tool_name = name, "calling tool with args:\n{args}");
-            tool.execute(args, &mut dispatch_context).await
-        }
-        None => ToolResult::failed(
-            ToolExecutionError::not_found(format!("no tool named `{name}` is registered"))
-                .with_model_feedback(format!("tool `{name}` not found")),
-        ),
-    };
-    ToolDispatch {
-        result,
-        context: dispatch_context,
-    }
-}
-
-/// An ordered collection of tools.
-///
-/// Cloning is cheap and shallow: the tool implementations are shared `Arc`s,
-/// and names, ordering, and exposure flags are copied. A clone is a snapshot of
-/// *what is registered* — adding to or removing from one set never affects the
-/// other — not of any tool's internal state.
-#[derive(Clone, Default)]
-pub struct ToolSet {
-    pub(crate) tools: IndexMap<String, ToolRegistration>,
-}
-
-impl ToolSet {
-    /// Build a set from homogeneous typed tools.
-    pub fn from_tools<T>(tools: Vec<T>) -> Self
-    where
-        T: Tool + 'static,
-    {
-        let mut set = Self::default();
-        for tool in tools {
-            set.add_tool(tool);
-        }
-        set
-    }
-
-    /// Build a set from runtime-defined tools.
-    pub fn from_dynamic_tools(tools: Vec<DynamicTool>) -> Self {
-        let mut set = Self::default();
-        for tool in tools {
-            set.add_dynamic_tool(tool);
-        }
-        set
-    }
-
-    /// Whether the name is registered.
-    pub fn contains(&self, name: &str) -> bool {
-        self.tools.contains_key(name)
-    }
-
-    /// Register a typed tool.
-    pub fn add_tool<T>(&mut self, tool: T) -> String
-    where
-        T: Tool + 'static,
-    {
-        self.insert(RegisteredTool::Static(Arc::new(tool)))
-    }
-
-    /// Register a runtime-defined tool.
-    pub fn add_dynamic_tool(&mut self, tool: DynamicTool) -> String {
-        self.insert(RegisteredTool::Static(Arc::new(tool)))
-    }
-
-    /// Register a context-free dynamic tool without rewriting its callback.
-    pub fn add_portable_dynamic_tool(&mut self, tool: PortableDynamicTool) -> String {
-        self.add_dynamic_tool(DynamicTool::from_portable(tool))
-    }
-
-    /// Register a tool that is retrieved from an embedding index at prompt time.
-    ///
-    /// The registration keeps the tool's embedding context and documents, so
-    /// [`ToolSet::schemas`] can hand them to a vector store.
-    pub fn add_retrieved_tool<T>(&mut self, tool: T) -> String
-    where
-        T: ToolEmbedding + 'static,
-    {
-        self.insert(RegisteredTool::Embedding(Arc::new(tool)))
-    }
-
-    /// Register a pre-erased tool. The extension point for adapters that
-    /// implement [`ErasedTool`] directly (remote tool protocols such as MCP).
-    pub fn add_erased(&mut self, tool: Arc<dyn ErasedTool>) -> String {
-        self.insert(RegisteredTool::Static(tool))
-    }
-
-    pub(crate) fn insert(&mut self, tool: RegisteredTool) -> String {
-        let name = tool.name();
-        self.insert_registration(name.clone(), ToolRegistration::new(tool, true));
-        name
-    }
-
-    fn insert_registration(&mut self, name: String, mut registration: ToolRegistration) {
-        if let Some(current) = self.tools.get_mut(&name) {
-            registration.always_exposed |= current.always_exposed;
-            *current = registration;
-            tracing::warn!(tool_name = %name, "replacing an existing tool registration");
-        } else {
-            self.tools.insert(name, registration);
-        }
-    }
-
-    /// Delete a tool by name.
-    pub fn delete_tool(&mut self, name: &str) {
-        self.tools.shift_remove(name);
-    }
-
-    /// Merge another set, preserving registration order and replacing duplicates.
-    pub fn add_tools(&mut self, set: ToolSet) {
-        for (name, registration) in set.tools {
-            self.insert_registration(name, registration);
-        }
-    }
-
-    /// Merge tools that are advertised only when selected by a retrieval index
-    /// (they stay dispatchable by name, but [`ToolSet::catalog`] and
-    /// [`ToolSet::always_exposed_names`] skip them).
-    pub fn add_retrievable_tools(&mut self, set: ToolSet) {
-        for (name, mut registration) in set.tools {
-            registration.always_exposed = false;
-            self.insert_registration(name, registration);
-        }
-    }
-
-    /// The registered implementation behind `name`.
-    pub fn get(&self, name: &str) -> Option<&RegisteredTool> {
-        self.tools.get(name).map(|registration| &registration.tool)
-    }
-
-    /// Registered names in registration order, including retrieval-only tools.
-    pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.tools.keys().map(String::as_str)
-    }
-
-    /// Number of registered tools.
-    pub fn len(&self) -> usize {
-        self.tools.len()
-    }
-
-    /// Whether the set holds no tools.
-    pub fn is_empty(&self) -> bool {
-        self.tools.is_empty()
-    }
-
-    /// Names advertised without retrieval, in registration order.
-    pub fn always_exposed_names(&self) -> impl Iterator<Item = &str> {
-        self.tools
-            .iter()
-            .filter_map(|(name, registration)| registration.always_exposed.then_some(name.as_str()))
-    }
-
-    /// Move a registration to the end of the order, keeping its tool and
-    /// exposure flag. Returns `false` if no such tool is registered.
-    pub fn move_to_end(&mut self, name: &str) -> bool {
-        self.tools
-            .shift_remove_entry(name)
-            .is_some_and(|(name, registration)| {
-                self.tools.insert(name, registration);
-                true
-            })
-    }
-
-    /// Pin the always-exposed registrations into a [`ToolCatalog`]: the
-    /// provider definitions plus the exact implementations behind them, in
-    /// registration order. Retrieval-only tools are left out.
-    pub fn catalog(&self) -> ToolCatalog {
-        ToolCatalog::from_registered(
-            self.tools
-                .iter()
-                .filter(|(_, registration)| registration.always_exposed)
-                .map(|(name, registration)| (name.clone(), registration.tool.clone()))
-                .collect(),
-        )
-    }
-
-    /// Provider-facing definitions in registration order.
-    pub fn tool_definitions(&self) -> Vec<ToolDefinition> {
-        self.tools
-            .iter()
-            .map(|(name, registration)| registration.tool.definition_with_name(name.clone()))
-            .collect()
-    }
-
-    /// Execute one registered tool through the canonical structured path.
-    ///
-    /// The tool receives a snapshot of inbound context. Result metadata is
-    /// published back to `context`; mutations to inbound values are discarded.
-    pub async fn execute(
-        &self,
-        name: &str,
-        args: impl Into<String>,
-        context: &mut ToolContext,
-    ) -> ToolResult {
-        context.clear_dispatch_result();
-        let tool = self.get(name).cloned();
-        let dispatch = dispatch_tool(name, args.into(), tool, context).await;
-        dispatch.publish_to(context)
-    }
-
-    /// Documents describing all registered tools.
-    pub fn documents(&self) -> Vec<completion::Document> {
-        self.tools
-            .iter()
-            .map(|(name, registration)| {
-                let definition = registration.tool.definition_with_name(name.clone());
-                let serialized =
-                    serde_json::to_string_pretty(&definition).unwrap_or_else(|error| {
-                        tracing::warn!(
-                            tool_name = %name,
-                            %error,
-                            "tool definition could not be pretty-printed; using a plain representation"
-                        );
-                        format!(
-                            "name: {}\ndescription: {}\nparameters: {}",
-                            definition.name, definition.description, definition.parameters
-                        )
-                    });
-                completion::Document {
-                    id: name.clone(),
-                    text: format!("Tool: {name}\nDefinition: \n{serialized}"),
-                    additional_props: HashMap::new(),
-                }
-            })
-            .collect()
-    }
-
-    /// Convert embedding tools to vector-store schemas.
-    pub fn schemas(&self) -> Result<Vec<ToolSchema>, EmbedError> {
-        self.tools
-            .iter()
-            .filter_map(|(name, registration)| match &registration.tool {
-                RegisteredTool::Embedding(tool) => Some(
-                    tool.serialized_context()
-                        .map_err(EmbedError::new)
-                        .map(|context| ToolSchema {
-                            name: name.clone(),
-                            context,
-                            embedding_docs: tool.embedding_docs(),
-                        }),
-                ),
-                RegisteredTool::Static(_) => None,
-            })
-            .collect()
-    }
-}
-
-#[cfg(test)]
-mod tests;

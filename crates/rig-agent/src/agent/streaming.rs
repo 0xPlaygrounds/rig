@@ -1,23 +1,20 @@
-use rig_core::id::InternalCallId;
+use rig_core::streaming::BlockId;
 use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
 
 use crate::{
     agent::engine::{DriveItem, StreamingTurnSource, drive_agent, streaming_error_into_prompt},
-    agent::runner::AgentRunner,
-    streaming::{StreamedAssistantContent, StreamedUserContent},
+    agent::runner::{AgentRunner, RunOrigin},
+    streaming::{BlockClose, Delta, StreamEvent, StreamedUserContent},
 };
 use futures::{SinkExt, Stream, StreamExt, channel::mpsc, stream::FusedStream};
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use tracing_futures::Instrument;
 
+use crate::completion::{CompletionError, PromptError};
 use crate::run::response::{CompletionCall, PromptResponse};
 use crate::run::transcript::assistant_text_from_choice;
-use crate::{
-    agent::Agent,
-    completion::{CompletionError, PromptError},
-};
-use rig_core::message::{Message, Text};
+use rig_core::message::Message;
 
 // The `Send` bound is dropped exactly where `rig-core`'s `WasmCompat*` markers
 // go no-op — browser wasm. `rig-core` keys those markers on this same
@@ -32,23 +29,38 @@ pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem,
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "the terminal items are one per run and are moved, not copied; boxing them would put an allocation on every consumer's match"
+)]
 pub enum MultiTurnStreamItem {
-    /// A streamed assistant content item — the content the **model emitted**:
-    /// text/reasoning deltas, tool-call deltas, and, when the model turn is
-    /// committed, the complete [`StreamedAssistantContent::ToolCall`] for each
-    /// tool call Rig routes to execution. Such a call is reported here whether or
-    /// not the tool body ultimately runs (a hook skip still reports it);
-    /// it is **not** an execution-lifecycle event (see
+    /// A provider stream event — the content the **model emitted**: block
+    /// starts and ends, text/reasoning deltas, tool-call deltas, the
+    /// terminal record, unmodeled passthrough items. Tool-call block ends
+    /// are not forwarded; the model's completed calls are reported as
+    /// [`ToolCall`](Self::ToolCall) when the turn commits.
+    StreamAssistantItem(StreamEvent),
+    /// A tool call the **model emitted**, reported when the model turn is
+    /// committed, for each call Rig routes to execution. Such a call is
+    /// reported whether or not the tool body ultimately runs (a hook skip
+    /// still reports it); it is **not** an execution-lifecycle event (see
     /// [`ToolExecutionCommitted`](Self::ToolExecutionCommitted)).
     ///
-    /// Two kinds of model tool call are **not** re-emitted as a complete
-    /// `ToolCall` item here (their arguments still stream as tool-call deltas):
-    /// a call rejected and handled by invalid-tool-call recovery (surfaced via
-    /// that recovery path), and a structured-output Tool-mode output-tool call,
-    /// which finalizes the run directly — its structured result is surfaced in
+    /// Two kinds of model tool call are **not** reported here (their
+    /// arguments still stream as tool-call deltas): a call rejected and
+    /// handled by invalid-tool-call recovery (surfaced via that recovery
+    /// path), and a structured-output Tool-mode output-tool call, which
+    /// finalizes the run directly — its structured result is surfaced in
     /// the [`FinalResponse`](Self::FinalResponse) rather than as a completed
-    /// `ToolCall` item.
-    StreamAssistantItem(StreamedAssistantContent),
+    /// call.
+    ToolCall {
+        /// The call as the model emitted it.
+        tool_call: rig_core::message::ToolCall,
+        /// The block this call streamed under (a buffered turn's call is
+        /// keyed by its durable id): equal on its deltas, its execution
+        /// commit and its result.
+        block_id: BlockId,
+    },
     /// Confirmation that Rig **executed and committed** a tool call. This is not
     /// a real-time start notification: it is surfaced together with its
     /// `ToolResult` only after the whole batch settles successfully. Use tool
@@ -57,18 +69,18 @@ pub enum MultiTurnStreamItem {
     /// This item is emitted only for a tool whose body actually ran (it passed
     /// its `ToolCall` hook checks), never for a call dropped by a sibling's
     /// termination, skipped by a hook, or resolved by invalid-call recovery.
-    /// Correlate it with the model call and result through `internal_call_id`.
+    /// Correlate it with the model call and result through `block_id`.
     ToolExecutionCommitted {
         /// The tool call as **executed**: the model's call with any
-        /// [`ToolCallAction::Rewrite`](crate::agent::ToolCallAction::Rewrite) hook rewrite
+        /// [`DispatchAction::Patch`](crate::agent::DispatchAction::Patch) hook rewrite
         /// applied (so a redaction rewrite is reflected here, not leaked). The
         /// model's *original* call is reported via
         /// [`StreamAssistantItem`](Self::StreamAssistantItem).
         tool_call: rig_core::message::ToolCall,
-        /// Rig-generated id correlating this execution with the model tool call
-        /// ([`StreamedAssistantContent::ToolCall::internal_call_id`]) and the
-        /// resulting [`StreamedUserContent::ToolResult`].
-        internal_call_id: InternalCallId,
+        /// The block id correlating this execution with the model tool call
+        /// ([`ToolCall::block_id`](Self::ToolCall)) and the resulting
+        /// [`StreamedUserContent::ToolResult`].
+        block_id: BlockId,
     },
     /// A streamed user content item: the **result** of an executed (or
     /// hook-skipped) tool call. The tool batch commits and surfaces atomically at
@@ -131,8 +143,22 @@ fn final_response_from_content(
 }
 
 impl MultiTurnStreamItem {
-    pub(crate) fn stream_item(item: StreamedAssistantContent) -> Self {
+    pub(crate) fn stream_item(item: StreamEvent) -> Self {
         Self::StreamAssistantItem(item)
+    }
+
+    /// Stamp a `FinalResponse` item with how the run's memory append
+    /// settled; any other item is returned unchanged.
+    pub(crate) fn with_memory_append(
+        self,
+        memory_append: Option<crate::run::MemoryAppend>,
+    ) -> Self {
+        match self {
+            Self::FinalResponse(response) => {
+                Self::FinalResponse(response.with_memory_append(memory_append))
+            }
+            other => other,
+        }
     }
 
     /// Build a `FinalResponse` item from final-turn content, applying the
@@ -173,7 +199,7 @@ pub(crate) async fn drain_stream_usage(
 ) -> Result<crate::completion::Usage, StreamingError> {
     while let Some(content) = stream.next().await {
         match content {
-            Ok(StreamedAssistantContent::Final(final_resp)) => {
+            Ok(StreamEvent::Final(final_resp)) => {
                 return Ok(final_resp.usage);
             }
             Ok(_) => {}
@@ -226,6 +252,10 @@ pub(crate) fn finalize_streamed_choice(
 pub enum StreamingError {
     #[error("CompletionError: {0}")]
     Completion(#[from] CompletionError),
+    /// An effect failed on the agent's bus — a bus or handler failure, a
+    /// hook's denial, a stream item's error — as the wire reports it.
+    #[error("{0}")]
+    Report(#[from] rig_core::error::ErrorReport),
     #[error("PromptError: {0}")]
     Prompt(#[from] Box<PromptError>),
 }
@@ -237,19 +267,73 @@ impl From<rig_core::memory::MemoryError> for StreamingError {
 }
 
 impl AgentRunner {
-    /// Drive the agent loop, streaming assistant content, tool activity, and a
-    /// final response. Hooks fire at every observable point, including streamed
-    /// text and tool-call deltas. Returns the stream after loading any
-    /// configured conversation memory.
+    /// Drive the agent loop as a stream of assistant content, tool activity
+    /// and, last, the [`FinalResponse`](MultiTurnStreamItem::FinalResponse).
+    /// Hooks fire at every observable point, including streamed text and
+    /// tool-call deltas.
+    ///
+    /// Like [`run`](AgentRunner::run), this is lazy: nothing — not the memory
+    /// load, not the agent span — happens until the stream is first polled,
+    /// and a stream that is dropped unpolled has done nothing. A memory-load
+    /// failure is the stream's first (and only) item. The stream is `Send` on
+    /// native targets, so it can be built in synchronous code and handed to
+    /// whatever polls it; it runs under the span it was built in (a caller's
+    /// enabled span is adopted, otherwise a root `invoke_agent` is created),
+    /// not under whichever span first polls it.
+    ///
+    /// ```rust,no_run
+    /// # use rig_agent::{Agent, agent::StreamingResult};
+    /// fn start(agent: &Agent, prompt: &str) -> StreamingResult {
+    ///     // Nothing runs until whoever holds this polls it.
+    ///     agent.prompt(prompt).stream()
+    /// }
+    /// ```
     ///
     /// Shares the drive loop, run construction, tool execution and fail-closed
     /// hook handling with the blocking [`run`](AgentRunner::run) via
     /// `drive_agent`, so the two behave identically apart from the streamed
     /// delta events.
-    pub async fn stream(self) -> StreamingResult {
-        let (agent_span, created_agent_span) = self.open_agent_span();
+    #[must_use = "a stream does nothing until polled"]
+    pub fn stream(self) -> StreamingResult {
+        // The span the stream is built under is the one it runs under, not
+        // whichever span first polls it: a host may build the stream in a
+        // request span and hand it to a task of its own.
+        self.stream_under(tracing::Span::current())
+    }
 
-        let (history_override, memory_handle) = match self.resolve_history_and_memory().await {
+    /// [`stream`](Self::stream) under an explicitly captured ambient span —
+    /// the one terminal that builds the stream lazily inside another future
+    /// ([`run_channel`](Self::run_channel)) captures it at its own call.
+    fn stream_under(self, ambient: tracing::Span) -> StreamingResult {
+        let run_under = ambient.clone();
+        let stream = async_stream::stream! {
+            let mut inner = self.start_stream(run_under).await;
+            while let Some(item) = inner.next().await {
+                yield item;
+            }
+        };
+        Box::pin(stream.instrument(ambient))
+    }
+
+    /// The eager half of [`stream`](Self::stream): resolve memory, build the
+    /// run and return the driver as a stream. Called on the first poll,
+    /// under `ambient` — the span the stream was built in.
+    async fn start_stream(self, ambient: tracing::Span) -> StreamingResult {
+        let (agent_span, created_agent_span) = self.open_agent_span(ambient);
+
+        let bus = self.config.bus.clone();
+        let hook_ctx = self.hook_context(true);
+        // A resumed run loads nothing and saves nothing (see `run`).
+        let resolved = match &self.origin {
+            RunOrigin::Resume(_) => Ok((None, None)),
+            RunOrigin::Prompt(_) => {
+                let resolve = self.resolve_history_and_memory(&hook_ctx);
+                futures::pin_mut!(resolve);
+                let mut driven = bus.drive(futures::stream::once(resolve));
+                driven.next().await.unwrap_or(Ok((None, None)))
+            }
+        };
+        let (history_override, memory_handle) = match resolved {
             Ok(resolved) => resolved,
             Err(err) => {
                 let stream = async_stream::stream! {
@@ -279,7 +363,7 @@ impl AgentRunner {
             agent_span.clone(),
             created_agent_span,
             memory_handle,
-            true,
+            hook_ctx,
         )
         .filter_map(|item| {
             std::future::ready(match item {
@@ -288,6 +372,9 @@ impl AgentRunner {
                 Err(err) => Some(Err(err)),
             })
         });
+        // The consumer of this stream drives the agent's bus: every poll that
+        // leaves the run pending polls the driver.
+        let driver = bus.drive(Box::pin(driver));
 
         Box::pin(driver.instrument(agent_span))
     }
@@ -298,8 +385,7 @@ impl AgentRunner {
 /// it parks on back-pressure.
 pub const RUN_EVENTS_CAPACITY: usize = 32;
 
-/// Event feed of an agent run started with [`AgentRunner::run_channel`] or
-/// [`Agent::run_channel`].
+/// Event feed of an agent run started with [`AgentRunner::run_channel`].
 ///
 /// Every [`MultiTurnStreamItem`] the run would have streamed is delivered here
 /// in order, ending with [`MultiTurnStreamItem::FinalResponse`]. The feed is a
@@ -366,7 +452,10 @@ impl AgentRunner {
     ///
     /// The feed is bounded ([`RUN_EVENTS_CAPACITY`]); when it is full the run
     /// waits for the consumer rather than dropping events. Dropping the feed
-    /// lets the run continue to completion unobserved.
+    /// lets the run continue to completion unobserved. Like
+    /// [`stream`](Self::stream), the run belongs to the span this method was
+    /// called in, wherever the future is later polled.
+    #[must_use = "the run does nothing until the future is driven"]
     pub fn run_channel(
         self,
     ) -> (
@@ -374,8 +463,12 @@ impl AgentRunner {
         RunEvents,
     ) {
         let (mut sender, receiver) = mpsc::channel(RUN_EVENTS_CAPACITY);
+        // Captured here, not when the future is first polled: the doc above
+        // says to spawn the future, and the run must still belong to the span
+        // that split it.
+        let ambient = tracing::Span::current();
         let future = async move {
-            let mut stream = self.stream().await;
+            let mut stream = self.stream_under(ambient);
             let mut response = None;
             let mut forward = true;
             while let Some(item) = stream.next().await {
@@ -407,23 +500,6 @@ impl AgentRunner {
     }
 }
 
-impl Agent {
-    /// Run `prompt` with the agent's defaults, returning the driving future and
-    /// a [`RunEvents`] feed. See [`AgentRunner::run_channel`]; to configure the
-    /// run first (history, turn budget, tool context, …), configure the runner
-    /// from [`Agent::stream_prompt`] and call its
-    /// [`run_channel`](AgentRunner::run_channel).
-    pub fn run_channel<P: Into<Message> + WasmCompatSend>(
-        &self,
-        prompt: P,
-    ) -> (
-        impl Future<Output = Result<PromptResponse, PromptError>> + WasmCompatSend + use<P>,
-        RunEvents,
-    ) {
-        AgentRunner::from_agent(self, prompt).run_channel()
-    }
-}
-
 /// Helper function to stream assistant-visible completion output to stdout.
 ///
 /// This helper prints streamed assistant text and reasoning. Streaming metadata
@@ -438,14 +514,16 @@ pub async fn stream_to_stdout(
     print!("Response: ");
     while let Some(content) = stream.next().await {
         match content {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
-                Text { text, .. },
-            ))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            })) => {
                 print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning {
-                reasoning,
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockEnd {
+                end: BlockClose::Reasoning { .. },
+                block: Some(AssistantContent::Reasoning(reasoning)),
                 ..
             })) => {
                 let reasoning = reasoning.display_text();

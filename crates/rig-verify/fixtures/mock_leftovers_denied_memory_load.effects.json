@@ -1,0 +1,40 @@
+{
+  "header": {
+    "run_spec": 10072942899351225430,
+    "handlers": [
+      {
+        "key": "golden/memory",
+        "family": {
+          "family": "memory"
+        },
+        "layers": [
+          "DenyAllLayer"
+        ]
+      },
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {},
+    "hooks": [
+      "DenyAllLayer"
+    ],
+    "required": {
+      "golden/memory": "memory",
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": []
+}

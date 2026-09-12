@@ -1,0 +1,179 @@
+{
+  "header": {
+    "run_spec": 171082663332529849,
+    "handlers": [
+      {
+        "key": "golden/memory",
+        "family": {
+          "family": "memory"
+        }
+      },
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/memory": "memory",
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/memory": "memory",
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/memory",
+      "kind": {
+        "effect": "memory",
+        "op": {
+          "op": "load",
+          "conversation": "golden-conversation"
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "memory",
+          "memory": "loaded",
+          "messages": []
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Rust is a systems programming language designed for performance, reliability, and memory safety without a garbage collector, using an ownership model to enforce safe memory access at compile time. Memory safety matters because violations—like buffer overflows, use-after-free, and null pointer dereferences—are among the leading causes of security vulnerabilities and crashes in software."
+            }
+          ],
+          "usage": {
+            "input_tokens": 37,
+            "output_tokens": 75,
+            "total_tokens": 112,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": null,
+          "finish_reason": "stop",
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-6",
+          "raw": {
+            "content": [
+              {
+                "type": "text",
+                "text": "Rust is a systems programming language designed for performance, reliability, and memory safety without a garbage collector, using an ownership model to enforce safe memory access at compile time. Memory safety matters because violations—like buffer overflows, use-after-free, and null pointer dereferences—are among the leading causes of security vulnerabilities and crashes in software."
+              }
+            ],
+            "id": "msg_REDACTED_1",
+            "model": "claude-sonnet-4-6",
+            "role": "assistant",
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "usage": {
+              "input_tokens": 37,
+              "cache_read_input_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 0
+              },
+              "output_tokens": 75
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 3,
+      "key": "golden/memory",
+      "kind": {
+        "effect": "memory",
+        "op": {
+          "op": "append",
+          "conversation": "golden-conversation",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": "msg_REDACTED_1",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Rust is a systems programming language designed for performance, reliability, and memory safety without a garbage collector, using an ownership model to enforce safe memory access at compile time. Memory safety matters because violations—like buffer overflows, use-after-free, and null pointer dereferences—are among the leading causes of security vulnerabilities and crashes in software."
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "memory",
+          "memory": "appended"
+        }
+      }
+    }
+  ]
+}

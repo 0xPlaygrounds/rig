@@ -36,11 +36,7 @@ async fn streaming_tools_smoke() {
                 .additional_params(streaming_tool_params())
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(STREAMING_TOOLS_PROMPT)
-                .max_turns(3)
-                .stream()
-                .await;
+            let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).max_turns(3).stream();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");
@@ -84,11 +80,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
                 .additional_params(streaming_tool_params())
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
-                .max_turns(8)
-                .stream()
-                .await;
+            let mut stream = agent.prompt(TWO_TOOL_STREAM_PROMPT).max_turns(8).stream();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_two_tool_roundtrip_contract(
@@ -114,10 +106,9 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
+                .prompt(ORDERED_TOOL_STREAM_PROMPT)
                 .max_turns(5)
-                .stream()
-                .await;
+                .stream();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_tool_call_precedes_later_text(
@@ -147,11 +138,7 @@ async fn example_streaming_with_tools() {
                 .additional_params(streaming_tool_params())
                 .build();
 
-            let mut stream = agent
-                .stream_prompt("Calculate 2 - 5")
-                .max_turns(3)
-                .stream()
-                .await;
+            let mut stream = agent.prompt("Calculate 2 - 5").max_turns(3).stream();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");

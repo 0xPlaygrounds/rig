@@ -81,13 +81,12 @@ async fn streaming_history_preserves_hybrid_tool_result_image_parts() {
 
     let empty_history: &[Message] = &[];
     let mut stream = agent
-        .stream_prompt(
+        .prompt(
             "Use the tool once, then answer with the dominant color in the returned image.",
         )
         .history(empty_history)
         .max_turns(4)
-        .stream()
-        .await;
+        .stream();
 
     let mut final_response = None;
     let mut final_history = None;

@@ -226,7 +226,7 @@ impl<P> SqlCondition<P> {
 ///
 /// JSON-valued [`SearchFilter`] implementations receive this automatically.
 /// Backends with native value types implement the conversion once here rather
-/// than hand-writing both [`VectorStoreIndexDyn`](super::VectorStoreIndexDyn)
+/// than hand-writing both the bus's `RetrieveAdapter`
 /// methods.
 pub trait DynamicSearchFilter: SearchFilter + Sized {
     /// Converts a canonical dynamic filter into this backend's filter type.

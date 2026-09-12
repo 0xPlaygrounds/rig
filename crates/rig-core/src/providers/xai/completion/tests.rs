@@ -3,20 +3,20 @@ use crate::completion::{CompletionError, CompletionModel as _, CompletionRequest
 use crate::http_client::HttpClientExt;
 use crate::test_utils::{MockCompletionModel, RecordingHttpClient};
 
-fn assert_minimal_raw_stream_transport_bounds<H>(client: crate::providers::xai::Client<H>)
+fn assert_minimal_stream_transport_bounds<H>(client: crate::providers::xai::Client<H>)
 where
     H: HttpClientExt + Clone + 'static,
 {
     let model = super::CompletionModel::new(client, super::GROK_4);
     let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "hello").build();
 
-    std::mem::drop(model.raw_stream(request));
+    std::mem::drop(model.stream(request));
 }
 
 #[test]
-fn raw_stream_does_not_require_default_or_debug_transport_bounds() {
+fn stream_does_not_require_default_or_debug_transport_bounds() {
     let _: fn(crate::providers::xai::Client<RecordingHttpClient>) =
-        assert_minimal_raw_stream_transport_bounds;
+        assert_minimal_stream_transport_bounds;
 }
 
 #[test]

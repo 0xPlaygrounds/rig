@@ -25,7 +25,7 @@ async fn image_generation_non_success_preserves_status_and_body() {
         .await
         .expect_err("should fail with non-success status");
 
-    assert!(matches!(error, ImageGenerationError::HttpError(_)));
+    assert!(matches!(error, ImageGenerationError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)

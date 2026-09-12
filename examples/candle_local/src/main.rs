@@ -2,9 +2,10 @@ use std::io::Write;
 
 use anyhow::Context;
 use futures::StreamExt;
+use rig::candle::CandleCompletionResponse;
 use rig::candle::{CandleModel, ModelData};
 use rig::completion::CompletionModel;
-use rig::streaming::RawStreamingChoice;
+use rig::streaming::{Delta, StreamEvent};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -34,23 +35,30 @@ async fn main() -> anyhow::Result<()> {
 
     // The local generation metrics printed below (throughput, prefill time,
     // time-to-first-token) are Candle's own — Rig's normalized `StreamFinal`
-    // carries usage and a finish reason, not these. `raw_stream` keeps the
-    // provider's terminal record typed so they stay reachable; use
-    // `CompletionModel::stream` when the normalized metadata is enough.
-    let mut stream = model.raw_stream(request).await?;
+    // carries usage and a finish reason, not these. The provider's terminal
+    // record rides along serialized on `StreamFinal::raw`, so they stay
+    // reachable by deserializing it back into Candle's own type.
+    let mut stream = model.stream(request).await?;
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         match item? {
-            RawStreamingChoice::Message(fragment) => {
-                print!("{fragment}");
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => {
+                print!("{text}");
                 std::io::stdout().flush()?;
             }
-            RawStreamingChoice::FinalResponse(final_record) => final_response = Some(final_record),
+            StreamEvent::Final(final_record) => final_response = Some(final_record),
             _ => {}
         }
     }
     println!();
-    let raw = final_response.context("Candle stream ended without final metadata")?;
+    let raw: CandleCompletionResponse = serde_json::from_value(
+        final_response
+            .context("Candle stream ended without final metadata")?
+            .raw,
+    )?;
     println!(
         "tokens: prompt={}, generated={}, total={}",
         raw.prompt_tokens,

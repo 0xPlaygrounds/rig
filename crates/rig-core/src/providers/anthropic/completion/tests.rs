@@ -318,7 +318,7 @@ fn test_message_to_message_conversion() {
             else {
                 panic!("Expected tool result content")
             };
-            assert_eq!(call, "toolu_01A09q90qw90lq917835lq9");
+            assert_eq!(call.explicit(), Some("toolu_01A09q90qw90lq917835lq9"));
             // The Anthropic wire carries no tool name on `tool_result`
             // blocks, so the inbound conversion is lossy by design.
             assert_eq!(name, "");
@@ -342,7 +342,7 @@ fn test_message_to_message_conversion() {
                     function,
                     ..
                 })) => {
-                    assert_eq!(id, "toolu_01A09q90qw90lq917835lq9");
+                    assert_eq!(id.explicit(), Some("toolu_01A09q90qw90lq917835lq9"));
                     assert_eq!(function.name, "get_weather");
                     assert_eq!(function.arguments, json!({"location": "San Francisco, CA"}));
                 }
@@ -3965,15 +3965,18 @@ async fn completion_streaming_http_non_success_preserves_status_and_body() {
         }
     };
 
-    // Streaming *connect* failures stay transport-shaped (HttpError):
-    // rig#2314's ProviderResponse classification covers the unary driver
-    // and in-band stream envelopes, not the SSE handshake.
-    assert!(matches!(error, CompletionError::HttpError(_)));
+    // A rejected SSE handshake is the provider's reply, classified like the
+    // unary driver's and the in-band envelopes': one funnel.
+    assert_eq!(error.kind, crate::error::ErrorKind::ProviderResponse);
     assert_eq!(
-        error.provider_response_status(),
-        Some(http::StatusCode::SERVICE_UNAVAILABLE)
+        error.http_status,
+        Some(http::StatusCode::SERVICE_UNAVAILABLE.as_u16())
     );
-    assert_eq!(error.provider_response_body(), Some(body));
+    assert!(
+        error.message.contains(body),
+        "the preserved body must reach the consumer: {}",
+        error.message
+    );
 
     // The transport failure ends the stream: nothing may follow it that
     // would read as a successfully completed turn.
@@ -4158,4 +4161,86 @@ mod raw_capture {
         assert_eq!(reassembled.provider_request_id.as_deref(), Some(REQUEST_ID));
         assert_eq!(normalized.provider_request_id.as_deref(), Some(REQUEST_ID));
     }
+}
+
+/// Synthetic transcript tests required-ID request correlation without a paid call.
+#[test]
+fn full_request_preserves_typed_tool_pairs_across_turns() {
+    use crate::providers::internal::tool_call_ids::tests::{
+        adapter_requests, assert_adapter_pairs,
+    };
+    for request in adapter_requests() {
+        let wire = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_SONNET_4_6,
+            request: request.clone(),
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
+        })
+        .unwrap();
+        assert_adapter_pairs(serde_json::to_value(wire).unwrap());
+    }
+}
+
+/// Raw server tools use genuine provider handles; an application-chosen local
+/// ID can resemble one even though normal generated hints do not.
+#[test]
+fn request_reserves_raw_server_tool_handles_without_rewriting_them() {
+    let local = message::ToolCall::new(
+        message::ToolCallId::new("srvtoolu_real").unwrap(),
+        message::ToolFunction {
+            name: "local".into(),
+            arguments: json!({}),
+        },
+    );
+    let raw_call = Content::ServerToolUse {
+        id: "srvtoolu_real".into(),
+        name: "web_search".into(),
+        input: json!({"query":"test"}),
+    };
+    let raw_result = Content::WebSearchToolResult {
+        tool_use_id: "srvtoolu_real".into(),
+        content: json!([]),
+    };
+    let history = vec![
+        message::Message::Assistant {
+            id: None,
+            content: vec![
+                message::AssistantContent::ToolCall(local.clone()),
+                message::AssistantContent::Text(
+                    anthropic_raw_content_to_message_text(raw_call.clone()).unwrap(),
+                ),
+                message::AssistantContent::Text(
+                    anthropic_raw_content_to_message_text(raw_result.clone()).unwrap(),
+                ),
+            ],
+        },
+        message::Message::User {
+            content: vec![message::UserContent::tool_result_for(
+                local.id,
+                None,
+                "local",
+                vec![],
+            )],
+        },
+    ];
+    let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        model: CLAUDE_SONNET_4_6,
+        request: completion_request_with_history(history, None),
+        prompt_caching: false,
+        automatic_caching: false,
+        automatic_caching_ttl: None,
+        static_prefix_cache_ttl: None,
+    })
+    .unwrap();
+    let value = serde_json::to_value(request).unwrap();
+    let content = &value["messages"][0]["content"];
+    assert_ne!(content[0]["id"], "srvtoolu_real");
+    assert_eq!(
+        content[0]["id"],
+        value["messages"][1]["content"][0]["tool_use_id"]
+    );
+    assert_eq!(content[1], serde_json::to_value(raw_call).unwrap());
+    assert_eq!(content[2], serde_json::to_value(raw_result).unwrap());
 }

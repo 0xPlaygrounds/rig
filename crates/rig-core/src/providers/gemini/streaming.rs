@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
 
 use super::completion::gemini_api_types::{
-    ContentCandidate, FinishReason, Part, PartKind, UsageMetadata, map_finish_reason,
+    ContentCandidate, FinishReason, Part, PartKind, PromptFeedback, UsageMetadata,
+    map_finish_reason,
 };
 use super::completion::{
-    CompletionModel, PROVIDER_NAME, create_request_body, function_call_finish_reason_error,
-    resolve_request_model, streaming_endpoint,
+    CompletionModel, PROVIDER_NAME, blocked_prompt_error, create_request_body,
+    function_call_finish_reason_error, resolve_request_model, streaming_endpoint,
 };
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
@@ -24,23 +25,17 @@ use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinato
 pub(crate) mod shared_parts {
     use serde_json::Value;
 
-    use crate::streaming::{MintKind, RawStreamingChoice, RawStreamingToolCall, StreamPartId};
+    use crate::streaming::{BlockClose, BlockId, BlockKind, StreamEvent, ToolCallEnd};
 
-    /// Gemini thought parts carry no id or block boundaries; a per-stream
-    /// constant minted identity keeps all thought deltas merging into one
-    /// item, and the core accumulator's minted-id boundary splits items
-    /// around other output. Minted, so it can never reach a request.
-    pub(crate) const REASONING_ID: StreamPartId = StreamPartId::minted(MintKind::Reasoning, 0);
-
-    /// A whole function-call part as a canonical tool call (Gemini never
-    /// streams arguments incrementally).
-    pub(crate) fn function_call<R>(
+    /// A whole function-call part as a canonical tool call — its start and
+    /// its authoritative end (Gemini never streams arguments incrementally).
+    pub(crate) fn function_call(
         name: String,
         args: Value,
         wire_id: Option<String>,
         signature: Option<String>,
         tool_ids: &mut crate::streaming::SyntheticIds,
-    ) -> RawStreamingChoice<R> {
+    ) -> Vec<StreamEvent> {
         // Never fabricate the identifier that travels upstream: the wire's
         // own id (when Gemini supplies one) is both the part identity and
         // the correlation id; an id-less call keys the stream by a minted
@@ -48,26 +43,28 @@ pub(crate) mod shared_parts {
         // collide on one key — and replays with the id absent. The tool
         // *name* is never an identity — two calls to the same tool in one
         // turn must stay distinct, correlated by order and by the
-        // rig-internal call id.
-        let tool_id = wire_id.and_then(crate::streaming::WireId::new);
+        // block id.
+        let tool_id = wire_id.and_then(crate::streaming::non_empty_id);
         let id = tool_id
             .as_ref()
-            .map_or_else(|| tool_ids.mint(), |id| StreamPartId::wire(id.as_str()));
-        let tool_call = RawStreamingToolCall {
-            id,
-            tool_id,
-            internal_call_id: crate::id::InternalCallId::new(),
-            // Gemini is a single-identifier wire: its one id travels as
-            // `tool_id` and `call_id` stays unset. Filling both from the same
-            // id would take the dual-wire arm downstream and fabricate an
-            // item id Gemini never issued.
-            call_id: None,
-            name,
-            arguments: args,
-            signature,
-            additional_params: None,
-        };
-        RawStreamingChoice::ToolCall(tool_call)
+            .map_or_else(|| tool_ids.mint(), |id| BlockId::wire(id.as_str()));
+        let mut end = ToolCallEnd::whole(name, args).with_signature(signature);
+        // Gemini is a single-identifier wire: its one id travels as
+        // `tool_id` and `call_id` stays unset. Filling both from the same
+        // id would take the dual-wire arm downstream and fabricate an
+        // item id Gemini never issued.
+        end.tool_id = tool_id;
+        vec![
+            StreamEvent::BlockStart {
+                id: id.clone(),
+                kind: BlockKind::ToolCall,
+            },
+            StreamEvent::BlockEnd {
+                id,
+                end: BlockClose::ToolCall(end),
+                block: None,
+            },
+        ]
     }
 }
 
@@ -85,8 +82,19 @@ pub struct StreamGenerateContentResponse {
     /// Candidate responses from the model.
     #[serde(default)]
     pub candidates: Vec<ContentCandidate>,
+    /// The prompt's content-filter verdict. A set `blockReason` means the
+    /// prompt was refused and no candidate follows: the chunk that carries
+    /// it is the whole answer.
+    pub prompt_feedback: Option<PromptFeedback>,
     pub model_version: Option<String>,
     pub usage_metadata: Option<PartialUsage>,
+    /// Gemini's error envelope, sent as a frame of its own when the
+    /// service aborts a stream in-band (`{"error":{"code":500,"message":
+    /// …,"status":"INTERNAL"}}`). The provider's verdict, not an unknown
+    /// frame to skip: the stream closes after it, and without this the
+    /// turn ended as a truncation with the error lost. Kept raw so every
+    /// field (code, status, message, details) survives into the report.
+    pub error: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -114,33 +122,19 @@ impl From<StreamingCompletionResponse> for crate::completion::Usage {
     }
 }
 
-/// Normalize Gemini's terminal streaming record.
-///
-/// Infallible in practice, but stated as a `Result` because
-/// [`crate::streaming::normalize_stream`] maps terminal records through a
-/// fallible closure.
-fn map_stream_final(
-    response: StreamingCompletionResponse,
-) -> Result<streaming::StreamFinal, CompletionError> {
-    let finish_reason = response.finish_reason.as_ref().and_then(map_finish_reason);
-
-    Ok(
-        streaming::StreamFinal::new(PROVIDER_NAME, (&response.usage_metadata).into())
-            .with_optional_finish_reason(finish_reason)
-            .with_optional_response_id(response.response_id)
-            .with_optional_model(response.model_version),
-    )
-}
-
 fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<CompletionError> {
     let reason = choice.finish_reason.as_ref()?;
     function_call_finish_reason_error(reason, choice.finish_message.as_deref())
 }
 
 /// The recognizability markers of a `streamGenerateContent` chunk: every
-/// genuine frame carries `candidates` and/or `usageMetadata`. A frame with
-/// either must fully decode (else `Corrupt`); other JSON is `Unknown`.
-const RECOGNIZABLE_CHUNK_KEYS: &[&str] = &["candidates", "usageMetadata"];
+/// genuine frame carries `candidates`, `usageMetadata` and/or
+/// `promptFeedback` (a blocked prompt's only chunk may carry nothing but
+/// the feedback), and the service's in-band abort carries only `error`. A
+/// frame with any of them must fully decode (else `Corrupt`). A valid ID-only
+/// frame is recognized separately as metadata; other JSON is `Unknown`.
+const RECOGNIZABLE_CHUNK_KEYS: &[&str] =
+    &["candidates", "usageMetadata", "promptFeedback", "error"];
 
 /// The Gemini REST (`streamGenerateContent`) SSE wire as a [`WireAdapter`].
 ///
@@ -174,7 +168,7 @@ struct GeminiRestAdapter {
     /// and silently drop the model's whole answer while still reporting a
     /// successful `STOP`.
     saw_finish_reason: bool,
-    /// A tool-protocol finish reason ended the turn; later frames are dead —
+    /// A tool-protocol finish reason or a blocked prompt ended the turn; later frames are dead —
     /// the provider aborted, and interpreting more output (or a terminal)
     /// would dress the failure up as a completed turn.
     failed: bool,
@@ -184,7 +178,7 @@ impl Default for GeminiRestAdapter {
     fn default() -> Self {
         Self {
             reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
-                shared_parts::REASONING_ID,
+                crate::streaming::MintKind::Reasoning,
             ),
             tool_ids: crate::streaming::SyntheticIds::tool(),
             final_usage: None,
@@ -201,17 +195,31 @@ impl Default for GeminiRestAdapter {
 impl WireAdapter for GeminiRestAdapter {
     type Frame = WireFrame;
     type Event = StreamGenerateContentResponse;
-    type Response = StreamingCompletionResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<StreamGenerateContentResponse> {
+        // ID-only frames update terminal metadata without manufacturing an
+        // Unknown content item (and therefore a semantic truncation tail).
+        // This applies equally with observation enabled or disabled.
+        if self.is_analysis_only(&frame) {
+            return wire::classify_marker_keyed_frame(&frame.as_str(), &["responseId"]);
+        }
         wire::classify_marker_keyed_frame(&frame.as_str(), RECOGNIZABLE_CHUNK_KEYS)
     }
 
-    fn interpret(
-        &mut self,
-        data: StreamGenerateContentResponse,
-        out: &mut AdapterOutput<Self::Response>,
-    ) {
+    fn is_analysis_only(&self, frame: &WireFrame) -> bool {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct ResponseIdOnly {
+            #[serde(rename = "responseId")]
+            _id: String,
+        }
+        matches!(
+            wire::classify_marker_keyed_frame::<ResponseIdOnly>(&frame.as_str(), &["responseId"]),
+            WireEvent::Known(_)
+        )
+    }
+
+    fn interpret(&mut self, data: StreamGenerateContentResponse, out: &mut AdapterOutput) {
         if self.failed {
             return;
         }
@@ -228,6 +236,41 @@ impl WireAdapter for GeminiRestAdapter {
         if let Some(usage) = data.usage_metadata.as_ref() {
             span.record_token_usage(&crate::completion::Usage::from(usage));
             self.final_usage = Some(usage.clone());
+        }
+
+        if let Some(error) = data.error {
+            // The service aborted the turn in-band: the envelope is the
+            // whole answer and the stream closes after it. Surface it as
+            // the provider error it is, with the envelope as the body (as
+            // the unary wire and the other families' streams do), rather
+            // than skipping an unknown frame and reporting a truncation.
+            self.failed = true;
+            // GenerateContent's numeric error code is an HTTP status, unlike
+            // other providers' opaque codes or gRPC's small integer codes.
+            // Only error statuses participate in the unary retry policy.
+            let status = error
+                .get("code")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|code| u16::try_from(code).ok())
+                .and_then(|code| http::StatusCode::from_u16(code).ok())
+                .filter(|status| status.is_client_error() || status.is_server_error());
+            let body = serde_json::json!({ "error": error }).to_string();
+            let error = match status {
+                Some(status) => CompletionError::from_http_response(status, body),
+                None => crate::provider_response::completion_error_from_body(body),
+            };
+            out.push(Err(error));
+            return;
+        }
+
+        if let Some(blocked) = data.prompt_feedback.as_ref().and_then(blocked_prompt_error) {
+            // The provider refused the prompt: this chunk is its whole
+            // answer and the stream closes after it. Without this the turn
+            // would end with no terminal record and be reported as a
+            // truncated stream, the block reason lost.
+            self.failed = true;
+            out.push(Err(blocked));
+            return;
         }
 
         let Some(choice) = data.candidates.into_iter().next() else {
@@ -267,7 +310,7 @@ impl WireAdapter for GeminiRestAdapter {
         }
     }
 
-    fn finish(&mut self, out: &mut AdapterOutput<Self::Response>) {
+    fn finish(&mut self, out: &mut AdapterOutput) {
         // EOF without a `finishReason` chunk is truncation: no terminal
         // record may be synthesized — it would report a successful completion
         // for a turn the provider aborted.
@@ -280,20 +323,33 @@ impl WireAdapter for GeminiRestAdapter {
         // Holding the record until EOF is what lets the driver read the rest
         // of the turn, and it means the terminal carries the last reason,
         // usage, and metadata the stream actually reported.
-        out.push(Ok(streaming::RawStreamingChoice::FinalResponse(
-            StreamingCompletionResponse {
-                usage_metadata: self.final_usage.take().unwrap_or_default(),
-                finish_reason: self.final_finish_reason.take(),
-                finish_message: self.final_finish_message.take(),
-                model_version: self.final_model_version.take(),
-                response_id: self.final_response_id.take(),
-            },
-        )));
+        let native = StreamingCompletionResponse {
+            usage_metadata: self.final_usage.take().unwrap_or_default(),
+            finish_reason: self.final_finish_reason.take(),
+            finish_message: self.final_finish_message.take(),
+            model_version: self.final_model_version.take(),
+            response_id: self.final_response_id.take(),
+        };
+        let raw = match serde_json::to_value(&native) {
+            Ok(raw) => raw,
+            Err(err) => {
+                out.error(err.into());
+                return;
+            }
+        };
+        let finish_reason = native.finish_reason.as_ref().and_then(map_finish_reason);
+        out.final_record(
+            streaming::StreamFinal::new(PROVIDER_NAME, (&native.usage_metadata).into())
+                .with_optional_finish_reason(finish_reason)
+                .with_optional_response_id(native.response_id)
+                .with_optional_model(native.model_version)
+                .with_raw(raw),
+        );
     }
 
     fn is_finished(&self) -> bool {
-        // A tool-protocol terminal failure is the wire's own in-band
-        // terminal: `interpret` already pushed the `Err` and gates itself on
+        // A tool-protocol terminal failure or a blocked prompt is the wire's
+        // own in-band terminal: `interpret` already pushed the `Err` and gates itself on
         // `failed`, so the driver must stop reading rather than drain the
         // rest of the transport (and pass through post-error unknown frames).
         self.failed
@@ -301,7 +357,7 @@ impl WireAdapter for GeminiRestAdapter {
 }
 
 impl GeminiRestAdapter {
-    fn interpret_part(&mut self, part: Part, out: &mut AdapterOutput<StreamingCompletionResponse>) {
+    fn interpret_part(&mut self, part: Part, out: &mut AdapterOutput) {
         match part {
             Part {
                 part: PartKind::Text(text),
@@ -365,13 +421,13 @@ impl GeminiRestAdapter {
                         reasoning: None,
                         reasoning_signature: None,
                         text: None,
-                        tool_events: vec![shared_parts::function_call(
+                        tool_events: shared_parts::function_call(
                             function_call.name,
                             function_call.args,
                             function_call.id,
                             thought_signature,
                             &mut self.tool_ids,
-                        )],
+                        ),
                     },
                     out,
                 );
@@ -389,16 +445,11 @@ impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    /// Open a `streamGenerateContent` stream whose terminal record stays
-    /// provider-native.
-    ///
-    /// The normalized [`CompletionModel::stream`](crate::completion::CompletionModel::stream)
-    /// delegates here and maps only the terminal record, so both paths open
-    /// exactly one stream over the same request, telemetry, and error handling.
-    pub async fn raw_stream(
+    pub(crate) async fn stream_observed(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
+        observation: Option<crate::observe::AdapterContext>,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let span = CompletionSpanBuilder::new(
             PROVIDER_NAME,
@@ -423,35 +474,33 @@ where
 
         let body = serde_json::to_vec(&request)?;
 
-        let req = self
+        let mut req = self
             .client
             .post(format!("{}?alt=sse", streaming_endpoint(&request_model)))?
             .header("Content-Type", "application/json")
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        Ok(open_wire_stream(
-            GenericEventSource::new(self.client.clone(), req),
-            SseTransportOptions {
-                open_log: OpenLog::Debug,
-                stream_ended_is_error: false,
-                log_transport_errors: true,
-            },
-            skip_blank_frames,
-            GeminiRestAdapter::default(),
-            span,
-        ))
-    }
-
-    pub(crate) async fn stream(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let inner = self.raw_stream(completion_request).await?;
-
+        if let Some(observation) = observation {
+            super::observation::attach(
+                observation,
+                &mut req,
+                "/models/{model}:streamGenerateContent",
+            );
+        }
         Ok(streaming::StreamingCompletionResponse::stream(
             PROVIDER_NAME,
-            streaming::normalize_stream(inner, map_stream_final),
+            open_wire_stream(
+                GenericEventSource::new(self.client.clone(), req),
+                SseTransportOptions {
+                    open_log: OpenLog::Debug,
+                    stream_ended_is_error: false,
+                    log_transport_errors: true,
+                },
+                skip_blank_frames,
+                GeminiRestAdapter::default(),
+                span,
+            ),
         ))
     }
 }

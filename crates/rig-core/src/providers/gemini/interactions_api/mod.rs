@@ -128,6 +128,16 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<Interaction, CompletionError> {
+        self.raw_completion_observed(completion_request, None).await
+    }
+
+    /// [`Self::raw_completion`] with observation context owned by this
+    /// invocation.
+    async fn raw_completion_observed(
+        &self,
+        completion_request: CompletionRequest,
+        observation: Option<crate::observe::AdapterContext>,
+    ) -> Result<Interaction, CompletionError> {
         let span = CompletionSpanBuilder::new(
             PROVIDER_NAME,
             &self.model,
@@ -148,11 +158,14 @@ where
         );
 
         let body = serde_json::to_vec(&request)?;
-        let request = self
+        let mut request = self
             .client
             .post("/v1beta/interactions")?
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
+        if let Some(observation) = observation {
+            observation.attach(&mut request, "/v1beta/interactions");
+        }
 
         send_completion::<_, DirectPayload<Interaction>, _>(
             &self.client,
@@ -182,18 +195,36 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Capture before `try_into` consumes the raw value.
-        let raw = self.raw_completion(completion_request).await?;
-        let captured = serde_json::to_value(&raw)?;
-        let response: completion::CompletionResponse = raw.try_into()?;
-        Ok(response.with_raw(captured))
+        self.completion_with_context(completion_request, None).await
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        InteractionsCompletionModel::stream(self, request).await
+        self.stream_with_context(request, None).await
+    }
+
+    async fn completion_with_context(
+        &self,
+        completion_request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        // Capture before `try_into` consumes the raw value.
+        let raw = self
+            .raw_completion_observed(completion_request, context)
+            .await?;
+        let captured = serde_json::to_value(&raw)?;
+        let response: completion::CompletionResponse = raw.try_into()?;
+        Ok(response.with_raw(captured))
+    }
+
+    async fn stream_with_context(
+        &self,
+        request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+        InteractionsCompletionModel::stream_observed(self, request, context).await
     }
 }
 
@@ -284,11 +315,24 @@ pub(crate) fn create_request_body(
     crate::providers::internal::resolve_empty_tool_result_names(&mut history);
     let (history_system, history) = split_system_messages_from_history(history);
 
-    let steps = history
-        .into_iter()
-        .map(Step::try_from)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|err| CompletionError::RequestError(Box::new(err)))?;
+    let tool_ids = crate::providers::internal::tool_call_ids::ToolCallIds::new(&history)
+        .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+    let mut steps = Vec::new();
+    for (position, message) in history.into_iter().enumerate() {
+        let mut converted = Step::from_message(message)
+            .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+        tool_ids
+            .apply(
+                position,
+                converted.iter_mut().filter_map(|step| match step {
+                    Step::FunctionCall(call) => call.id.as_mut(),
+                    Step::FunctionResult(result) => result.call_id.as_mut(),
+                    _ => None,
+                }),
+            )
+            .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+        steps.extend(converted);
+    }
 
     let input = InteractionInput::Steps(steps);
 
@@ -382,12 +426,10 @@ where
     T: HttpClientExt + Clone + 'static,
 {
     let response = client.send::<_, Vec<u8>>(request).await?;
+    let (parts, body) = response.into_parts();
 
-    if response.status().is_success() {
-        let response_body = response
-            .into_body()
-            .await
-            .map_err(CompletionError::HttpError)?;
+    if parts.status.is_success() {
+        let response_body = body.await?;
 
         let response_text = String::from_utf8_lossy(&response_body).to_string();
 
@@ -402,16 +444,12 @@ where
 
         Ok(response)
     } else {
-        let status = response.status();
-        let body = response
-            .into_body()
-            .await
-            .map_err(CompletionError::HttpError)?;
+        let body = body.await?;
 
-        Err(CompletionError::from_http_response(
-            status,
-            String::from_utf8_lossy(&body),
-        ))
+        Err(
+            CompletionError::from_http_response(parts.status, String::from_utf8_lossy(&body))
+                .with_response_headers(Some(Box::new(parts.headers))),
+        )
     }
 }
 
@@ -445,7 +483,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse {
             return Err(CompletionError::ResponseError(message));
         }
 
-        let content = output_contents
+        let mut content = output_contents
             .into_iter()
             .filter_map(|output| match assistant_content_from_output(output) {
                 Ok(Some(content)) => Some(Ok(content)),
@@ -454,6 +492,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
+        crate::message::normalize_missing_tool_call_ids(&mut content);
         let choice = crate::message::require_non_empty_response(content)?;
 
         let usage = response
@@ -1305,32 +1344,82 @@ pub mod interactions_api_types {
         }
     }
 
-    impl TryFrom<crate::completion::Message> for Step {
-        type Error = message::MessageError;
-
-        fn try_from(message: crate::completion::Message) -> Result<Self, Self::Error> {
+    impl Step {
+        /// The steps a history message is on the wire, in the message's
+        /// order. A function call, its result and a thought are steps of
+        /// their own — the shape the API emits them in and the only shape it
+        /// accepts them back in (nested in a `model_output` or `user_input`
+        /// step, a call-and-result round trip is "an invalid argument");
+        /// text and media stay grouped in a `user_input` / `model_output`
+        /// step, one per run of them.
+        pub(crate) fn from_message(
+            message: crate::completion::Message,
+        ) -> Result<Vec<Self>, message::MessageError> {
             match message {
-                crate::completion::Message::System { content } => Ok(Self::UserInput {
+                crate::completion::Message::System { content } => Ok(vec![Self::UserInput {
                     content: vec![Content::Text(TextContent {
                         text: content,
                         annotations: None,
                     })],
-                }),
+                }]),
                 crate::completion::Message::User { content } => {
-                    let content = content
+                    let contents = content
                         .into_iter()
                         .map(Content::try_from)
                         .collect::<Result<Vec<_>, _>>()?;
-                    Ok(Self::UserInput { content })
+                    Ok(Self::split(contents, |content| Self::UserInput { content }))
                 }
                 crate::completion::Message::Assistant { content, .. } => {
-                    let content = content
+                    let contents = content
                         .into_iter()
                         .map(Content::try_from)
                         .collect::<Result<Vec<_>, _>>()?;
-                    Ok(Self::ModelOutput { content })
+                    Ok(Self::split(contents, |content| Self::ModelOutput {
+                        content,
+                    }))
                 }
             }
+        }
+
+        /// Lift the contents that are steps of their own out of `contents`,
+        /// grouping each run of the others under `group`.
+        fn split(contents: Vec<Content>, group: impl Fn(Vec<Content>) -> Self) -> Vec<Self> {
+            let mut steps = Vec::new();
+            let mut run: Vec<Content> = Vec::new();
+            for content in contents {
+                let own = match content {
+                    Content::Thought(thought) => Some(Self::Thought(thought)),
+                    Content::FunctionCall(call) => Some(Self::FunctionCall(call)),
+                    Content::FunctionResult(result) => Some(Self::FunctionResult(result)),
+                    Content::CodeExecutionCall(call) => Some(Self::CodeExecutionCall(call)),
+                    Content::CodeExecutionResult(result) => Some(Self::CodeExecutionResult(result)),
+                    Content::UrlContextCall(call) => Some(Self::UrlContextCall(call)),
+                    Content::UrlContextResult(result) => Some(Self::UrlContextResult(result)),
+                    Content::GoogleSearchCall(call) => Some(Self::GoogleSearchCall(call)),
+                    Content::GoogleSearchResult(result) => Some(Self::GoogleSearchResult(result)),
+                    Content::McpServerToolCall(call) => Some(Self::McpServerToolCall(call)),
+                    Content::McpServerToolResult(result) => Some(Self::McpServerToolResult(result)),
+                    Content::FileSearchResult(result) => Some(Self::FileSearchResult(result)),
+                    grouped @ (Content::Text(_)
+                    | Content::Image(_)
+                    | Content::Audio(_)
+                    | Content::Document(_)
+                    | Content::Video(_)) => {
+                        run.push(grouped);
+                        None
+                    }
+                };
+                if let Some(step) = own {
+                    if !run.is_empty() {
+                        steps.push(group(std::mem::take(&mut run)));
+                    }
+                    steps.push(step);
+                }
+            }
+            if !run.is_empty() {
+                steps.push(group(run));
+            }
+            steps
         }
     }
 
@@ -1512,9 +1601,11 @@ pub mod interactions_api_types {
         pub summary: Option<Vec<ThoughtSummaryContent>>,
     }
 
-    /// Thought summary item.
+    /// Thought summary item: a content item like any other on this wire,
+    /// tagged by `type` (the API refuses an untagged one on the way back:
+    /// "The 'type' parameter is required at `input[n].content[0].summary[0]`").
     #[derive(Clone, Debug, Deserialize, Serialize)]
-    #[serde(untagged)]
+    #[serde(tag = "type", rename_all = "snake_case")]
     pub enum ThoughtSummaryContent {
         Text(TextContent),
         Image(ImageContent),
@@ -1772,7 +1863,7 @@ pub mod interactions_api_types {
                     // when it exists, else rig's minted handle — always
                     // present, so the old "results require call_id" error
                     // is unrepresentable.
-                    let call_id = tool_result.wire_call_id().to_owned();
+                    let call_id = tool_result.wire_call_id().into_owned();
                     let name = tool_result.name;
 
                     let mut contents = tool_result.content.into_iter().collect::<Vec<_>>();
@@ -1785,11 +1876,16 @@ pub mod interactions_api_types {
 
                         match content {
                             message::ToolResultContent::Text(text) => Value::String(text.text),
+                            // A scalar or array JSON result is wrapped as the
+                            // generate wire wraps it (`{"result": value}`): sent
+                            // as a text block it is a multimodal response, which
+                            // the models refuse.
                             message::ToolResultContent::Json { value } => match value {
                                 value @ (Value::String(_) | Value::Object(_)) => value,
-                                value => Value::Array(vec![rich_function_result_block(
-                                    message::ToolResultContent::Json { value },
-                                )?]),
+                                value @ (Value::Null
+                                | Value::Bool(_)
+                                | Value::Number(_)
+                                | Value::Array(_)) => serde_json::json!({ "result": value }),
                             },
                             rich_content => {
                                 Value::Array(vec![rich_function_result_block(rich_content)?])
@@ -1919,7 +2015,7 @@ pub mod interactions_api_types {
                     }))
                 }
                 message::AssistantContent::ToolCall(tool_call) => {
-                    let call_id = tool_call.wire_call_id().to_owned();
+                    let call_id = tool_call.wire_call_id().into_owned();
                     Ok(Self::FunctionCall(FunctionCallContent {
                         name: Some(tool_call.function.name),
                         arguments: Some(tool_call.function.arguments),
@@ -1927,25 +2023,27 @@ pub mod interactions_api_types {
                     }))
                 }
                 message::AssistantContent::Reasoning(message::Reasoning { content, .. }) => {
-                    let mut signature = None;
-                    let summary = content
+                    // The thought's signature is the first text part's, text
+                    // or no text: a signature-only thought (the wire's
+                    // `thought_signature` with no summary) goes back as
+                    // signature-only, since an empty summary item is an
+                    // invalid argument to the API.
+                    let signature = content.iter().find_map(|part| match part {
+                        message::ReasoningContent::Text { signature, .. } => signature.clone(),
+                        message::ReasoningContent::Summary(_)
+                        | message::ReasoningContent::Encrypted(_)
+                        | message::ReasoningContent::Redacted { .. } => None,
+                    });
+                    let summary: Vec<ThoughtSummaryContent> = content
                         .into_iter()
-                        .map(|reasoning_content| {
-                            let text = match reasoning_content {
-                                message::ReasoningContent::Text {
-                                    text,
-                                    signature: content_signature,
-                                } => {
-                                    if signature.is_none() {
-                                        signature = content_signature;
-                                    }
-                                    text
-                                }
-                                message::ReasoningContent::Summary(text)
-                                | message::ReasoningContent::Encrypted(text) => text,
-                                message::ReasoningContent::Redacted { data } => data,
-                            };
-
+                        .map(|part| match part {
+                            message::ReasoningContent::Text { text, .. }
+                            | message::ReasoningContent::Summary(text)
+                            | message::ReasoningContent::Encrypted(text) => text,
+                            message::ReasoningContent::Redacted { data } => data,
+                        })
+                        .filter(|text| !text.is_empty())
+                        .map(|text| {
                             ThoughtSummaryContent::Text(TextContent {
                                 text,
                                 annotations: None,
@@ -1955,7 +2053,7 @@ pub mod interactions_api_types {
 
                     Ok(Self::Thought(ThoughtContent {
                         signature,
-                        summary: Some(summary),
+                        summary: (!summary.is_empty()).then_some(summary),
                     }))
                 }
                 message::AssistantContent::Image(message::Image {

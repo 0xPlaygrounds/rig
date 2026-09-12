@@ -245,7 +245,7 @@ where
     // path (rig#2210).
     let (parts, body) = response.into_parts();
     let status = parts.status;
-    let provider_request_id = request_id_from_headers(&parts.headers, request_id_header);
+    let provider_request_id = super::request_id_from_headers(&parts.headers, request_id_header);
     let headers = Box::new(parts.headers);
     let response_body = body.into_future().await?;
 
@@ -258,6 +258,7 @@ where
                     status,
                     String::from_utf8_lossy(&response_body).into_owned(),
                 )
+                .with_provider_request_id(provider_request_id)
                 .with_response_headers(Some(headers)))
             }
         }
@@ -266,24 +267,9 @@ where
             status,
             String::from_utf8_lossy(&response_body).into_owned(),
         )
+        .with_provider_request_id(provider_request_id)
         .with_response_headers(Some(headers)))
     }
-}
-
-/// Reads the provider's transport request id off a response's headers, when
-/// the provider names such a header and the response carries a non-empty
-/// value. `None` is the documented "not reported" outcome.
-pub(crate) fn request_id_from_headers(
-    headers: &http::HeaderMap,
-    request_id_header: Option<&str>,
-) -> Option<String> {
-    request_id_header.and_then(|header| {
-        headers
-            .get(header)
-            .and_then(|value| value.to_str().ok())
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-    })
 }
 
 /// Sends a JSON-bodied transcription request and splits the response on
@@ -314,7 +300,7 @@ where
     let response = client.send::<_, Vec<u8>>(req).await?;
     let (parts, body) = response.into_parts();
     let status = parts.status;
-    let provider_request_id = request_id_from_headers(&parts.headers, request_id_header);
+    let provider_request_id = super::request_id_from_headers(&parts.headers, request_id_header);
     let headers = Box::new(parts.headers);
     let body = body.await?;
 
@@ -325,6 +311,7 @@ where
             status,
             String::from_utf8_lossy(&body).into_owned(),
         )
+        .with_provider_request_id(provider_request_id)
         .with_response_headers(Some(headers)))
     }
 }

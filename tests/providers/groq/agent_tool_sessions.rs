@@ -14,7 +14,7 @@ use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
 use rig::providers::{groq, openai};
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 use rig::tool::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -598,10 +598,10 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
                 .build();
 
             let mut stream = agent
-                .stream_chat(COMPLEX_SESSION_PROMPT, Vec::<Message>::new())
+                .prompt(COMPLEX_SESSION_PROMPT)
+                .history(Vec::<Message>::new())
                 .max_turns(10)
-                .stream()
-                .await;
+                .stream();
             let observation = collect_stream_observation(&mut stream).await;
 
             anyhow::ensure!(
@@ -707,11 +707,7 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
                 .additional_params(json!({"parallel_tool_calls": true}))
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(TWO_TOOL_STREAM_PROMPT)
-                .max_turns(5)
-                .stream()
-                .await;
+            let mut stream = agent.prompt(TWO_TOOL_STREAM_PROMPT).max_turns(5).stream();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert_two_tool_roundtrip_contract(
@@ -1016,12 +1012,13 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
             let mut final_usage = None;
             while let Some(item) = stream.next().await {
                 match item? {
-                    StreamedAssistantContent::Text(text) => {
-                        if !text.text.is_empty() {
-                            text_chunks += 1;
-                        }
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text },
+                        ..
+                    } if !text.is_empty() => {
+                        text_chunks += 1;
                     }
-                    StreamedAssistantContent::Final(response) => {
+                    StreamEvent::Final(response) => {
                         final_usage = Some(response.usage);
                     }
                     _ => {}

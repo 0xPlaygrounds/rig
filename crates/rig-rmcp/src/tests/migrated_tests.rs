@@ -744,10 +744,16 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
     assert_eq!(built.timeout(), Some(DEFAULT_MCP_TOOL_TIMEOUT));
     assert_eq!(built.with_timeout(None).timeout(), None);
 
+    // Every wrapped tool carries the same default timeout as the single-tool
+    // constructor: the list form cannot silently reintroduce an unbounded call.
+    for tool in tools_from_server([tool("a"), tool("b")], &peer) {
+        assert_eq!(tool.timeout(), Some(DEFAULT_MCP_TOOL_TIMEOUT));
+    }
+
     // Every requested tool is registered against the shared client...
     let agent = AgentBuilder::new(MockCompletionModel::text("ok"))
         .dynamic_tools(
-            tools_from_server([tool("a"), tool("b")], &peer, DEFAULT_MCP_TOOL_TIMEOUT)
+            tools_from_server([tool("a"), tool("b")], &peer)
                 .into_iter()
                 .map(|tool| DynamicTool::from(PortableDynamicTool::from(tool)))
                 .collect(),
@@ -765,8 +771,9 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
     // ...and the configured timeout actually bounds a hanging call.
     let agent = AgentBuilder::new(MockCompletionModel::text("ok"))
         .dynamic_tools(
-            tools_from_server([tool("hang_forever")], &peer, Duration::from_millis(200))
+            tools_from_server([tool("hang_forever")], &peer)
                 .into_iter()
+                .map(|tool| tool.with_timeout(Duration::from_millis(200)))
                 .map(|tool| DynamicTool::from(PortableDynamicTool::from(tool)))
                 .collect(),
         )

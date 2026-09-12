@@ -14,10 +14,27 @@ mod cache_prefix;
 mod cassette_safety;
 #[path = "common/cassettes.rs"]
 mod cassettes;
+#[path = "common/ecs_agent.rs"]
+mod ecs_agent;
+#[path = "common/ecs_extractor.rs"]
+mod ecs_extractor;
+#[path = "common/ecs_lifecycle.rs"]
+mod ecs_lifecycle;
+#[path = "common/ecs_observation.rs"]
+mod ecs_observation;
+#[path = "common/ecs_termination.rs"]
+mod ecs_termination;
+#[path = "common/goldens.rs"]
+mod goldens;
 #[path = "common/reasoning.rs"]
 mod reasoning;
+#[path = "common/stream_faults.rs"]
+mod stream_faults;
 #[path = "common/support.rs"]
 mod support;
 
 #[path = "providers/openai/mod.rs"]
 mod openai;
+
+#[path = "common/ecs_cache.rs"]
+mod ecs_cache;

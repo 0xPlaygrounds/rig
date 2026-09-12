@@ -21,7 +21,7 @@ const STEP_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
 fn build_counter_extractor(client: &Client) -> rig::extractor::Extractor<Counter> {
     client
         .extractor::<Counter>(openai::GPT_4)
-        .preamble(
+        .append_preamble(
             "
             Add a random whole number between 1 and 64 to the number you receive.
             Return only the updated number.

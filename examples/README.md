@@ -22,14 +22,14 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `agent_prompt_chaining` | Demonstrates prompt chaining with two agents in sequence. |
 | `agent_routing` | Demonstrates routing one prompt into different follow-up prompts. |
 | `agent_run_stepping` | Drives the agent loop by hand with the sans-IO [`AgentRun`] state machine. |
-| `agent_stream_chat` | Demonstrates `stream_chat` with prior conversation history. |
+| `agent_stream_chat` | Demonstrates a streamed run over prior conversation history (`prompt(..).history(..).stream()`). |
 | `agent_with_agent_tool` | See source. |
 | `agent_with_approval_policy` | Demonstrates a non-interactive, policy-based HITL gate: an `AgentHook` auto-approves an allow-list, denies the rest (fail-closed), and applies an arg-based rule (mirrors `needs_approval`/`interrupt_on` predicates). |
 | `agent_with_context` | Demonstrates adding small context documents directly to an agent. |
 | `agent_with_default_max_turns` | Demonstrates extending the default agent loop budget for tool-heavy prompts. |
 | `agent_with_durable_approval` | Demonstrates **durable** HITL: the hand-driven `AgentRun` is serialized while tool calls are pending and resumed from JSON (as another process would), so approval can happen out-of-process / later. |
 | `agent_with_echochambers` | See source. |
-| `agent_with_human_in_the_loop` | Demonstrates human-in-the-loop tool-call approval: an `AgentHook` pauses on each tool call so a human can approve/deny/edit/abort, mapped onto typed `ToolCallAction` values (`Run`/`Skip`/`Rewrite`/`Stop`). |
+| `agent_with_human_in_the_loop` | Demonstrates human-in-the-loop tool-call approval: an `AgentHook` pauses on each tool call so a human can approve/deny/edit/abort, mapped onto the dispatch-boundary `DispatchAction` (`Proceed`/`skip`/`rewrite_tool_args`/`stop`). |
 | `agent_with_loaders` | Demonstrates loading real example files into agent context. |
 | `agent_with_memory_streaming` | Demonstrates Rig-managed conversation memory with streaming. |
 | `agent_with_memory` | Demonstrates Rig-managed conversation memory with an in-memory backend. |

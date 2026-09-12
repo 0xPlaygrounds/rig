@@ -9,7 +9,7 @@ use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::CacheTtl;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 use rig::telemetry::ProviderResponseExt;
 use serde_json::json;
 
@@ -342,8 +342,11 @@ async fn send_matrix_streaming_probe(
 
     while let Some(item) = stream.next().await {
         match item.expect("streaming matrix Anthropic item should succeed") {
-            StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
-            StreamedAssistantContent::Final(response) => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: delta },
+                ..
+            } => text.push_str(&delta),
+            StreamEvent::Final(response) => {
                 usage = Some(response.usage);
             }
             _ => {}
@@ -1388,8 +1391,11 @@ async fn send_streaming_cache_probe(
 
     while let Some(item) = stream.next().await {
         match item.expect("streaming prompt-cached Anthropic item should succeed") {
-            StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
-            StreamedAssistantContent::Final(response) => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: delta },
+                ..
+            } => text.push_str(&delta),
+            StreamEvent::Final(response) => {
                 usage = Some(response.usage);
             }
             _ => {}
@@ -1566,7 +1572,7 @@ use crate::cache_conformance::{
 /// Dividing by `input_tokens` alone would make the ratio look enormous on a warm
 /// turn (where `input_tokens` is only the uncached tail) and the assertion
 /// vacuous.
-const ANTHROPIC_CACHE_SUPPORT: CacheSupport = CacheSupport {
+pub(super) const ANTHROPIC_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "anthropic",
     accounting: CacheAccounting::Alongside,
     explicit_breakpoints: true,
@@ -1578,7 +1584,7 @@ const ANTHROPIC_CACHE_SUPPORT: CacheSupport = CacheSupport {
     hit_ratio_floor: 0.80,
 };
 
-fn conformance_probe() -> CacheProbe {
+pub(super) fn conformance_probe() -> CacheProbe {
     CacheProbe::new("anthropic cache conformance")
 }
 

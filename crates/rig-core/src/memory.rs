@@ -86,10 +86,15 @@ impl MemoryError {
 ///
 /// Implementors store an ordered list of [`Message`]s per `conversation_id`. Rig
 /// runtimes invoke [`ConversationMemory::load`] before sending a prompt and
-/// [`ConversationMemory::append`] after a successful turn.
+/// [`ConversationMemory::append`] after a successful run.
 ///
 /// Implementations should keep `append` cheap; it runs inline before the agent
-/// returns its response.
+/// returns its response. A load failure fails the run before any model call;
+/// an append failure does not fail the run — the answer stands, the runtime
+/// reports the refused append beside it (rig-agent's `PromptResponse::memory_append`,
+/// the effect log's record) and nothing is retried. Rig promises no
+/// transactional or exactly-once write: a backend that fails after writing
+/// has written.
 pub trait ConversationMemory: WasmCompatSend + WasmCompatSync {
     /// Load the full conversation history for `conversation_id`.
     ///
@@ -115,50 +120,6 @@ pub trait ConversationMemory: WasmCompatSend + WasmCompatSync {
         conversation_id: &'a ConversationId,
     ) -> WasmBoxedFuture<'a, Result<(), MemoryError>>;
 }
-
-/// Owned-future companions to [`ConversationMemory`]: the same operations,
-/// but taking an `Arc`'d backend and an owned [`ConversationId`] so the
-/// returned future is `'static` — the shape an executor-agnostic host (an ECS
-/// system spawning a task, a channel pump) needs, without per-call-site
-/// clone-into-`async move` ceremony. The borrowed trait methods remain the
-/// implementation surface; these are wrappers.
-pub trait ConversationMemoryExt: ConversationMemory {
-    /// [`ConversationMemory::load`] as an owned, `'static` future.
-    fn load_owned(
-        self: Arc<Self>,
-        conversation_id: ConversationId,
-    ) -> WasmBoxedFuture<'static, Result<Vec<Message>, MemoryError>>
-    where
-        Self: 'static,
-    {
-        Box::pin(async move { self.load(&conversation_id).await })
-    }
-
-    /// [`ConversationMemory::append`] as an owned, `'static` future.
-    fn append_owned(
-        self: Arc<Self>,
-        conversation_id: ConversationId,
-        messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'static, Result<(), MemoryError>>
-    where
-        Self: 'static,
-    {
-        Box::pin(async move { self.append(&conversation_id, messages).await })
-    }
-
-    /// [`ConversationMemory::clear`] as an owned, `'static` future.
-    fn clear_owned(
-        self: Arc<Self>,
-        conversation_id: ConversationId,
-    ) -> WasmBoxedFuture<'static, Result<(), MemoryError>>
-    where
-        Self: 'static,
-    {
-        Box::pin(async move { self.clear(&conversation_id).await })
-    }
-}
-
-impl<M: ConversationMemory + ?Sized> ConversationMemoryExt for M {}
 
 // Forwarding impls so callers can pass smart pointers (`Arc<M>`, `Box<M>`,
 // including unsized trait objects) wherever a memory trait is expected. Each

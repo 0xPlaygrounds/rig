@@ -200,7 +200,7 @@ impl RigAssistantContent {
                 // when one exists, so the assistant echo does too — a bare
                 // minted handle here would orphan the paired toolResult
                 // whenever the two diverge.
-                let tool_use_id = tool_call.wire_call_id().to_owned();
+                let tool_use_id = tool_call.wire_call_id().into_owned();
                 let doc: AwsDocument = tool_call.function.arguments.into();
                 Ok(Some(aws_bedrock::ContentBlock::ToolUse(
                     aws_bedrock::ToolUseBlock::builder()

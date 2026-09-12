@@ -15,6 +15,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend};
+use tracing_futures::Instrument;
 
 use super::{
     Agent,
@@ -44,6 +45,10 @@ pub struct TypedPromptResponse<T> {
     /// metrics for that request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_calls: Vec<CompletionCall>,
+    /// How the accepted attempt's conversation-memory append settled; see
+    /// [`PromptResponse::memory_append`](crate::agent::PromptResponse::memory_append).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_append: Option<crate::run::MemoryAppend>,
 }
 
 impl<T> TypedPromptResponse<T> {
@@ -52,6 +57,7 @@ impl<T> TypedPromptResponse<T> {
             output,
             usage,
             completion_calls: Vec::new(),
+            memory_append: None,
         }
     }
 
@@ -250,7 +256,7 @@ macro_rules! forward_runner_setters {
         ///
         /// This does not suppress registered model-selection hooks, which may
         /// replace this candidate before each model call (including retries).
-        pub fn using_model(mut self, model: $crate::agent::ModelHandle) -> Self {
+        pub fn using_model(mut self, model: impl Into<$crate::agent::ModelRef>) -> Self {
             self.runner = self.runner.using_model(model);
             self
         }
@@ -341,7 +347,10 @@ where
 
     forward_runner_setters!();
 
-    async fn send(self) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
+    async fn send(
+        self,
+        ambient: tracing::Span,
+    ) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
         let mut usage = Usage::new();
         let mut last_error = None;
 
@@ -352,7 +361,11 @@ where
                     self.retries - attempt
                 );
             }
-            let (result, error_usage) = self.runner.clone().run_with_error_usage().await;
+            let (result, error_usage) = self
+                .runner
+                .clone()
+                .run_with_error_usage(ambient.clone())
+                .await;
             let outcome = match result {
                 Ok(response) => {
                     usage += response.usage;
@@ -360,6 +373,7 @@ where
                         output,
                         usage,
                         completion_calls: response.completion_calls,
+                        memory_append: response.memory_append,
                     })
                 }
                 Err(err) => {
@@ -446,6 +460,11 @@ where
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
-        Box::pin(self.send())
+        // Captured in the synchronous part of the call, like `run()`: a
+        // typed run belongs to the span it was started in, not to the task
+        // that first polls it.
+        let ambient = tracing::Span::current();
+        let run_under = ambient.clone();
+        Box::pin(self.send(run_under).instrument(ambient))
     }
 }

@@ -1,7 +1,7 @@
 use super::*;
 use base64::Engine as _;
-use rig_core::message::{Reasoning, ReasoningContent};
-use rig_core::streaming::StreamedAssistantContent;
+use rig_core::message::{AssistantContent, Reasoning, ReasoningContent};
+use rig_core::streaming::{Delta, StreamEvent};
 
 fn thought_part(text: &str, signature: &[u8]) -> proto::Part {
     proto::Part {
@@ -32,8 +32,10 @@ async fn reasoning_blocks(events: Vec<proto::GenerateContentResponse>) -> Vec<Re
     let mut stream = stream_from_events(futures::stream::iter(events.into_iter().map(Ok)));
     let mut blocks = Vec::new();
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::Reasoning { reasoning, .. } =
-            item.expect("stream item should be ok")
+        if let StreamEvent::BlockEnd {
+            block: Some(AssistantContent::Reasoning(reasoning)),
+            ..
+        } = item.expect("stream item should be ok")
         {
             blocks.push(reasoning);
         }
@@ -138,7 +140,7 @@ fn function_call_part(name: &str, id: &str) -> proto::Part {
 // That is all this pins. The per-stream minter also gives each call its own
 // stream key now, where the fixed `Tool.for_wire_index(0)` key gave both the
 // same one — but no assertion here can tell the two apart: a whole tool call
-// is emitted immediately with a freshly generated `internal_call_id`, so the
+// is emitted immediately under its own block id, so the
 // shared key never collided anything downstream. It was a latent identity
 // bug, not an observable one, and pinning it would mean asserting on
 // internal keys.
@@ -155,13 +157,13 @@ async fn two_id_less_function_calls_stay_distinct() {
     let mut stream = stream_from_events(futures::stream::iter(events.into_iter().map(Ok)));
     let mut correlators = Vec::new();
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::ToolCall {
-            tool_call,
-            internal_call_id,
+        if let StreamEvent::BlockEnd {
+            block: Some(AssistantContent::ToolCall(tool_call)),
+            ..
         } = item.expect("stream item should be ok")
         {
             assert_eq!(tool_call.function.name, "get_weather");
-            correlators.push(internal_call_id);
+            correlators.push(tool_call.id.clone());
         }
     }
 
@@ -209,8 +211,11 @@ async fn drain(events: Vec<proto::GenerateContentResponse>) -> Drained {
 
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::Final(_)) => drained.reached_terminal = true,
-            Ok(StreamedAssistantContent::Text(text)) => drained.text.push_str(&text.text),
+            Ok(StreamEvent::Final(_)) => drained.reached_terminal = true,
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            }) => drained.text.push_str(&text),
             Ok(_) => {}
             Err(error) => drained.errors.push(error.to_string()),
         }
@@ -375,11 +380,11 @@ fn terminal_frame() -> proto::GenerateContentResponse {
 async fn normalized_terminal(
     events: Vec<proto::GenerateContentResponse>,
 ) -> streaming::StreamFinal {
-    let raw = run_wire_stream(
+    collect_terminal(run_wire_stream(
         futures::stream::iter(events.into_iter().map(Ok)),
         GrpcAdapter::default(),
-    );
-    collect_terminal(normalize_grpc_stream(Box::pin(raw))).await
+    ))
+    .await
 }
 
 async fn collect_terminal(normalized: streaming::StreamingResult) -> streaming::StreamFinal {
@@ -397,8 +402,8 @@ async fn collect_terminal(normalized: streaming::StreamingResult) -> streaming::
 
 /// The events-first seam captures like the request-driven one: its
 /// terminal `raw` is the same terminal `GenerateContentResponse` the
-/// model's `stream()` would attach, because both funnel through
-/// `normalize_grpc_stream`.
+/// model's `stream()` would attach, because both funnel through the
+/// adapter's `terminal_record`.
 #[tokio::test]
 async fn stream_from_events_terminal_carries_raw() {
     let mut stream = stream_from_events(futures::stream::iter(
@@ -448,9 +453,9 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
 
     // Feeding the capture back through the same pipeline tells the same
     // story as the terminal the stream produced.
-    let renormalized = collect_terminal(normalize_grpc_stream(Box::pin(futures::stream::iter(
-        vec![Ok(streaming::RawStreamingChoice::FinalResponse(typed))],
-    ))))
+    let renormalized = collect_terminal(Box::pin(futures::stream::iter(vec![Ok(
+        StreamEvent::Final(terminal_record(&typed).expect("terminal record")),
+    )])))
     .await;
     assert_eq!(terminal.identity(), renormalized.identity());
     assert_eq!(terminal.finish_reason, renormalized.finish_reason);

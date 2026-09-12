@@ -27,7 +27,7 @@
 //! | 1 | `blocking_raw_model_answers_after_code_execution` | blocking | `CompletionModel::completion` | baseline: code parts skipped, text survives |
 //! | 2 | `streaming_raw_model_answers_after_code_execution` | streaming | `CompletionModel::stream` | parity twin of 1 |
 //! | 3 | `blocking_agent_prompt_answers_after_code_execution` | blocking | `Agent::prompt` | agent surface |
-//! | 4 | `streaming_agent_prompt_answers_after_code_execution` | streaming | `Agent::stream_prompt` | parity twin of 3 |
+//! | 4 | `streaming_agent_prompt_answers_after_code_execution` | streaming | `Agent::prompt` | parity twin of 3 |
 //! | 5 | `blocking_raw_completion_keeps_native_code_parts` | blocking | `CompletionModel::raw_completion` | escape hatch still exposes the parts |
 //! | 6 | `blocking_failed_code_execution_outcome` | blocking | `completion` | `OUTCOME_FAILED` result part |
 //! | 7 | `streaming_failed_code_execution_outcome` | streaming | `stream` | parity twin of 6 |
@@ -68,7 +68,7 @@ use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message};
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -76,7 +76,7 @@ use super::super::support::{
 };
 
 /// Wire markers of the two code-execution part kinds, as Gemini spells them.
-const CODE_PART_MARKERS: &[&str] = &["executableCode", "codeExecutionResult"];
+pub(super) const CODE_PART_MARKERS: &[&str] = &["executableCode", "codeExecutionResult"];
 
 /// `additional_params` enabling Gemini's built-in code-execution tool.
 ///
@@ -86,7 +86,7 @@ const CODE_PART_MARKERS: &[&str] = &["executableCode", "codeExecutionResult"];
 /// `"tool_code\nprint(2**20)\n\n"` with no `executableCode` part at all — so a
 /// zero budget would silently record cells that never exercise the part kinds
 /// this matrix is about.
-fn code_execution_params() -> Value {
+pub(super) fn code_execution_params() -> Value {
     json!({ "tools": [{ "codeExecution": {} }] })
 }
 
@@ -109,7 +109,7 @@ fn code_execution_params_with_thoughts() -> Value {
 /// `value` must not be a fragment of a longer number — "2880" in "28800" is
 /// not the answer — so digit-adjacency is rejected. An empty or non-numeric
 /// `value` keeps plain substring semantics.
-fn states(text: &str, value: &str) -> bool {
+pub(super) fn states(text: &str, value: &str) -> bool {
     let text: String = text
         .char_indices()
         .filter(|(index, ch)| {
@@ -160,12 +160,15 @@ async fn drain(
     let mut saw_terminal = false;
     while let Some(item) = stream.next().await {
         match item.expect("no stream item should be an error") {
-            StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
-            StreamedAssistantContent::Final(_) => saw_terminal = true,
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: chunk },
+                ..
+            } => text.push_str(&chunk),
+            StreamEvent::Final(_) => saw_terminal = true,
             _ => {}
         }
     }
-    (text, stream.choice.clone(), saw_terminal)
+    (text, stream.snapshot(), saw_terminal)
 }
 
 /// One blocking cell: run the prompt with code execution enabled and assert
@@ -330,17 +333,19 @@ async fn streaming_agent_prompt_answers_after_code_execution() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("Use the code execution tool to compute 2 to the power of 20. State the number in your answer.")
-                .stream()
-                .await;
+                .prompt("Use the code execution tool to compute 2 to the power of 20. State the number in your answer.")
+                .stream();
 
             let mut answer = String::new();
             while let Some(item) = stream.next().await {
                 if let rig::agent::MultiTurnStreamItem::StreamAssistantItem(
-                    StreamedAssistantContent::Text(text),
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text },
+                        ..
+                    },
                 ) = item.expect("no stream item should be an error")
                 {
-                    answer.push_str(&text.text);
+                    answer.push_str(&text);
                 }
             }
 

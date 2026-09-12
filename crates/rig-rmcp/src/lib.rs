@@ -48,13 +48,13 @@
 //! session ids, or A2A `context_id`/`task_id`, which the model never sees:
 //!
 //! ```rust,ignore
-//! use rig_rmcp::Meta;
+//! use rig_rmcp::{McpMeta, Meta};
 //! use rig_agent::tool::ToolContext;
 //!
 //! let mut meta = Meta::new();
 //! meta.0.insert("authorization".into(), serde_json::json!("Bearer …"));
 //! let mut context = ToolContext::new();
-//! context.insert(meta);
+//! context.insert(McpMeta(meta))?;
 //! let answer = agent.prompt("…").tool_context(context).await?.output;
 //! ```
 //!
@@ -62,9 +62,10 @@
 //!
 //! MCP responses retain their protocol data in the per-dispatch rig-agent
 //! `ToolContext` (`agent` feature). Result hooks can inspect the untouched
-//! [`rmcp::model::CallToolResult`], its `structuredContent` as a
-//! [`serde_json::Value`], and response [`Meta`] with
-//! `event.tool_context.result::<T>()`. These values are host-only; only the
+//! [`rmcp::model::CallToolResult`] as [`McpCallToolResult`], its
+//! `structuredContent` as [`McpStructuredContent`], and the response
+//! [`Meta`] as [`McpResponseMeta`] with
+//! `event.tool_context().result::<T>()`. These values are host-only; only the
 //! response's ordered presentation content is sent to the model.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]

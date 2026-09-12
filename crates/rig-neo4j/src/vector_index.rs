@@ -7,7 +7,7 @@
 use neo4rs::{Graph, Query};
 use rig_core::{
     Embed,
-    embeddings::{Embedding, EmbeddingModel, EmbeddingModelHandle},
+    embeddings::{Embedding, EmbeddingModel},
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{SearchFilter, VectorSearchRequest},
@@ -17,12 +17,12 @@ use serde::{Deserialize, Serialize, de::Error};
 
 use crate::{Neo4jClient, Neo4jSearchFilter, ToBoltType};
 
-/// The embedding model's concrete type is erased at construction into an
-/// [`EmbeddingModelHandle`]; the handle is fixed for the store's lifetime (an
-/// index populated under one model is only meaningful under that model).
-pub struct Neo4jVectorIndex {
+/// The store is generic over its embedding model `M`, which is fixed for the
+/// store's lifetime: an index populated under one model is only meaningful under
+/// that same model.
+pub struct Neo4jVectorIndex<M> {
     graph: Graph,
-    embedding_model: EmbeddingModelHandle,
+    embedding_model: M,
     index_config: IndexConfig,
 }
 
@@ -120,15 +120,11 @@ const BASE_VECTOR_SEARCH_QUERY: &str = "
     YIELD node, score
 ";
 
-impl Neo4jVectorIndex {
-    pub fn new(
-        graph: Graph,
-        embedding_model: impl EmbeddingModel + 'static,
-        index_config: IndexConfig,
-    ) -> Self {
+impl<M: EmbeddingModel> Neo4jVectorIndex<M> {
+    pub fn new(graph: Graph, embedding_model: M, index_config: IndexConfig) -> Self {
         Self {
             graph,
-            embedding_model: EmbeddingModelHandle::new(embedding_model),
+            embedding_model,
             index_config,
         }
     }
@@ -210,7 +206,7 @@ struct RowResult {
     element_id: i64,
 }
 
-impl VectorStoreIndex for Neo4jVectorIndex {
+impl<M: EmbeddingModel> VectorStoreIndex for Neo4jVectorIndex<M> {
     type Filter = Neo4jSearchFilter;
 
     /// Get the top n nodes and scores matching the query.
@@ -263,7 +259,7 @@ fn insert_documents_query(node_label: &str) -> String {
     format!("UNWIND $items AS item CREATE (n:{node_label}) SET n = item")
 }
 
-impl InsertDocuments for Neo4jVectorIndex {
+impl<M: EmbeddingModel> InsertDocuments for Neo4jVectorIndex<M> {
     /// Inserts one node per embedding, flattening the document's JSON fields
     /// onto the node alongside the embedding (`embedding_property`) and its
     /// source text (`embedded_text`). Nodes are written under the index's

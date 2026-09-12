@@ -504,7 +504,7 @@ where
     M: CompletionModel,
 {
     use futures::StreamExt;
-    use rig::streaming::StreamedAssistantContent;
+    use rig::streaming::{Delta, StreamEvent};
 
     let mut stream = model
         .stream(probe.request(chat_history))
@@ -518,8 +518,11 @@ where
         match item
             .unwrap_or_else(|error| panic!("streamed cache probe {label} should succeed: {error}"))
         {
-            StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
-            StreamedAssistantContent::Final(response) => usage = Some(response.usage),
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: delta },
+                ..
+            } => text.push_str(&delta),
+            StreamEvent::Final(response) => usage = Some(response.usage),
             _ => {}
         }
     }

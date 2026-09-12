@@ -43,17 +43,17 @@ async fn batch_multi_extract_chain() -> Result<()> {
             let model = CASSETTE_MODEL;
             let names_extractor = client
                 .extractor::<Names>(model)
-                .preamble("Extract names from the given text.")
+                .append_preamble("Extract names from the given text.")
                 .retries(2)
                 .build();
             let topics_extractor = client
                 .extractor::<Topics>(model)
-                .preamble("Extract topics from the given text.")
+                .append_preamble("Extract topics from the given text.")
                 .retries(2)
                 .build();
             let sentiment_extractor = client
                 .extractor::<Sentiment>(model)
-                .preamble("Extract sentiment and confidence from the given text.")
+                .append_preamble("Extract sentiment and confidence from the given text.")
                 .retries(2)
                 .build();
 

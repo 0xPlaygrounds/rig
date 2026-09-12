@@ -109,7 +109,7 @@ impl CompletionCall {
 
 /// The result of an agent run, returned by **both** the blocking
 /// (`AgentRunner::run`) and streaming (`AgentRunner::stream`) surfaces so a
-/// call site reads identically whether it used `.prompt()` or `.stream_prompt()`.
+/// call site reads identically whether it awaited the runner or streamed it.
 ///
 /// On the streaming surface this is the payload of the terminal
 /// `MultiTurnStreamItem::FinalResponse` item.
@@ -128,9 +128,21 @@ pub struct PromptResponse {
     /// metrics for that request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_calls: Vec<CompletionCall>,
-    /// Accumulated message history for the run (the run's persisted transcript),
-    /// unless memory/history bookkeeping was disabled for the request.
+    /// The run's transcript: the prompt, every accepted assistant turn, every
+    /// committed tool result and the corrective feedback of any retried turn,
+    /// excluding the input history the run started from. This is what a
+    /// configured conversation memory is asked to persist; whether that
+    /// append was acknowledged is [`memory_append`](Self::memory_append).
+    /// `None` only for a response built without a run behind it.
     pub messages: Option<Vec<Message>>,
+    /// How the run's conversation-memory append settled, when the run had a
+    /// memory backend and conversation to append to; `None` when memory was
+    /// not configured for the run, bypassed by explicit history, disabled, or
+    /// the run was resumed (the driver that persisted it owns the append).
+    /// Set by the driver after the append dispatch resolved, so the
+    /// protocol's own `Done` response never carries it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_append: Option<MemoryAppend>,
     /// Structured assistant content for the final turn.
     ///
     /// Where [`output`](Self::output) is the concatenated text, this preserves
@@ -141,6 +153,46 @@ pub struct PromptResponse {
     /// than provider-facing response content.
     #[serde(skip)]
     output_tool_calls: usize,
+}
+
+/// How a finished run's conversation-memory append settled. A run that
+/// completed is a run whose answer stands; whether its transcript was
+/// persisted is a separate fact, and this is it.
+///
+/// An append is one dispatch to the memory backend: acknowledged means the
+/// backend answered that it appended, not that the write is durable beyond
+/// what the backend promises, and a run dropped while the append is in
+/// flight produces no response at all. Nothing here is exactly-once: a
+/// backend may have written before it failed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum MemoryAppend {
+    /// The backend acknowledged the append of [`PromptResponse::messages`].
+    Acknowledged,
+    /// The append was refused — by the backend, a layer on the memory key
+    /// or an outcome hook — and the transcript was not persisted. The
+    /// report is what the dispatch settled with, after outcome hooks; the
+    /// effect log records what the handler answered, which an outcome hook
+    /// may have replaced.
+    Failed {
+        /// Why the append failed.
+        report: rig_core::error::ErrorReport,
+    },
+}
+
+impl MemoryAppend {
+    /// Whether the backend acknowledged the append.
+    pub fn is_acknowledged(&self) -> bool {
+        matches!(self, Self::Acknowledged)
+    }
+
+    /// The failure report, when the append failed.
+    pub fn failure(&self) -> Option<&rig_core::error::ErrorReport> {
+        match self {
+            Self::Acknowledged => None,
+            Self::Failed { report } => Some(report),
+        }
+    }
 }
 
 impl std::fmt::Display for PromptResponse {
@@ -158,6 +210,7 @@ impl PromptResponse {
             usage,
             completion_calls: Vec::new(),
             messages: None,
+            memory_append: None,
             output_tool_calls: 0,
         }
     }
@@ -175,6 +228,13 @@ impl PromptResponse {
     /// Attach completion call details to this response.
     pub fn with_completion_calls(mut self, completion_calls: Vec<CompletionCall>) -> Self {
         self.completion_calls = completion_calls;
+        self
+    }
+
+    /// Record how the run's conversation-memory append settled; the driver
+    /// sets this once the append dispatch resolved.
+    pub fn with_memory_append(mut self, memory_append: Option<MemoryAppend>) -> Self {
+        self.memory_append = memory_append;
         self
     }
 
@@ -208,6 +268,12 @@ impl PromptResponse {
         self.messages.as_deref()
     }
 
+    /// How the run's conversation-memory append settled, when the run had
+    /// one (see the [field](Self::memory_append)).
+    pub fn memory_append(&self) -> Option<&MemoryAppend> {
+        self.memory_append.as_ref()
+    }
+
     /// The structured assistant content for the final turn.
     pub fn content(&self) -> &[AssistantContent] {
         &self.content
@@ -239,6 +305,11 @@ pub enum PromptError {
     /// A provider completion failed.
     #[error("CompletionError: {0}")]
     CompletionError(#[from] CompletionError),
+
+    /// An effect failed on the agent's bus — a bus or handler failure, a
+    /// hook's denial, a stream item's error — as the wire reports it.
+    #[error("{0}")]
+    Report(#[from] rig_core::error::ErrorReport),
 
     /// Conversation memory failed to load or persist history.
     #[error("MemoryError: {0}")]
@@ -283,12 +354,13 @@ pub enum PromptError {
 /// Forwards the `provider_response_*` accessor trio through the variant that
 /// wraps an error which itself exposes them.
 macro_rules! forward_provider_response_helpers {
-    ($err:ident, $variant:ident, $inner:literal) => {
+    ($err:ident, $variant:ident, $inner:literal $(, report = $report:ident)?) => {
         impl $err {
             #[doc = concat!("Returns the provider response body exposed by a wrapped ", $inner, ".")]
             pub fn provider_response_body(&self) -> Option<&str> {
                 match self {
                     Self::$variant(error) => error.provider_response_body(),
+                    $(Self::$report(report) => report.provider_response_body(),)?
                     _ => None,
                 }
             }
@@ -299,22 +371,27 @@ macro_rules! forward_provider_response_helpers {
             ) -> Result<Option<serde_json::Value>, serde_json::Error> {
                 match self {
                     Self::$variant(error) => error.provider_response_json(),
+                    $(Self::$report(report) => report.provider_response_json(),)?
                     _ => Ok(None),
                 }
             }
 
-            #[doc = concat!("Returns the provider transport request id exposed by a wrapped ", $inner, " (rig#2314).")]
+            #[doc = concat!("Returns the provider transport request id exposed by a wrapped ", $inner, " (rig#2314), or carried by a wire report.")]
             pub fn provider_request_id(&self) -> Option<&str> {
                 match self {
                     Self::$variant(error) => error.provider_request_id(),
+                    $(Self::$report(report) => report.request_id.as_deref(),)?
                     _ => None,
                 }
             }
 
-            #[doc = concat!("Returns the HTTP status exposed by a wrapped ", $inner, ".")]
+            #[doc = concat!("Returns the HTTP status exposed by a wrapped ", $inner, ", or carried by a wire report.")]
             pub fn provider_response_status(&self) -> Option<http::StatusCode> {
                 match self {
                     Self::$variant(error) => error.provider_response_status(),
+                    $(Self::$report(report) => report
+                        .http_status
+                        .and_then(|status| http::StatusCode::from_u16(status).ok()),)?
                     _ => None,
                 }
             }
@@ -323,6 +400,7 @@ macro_rules! forward_provider_response_helpers {
             pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
                 match self {
                     Self::$variant(error) => error.provider_response_headers(),
+                    $(Self::$report(report) => report.provider_response_headers(),)?
                     _ => None,
                 }
             }
@@ -330,7 +408,12 @@ macro_rules! forward_provider_response_helpers {
     };
 }
 
-forward_provider_response_helpers!(PromptError, CompletionError, "completion error");
+forward_provider_response_helpers!(
+    PromptError,
+    CompletionError,
+    "completion error",
+    report = Report
+);
 
 impl PromptError {
     /// Build a [`PromptError::PromptCancelled`] from the history available at

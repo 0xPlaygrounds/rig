@@ -101,7 +101,7 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
                 .stream()
                 .await;
             let error = match result {
-                Err(error) => error,
+                Err(error) => rig::ErrorReport::from(&error),
                 Ok(mut stream) => {
                     let mut yielded = None;
                     while let Some(item) = stream.next().await {
@@ -114,7 +114,7 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
                 }
             };
             assert!(
-                matches!(error, CompletionError::ProviderResponse(_)),
+                error.kind == rig::ErrorKind::ProviderResponse,
                 "the streaming 4xx carries the same shape as blocking: {error:?}"
             );
             assert_eq!(
@@ -150,7 +150,7 @@ async fn streaming_connect_auth_rejection_classifies_with_contract() {
                 .stream()
                 .await;
             let error = match result {
-                Err(error) => error,
+                Err(error) => rig::ErrorReport::from(&error),
                 Ok(mut stream) => {
                     let mut yielded = None;
                     while let Some(item) = stream.next().await {
@@ -163,7 +163,7 @@ async fn streaming_connect_auth_rejection_classifies_with_contract() {
                 }
             };
             assert!(
-                matches!(error, CompletionError::ProviderResponse(_)),
+                error.kind == rig::ErrorKind::ProviderResponse,
                 "got {error:?}"
             );
             assert_eq!(
@@ -194,9 +194,8 @@ async fn streamed_agent_run_failure_exposes_error_identity_accessors() {
                 .build();
 
             let mut stream = agent
-                .runner(rig::completion::Message::user("Never authenticated"))
-                .stream()
-                .await;
+                .prompt(rig::completion::Message::user("Never authenticated"))
+                .stream();
             let mut surfaced = None;
             while let Some(item) = stream.next().await {
                 if let Err(error) = item {

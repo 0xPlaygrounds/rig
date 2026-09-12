@@ -9,9 +9,12 @@ fn assistant(text: &str) -> Message {
     Message::assistant(text)
 }
 
-/// The `*_owned` companions return `Send + 'static` futures (spawnable on
-/// any executor) and behave exactly like the borrowed methods, including
-/// through an `Arc<dyn ConversationMemory>`.
+/// The borrowed methods, taken through an `Arc<dyn ConversationMemory>`
+/// into an `async move` block, give a `Send + 'static` future (spawnable
+/// on any executor) and behave exactly like a direct call. (Until
+/// 2026-09-04 a `ConversationMemoryExt` trait wrapped this shape as
+/// `*_owned` methods; nothing called them, and this is the shape without
+/// it.)
 #[tokio::test]
 async fn owned_futures_are_static_and_match_borrowed_behavior() {
     fn assert_send_static<T: Send + 'static>(value: T) -> T {
@@ -20,14 +23,17 @@ async fn owned_futures_are_static_and_match_borrowed_behavior() {
 
     let mem: Arc<dyn ConversationMemory> = Arc::new(InMemoryConversationMemory::new());
     let id = ConversationId::from("c-owned");
-    assert_send_static(mem.clone().append_owned(id.clone(), vec![user("hello")]))
+    let (m, i) = (mem.clone(), id.clone());
+    assert_send_static(async move { m.append(&i, vec![user("hello")]).await })
         .await
         .unwrap();
-    let loaded = assert_send_static(mem.clone().load_owned(id.clone()))
+    let (m, i) = (mem.clone(), id.clone());
+    let loaded = assert_send_static(async move { m.load(&i).await })
         .await
         .unwrap();
     assert_eq!(loaded.len(), 1);
-    assert_send_static(mem.clone().clear_owned(id.clone()))
+    let (m, i) = (mem.clone(), id.clone());
+    assert_send_static(async move { m.clear(&i).await })
         .await
         .unwrap();
     assert!(mem.load(&id).await.unwrap().is_empty());

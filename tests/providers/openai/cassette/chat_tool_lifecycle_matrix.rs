@@ -41,61 +41,62 @@ use rig::completion::{
 };
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::{StreamedAssistantContent, StreamingCompletionResponse};
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::super::support::with_openai_tool_lifecycle_cassette_result;
 
-const PREAMBLE: &str = "Follow the user's tool-call instruction exactly. Do not answer in prose.";
+pub(super) const PREAMBLE: &str =
+    "Follow the user's tool-call instruction exactly. Do not answer in prose.";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Transport {
+pub(super) enum Transport {
     Blocking,
     Streaming,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Model {
+pub(super) enum Model {
     Gpt4oMini,
     Gpt41Mini,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Shape {
+pub(super) enum Shape {
     Zero,
     Nested,
     Parallel,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Surface {
+pub(super) enum Surface {
     Model,
     Agent,
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Cell {
-    transport: Transport,
-    model: Model,
-    shape: Shape,
-    surface: Surface,
+pub(super) struct Cell {
+    pub(super) transport: Transport,
+    pub(super) model: Model,
+    pub(super) shape: Shape,
+    pub(super) surface: Surface,
 }
 
 #[derive(Debug, Default)]
-struct Observation {
-    finish_reason: Option<FinishReason>,
-    names: Vec<String>,
-    ids: Vec<String>,
-    arguments: Vec<Value>,
-    errors: Vec<String>,
-    invocations: Vec<String>,
+pub(super) struct Observation {
+    pub(super) finish_reason: Option<FinishReason>,
+    pub(super) names: Vec<String>,
+    pub(super) ids: Vec<String>,
+    pub(super) arguments: Vec<Value>,
+    pub(super) errors: Vec<String>,
+    pub(super) invocations: Vec<String>,
 }
 
 type SharedObservation = Arc<Mutex<Option<Observation>>>;
 
-fn cell(transport: Transport, model: Model, shape: Shape, surface: Surface) -> Cell {
+pub(super) fn cell(transport: Transport, model: Model, shape: Shape, surface: Surface) -> Cell {
     Cell {
         transport,
         model,
@@ -104,14 +105,14 @@ fn cell(transport: Transport, model: Model, shape: Shape, surface: Surface) -> C
     }
 }
 
-fn model_name(model: Model) -> &'static str {
+pub(super) fn model_name(model: Model) -> &'static str {
     match model {
         Model::Gpt4oMini => "gpt-4o-mini",
         Model::Gpt41Mini => "gpt-4.1-mini",
     }
 }
 
-fn prompt(shape: Shape) -> &'static str {
+pub(super) fn prompt(shape: Shape) -> &'static str {
     match shape {
         Shape::Zero => "Call ping exactly once with no arguments.",
         Shape::Nested => {
@@ -123,7 +124,7 @@ fn prompt(shape: Shape) -> &'static str {
     }
 }
 
-fn expected_names(shape: Shape) -> &'static [&'static str] {
+pub(super) fn expected_names(shape: Shape) -> &'static [&'static str] {
     match shape {
         Shape::Zero => &["ping"],
         Shape::Nested => &["record_payload"],
@@ -131,7 +132,7 @@ fn expected_names(shape: Shape) -> &'static [&'static str] {
     }
 }
 
-fn tool_definition(name: &str) -> rig::completion::ToolDefinition {
+pub(super) fn tool_definition(name: &str) -> rig::completion::ToolDefinition {
     let parameters = match name {
         "ping" => json!({ "type": "object", "properties": {}, "additionalProperties": false }),
         "record_payload" => json!({
@@ -285,8 +286,8 @@ async fn run_model(client: openai::Client, cell: Cell) -> Observation {
             },
         },
         Transport::Streaming => {
-            let raw = match model.raw_stream(request(&model, cell)).await {
-                Ok(raw) => raw,
+            let mut stream = match model.stream(request(&model, cell)).await {
+                Ok(stream) => stream,
                 Err(error) => {
                     return Observation {
                         errors: vec![error.to_string()],
@@ -294,19 +295,18 @@ async fn run_model(client: openai::Client, cell: Cell) -> Observation {
                     };
                 }
             };
-            let normalized = rig::streaming::normalize_stream(raw, |terminal| {
-                Ok::<_, rig::completion::CompletionError>(("openai", terminal).into())
-            });
-            let mut stream = StreamingCompletionResponse::stream("openai", normalized);
             let mut observation = Observation::default();
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
+                    Ok(StreamEvent::BlockEnd {
+                        block: Some(AssistantContent::ToolCall(tool_call)),
+                        ..
+                    }) => {
                         observation.names.push(tool_call.function.name);
                         observation.ids.push(tool_call.id.to_string());
                         observation.arguments.push(tool_call.function.arguments);
                     }
-                    Ok(StreamedAssistantContent::Final(terminal)) => {
+                    Ok(StreamEvent::Final(terminal)) => {
                         observation.finish_reason = terminal.finish_reason;
                     }
                     Ok(_) => {}
@@ -356,10 +356,10 @@ async fn run_agent(client: openai::Client, cell: Cell) -> Observation {
         }
         Transport::Streaming => {
             let mut stream = agent
-                .stream_chat(prompt(cell.shape), Vec::<rig::completion::Message>::new())
+                .prompt(prompt(cell.shape))
+                .history(Vec::<rig::completion::Message>::new())
                 .max_turns(1)
-                .stream()
-                .await;
+                .stream();
             errors = crate::support::collect_stream_observation(&mut stream)
                 .await
                 .errors;
@@ -475,7 +475,7 @@ fn recorded_finish_and_calls(scenario: &str, transport: Transport) -> (String, V
     }
 }
 
-fn expected_arguments(shape: Shape) -> Vec<Value> {
+pub(super) fn expected_arguments(shape: Shape) -> Vec<Value> {
     match shape {
         Shape::Zero => vec![json!({})],
         Shape::Nested => {
@@ -485,7 +485,7 @@ fn expected_arguments(shape: Shape) -> Vec<Value> {
     }
 }
 
-fn assert_nonempty_distinct_ids(scenario: &str, ids: &[String]) {
+pub(super) fn assert_nonempty_distinct_ids(scenario: &str, ids: &[String]) {
     assert!(
         ids.iter().all(|id| !id.is_empty()),
         "{scenario}: every call has an id: {ids:?}"
@@ -615,7 +615,7 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
     }
 }
 
-async fn execute(scenario: &'static str, cell: Cell, observed: SharedObservation) {
+pub(super) async fn execute(scenario: &'static str, cell: Cell, observed: SharedObservation) {
     assert_cell(scenario, cell, observed);
 }
 

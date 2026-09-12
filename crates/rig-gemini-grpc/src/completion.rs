@@ -120,18 +120,6 @@ impl CompletionModel {
 
         Ok(response)
     }
-
-    /// Open a stream whose terminal record stays Gemini's own protobuf
-    /// response.
-    pub async fn raw_stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<
-        rig_core::streaming::RawStreamingResult<super::streaming::StreamingCompletionResponse>,
-        CompletionError,
-    > {
-        super::streaming::raw_stream(self.client.clone(), self.model.clone(), request).await
-    }
 }
 
 impl completion::CompletionModel for CompletionModel {
@@ -533,6 +521,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             }
         }
 
+        rig_core::message::normalize_missing_tool_call_ids(&mut assistant_contents);
         let choice = rig_core::message::require_non_empty_response(assistant_contents)?;
 
         let usage = map_usage(response.usage_metadata.as_ref());

@@ -26,7 +26,7 @@ use futures::StreamExt as _;
 use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::deepseek;
-use rig::streaming::RawStreamingChoice;
+use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::support::{
@@ -140,15 +140,15 @@ async fn run_cell(client: deepseek::Client, cell: Cell, observed: SharedObservat
             }
         }
         Transport::Streaming => {
-            let mut stream = model.raw_stream(request).await?;
+            let mut stream = model.stream(request).await?;
             let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let RawStreamingChoice::FinalResponse(response) = item? {
+                if let StreamEvent::Final(response) = item? {
                     terminal = Some(response);
                 }
             }
             let terminal = terminal.context("raw stream should carry a terminal response")?;
-            let serialized = serde_json::to_value(terminal)?;
+            let serialized = terminal.raw;
             Observation {
                 logprobs: serialized["logprobs"].clone(),
                 finish_reason: serialized["finish_reason"].clone(),

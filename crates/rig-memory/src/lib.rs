@@ -331,21 +331,11 @@ impl HeuristicTokenCounter {
         }
     }
 
-    /// Preset matching OpenAI's chat-completion token rule of thumb.
-    ///
-    /// Equivalent to [`HeuristicTokenCounter::default`].
-    pub fn openai() -> Self {
-        Self::new(4.0, 4, 256)
-    }
-
-    /// Preset tuned for Anthropic Claude's tokenizer.
+    /// Preset tuned for Anthropic Claude's tokenizer (3.5 bytes per token).
+    /// The default (4 bytes per token) is the rule of thumb for OpenAI and
+    /// Gemini alike.
     pub fn anthropic() -> Self {
         Self::new(3.5, 4, 256)
-    }
-
-    /// Preset tuned for Google Gemini.
-    pub fn gemini() -> Self {
-        Self::new(4.0, 4, 256)
     }
 
     fn bytes_to_tokens(&self, bytes: usize) -> usize {
@@ -402,8 +392,10 @@ impl HeuristicTokenCounter {
 }
 
 impl Default for HeuristicTokenCounter {
+    /// Four bytes per token, four tokens of per-message overhead, 256 per
+    /// attachment: the OpenAI/Gemini rule of thumb.
     fn default() -> Self {
-        Self::openai()
+        Self::new(4.0, 4, 256)
     }
 }
 
@@ -1249,6 +1241,7 @@ impl TemplateCompactor {
     /// `max_bytes` of `0` disables truncation (equivalent to the default
     /// unbounded behaviour). The header line plus the marker are always
     /// preserved even if they exceed the cap.
+    #[must_use = "the setting applies to the returned value"]
     pub fn with_max_bytes(mut self, max_bytes: usize) -> Self {
         self.max_bytes = if max_bytes == 0 {
             None

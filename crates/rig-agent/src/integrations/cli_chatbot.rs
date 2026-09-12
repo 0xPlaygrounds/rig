@@ -4,9 +4,9 @@ use rig_core::{
 };
 
 use crate::{
-    agent::{Agent, MultiTurnStreamItem, Text},
+    agent::{Agent, MultiTurnStreamItem},
     completion::{CompletionError, PromptError, Usage},
-    streaming::StreamedAssistantContent,
+    streaming::{Delta, StreamEvent},
 };
 use rig_core::wasm_compat::WasmCompatSend;
 
@@ -95,11 +95,10 @@ impl CliChat for AgentImpl {
     ) -> Result<String, PromptError> {
         let mut response_stream = self
             .agent
-            .stream_prompt(prompt)
+            .prompt(prompt)
             .history(history.clone())
             .max_turns(self.max_turns)
-            .stream()
-            .await;
+            .stream();
 
         let mut acc = String::new();
         let mut messages = None;
@@ -111,9 +110,10 @@ impl CliChat for AgentImpl {
             };
 
             match chunk {
-                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(
-                    Text { text, .. },
-                ))) => {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                    delta: Delta::Text { text },
+                    ..
+                })) => {
                     print!("{text}");
                     acc.push_str(&text);
                 }
@@ -124,9 +124,9 @@ impl CliChat for AgentImpl {
                         .map(<[rig_core::completion::Message]>::to_vec);
                 }
                 Err(e) => {
-                    break Err(PromptError::CompletionError(
-                        CompletionError::ResponseError(e.to_string()),
-                    ));
+                    // The stream's error is the run's error: the provider's
+                    // report, a cancel, a memory failure — not its `Display`.
+                    break Err(crate::agent::streaming_error_into_prompt(e));
                 }
                 _ => continue,
             }

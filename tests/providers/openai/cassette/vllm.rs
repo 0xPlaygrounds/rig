@@ -17,7 +17,13 @@ where
 {
     let base_url =
         std::env::var("VLLM_BASE_URL").unwrap_or_else(|_| "http://127.0.0.1:8000/v1".to_string());
-    let cassette = ProviderCassette::start("openai", scenario, &base_url).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "openai",
+        scenario,
+        &base_url,
+    )
+    .await;
     let client = openai::Client::builder()
         .api_key("dummy-vllm-key")
         .base_url(cassette.base_url())

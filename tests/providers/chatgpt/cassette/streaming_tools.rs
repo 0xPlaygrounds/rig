@@ -5,7 +5,7 @@ use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
 use rig::providers::chatgpt;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::StreamEvent;
 use serde_json::json;
 
 use super::super::support::with_chatgpt_cassette;
@@ -103,13 +103,14 @@ async fn stream_tool_call_completed_response_without_output() {
 
             while let Some(chunk) = stream.next().await {
                 match chunk.expect("stream item should be ok") {
-                    StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                        if tool_call.function.name == "ping" {
-                            assert_eq!(tool_call.function.arguments, json!({}));
-                            saw_ping_tool_call = true;
-                        }
+                    StreamEvent::BlockEnd {
+                        block: Some(AssistantContent::ToolCall(tool_call)),
+                        ..
+                    } if tool_call.function.name == "ping" => {
+                        assert_eq!(tool_call.function.arguments, json!({}));
+                        saw_ping_tool_call = true;
                     }
-                    StreamedAssistantContent::Final(response) => {
+                    StreamEvent::Final(response) => {
                         final_usage = Some(response.usage);
                     }
                     _ => {}

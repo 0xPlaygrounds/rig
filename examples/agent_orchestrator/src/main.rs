@@ -29,7 +29,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Note that you can also create your own semantic router for this
     // that uses a vector store under the hood
     let classify_agent = openai_client.extractor::<Specification>(openai::GPT_4)
-        .preamble("
+        .append_preamble("
             Analyze the given task and break it down into 2-3 distinct approaches.
 
             Provide an Analysis:
@@ -53,7 +53,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let content_agent = openai_client
         .extractor::<TaskResults>(openai::GPT_4)
-        .preamble(
+        .append_preamble(
             "
                 Generate content based on the original task, style, and guidelines.
 
@@ -80,7 +80,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let judge_agent = openai_client
         .extractor::<Specification>(openai::GPT_4)
-        .preamble(
+        .append_preamble(
             "
             Analyze the given written materials and decide the best one, giving your reasoning.
 

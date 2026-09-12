@@ -808,7 +808,7 @@ async fn streaming_native_length_fallback_drops_partial_tool_call() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_data_lines;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::StreamEvent;
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -832,8 +832,11 @@ async fn streaming_native_length_fallback_drops_partial_tool_call() {
     let mut saw_tool_call = false;
     while let Some(item) = stream.next().await {
         match item.expect("native max_tokens truncation is tolerated") {
-            StreamedAssistantContent::ToolCall { .. } => saw_tool_call = true,
-            StreamedAssistantContent::Final(final_record) => terminal = Some(final_record),
+            StreamEvent::BlockEnd {
+                block: Some(message::AssistantContent::ToolCall(_)),
+                ..
+            } => saw_tool_call = true,
+            StreamEvent::Final(final_record) => terminal = Some(final_record),
             _ => {}
         }
     }
@@ -853,7 +856,7 @@ async fn streaming_normalized_reason_wins_over_native_length() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_data_lines;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::StreamEvent;
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -877,7 +880,7 @@ async fn streaming_normalized_reason_wins_over_native_length() {
     let mut errors = Vec::new();
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::Final(final_record)) => terminal = Some(final_record),
+            Ok(StreamEvent::Final(final_record)) => terminal = Some(final_record),
             Ok(_) => {}
             Err(error) => errors.push(error.to_string()),
         }
@@ -1805,7 +1808,7 @@ async fn streaming_encrypted_reasoning_detail_reaches_the_choice_and_replays() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_data_lines;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::StreamEvent;
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -1832,7 +1835,10 @@ async fn streaming_encrypted_reasoning_detail_reaches_the_choice_and_replays() {
     let mut streamed_tool_calls = Vec::new();
     while let Some(chunk) = stream.next().await {
         match chunk.expect("stream item should be ok") {
-            StreamedAssistantContent::Reasoning { reasoning, .. } => {
+            StreamEvent::BlockEnd {
+                block: Some(message::AssistantContent::Reasoning(reasoning)),
+                ..
+            } => {
                 assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
                 assert!(matches!(
                     reasoning.content.first(),
@@ -1840,7 +1846,10 @@ async fn streaming_encrypted_reasoning_detail_reaches_the_choice_and_replays() {
                 ));
                 events.push("reasoning");
             }
-            StreamedAssistantContent::ToolCall { tool_call, .. } => {
+            StreamEvent::BlockEnd {
+                block: Some(message::AssistantContent::ToolCall(tool_call)),
+                ..
+            } => {
                 streamed_tool_calls.push(tool_call);
                 events.push("tool_call");
             }
@@ -1855,12 +1864,12 @@ async fn streaming_encrypted_reasoning_detail_reaches_the_choice_and_replays() {
     // The tool call is *not* where the blob lives: decoration by the
     // detail's own id could never match the call's id.
     let tool_call = streamed_tool_calls.first().expect("streamed tool call");
-    assert_eq!(tool_call.id, "call_1");
+    assert_eq!(tool_call.id.explicit(), Some("call_1"));
     assert!(tool_call.signature.is_none());
     assert!(tool_call.additional_params.is_none());
 
     // (a) the encrypted block reaches the aggregated choice ...
-    let choice: Vec<message::AssistantContent> = stream.choice.clone().into_iter().collect();
+    let choice: Vec<message::AssistantContent> = stream.snapshot();
     assert!(
         choice.iter().any(|content| matches!(
             content,
@@ -1875,8 +1884,7 @@ async fn streaming_encrypted_reasoning_detail_reaches_the_choice_and_replays() {
     );
 
     // ... and (b) replays into the next turn's request messages.
-    let messages =
-        assistant_contents_to_messages(stream.choice.clone()).expect("history conversion");
+    let messages = assistant_contents_to_messages(stream.snapshot()).expect("history conversion");
     let Message::Assistant {
         reasoning_details, ..
     } = messages.first().expect("assistant message")
@@ -1927,7 +1935,7 @@ async fn streaming_anthropic_reasoning_signature_reaches_choice_and_replays() {
         item.expect("signed reasoning stream item");
     }
 
-    let choice = stream.choice.clone().into_iter().collect::<Vec<_>>();
+    let choice = stream.snapshot();
     assert!(matches!(
         choice.first(),
         Some(message::AssistantContent::Reasoning(message::Reasoning { content, .. }))
@@ -1997,7 +2005,7 @@ async fn id_less_encrypted_detail_does_not_replace_open_reasoning_text() {
     let mut stream = model.stream(request).await.expect("stream should start");
     while stream.next().await.is_some() {}
 
-    let choice: Vec<message::AssistantContent> = stream.choice.clone().into_iter().collect();
+    let choice: Vec<message::AssistantContent> = stream.snapshot();
     assert!(
         choice.iter().any(|content| matches!(
             content,
@@ -2058,7 +2066,7 @@ fn id_less_encrypted_reasoning_replays_with_a_null_wire_id() {
 
     let messages = assistant_contents_to_messages(vec![message::AssistantContent::Reasoning(
         message::Reasoning {
-            id: provider_id.map(|id| id.into_string()),
+            id: provider_id,
             content: vec![content],
         },
     )])
@@ -3344,4 +3352,59 @@ fn refusal_fallback_keeps_raw_and_normalized_text_in_step() {
     let normalized = response.normalize(PROVIDER_NAME).unwrap();
 
     assert_eq!(text_parts(&normalized), vec![raw_text]);
+}
+
+/// Synthetic transcript tests required-ID request correlation without a paid call.
+#[test]
+fn full_request_preserves_typed_tool_pairs_across_turns() {
+    use crate::providers::internal::tool_call_ids::tests::{
+        adapter_requests, assert_adapter_pairs,
+    };
+    for request in adapter_requests() {
+        let wire = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "test",
+            request: request.clone(),
+            strict_tools: false,
+        })
+        .unwrap();
+        assert_adapter_pairs(serde_json::to_value(wire).unwrap());
+    }
+}
+
+/// Synthetic collision verifies derived signature references while preserving
+/// genuine reasoning IDs; a live model cannot reliably produce this history.
+#[test]
+fn request_signature_references_follow_planned_ids_only_when_derived() {
+    use crate::providers::internal::tool_call_ids::tests::adapter_request;
+    for params in [
+        None,
+        Some(json!({"format":"anthropic"})),
+        Some(json!({"id":"reasoning-real", "format":"anthropic"})),
+    ] {
+        let mut request = adapter_request();
+        let message::Message::Assistant { content, .. } = &mut request.chat_history[1] else {
+            panic!("call message");
+        };
+        let message::AssistantContent::ToolCall(call) = &mut content[0] else {
+            panic!("call content");
+        };
+        call.signature = Some("signature-exact".into());
+        call.additional_params = params.clone();
+        let wire = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "test",
+            request,
+            strict_tools: false,
+        })
+        .unwrap();
+        let wire = serde_json::to_value(wire).unwrap();
+        let call_id = &wire["messages"][1]["tool_calls"][0]["id"];
+        let detail = &wire["messages"][1]["reasoning_details"][0];
+        let explicit = params.as_ref().and_then(|params| params.get("id"));
+        assert_eq!(&detail["id"], explicit.unwrap_or(call_id));
+        assert_eq!(detail["data"], "signature-exact");
+        assert_ne!(
+            call_id.as_str().unwrap(),
+            message::ToolCallId::minted(0).wire_hint()
+        );
+    }
 }

@@ -1,0 +1,210 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Return a concise event object for a local Rust meetup in Seattle.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a concise assistant. Answer directly.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.","model":"gpt-4o","stream":true,"temperature":0.0,"tools":[{"description":"Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.","name":"final_result","parameters":{"properties":{"category":{"type":"string"},"summary":{"type":"string"},"title":{"type":"string"}},"required":["title","category","summary"],"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You are a concise assistant. Answer directly.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.","max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-2024-08-06","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.","name":"final_result","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"category":{"type":"string"},"summary":{"type":"string"},"title":{"type":"string"}},"required":["title","category","summary"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You are a concise assistant. Answer directly.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.","max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-2024-08-06","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.","name":"final_result","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"category":{"type":"string"},"summary":{"type":"string"},"title":{"type":"string"}},"required":["title","category","summary"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"final_result","status":"in_progress","type":"function_call"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_1","output_index":0,"sequence_number":3,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"title","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_2","output_index":0,"sequence_number":4,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\":\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_3","output_index":0,"sequence_number":5,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"Seattle","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_4","output_index":0,"sequence_number":6,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_5","output_index":0,"sequence_number":7,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Meetup","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_6","output_index":0,"sequence_number":8,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\",\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_7","output_index":0,"sequence_number":9,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"category","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_8","output_index":0,"sequence_number":10,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\":\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_9","output_index":0,"sequence_number":11,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"Technology","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_10","output_index":0,"sequence_number":12,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\",\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_11","output_index":0,"sequence_number":13,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"summary","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_12","output_index":0,"sequence_number":14,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\":\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_13","output_index":0,"sequence_number":15,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"Join","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_14","output_index":0,"sequence_number":16,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" fellow","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_15","output_index":0,"sequence_number":17,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_16","output_index":0,"sequence_number":18,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" enthusiasts","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_17","output_index":0,"sequence_number":19,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" in","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_18","output_index":0,"sequence_number":20,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Seattle","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_19","output_index":0,"sequence_number":21,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" for","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_20","output_index":0,"sequence_number":22,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" an","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_21","output_index":0,"sequence_number":23,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" evening","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_22","output_index":0,"sequence_number":24,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" of","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_23","output_index":0,"sequence_number":25,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" networking","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_24","output_index":0,"sequence_number":26,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_25","output_index":0,"sequence_number":27,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" discussions","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_26","output_index":0,"sequence_number":28,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_27","output_index":0,"sequence_number":29,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_28","output_index":0,"sequence_number":30,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" presentations","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_29","output_index":0,"sequence_number":31,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" on","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_30","output_index":0,"sequence_number":32,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_31","output_index":0,"sequence_number":33,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" programming","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_32","output_index":0,"sequence_number":34,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_33","output_index":0,"sequence_number":35,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Whether","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_34","output_index":0,"sequence_number":36,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" you're","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_35","output_index":0,"sequence_number":37,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" a","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_36","output_index":0,"sequence_number":38,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" seasoned","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_37","output_index":0,"sequence_number":39,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" developer","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_38","output_index":0,"sequence_number":40,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" or","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_39","output_index":0,"sequence_number":41,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" new","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_40","output_index":0,"sequence_number":42,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" to","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_41","output_index":0,"sequence_number":43,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_42","output_index":0,"sequence_number":44,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_43","output_index":0,"sequence_number":45,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" this","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_44","output_index":0,"sequence_number":46,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" meetup","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_45","output_index":0,"sequence_number":47,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" offers","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_46","output_index":0,"sequence_number":48,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" a","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_47","output_index":0,"sequence_number":49,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" great","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_48","output_index":0,"sequence_number":50,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" opportunity","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_49","output_index":0,"sequence_number":51,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" to","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_50","output_index":0,"sequence_number":52,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" learn","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_51","output_index":0,"sequence_number":53,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_52","output_index":0,"sequence_number":54,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" connect","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_53","output_index":0,"sequence_number":55,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" with","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_54","output_index":0,"sequence_number":56,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" the","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_55","output_index":0,"sequence_number":57,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" community","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_56","output_index":0,"sequence_number":58,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_57","output_index":0,"sequence_number":59,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"}","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_58","output_index":0,"sequence_number":60,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a seasoned developer or new to Rust, this meetup offers a great opportunity to learn and connect with the community.\"}","item_id":"fc_REDACTED_1","output_index":0,"sequence_number":61,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a seasoned developer or new to Rust, this meetup offers a great opportunity to learn and connect with the community.\"}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"final_result","status":"completed","type":"function_call"},"output_index":0,"sequence_number":62,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You are a concise assistant. Answer directly.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.","max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-4o-2024-08-06","moderation":null,"object":"response","output":[{"arguments":"{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"Join fellow Rust enthusiasts in Seattle for an evening of networking, discussions, and presentations on Rust programming. Whether you're a seasoned developer or new to Rust, this meetup offers a great opportunity to learn and connect with the community.\"}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"final_result","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.","name":"final_result","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"category":{"type":"string"},"summary":{"type":"string"},"title":{"type":"string"}},"required":["title","category","summary"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":138,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":68,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":206},"user":null},"sequence_number":63,"type":"response.completed"}
+

@@ -47,7 +47,7 @@ use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::internal;
-use crate::streaming::{RawStreamingChoice, RawStreamingResult, StreamFinal};
+use crate::streaming::{StreamFinal, ToolCallEnd};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
@@ -311,13 +311,17 @@ where
 
         let response = self.client.send::<_, Vec<u8>>(req).await?;
 
-        let status = response.status();
+        let (parts, body) = response.into_parts();
+        let status = parts.status;
+        let bytes: Vec<u8> = body.await?;
         if !status.is_success() {
-            let text = http_client::text(response).await?;
-            return Err(EmbeddingError::from_http_response(status, text));
+            return Err(EmbeddingError::from_http_response(
+                status,
+                String::from_utf8_lossy(&bytes),
+            )
+            .with_response_headers(Some(Box::new(parts.headers))));
         }
 
-        let bytes: Vec<u8> = response.into_body().await?;
         let api_resp: EmbeddingResponse = serde_json::from_slice(&bytes)?;
         Ok(api_resp)
     }
@@ -478,8 +482,8 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
         // and is echoed back to Ollama on the next turn (issue #1926). `choice`
         // is the only place it can live — the normalized response carries no
         // provider payload — so dropping it here would lose the reasoning
-        // entirely, unlike the streaming path (see
-        // `RawStreamingChoice::ReasoningDelta` below).
+        // entirely, unlike the streaming path (see the `thinking` reasoning
+        // deltas in `OllamaAdapter::interpret` below).
         if let Some(thinking) = thinking.as_deref().filter(|t| !t.is_empty()) {
             assistant_contents.push(completion::AssistantContent::reasoning(thinking));
         }
@@ -504,6 +508,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
                 tc.function.arguments.clone(),
             ));
         }
+        crate::message::normalize_missing_tool_call_ids(&mut assistant_contents);
         let choice = crate::message::require_non_empty_response(assistant_contents)?;
 
         Ok(
@@ -697,8 +702,9 @@ enum Level {
 
 // ---------- CompletionModel Implementation ----------
 
-/// Ollama's terminal stream record, kept provider-native for
-/// [`CompletionModel::raw_stream`].
+/// Ollama's terminal stream record: the `done: true` line's counters as rig
+/// parsed them, serialized onto [`StreamFinal::raw`] by the adapter's
+/// terminal mapping.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct StreamingCompletionResponse {
     /// Provider-reported model identifier from the terminating NDJSON line.
@@ -725,14 +731,14 @@ impl From<&StreamingCompletionResponse> for Usage {
     }
 }
 
-impl From<StreamingCompletionResponse> for StreamFinal {
-    fn from(response: StreamingCompletionResponse) -> StreamFinal {
-        // Ollama's `/api/chat` stream assigns no message identifier, so the
-        // normalized `message_id` stays unset.
-        StreamFinal::new(PROVIDER_NAME, Usage::from(&response))
-            .with_optional_finish_reason(response.done_reason.as_deref().map(map_done_reason))
-            .with_model(response.model)
-    }
+/// The adapter's terminal mapping: Ollama's `done: true` record as a
+/// normalized [`StreamFinal`] (the caller attaches `raw`).
+fn stream_final(response: StreamingCompletionResponse) -> StreamFinal {
+    // Ollama's `/api/chat` stream assigns no message identifier, so the
+    // normalized `message_id` stays unset.
+    StreamFinal::new(PROVIDER_NAME, Usage::from(&response))
+        .with_optional_finish_reason(response.done_reason.as_deref().map(map_done_reason))
+        .with_model(response.model)
 }
 
 /// Reassembles newline-delimited JSON lines from a chunked HTTP byte stream.
@@ -783,6 +789,16 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
+        self.raw_completion_observed(completion_request, None).await
+    }
+
+    /// [`Self::raw_completion`] with observation context owned by this
+    /// invocation.
+    async fn raw_completion_observed(
+        &self,
+        completion_request: CompletionRequest,
+        observation: Option<crate::observe::AdapterContext>,
+    ) -> Result<CompletionResponse, CompletionError> {
         let system_instructions = completion_request.system_instructions().map(str::to_owned);
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = OllamaCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
@@ -799,11 +815,14 @@ where
 
         let body = serde_json::to_vec(&request)?;
 
-        let req = self
+        let mut req = self
             .client
             .post("api/chat")?
             .body(body)
             .map_err(http_client::Error::from)?;
+        if let Some(observation) = observation {
+            observation.attach(&mut req, "/api/chat");
+        }
 
         let async_block = internal::completion_send::send_completion::<
             _,
@@ -825,97 +844,6 @@ where
         tracing::Instrument::instrument(async_block, span)
             .await
             .map(|(payload, _)| payload)
-    }
-
-    /// Open a stream whose terminal record stays Ollama-native.
-    ///
-    /// This is the escape hatch for Ollama's own terminal payload; it shares the
-    /// request builder, transport, telemetry, and error handling with
-    /// [`CompletionModel::stream`](completion::CompletionModel::stream), which
-    /// calls it and normalizes the terminal record once through
-    /// [`streaming::normalize_stream`] — one network request either way.
-    pub async fn raw_stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
-        let system_instructions = request.system_instructions().map(str::to_owned);
-        let record_telemetry_content = request.record_telemetry_content;
-        let mut request = OllamaCompletionRequest::try_from((self.model.as_ref(), request))?;
-        let span = CompletionSpanBuilder::new(
-            PROVIDER_NAME,
-            &request.model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
-        request.stream = true;
-
-        internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "Ollama streaming completion request",
-            &request,
-        );
-
-        let body = serde_json::to_vec(&request)?;
-
-        let req = self
-            .client
-            .post("api/chat")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        let response = self
-            .client
-            .send_streaming(req)
-            .instrument(span.clone())
-            .await?;
-        let status = response.status();
-        let mut byte_stream = response.into_body();
-
-        if !status.is_success() {
-            let mut body = Vec::new();
-            while let Some(chunk) = byte_stream.next().await {
-                match chunk {
-                    Ok(bytes) => body.extend_from_slice(&bytes),
-                    Err(e) => {
-                        tracing::warn!(error = %e, "failed reading Ollama error-response body; preserving partial body");
-                        break;
-                    }
-                }
-            }
-            return Err(CompletionError::from_http_response(
-                status,
-                String::from_utf8_lossy(&body),
-            ));
-        }
-
-        // Transport layer: HTTP byte chunks → NDJSON-line `WireFrame`s. Byte
-        // splitting and framing only — classification and policy live
-        // downstream.
-        let transport = stream! {
-            let mut line_buf = NdjsonBuffer::new();
-            while let Some(chunk) = byte_stream.next().await {
-                let bytes = match chunk {
-                    Ok(bytes) => bytes,
-                    Err(e) => {
-                        yield Err(CompletionError::from(http_client::Error::Instance(e.into())));
-                        break;
-                    }
-                };
-
-                for line in line_buf.decode(&bytes) {
-                    tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
-                    yield Ok(internal::adapter::WireFrame::Bytes(line));
-                }
-            }
-        };
-
-        let stream: RawStreamingResult<StreamingCompletionResponse> = Box::pin(
-            internal::adapter::run_wire_stream(transport, OllamaAdapter::default())
-                .instrument(span),
-        );
-
-        Ok(stream)
     }
 }
 
@@ -943,7 +871,7 @@ impl Default for OllamaAdapter {
     fn default() -> Self {
         Self {
             reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle::new(
-                crate::streaming::StreamPartId::minted(crate::streaming::MintKind::Reasoning, 0),
+                crate::streaming::MintKind::Reasoning,
             ),
             tool_ids: crate::streaming::SyntheticIds::tool(),
         }
@@ -953,7 +881,6 @@ impl Default for OllamaAdapter {
 impl internal::adapter::WireAdapter for OllamaAdapter {
     type Frame = internal::adapter::WireFrame;
     type Event = CompletionResponse;
-    type Response = StreamingCompletionResponse;
 
     fn classify(&self, frame: Self::Frame) -> internal::wire::WireEvent<CompletionResponse> {
         match frame {
@@ -969,7 +896,7 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
     fn interpret(
         &mut self,
         response: CompletionResponse,
-        out: &mut internal::adapter::AdapterOutput<Self::Response>,
+        out: &mut internal::adapter::AdapterOutput,
     ) {
         let span = tracing::Span::current();
         if response.done {
@@ -988,23 +915,22 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
             // distinct minted identity and its durable id stays absent —
             // never the tool name, which would collide two same-tool calls
             // in one turn.
-            let mut tool_events = Vec::with_capacity(tool_calls.len());
+            let mut tool_events = internal::adapter::AdapterOutput::new();
             for tool_call in tool_calls {
                 let key = match tool_call
                     .id
                     .as_deref()
-                    .and_then(crate::streaming::WireId::new)
+                    .and_then(crate::streaming::non_empty_id)
                 {
-                    Some(wire_id) => crate::streaming::StreamPartId::wire(wire_id.as_str()),
+                    Some(wire_id) => crate::streaming::BlockId::wire(wire_id.as_str()),
                     None => self.tool_ids.mint(),
                 };
-                tool_events.push(RawStreamingChoice::ToolCall(
-                    crate::streaming::RawStreamingToolCall::new(
-                        key,
-                        tool_call.function.name,
-                        tool_call.function.arguments,
-                    ),
-                ));
+                let mut end =
+                    ToolCallEnd::whole(tool_call.function.name, tool_call.function.arguments);
+                if let Some(wire_id) = key.wire_str() {
+                    end = end.with_tool_id(wire_id);
+                }
+                tool_events.tool_call(key, end);
             }
 
             // Declare what the record carried; the shared lifecycle derives
@@ -1014,7 +940,11 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
                     reasoning: thinking,
                     reasoning_signature: None,
                     text: Some(content),
-                    tool_events,
+                    tool_events: tool_events
+                        .into_items()
+                        .into_iter()
+                        .filter_map(Result::ok)
+                        .collect(),
                 },
                 out,
             );
@@ -1025,22 +955,24 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
         if response.done {
             span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
             span.record("gen_ai.usage.output_tokens", response.eval_count);
-            out.push(Ok(RawStreamingChoice::FinalResponse(
-                StreamingCompletionResponse {
-                    model: response.model,
-                    total_duration: response.total_duration,
-                    load_duration: response.load_duration,
-                    prompt_eval_count: response.prompt_eval_count,
-                    prompt_eval_duration: response.prompt_eval_duration,
-                    eval_count: response.eval_count,
-                    eval_duration: response.eval_duration,
-                    done_reason: response.done_reason,
-                },
-            )));
+            let native = StreamingCompletionResponse {
+                model: response.model,
+                total_duration: response.total_duration,
+                load_duration: response.load_duration,
+                prompt_eval_count: response.prompt_eval_count,
+                prompt_eval_duration: response.prompt_eval_duration,
+                eval_count: response.eval_count,
+                eval_duration: response.eval_duration,
+                done_reason: response.done_reason,
+            };
+            match serde_json::to_value(&native) {
+                Ok(raw) => out.final_record(stream_final(native).with_raw(raw)),
+                Err(err) => out.error(err.into()),
+            }
         }
     }
 
-    fn finish(&mut self, _out: &mut internal::adapter::AdapterOutput<Self::Response>) {
+    fn finish(&mut self, _out: &mut internal::adapter::AdapterOutput) {
         // EOF without a `done: true` record is truncation: no terminal record
         // may be synthesized.
     }
@@ -1054,26 +986,152 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Capture before `try_into` consumes the raw value.
-        let raw = self.raw_completion(completion_request).await?;
-        let captured = serde_json::to_value(&raw)?;
-        let response: completion::CompletionResponse = raw.try_into()?;
-        Ok(response.with_raw(captured))
+        self.completion_with_context(completion_request, None).await
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let stream = self.raw_stream(request).await?;
-        let normalized =
-            streaming::normalize_stream(stream, |response: StreamingCompletionResponse| {
-                Ok(response.into())
-            });
+        self.stream_with_context(request, None).await
+    }
+
+    async fn completion_with_context(
+        &self,
+        completion_request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        // Capture before `try_into` consumes the raw value.
+        let raw = self
+            .raw_completion_observed(completion_request, context)
+            .await?;
+        let captured = serde_json::to_value(&raw)?;
+        let response: completion::CompletionResponse = raw.try_into()?;
+        Ok(response.with_raw(captured))
+    }
+
+    async fn stream_with_context(
+        &self,
+        request: CompletionRequest,
+        observation: Option<crate::observe::AdapterContext>,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let system_instructions = request.system_instructions().map(str::to_owned);
+        let record_telemetry_content = request.record_telemetry_content;
+        let mut request = OllamaCompletionRequest::try_from((self.model.as_ref(), request))?;
+        let span = CompletionSpanBuilder::new(
+            PROVIDER_NAME,
+            &request.model,
+            CompletionOperation::ChatStreaming,
+        )
+        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
+        .build();
+        request.stream = true;
+
+        internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "Ollama streaming completion request",
+            &request,
+        );
+
+        let body = serde_json::to_vec(&request)?;
+
+        let mut req = self
+            .client
+            .post("api/chat")?
+            .body(body)
+            .map_err(http_client::Error::from)?;
+        if let Some(observation) = observation {
+            observation.attach(&mut req, "/api/chat");
+        }
+        // This wire is NDJSON over a plain streaming response, not SSE, so
+        // the transport boundary is observed here rather than by the shared
+        // event source: the request, the response, each frame's bytes, and
+        // the closure the frame driver records. No payload projector is
+        // attached yet, and the SSE slot's frame tail is not fed, so EOF
+        // after a partial final line reports `Eof`, not `PartialFrame`.
+        let observation = crate::observe::AdapterContext::slot_for_request(&req);
+        if let Some(observation) = &observation {
+            observation.start(&req);
+        }
+
+        let response = match self
+            .client
+            .send_streaming(req)
+            .instrument(span.clone())
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                let error = CompletionError::from_transport_error(error);
+                if let Some(observation) = &observation {
+                    observation.fail(&error);
+                }
+                return Err(error);
+            }
+        };
+        let (parts, mut byte_stream) = response.into_parts();
+        let status = parts.status;
+        if let Some(observation) = &observation {
+            observation.response_with_headers(status, Some(&parts.headers));
+        }
+
+        if !status.is_success() {
+            let mut body = Vec::new();
+            while let Some(chunk) = byte_stream.next().await {
+                match chunk {
+                    Ok(bytes) => body.extend_from_slice(&bytes),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "failed reading Ollama error-response body; preserving partial body");
+                        break;
+                    }
+                }
+            }
+            let error = CompletionError::from_http_response(status, String::from_utf8_lossy(&body))
+                .with_response_headers(Some(Box::new(parts.headers)));
+            if let Some(observation) = &observation {
+                observation.payload(&body);
+                observation.fail(&error);
+            }
+            return Err(error);
+        }
+
+        // Transport layer: HTTP byte chunks → NDJSON-line `WireFrame`s. Byte
+        // splitting and framing only — classification and policy live
+        // downstream.
+        let frame_observation = observation.clone();
+        let transport = stream! {
+            let mut line_buf = NdjsonBuffer::new();
+            while let Some(chunk) = byte_stream.next().await {
+                let bytes = match chunk {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        yield Err(CompletionError::from(http_client::Error::Instance(e.into())));
+                        break;
+                    }
+                };
+
+                for line in line_buf.decode(&bytes) {
+                    tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
+                    if let Some(observation) = &frame_observation {
+                        observation.payload(&line);
+                    }
+                    yield Ok(internal::adapter::WireFrame::Bytes(line));
+                }
+            }
+        };
+
+        let stream: streaming::StreamingResult = Box::pin(
+            internal::adapter::run_wire_stream_observed(
+                transport,
+                OllamaAdapter::default(),
+                observation,
+            )
+            .instrument(span),
+        );
 
         Ok(streaming::StreamingCompletionResponse::stream(
             PROVIDER_NAME,
-            normalized,
+            stream,
         ))
     }
 }
@@ -1436,6 +1494,7 @@ impl From<Message> for crate::completion::Message {
                         ),
                     );
                 }
+                crate::message::normalize_missing_tool_call_ids(&mut assistant_contents);
                 crate::completion::Message::Assistant {
                     id: None,
                     content: assistant_contents,

@@ -228,7 +228,7 @@ async fn completion_http_non_success_preserves_status_and_body() {
             .await
             .expect_err("completion should fail with non-success status");
 
-        assert!(matches!(&error, CompletionError::HttpError(_)));
+        assert!(matches!(&error, CompletionError::ProviderResponse(_)));
         assert_eq!(error.provider_response_status(), Some(status));
         assert_eq!(error.provider_response_body(), Some(body));
         assert!(

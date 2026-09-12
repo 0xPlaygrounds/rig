@@ -191,7 +191,7 @@ fn test_get_tool_definitions() {
 fn test_tool_deletion() {
     let mut toolset = get_test_toolset();
     assert_eq!(toolset.len(), 2);
-    toolset.delete_tool("add");
+    toolset.remove_tool("add");
     assert!(!toolset.contains("add"));
     assert_eq!(toolset.len(), 1);
     assert_eq!(
@@ -202,7 +202,7 @@ fn test_tool_deletion() {
 
 #[test]
 fn deleting_a_middle_tool_preserves_order_of_survivors() {
-    // Guards the `shift_remove` (not `swap_remove`) choice in `delete_tool`.
+    // Guards the `shift_remove` (not `swap_remove`) choice in `remove_tool`.
     // `swap_remove` would move the last tool into the deleted slot, so this
     // only catches a regression with 3+ tools and a non-last deletion: here
     // a `swap_remove("beta")` would yield [alpha, delta, gamma].
@@ -211,7 +211,7 @@ fn deleting_a_middle_tool_preserves_order_of_survivors() {
         toolset.add_dynamic_tool(named_tool(name, "test tool"));
     }
 
-    toolset.delete_tool("beta");
+    toolset.remove_tool("beta");
 
     assert_eq!(
         toolset.names().map(str::to_owned).collect::<Vec<_>>(),
@@ -352,7 +352,9 @@ fn retrieved_tool_schemas_use_canonical_name() {
     }
 
     let mut toolset = ToolSet::default();
-    toolset.add_retrieved_tool(RetrievedTool);
+    toolset
+        .add_retrieved_tool(RetrievedTool)
+        .expect("the tool context serializes");
 
     let schemas = toolset.schemas().unwrap();
     assert_eq!(schemas.len(), 1);
@@ -365,7 +367,9 @@ async fn portable_embedding_tool_uses_classic_retrieval_without_schema_drift() {
     let tool = PortableEmbeddingFixture::new("shared");
     let portable_schema = ToolSchema::try_from(&tool).unwrap();
     let mut toolset = ToolSet::default();
-    toolset.add_retrieved_tool(tool);
+    toolset
+        .add_retrieved_tool(tool)
+        .expect("the tool context serializes");
 
     let schemas = toolset.schemas().unwrap();
     assert_eq!(schemas.len(), 1);

@@ -16,7 +16,13 @@ use crate::cassettes::DirectRecordingHttpClient;
 const VENICE_BASE_URL: &str = venice::VENICE_API_BASE_URL;
 
 async fn venice_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, venice::Client) {
-    let cassette = ProviderCassette::start("venice", spec, VENICE_BASE_URL).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "venice",
+        spec,
+        VENICE_BASE_URL,
+    )
+    .await;
     let client = venice::Client::builder()
         .api_key(cassette.api_key("VENICE_API_KEY"))
         .base_url(cassette.base_url())
@@ -44,7 +50,14 @@ where
     F: FnOnce(venice::Client<DirectRecordingHttpClient>) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start_direct_recording("venice", spec, VENICE_BASE_URL).await;
+    let cassette = ProviderCassette::start_via(
+        rig_cassette::Transport::Direct,
+        &crate::cassettes::cassette_root(),
+        "venice",
+        spec,
+        VENICE_BASE_URL,
+    )
+    .await;
     let http_client = DirectRecordingHttpClient::new(cassette.direct_recorder());
     let client = venice::Client::builder()
         .api_key(cassette.api_key("VENICE_API_KEY"))

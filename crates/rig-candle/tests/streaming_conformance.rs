@@ -1,19 +1,19 @@
 //! Wire-conformance suite for candle's in-process typed-event wire.
 //!
 //! Events-first (`WireInput::Event`): fixture frames are already-typed
-//! canonical-grammar events driven through [`rig_candle::stream_from_events`]
+//! generation events driven through [`rig_candle::stream_from_events`]
 //! — the shared driver, grammar, and terminal normalization — with no model
 //! load. This family never produces `Unknown` and has no frame-level decode,
 //! so the malformed/unknown scenarios self-report as skipped.
 
-use rig_candle::{CandleCompletionResponse, FinishReason as CandleFinishReason};
+use rig_candle::{CandleCompletionResponse, FinishReason as CandleFinishReason, GenerationEvent};
 use rig_core::completion::{CompletionError, FinishReason};
-use rig_core::streaming::{RawStreamingChoice, RawStreamingToolCall};
+use rig_core::streaming::{BlockId, ToolCallEnd};
 use rig_core::test_utils::streaming_conformance::{
     ProviderWireFixture, WireDriver, event_frame, fixtures::drain,
 };
 
-type CandleEvent = RawStreamingChoice<CandleCompletionResponse>;
+type CandleEvent = GenerationEvent;
 
 fn driver() -> WireDriver {
     WireDriver::new("candle", |chunks| {
@@ -56,24 +56,22 @@ fn terminal_response() -> CandleCompletionResponse {
 fn fixture() -> ProviderWireFixture {
     ProviderWireFixture {
         driver: driver(),
-        text_frames: vec![event_frame::<CandleEvent>(RawStreamingChoice::Message(
+        text_frames: vec![event_frame::<CandleEvent>(GenerationEvent::Text(
             "hi".to_string(),
         ))],
         expected_texts: vec!["hi"],
-        tool_call_frames: vec![event_frame::<CandleEvent>(RawStreamingChoice::ToolCall(
-            RawStreamingToolCall::new(
-                "call_1".to_string(),
-                "get_weather".to_string(),
-                serde_json::json!({"city": "Tokyo"}),
-            ),
-        ))],
+        tool_call_frames: vec![event_frame::<CandleEvent>(GenerationEvent::ToolCall {
+            id: BlockId::wire("call_1"),
+            end: ToolCallEnd::whole("get_weather", serde_json::json!({"city": "Tokyo"}))
+                .with_tool_id("call_1"),
+        })],
         expected_tool_name: "get_weather",
         // Local generation delivers tool calls whole after the buffered turn
         // is parsed; arguments never stream.
         partial_tool_call_frames: None,
-        terminal_frames: vec![event_frame::<CandleEvent>(
-            RawStreamingChoice::FinalResponse(terminal_response()),
-        )],
+        terminal_frames: vec![event_frame::<CandleEvent>(GenerationEvent::Final(
+            terminal_response(),
+        ))],
         // prompt 10 + generated 5.
         expected_usage_total: 15,
         expected_finish_reason: Some(FinishReason::Stop),

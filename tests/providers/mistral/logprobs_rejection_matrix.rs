@@ -70,16 +70,19 @@ async fn run_cell(client: mistral::Client, cell: Cell, observed: SharedError) ->
         .max_tokens(8)
         .build();
 
+    // The blocking path fails with the provider's `CompletionError`; a stream
+    // fails in-band with the `ErrorReport` it was mapped to. Both display the
+    // preserved Mistral body, which is what the matrix asserts on.
     let error = match cell.transport {
         Transport::Blocking => match model.raw_completion(request).await {
             Ok(_) => bail!("Mistral unexpectedly accepted blocking logprobs"),
-            Err(error) => error,
+            Err(error) => error.to_string(),
         },
-        Transport::Streaming => match model.raw_stream(request).await {
-            Err(error) => error,
+        Transport::Streaming => match model.stream(request).await {
+            Err(error) => error.to_string(),
             Ok(mut stream) => loop {
                 match stream.next().await {
-                    Some(Err(error)) => break error,
+                    Some(Err(error)) => break error.to_string(),
                     Some(Ok(_)) => continue,
                     None => bail!("Mistral stream ended without rejecting logprobs"),
                 }
@@ -87,7 +90,7 @@ async fn run_cell(client: mistral::Client, cell: Cell, observed: SharedError) ->
         },
     };
 
-    *observed.lock().expect("error observation mutex poisoned") = Some(error.to_string());
+    *observed.lock().expect("error observation mutex poisoned") = Some(error);
     Ok(())
 }
 

@@ -7,6 +7,7 @@ mod http;
 pub(crate) mod internal_streaming_profiles;
 mod memory;
 mod model_listing;
+pub mod observations;
 mod streaming;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub mod streaming_conformance;

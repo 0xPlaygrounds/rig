@@ -25,7 +25,7 @@ use rig::agent::MultiTurnStreamItem;
 use rig::completion::Usage;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -102,27 +102,26 @@ async fn main() -> Result<()> {
         .build();
 
     let mut stream = agent
-        .stream_prompt("Check ticket RIG-usage-42 and summarize the result in one sentence.")
+        .prompt("Check ticket RIG-usage-42 and summarize the result in one sentence.")
         .max_turns(4)
-        .stream()
-        .await;
+        .stream();
 
     let mut final_response = None;
     let mut printed_streamed_text = false;
 
     while let Some(item) = stream.next().await {
         match item? {
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text)) => {
-                print!("{}", text.text);
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            }) => {
+                print!("{text}");
                 io::stdout().flush()?;
                 printed_streamed_text = true;
             }
             // The tool call the *model emitted* (reported when the turn commits,
             // whether or not rig goes on to execute it).
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
-                tool_call,
-                ..
-            }) => {
+            MultiTurnStreamItem::ToolCall { tool_call, .. } => {
                 println!("\n\nmodel requested tool: {}", tool_call.function.name);
             }
             // Rig executed and atomically committed this tool call after its

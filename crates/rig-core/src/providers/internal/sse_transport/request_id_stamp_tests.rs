@@ -1,7 +1,7 @@
 use super::*;
 use crate::completion::CompletionError;
 use crate::provider_response::ProviderResponseError;
-use crate::streaming::RawStreamingChoice;
+use crate::streaming::{BlockId, MintKind, StreamEvent};
 
 /// rig#2314: an in-band provider error envelope yielded as a stream error
 /// item is stamped with the delivering connection's request id; other
@@ -11,21 +11,23 @@ async fn stamps_provider_response_stream_errors_from_the_slot() {
     let slot = crate::http_client::sse::RequestIdSlot::default();
     *slot.lock().expect("slot") = Some("req_conn_1".to_string());
 
-    let stream: crate::streaming::RawStreamingResult<String> =
-        Box::pin(futures::stream::iter(vec![
-            Ok(RawStreamingChoice::Message("hi".to_string())),
-            Err(CompletionError::ProviderResponse(
-                ProviderResponseError::new(http::StatusCode::OK, r#"{"type":"error"}"#),
-            )),
-            Err(CompletionError::ResponseError("unrelated".to_string())),
-        ]));
+    let stream: crate::streaming::StreamingResult = Box::pin(futures::stream::iter(vec![
+        Ok(StreamEvent::text(BlockId::minted(MintKind::Text, 0), "hi")),
+        Err(CompletionError::ProviderResponse(
+            ProviderResponseError::new(http::StatusCode::OK, r#"{"type":"error"}"#),
+        )),
+        Err(CompletionError::ResponseError("unrelated".to_string())),
+    ]));
 
-    let stamped = stamp_terminal_request_id(stream, Some(slot), None, |_, _| {});
+    let stamped = stamp_terminal_request_id(stream, Some(slot), None);
     let items: Vec<_> = stamped.collect().await;
 
     assert!(matches!(
         &items[0],
-        Ok(RawStreamingChoice::Message(text)) if text == "hi"
+        Ok(StreamEvent::BlockDelta {
+            delta: crate::streaming::Delta::Text { text },
+            ..
+        }) if text == "hi"
     ));
     match &items[1] {
         Err(error) => {
@@ -39,27 +41,27 @@ async fn stamps_provider_response_stream_errors_from_the_slot() {
     }
 }
 
-/// rig#2315 follow-up: a failed SSE handshake (details-preserving
-/// transport error) classifies like the unary driver for contract
-/// providers — ProviderResponse carrying the failed response's own id.
+/// rig#2315 follow-up: a failed SSE handshake arrives through the one
+/// funnel as a ProviderResponse with the handshake's headers; the stamp
+/// reads the failed response's own id off them.
 #[tokio::test]
 async fn handshake_details_error_classifies_with_contract() {
     let mut headers = http::HeaderMap::new();
     headers.insert("x-request-id", "req_handshake".parse().expect("value"));
-    let stream: crate::streaming::RawStreamingResult<String> =
-        Box::pin(futures::stream::iter(vec![Err(
-            CompletionError::HttpError(crate::http_client::Error::InvalidStatusCodeWithDetails {
+    let stream: crate::streaming::StreamingResult = Box::pin(futures::stream::iter(vec![Err(
+        CompletionError::from_transport_error(
+            crate::http_client::Error::InvalidStatusCodeWithDetails {
                 status: http::StatusCode::NOT_FOUND,
                 body: r#"{"error":"no model"}"#.to_string(),
                 headers: Box::new(headers),
-            }),
-        )]));
+            },
+        ),
+    )]));
 
     let stamped = stamp_terminal_request_id(
         stream,
         Some(crate::http_client::sse::RequestIdSlot::default()),
         Some("x-request-id"),
-        |_, _| {},
     );
     let items: Vec<_> = stamped.collect().await;
     match &items[0] {
@@ -85,20 +87,20 @@ async fn handshake_details_error_preserves_rate_limit_headers() {
     headers.insert("x-request-id", "req_handshake".parse().expect("value"));
     headers.insert("retry-after", "20".parse().expect("value"));
     headers.insert("x-ratelimit-remaining", "0".parse().expect("value"));
-    let stream: crate::streaming::RawStreamingResult<String> =
-        Box::pin(futures::stream::iter(vec![Err(
-            CompletionError::HttpError(crate::http_client::Error::InvalidStatusCodeWithDetails {
+    let stream: crate::streaming::StreamingResult = Box::pin(futures::stream::iter(vec![Err(
+        CompletionError::from_transport_error(
+            crate::http_client::Error::InvalidStatusCodeWithDetails {
                 status: http::StatusCode::TOO_MANY_REQUESTS,
                 body: r#"{"error":"slow down"}"#.to_string(),
                 headers: Box::new(headers),
-            }),
-        )]));
+            },
+        ),
+    )]));
 
     let stamped = stamp_terminal_request_id(
         stream,
         Some(crate::http_client::sse::RequestIdSlot::default()),
         Some("x-request-id"),
-        |_, _| {},
     );
     let items: Vec<_> = stamped.collect().await;
     match &items[0] {

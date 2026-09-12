@@ -1,158 +1,207 @@
 use super::*;
 
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+struct Num(u32);
+impl ContextValue for Num {
+    const KEY: &'static str = "test.num";
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+struct Greeting(String);
+impl ContextValue for Greeting {
+    const KEY: &'static str = "test.greeting";
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+struct Bytes(Vec<u8>);
+impl ContextValue for Bytes {
+    const KEY: &'static str = "test.bytes";
+}
+
 #[test]
 fn insert_and_get_returns_value() {
     let mut c = ToolContext::new();
-    assert_eq!(c.insert(42u32), None);
-    assert_eq!(c.get::<u32>(), Some(&42));
+    assert_eq!(c.insert(Num(42)).unwrap(), None);
+    assert_eq!(c.get::<Num>().unwrap(), Some(Num(42)));
 }
 #[test]
 fn get_missing_type_returns_none() {
-    assert_eq!(ToolContext::new().get::<u32>(), None);
+    assert_eq!(ToolContext::new().get::<Num>().unwrap(), None);
 }
 #[test]
 fn insert_overwrites_and_returns_previous() {
     let mut c = ToolContext::new();
-    c.insert(1u32);
-    assert_eq!(c.insert(2u32), Some(1));
-    assert_eq!(c.get::<u32>(), Some(&2));
+    c.insert(Num(1)).unwrap();
+    assert_eq!(c.insert(Num(2)).unwrap(), Some(Num(1)));
+    assert_eq!(c.get::<Num>().unwrap(), Some(Num(2)));
 }
 #[test]
 fn different_types_are_independent() {
     let mut c = ToolContext::new();
-    c.insert(42u32);
-    c.insert("hello".to_string());
-    assert_eq!(c.get::<u32>(), Some(&42));
-    assert_eq!(c.get::<String>().map(String::as_str), Some("hello"));
+    c.insert(Num(42)).unwrap();
+    c.insert(Greeting("hello".to_string())).unwrap();
+    assert_eq!(c.get::<Num>().unwrap(), Some(Num(42)));
+    assert_eq!(
+        c.get::<Greeting>().unwrap(),
+        Some(Greeting("hello".to_string()))
+    );
 }
 #[test]
 fn contains_tracks_types() {
     let mut c = ToolContext::new();
-    c.insert(42u32);
-    assert!(c.contains::<u32>());
-    assert!(!c.contains::<String>());
+    c.insert(Num(42)).unwrap();
+    assert!(c.contains::<Num>());
+    assert!(!c.contains::<Greeting>());
 }
 #[test]
 fn clone_produces_independent_copy() {
     let mut c = ToolContext::new();
-    c.insert(42u32);
+    c.insert(Num(42)).unwrap();
     let mut clone = c.clone();
-    clone.insert(99u32);
-    assert_eq!(c.get::<u32>(), Some(&42));
-    assert_eq!(clone.get::<u32>(), Some(&99));
+    clone.insert(Num(99)).unwrap();
+    assert_eq!(c.get::<Num>().unwrap(), Some(Num(42)));
+    assert_eq!(clone.get::<Num>().unwrap(), Some(Num(99)));
 }
 #[test]
 fn clone_deep_copies_heap_values() {
     let mut c = ToolContext::new();
-    c.insert(vec![1u8, 2, 3]);
+    c.insert(Bytes(vec![1u8, 2, 3])).unwrap();
     let mut clone = c.clone();
-    clone.get_mut::<Vec<u8>>().unwrap().push(4);
-    assert_eq!(c.get::<Vec<u8>>(), Some(&vec![1, 2, 3]));
-    assert_eq!(clone.get::<Vec<u8>>(), Some(&vec![1, 2, 3, 4]));
+    let mut bytes = clone.remove::<Bytes>().unwrap().unwrap();
+    bytes.0.push(4);
+    clone.insert(bytes).unwrap();
+    assert_eq!(c.get::<Bytes>().unwrap(), Some(Bytes(vec![1, 2, 3])));
+    assert_eq!(clone.get::<Bytes>().unwrap(), Some(Bytes(vec![1, 2, 3, 4])));
 }
 #[test]
-fn clone_preserves_intentionally_shared_value_state() {
-    let shared = std::sync::Arc::new(std::sync::Mutex::new(1_u32));
-    let mut context = ToolContext::new();
-    context.insert(shared.clone());
-
-    let snapshot = context.for_dispatch();
-    *snapshot
-        .get::<std::sync::Arc<std::sync::Mutex<u32>>>()
-        .expect("shared value")
-        .lock()
-        .expect("shared value lock") = 2;
-
-    assert_eq!(*shared.lock().expect("shared value lock"), 2);
-    assert!(context.contains::<std::sync::Arc<std::sync::Mutex<u32>>>());
-}
-#[test]
-fn empty_context_is_default_and_allocation_free() {
+fn empty_context_is_default_and_serializes_empty() {
     let c = ToolContext::default();
-    assert!(!c.contains::<u32>());
-    assert!(c.inbound.map.is_none());
-    assert!(c.result.map.is_none());
+    assert!(!c.contains::<Num>());
+    assert!(c.is_empty());
+    assert_eq!(serde_json::to_value(&c).unwrap(), serde_json::json!({}));
 }
 #[test]
-fn get_mut_modifies_in_place() {
+fn reinsert_replaces_in_place() {
     let mut c = ToolContext::new();
-    c.insert(42u32);
-    *c.get_mut::<u32>().unwrap() = 99;
-    assert_eq!(c.get::<u32>(), Some(&99));
+    c.insert(Num(42)).unwrap();
+    assert_eq!(c.insert(Num(99)).unwrap(), Some(Num(42)));
+    assert_eq!(c.get::<Num>().unwrap(), Some(Num(99)));
 }
 #[test]
 fn remove_returns_value_and_clears_entry() {
     let mut c = ToolContext::new();
-    c.insert(42u32);
-    assert_eq!(c.remove::<u32>(), Some(42));
-    assert!(!c.contains::<u32>());
+    c.insert(Num(42)).unwrap();
+    assert_eq!(c.remove::<Num>().unwrap(), Some(Num(42)));
+    assert!(!c.contains::<Num>());
 }
 #[test]
 fn remove_missing_type_returns_none() {
-    assert_eq!(ToolContext::new().remove::<u32>(), None);
+    assert_eq!(ToolContext::new().remove::<Num>().unwrap(), None);
 }
 #[test]
 fn require_present_returns_value() {
     let mut c = ToolContext::new();
-    c.insert(42u32);
-    assert_eq!(c.require::<u32>().copied(), Ok(42));
+    c.insert(Num(42)).unwrap();
+    assert_eq!(c.require::<Num>(), Ok(Num(42)));
 }
 #[test]
-fn require_missing_names_type() {
-    let e = ToolContext::new().require::<u32>().unwrap_err();
-    assert!(e.to_string().contains("u32"));
+fn require_missing_names_key() {
+    let e = ToolContext::new().require::<Num>().unwrap_err();
+    assert_eq!(e, ToolContextError::Missing(Num::KEY));
+    assert!(e.to_string().contains("`test.num`"));
 }
 #[test]
 fn result_metadata_round_trips_and_requires() {
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(Serialize, Deserialize, Debug, PartialEq)]
     struct Id(u32);
+    impl ContextValue for Id {
+        const KEY: &'static str = "test.id";
+    }
     let mut c = ToolContext::new();
-    c.insert_result(Id(7));
-    assert_eq!(c.result::<Id>(), Some(&Id(7)));
-    assert_eq!(c.require_result::<Id>(), Ok(&Id(7)));
-    assert!(c.get::<Id>().is_none());
+    c.insert_result(Id(7)).unwrap();
+    assert_eq!(c.result::<Id>().unwrap(), Some(Id(7)));
+    assert_eq!(c.require_result::<Id>(), Ok(Id(7)));
+    assert_eq!(c.get::<Id>().unwrap(), None);
 }
 #[test]
-fn debug_reports_types_without_values() {
-    #[derive(Clone)]
-    struct Secret(&'static str);
+fn debug_reports_keys_without_values() {
+    #[derive(Serialize, Deserialize)]
+    struct Secret(String);
+    impl ContextValue for Secret {
+        const KEY: &'static str = "test.secret";
+    }
     let mut c = ToolContext::new();
-    c.insert(42u32);
-    c.insert_result(Secret("do-not-print"));
+    c.insert(Num(42)).unwrap();
+    c.insert_result(Secret("do-not-print".to_string())).unwrap();
     let d = format!("{c:?}");
-    assert!(d.contains("u32"));
-    assert!(d.contains("Secret"));
+    assert!(d.contains(Num::KEY));
+    assert!(d.contains(Secret::KEY));
     assert!(!d.contains("do-not-print"));
-    assert_eq!(c.result::<Secret>().map(|s| s.0), Some("do-not-print"));
+    assert_eq!(
+        c.result::<Secret>().unwrap().map(|s| s.0).as_deref(),
+        Some("do-not-print")
+    );
 }
 #[test]
 fn dispatch_snapshot_isolates_inbound_and_publishes_only_result_metadata() {
     let mut c = ToolContext::new();
-    c.insert(7u32);
-    c.insert_result("old".to_string());
+    c.insert(Num(7)).unwrap();
+    c.insert_result(Greeting("old".to_string())).unwrap();
     let mut d = c.for_dispatch();
-    assert_eq!(d.get::<u32>(), Some(&7));
-    assert!(d.result::<String>().is_none());
-    *d.get_mut::<u32>().expect("snapshot value") = 8;
-    d.insert_result("new".to_string());
+    assert_eq!(d.get::<Num>().unwrap(), Some(Num(7)));
+    assert_eq!(d.result::<Greeting>().unwrap(), None);
+    d.insert(Num(8)).unwrap();
+    d.insert_result(Greeting("new".to_string())).unwrap();
 
     c.accept_dispatch_result(d);
-    assert_eq!(c.get::<u32>(), Some(&7));
-    assert_eq!(c.result::<String>().map(String::as_str), Some("new"));
+    assert_eq!(c.get::<Num>().unwrap(), Some(Num(7)));
+    assert_eq!(
+        c.result::<Greeting>().unwrap(),
+        Some(Greeting("new".to_string()))
+    );
 }
 #[test]
-fn many_distinct_types_round_trip_through_type_id_hasher() {
-    #[derive(Clone, PartialEq, Debug)]
+fn many_distinct_types_round_trip() {
+    #[derive(Serialize, Deserialize, PartialEq, Debug)]
     struct A(u8);
-    #[derive(Clone, PartialEq, Debug)]
+    impl ContextValue for A {
+        const KEY: &'static str = "test.a";
+    }
+    #[derive(Serialize, Deserialize, PartialEq, Debug)]
     struct B(u16);
+    impl ContextValue for B {
+        const KEY: &'static str = "test.b";
+    }
     let mut c = ToolContext::new();
-    c.insert(A(1));
-    c.insert(B(2));
-    c.insert(3u32);
-    c.insert("four".to_string());
-    assert_eq!(c.get::<A>(), Some(&A(1)));
-    assert_eq!(c.get::<B>(), Some(&B(2)));
-    assert_eq!(c.get::<u32>(), Some(&3));
-    assert_eq!(c.get::<String>().map(String::as_str), Some("four"));
+    c.insert(A(1)).unwrap();
+    c.insert(B(2)).unwrap();
+    c.insert(Num(3)).unwrap();
+    c.insert(Greeting("four".to_string())).unwrap();
+    assert_eq!(c.get::<A>().unwrap(), Some(A(1)));
+    assert_eq!(c.get::<B>().unwrap(), Some(B(2)));
+    assert_eq!(c.get::<Num>().unwrap(), Some(Num(3)));
+    assert_eq!(
+        c.get::<Greeting>().unwrap(),
+        Some(Greeting("four".to_string()))
+    );
+}
+#[test]
+fn unencodable_value_is_an_error_not_a_panic() {
+    // A map with non-string keys has no JSON form.
+    #[derive(Serialize, Deserialize, Debug)]
+    struct TupleKeyed(std::collections::HashMap<(u8, u8), u8>);
+    impl ContextValue for TupleKeyed {
+        const KEY: &'static str = "test.tuple_keyed";
+    }
+    let mut c = ToolContext::new();
+    let value = TupleKeyed([((1, 2), 3)].into_iter().collect());
+    let err = c.insert(value).unwrap_err();
+    assert!(matches!(
+        err,
+        ToolContextError::Encode {
+            key: TupleKeyed::KEY,
+            ..
+        }
+    ));
+    assert!(!c.contains::<TupleKeyed>());
 }

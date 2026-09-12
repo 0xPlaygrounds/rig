@@ -8,7 +8,7 @@ use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
-use rig::streaming::{StreamFinal, StreamedAssistantContent};
+use rig::streaming::{Delta, StreamEvent, StreamFinal};
 
 use crate::support::{
     STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
@@ -37,7 +37,7 @@ async fn streaming_smoke() {
             )
             .build();
 
-        let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
+        let mut stream = agent.prompt(STREAMING_PROMPT).stream();
         let (response, provider_final): (_, StreamFinal) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await
@@ -71,9 +71,8 @@ async fn example_streaming_prompt() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("When and where and what type is the next solar eclipse?")
-                .stream()
-                .await;
+                .prompt("When and where and what type is the next solar eclipse?")
+                .stream();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming prompt should succeed");
@@ -101,8 +100,11 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
             let mut final_response_count = 0;
             while let Some(chunk) = stream.next().await {
                 match chunk.expect("stream chunk should succeed") {
-                    StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
-                    StreamedAssistantContent::Final(response) => {
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text: delta },
+                        ..
+                    } => text.push_str(&delta),
+                    StreamEvent::Final(response) => {
                         final_response_count += 1;
                         final_response = Some(response);
                     }
@@ -152,8 +154,11 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
             let mut final_response_count = 0;
             while let Some(chunk) = stream.next().await {
                 match chunk.expect("stream chunk should succeed") {
-                    StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
-                    StreamedAssistantContent::Final(response) => {
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text: delta },
+                        ..
+                    } => text.push_str(&delta),
+                    StreamEvent::Final(response) => {
                         final_response_count += 1;
                         final_response = Some(response);
                     }

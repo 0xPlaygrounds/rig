@@ -1,0 +1,18 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"temperature":0.0}'
+then:
+  status: 401
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"message":"API key is invalid.","type":"authentication_error"},"request_id":null,"type":"error"}'

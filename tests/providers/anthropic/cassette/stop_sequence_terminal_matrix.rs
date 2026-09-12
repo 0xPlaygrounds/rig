@@ -71,7 +71,7 @@ use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
-use rig::streaming::RawStreamingChoice;
+use rig::streaming::StreamEvent;
 use serde_json::json;
 
 use super::super::support::with_anthropic_stop_sequence_cassette;
@@ -80,7 +80,7 @@ type AnthropicModel = anthropic::CompletionModel;
 
 /// Emits `alpha`, `bravo`, `charlie`, `delta` on separate lines, so a stop
 /// sequence naming any of them cuts the turn at a known point.
-const LIST_PROMPT: &str =
+pub(super) const LIST_PROMPT: &str =
     "Repeat exactly these four words, one per line, and nothing else: alpha bravo charlie delta";
 /// The same four words on one line, so a sequence may span a space.
 const LINE_PROMPT: &str =
@@ -122,18 +122,17 @@ async fn raw_terminal(
     request: CompletionRequest,
 ) -> StreamingCompletionResponse {
     let mut stream = model
-        .raw_stream(request)
+        .stream(request)
         .await
         .expect("stop-sequence stream should open");
     let mut terminal = None;
     while let Some(item) = stream.next().await {
-        if let RawStreamingChoice::FinalResponse(record) =
-            item.expect("stream item should not error")
-        {
+        if let StreamEvent::Final(record) = item.expect("stream item should not error") {
             terminal = Some(record);
         }
     }
-    terminal.expect("stream should yield a terminal record")
+    let record = terminal.expect("stream should yield a terminal record");
+    serde_json::from_value(record.raw).expect("the terminal's raw is the provider record")
 }
 
 /// Assert the terminal record a streamed cell produced.
@@ -241,7 +240,7 @@ fn recorded_request_contains(scenario: &str, needle: &str) -> bool {
     request.contains(needle)
 }
 
-fn assert_recorded_terminal_stop_sequence(scenario: &str, expected: Option<&str>) {
+pub(super) fn assert_recorded_terminal_stop_sequence(scenario: &str, expected: Option<&str>) {
     assert_eq!(
         recorded_terminal_stop_sequence(scenario).as_deref(),
         expected,
@@ -837,7 +836,7 @@ async fn agent_stream_single_sequence() {
                 .additional_params(json!({ "stop_sequences": ["charlie"] }))
                 .build();
 
-            let mut stream = agent.stream_prompt(LIST_PROMPT).stream().await;
+            let mut stream = agent.prompt(LIST_PROMPT).stream();
             let (_response, provider_final): (_, rig::streaming::StreamFinal) =
                 crate::support::collect_stream_final_response_and_provider_final(&mut stream)
                     .await

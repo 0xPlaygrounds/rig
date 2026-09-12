@@ -36,17 +36,17 @@ async fn batch_multi_extract_chain() -> Result<()> {
         |client| async move {
             let names_extractor = client
                 .extractor::<Names>(deepseek::DEEPSEEK_V4_FLASH)
-                .preamble("Extract names from the given text.")
+                .append_preamble("Extract names from the given text.")
                 .retries(2)
                 .build();
             let topics_extractor = client
                 .extractor::<Topics>(deepseek::DEEPSEEK_V4_FLASH)
-                .preamble("Extract topics from the given text.")
+                .append_preamble("Extract topics from the given text.")
                 .retries(2)
                 .build();
             let sentiment_extractor = client
                 .extractor::<Sentiment>(deepseek::DEEPSEEK_V4_FLASH)
-                .preamble("Extract sentiment and confidence from the given text.")
+                .append_preamble("Extract sentiment and confidence from the given text.")
                 .retries(2)
                 .build();
 

@@ -430,7 +430,7 @@ where
     /// exists only in the preceding events and
     /// [`completion::CompletionModel::completion`] rebuilds it from them. When
     /// you need the provider's events in full fidelity rather than just its
-    /// terminal record, use [`ResponsesCompletionModel::raw_stream`].
+    /// terminal record, use [`ResponsesCompletionModel::stream`].
     pub async fn raw_completion(
         &self,
         completion_request: completion::CompletionRequest,
@@ -487,11 +487,13 @@ where
             .body(body)
             .map_err(|err| CompletionError::HttpError(err.into()))?;
 
-        let response = self.client.send(req).await?;
-        let status = response.status();
-        let text = http_client::text(response).await?;
+        let response = self.client.send::<_, Vec<u8>>(req).await?;
+        let (parts, body) = response.into_parts();
+        let status = parts.status;
+        let text = String::from(String::from_utf8_lossy(&body.await?));
         if !status.is_success() {
-            return Err(CompletionError::from_http_response(status, text));
+            return Err(CompletionError::from_http_response(status, text)
+                .with_response_headers(Some(Box::new(parts.headers))));
         }
 
         // The `/responses` endpoint answers with an SSE body even for a
@@ -587,30 +589,12 @@ where
     Client<H>: HttpClientExt + Clone + 'static,
     H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
-    /// Open a stream normalized to rig's terminal record.
-    ///
-    /// Delegates to [`ResponsesCompletionModel::raw_stream`] — one request
-    /// either way.
+    /// Open a ChatGPT stream. The terminal record's Responses-API form rides
+    /// on [`crate::streaming::StreamFinal::raw`].
     pub async fn stream(
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
-        let raw = self.raw_stream(completion_request).await?;
-
-        Ok(responses_api::streaming::normalize_responses_stream(
-            PROVIDER_NAME,
-            raw,
-        ))
-    }
-
-    /// Open a stream whose terminal record stays the Responses API's own type.
-    pub async fn raw_stream(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<
-        crate::streaming::RawStreamingResult<responses_api::streaming::StreamingCompletionResponse>,
-        CompletionError,
-    > {
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.create_request(completion_request)?;
 
@@ -646,9 +630,13 @@ where
         let event_source = crate::http_client::sse::GenericEventSource::new(client, req)
             .allow_missing_content_type();
 
-        Ok(responses_api::streaming::raw_stream_from_event_source(
-            event_source,
-            span,
+        Ok(StreamingCompletionResponse::stream(
+            PROVIDER_NAME,
+            responses_api::streaming::responses_stream_from_event_source(
+                PROVIDER_NAME,
+                event_source,
+                span,
+            ),
         ))
     }
 }

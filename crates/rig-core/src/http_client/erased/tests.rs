@@ -176,8 +176,9 @@ mod middleware {
             let fail = self.0 == "headers";
             Box::pin(async move {
                 if fail {
-                    return Err(crate::http_client::Error::InvalidStatusCodeWithMessage(
+                    return Err(crate::http_client::Error::non_success_with_details(
                         StatusCode::BAD_REQUEST,
+                        http::HeaderMap::new(),
                         "rejected headers".into(),
                     ));
                 }
@@ -195,8 +196,9 @@ mod middleware {
             let fail = self.0 == "response";
             Box::pin(async move {
                 if fail {
-                    return Err(crate::http_client::Error::InvalidStatusCodeWithMessage(
+                    return Err(crate::http_client::Error::non_success_with_details(
                         StatusCode::TOO_MANY_REQUESTS,
+                        http::HeaderMap::new(),
                         "rejected response".into(),
                     ));
                 }

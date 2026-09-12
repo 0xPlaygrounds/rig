@@ -35,17 +35,17 @@ async fn batch_multi_extract_chain() -> Result<()> {
     let client = groq::Client::from_env().expect("client should build");
     let names_extractor = client
         .extractor::<Names>(MULTI_EXTRACT_NAMES_MODEL)
-        .preamble("Extract names from the given text.")
+        .append_preamble("Extract names from the given text.")
         .retries(2)
         .build();
     let topics_extractor = client
         .extractor::<Topics>(MULTI_EXTRACT_TOPICS_MODEL)
-        .preamble("Extract topics from the given text.")
+        .append_preamble("Extract topics from the given text.")
         .retries(2)
         .build();
     let sentiment_extractor = client
         .extractor::<Sentiment>(MULTI_EXTRACT_SENTIMENT_MODEL)
-        .preamble("Extract sentiment and confidence from the given text.")
+        .append_preamble("Extract sentiment and confidence from the given text.")
         .retries(2)
         .build();
 

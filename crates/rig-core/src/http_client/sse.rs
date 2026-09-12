@@ -11,7 +11,9 @@ use crate::{
 };
 use bytes::Bytes;
 use eventsource_stream::{Event as MessageEvent, EventStreamError, Eventsource};
-use futures::Stream;
+use futures::{Stream, StreamExt};
+
+pub(crate) mod tail;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 use futures::{future::BoxFuture, stream::BoxStream};
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
@@ -87,6 +89,7 @@ pin_project! {
         last_event_id: Option<String>,
         allow_missing_content_type: bool,
         request_id_capture: Option<(String, RequestIdSlot)>,
+        observation: Option<crate::observe::AdapterSlot>,
         #[pin]
         state: SourceState,
     }
@@ -99,7 +102,9 @@ where
 {
     /// Create a new event source that will connect to the given request.
     pub fn new(client: HttpClient, req: Request<RequestBody>) -> Self {
-        let response_future = Self::create_response_future(&client, &req, None);
+        let observation = crate::observe::AdapterContext::slot_for_request(&req);
+        let response_future =
+            Self::create_response_future(&client, &req, None, observation.clone());
         let state = SourceState::Connecting {
             response_future,
             last_retry: None,
@@ -112,6 +117,7 @@ where
             last_event_id: None,
             allow_missing_content_type: false,
             request_id_capture: None,
+            observation,
             state,
         }
     }
@@ -132,11 +138,16 @@ where
         (self, slot)
     }
 
+    pub(crate) fn observation(&self) -> Option<crate::observe::AdapterSlot> {
+        self.observation.clone()
+    }
+
     /// Create a response future for connecting/reconnecting
     fn create_response_future(
         client: &HttpClient,
         req: &Request<RequestBody>,
         last_event_id: Option<&str>,
+        observation: Option<crate::observe::AdapterSlot>,
     ) -> ResponseFuture {
         let mut req_clone = req.clone();
         req_clone
@@ -153,7 +164,40 @@ where
         }
 
         let client_clone = client.clone();
-        Box::pin(async move { client_clone.send_streaming(req_clone).await })
+        Box::pin(async move {
+            if let Some(observation) = &observation {
+                observation.start(&req_clone);
+            }
+            let response = match client_clone.send_streaming(req_clone).await {
+                // The bundled transports reject a non-success reply before it
+                // gets here; a custom `HttpClientExt` may hand it back as a
+                // response. Either way the server answered, and its answer —
+                // status, headers, body — is the error, never a bare status.
+                Ok(response) if response.status() != StatusCode::OK => {
+                    Err(reject_response(response).await)
+                }
+                other => other,
+            };
+            if let Some(observation) = &observation {
+                match &response {
+                    Ok(response) => observation
+                        .response_with_headers(response.status(), Some(response.headers())),
+                    Err(error) => {
+                        observation
+                            .error_boundary(crate::observe::AdapterErrorBoundary::from_http(error));
+                        if let Some(status) = error.non_success_status() {
+                            observation.response_with_headers(status, error.non_success_headers());
+                        }
+                        if let Some(body) = error.non_success_body() {
+                            observation.payload(body.as_bytes());
+                        }
+                        // The frame driver preserves the owned error and closes the
+                        // attempt. Do not clone or consume transport errors here.
+                    }
+                }
+            }
+            response
+        })
     }
 
     /// Get the last event id
@@ -212,7 +256,17 @@ where
                                         this.request_id_capture.as_ref(),
                                         &response,
                                     );
-                                    let mut event_stream = response.into_body().eventsource();
+                                    let body = response.into_body();
+                                    let body: BoxedStream = match this.observation.clone() {
+                                        Some(observation) => Box::pin(body.map(move |item| {
+                                            if let Ok(bytes) = &item {
+                                                observation.bytes(bytes);
+                                            }
+                                            item
+                                        })),
+                                        None => body,
+                                    };
+                                    let mut event_stream = body.eventsource();
                                     if let Some(id) = &this.last_event_id {
                                         event_stream.set_last_event_id(id.clone());
                                     }
@@ -222,9 +276,17 @@ where
                                     return Poll::Ready(Some(Ok(Event::Open)));
                                 }
                                 Err(err) => {
-                                    // Transition: Connecting -> Closed. A rejected
-                                    // response is terminal: the retry policy governs
-                                    // transport failures, not a server that answered.
+                                    if let Some(observation) = this.observation.as_ref() {
+                                        observation.error_boundary(
+                                            crate::observe::AdapterErrorBoundary::from_http(&err),
+                                        );
+                                    }
+                                    // Transition: Connecting -> Closed. Only a
+                                    // content-type failure reaches here (a non-200
+                                    // was rejected in the response future and goes
+                                    // to the retry policy like any transport
+                                    // rejection); a 200 that is not an event stream
+                                    // is terminal.
                                     this.state.set(SourceState::Closed);
                                     return Poll::Ready(Some(Err(err)));
                                 }
@@ -256,6 +318,11 @@ where
                             return Poll::Ready(Some(Ok(Event::Message(event))));
                         }
                         Poll::Ready(Some(Err(EventStreamError::Transport(err)))) => {
+                            if let Some(observation) = this.observation.as_ref() {
+                                observation.error_boundary(
+                                    crate::observe::AdapterErrorBoundary::Transport,
+                                );
+                            }
                             // Transition: Open -> WaitingToRetry or Closed. A
                             // failure mid-stream starts a *fresh* cycle (history
                             // `None`): this connection had already succeeded, so
@@ -298,6 +365,7 @@ where
                                     this.client,
                                     this.req,
                                     this.last_event_id.as_deref(),
+                                    this.observation.clone(),
                                 );
                             this.state.set(SourceState::Connecting {
                                 response_future,
@@ -353,14 +421,46 @@ fn capture_request_id_header<T>(capture: Option<&(String, RequestIdSlot)>, respo
     }
 }
 
+/// Bytes of a rejected reply's body kept on the error; a reply longer than
+/// this is cut there, the way a provider's error payload never is (a cut
+/// body is not JSON any more, so `provider_response_json` reports it as
+/// malformed rather than absent).
+const REJECTED_BODY_LIMIT: usize = 1 << 20;
+
+/// Chunks read off a rejected reply before giving up on it, so a transport
+/// that keeps yielding empty chunks cannot hold the opener.
+const REJECTED_CHUNK_LIMIT: usize = 4096;
+
+/// Turn a reply the event source will not stream (any status but 200,
+/// a 204 included: a status is a status) into the non-success error,
+/// reading the body to its end (bounded in bytes and chunks; the transport's
+/// own timeouts bound the time) so the provider's payload and the
+/// transport's headers ride on the error.
+async fn reject_response(response: Response<BoxedStream>) -> super::Error {
+    let (parts, mut body) = response.into_parts();
+    let mut collected = Vec::new();
+    let mut chunks = 0;
+    while let Some(chunk) = body.next().await {
+        chunks += 1;
+        let room = REJECTED_BODY_LIMIT.saturating_sub(collected.len());
+        match chunk {
+            Ok(bytes) if room > 0 && chunks <= REJECTED_CHUNK_LIMIT => {
+                collected.extend(bytes.iter().take(room));
+            }
+            _ => break,
+        }
+    }
+    super::Error::non_success_with_details(
+        parts.status,
+        parts.headers,
+        String::from_utf8_lossy(&collected).into_owned(),
+    )
+}
+
 fn check_response<T>(
     response: Response<T>,
     allow_missing_content_type: bool,
 ) -> Result<Response<T>, super::Error> {
-    let StatusCode::OK = response.status() else {
-        return Err(super::Error::InvalidStatusCode(response.status()));
-    };
-
     let Some(content_type) = response.headers().get(&http::header::CONTENT_TYPE) else {
         if allow_missing_content_type {
             return Ok(response);

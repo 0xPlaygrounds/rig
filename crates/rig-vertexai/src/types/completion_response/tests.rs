@@ -161,11 +161,10 @@ fn test_tool_call_response_conversion() {
             function,
             ..
         })) => {
-            // Vertex issues no call ids: the decode mints a unique
-            // non-empty handle (never the function name) and records
-            // that the provider issued nothing.
-            assert!(!id.as_str().is_empty());
-            assert_ne!(id, "add");
+            // Vertex issues no call ids: decoding generates a local identity
+            // in a separate namespace and preserves absent provider identity.
+            assert!(id.is_generated());
+            assert_eq!(id.explicit(), None);
             assert_eq!(provider, &None);
             assert_eq!(function.name, "add");
             assert_eq!(function.arguments, args);
@@ -390,4 +389,42 @@ fn vertex_generate_content_output_round_trips_through_serde_json_value() {
         restored.identity().response_id.as_deref(),
         Some("resp-vertex-1")
     );
+}
+
+/// Constructed SDK values isolate deterministic normalization without credentials.
+#[test]
+fn multiple_missing_call_ids_are_distinct_and_repeatable() {
+    let convert = || {
+        CompletionResponse::try_from(create_parts_response((0..3).map(|i| {
+            vertexai::model::Part::new().set_function_call(
+                vertexai::model::FunctionCall::new()
+                    .set_name("same")
+                    .set_args(serde_json::json!({"n":i}).as_object().unwrap().clone()),
+            )
+        })))
+        .unwrap()
+    };
+    let first = convert();
+    assert_eq!(first.choice, convert().choice);
+    let calls: Vec<_> = first
+        .choice
+        .iter()
+        .filter_map(|item| match item {
+            AssistantContent::ToolCall(call) => Some(call),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(calls.len(), 3);
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| &call.id)
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        3
+    );
+    assert!(calls.iter().all(|call| call.provider.is_none()));
+    for (i, call) in calls.iter().enumerate() {
+        assert_eq!(call.function.arguments, serde_json::json!({"n":i}));
+    }
 }

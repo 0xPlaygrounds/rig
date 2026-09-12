@@ -133,7 +133,10 @@ async fn stream_raw_round_trips_terminal_type() {
             );
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.finish_reason, terminal.finish_reason);
-            assert_eq!(typed.provider_request_id, terminal.provider_request_id);
+            assert_eq!(
+                typed.provider_request_id, None,
+                "the transport id is stamped on the normalized terminal, not the native record"
+            );
             *sink.lock().expect("observation lock") = Some(terminal);
         },
     )

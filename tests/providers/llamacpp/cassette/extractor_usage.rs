@@ -10,33 +10,33 @@ use serde_json::json;
 use super::super::cassette_support::*;
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
-struct Person {
+pub(super) struct Person {
     #[schemars(required)]
-    name: Option<String>,
+    pub(super) name: Option<String>,
     #[schemars(required)]
-    age: Option<u8>,
+    pub(super) age: Option<u8>,
     #[schemars(required)]
-    profession: Option<String>,
+    pub(super) profession: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema, PartialEq)]
-struct Address {
+pub(super) struct Address {
     #[schemars(required)]
-    street: Option<String>,
+    pub(super) street: Option<String>,
     #[schemars(required)]
-    city: Option<String>,
+    pub(super) city: Option<String>,
     #[schemars(required)]
-    state: Option<String>,
+    pub(super) state: Option<String>,
     #[schemars(required)]
-    zip_code: Option<String>,
+    pub(super) zip_code: Option<String>,
 }
 
-const EXTRACTOR_PREAMBLE: &str = "\
+pub(super) const EXTRACTOR_PREAMBLE: &str = "\
 Extract every field explicitly stated in the input text.
 Do not omit keys when the value is present in the text.
 Return the exact stated values through the submit tool.";
 
-fn assert_compatible_professions(left: Option<&str>, right: Option<&str>) -> Result<()> {
+pub(super) fn assert_compatible_professions(left: Option<&str>, right: Option<&str>) -> Result<()> {
     let left = left
         .ok_or_else(|| anyhow!("profession should be present"))?
         .trim()
@@ -61,7 +61,7 @@ async fn extract_backward_compatibility() -> Result<()> {
             let model = CASSETTE_MODEL;
             let extractor = client
                 .extractor::<Person>(model)
-                .preamble(EXTRACTOR_PREAMBLE)
+                .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
 
@@ -88,7 +88,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
             let model = CASSETTE_MODEL;
             let extractor = client
                 .extractor::<Person>(model)
-                .preamble(EXTRACTOR_PREAMBLE)
+                .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
 
@@ -119,7 +119,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
             let model = CASSETTE_MODEL;
             let extractor = client
                 .extractor::<Address>(model)
-                .preamble(EXTRACTOR_PREAMBLE)
+                .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
 
@@ -153,7 +153,7 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
             let model = CASSETTE_MODEL;
             let extractor = client
                 .extractor::<Person>(model)
-                .preamble(EXTRACTOR_PREAMBLE)
+                .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
 
@@ -186,7 +186,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
 
             let person_extractor = client
                 .extractor::<Person>(model)
-                .preamble(EXTRACTOR_PREAMBLE)
+                .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
             let person_response = person_extractor
@@ -197,7 +197,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
 
             let address_extractor = client
                 .extractor::<Address>(model)
-                .preamble(EXTRACTOR_PREAMBLE)
+                .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
             let address_response = address_extractor

@@ -1,37 +1,20 @@
 use super::*;
 
-/// Both Copilot routes' streaming terminals carry the transport request id
+/// The chat route's streaming terminal carries the transport request id
 /// (stamped by the shared SSE capture) into the normalized `StreamFinal`.
 /// Deterministic and credential-free: the transport halves — the shared
-/// OpenAI chat wrapper's capture and `stamp_terminal_request_id` on the
-/// Responses route — are covered by the shared-path tests; this locks the
-/// Copilot-specific conversion layer.
+/// OpenAI chat wrapper's capture and `stamp_terminal_request_id` on both
+/// routes — are covered by the shared-path tests; this locks the
+/// conversion layer the chat route reuses under Copilot's name.
 #[test]
-fn streaming_terminals_carry_request_id_into_stream_final() {
+fn chat_streaming_terminal_carries_request_id_into_stream_final() {
     let mut chat_terminal = openai::completion::streaming::StreamingCompletionResponse::<
         openai::completion::Usage,
     >::new(openai::completion::Usage::default());
     chat_terminal.provider_request_id = Some("req-chat".to_string());
-    let chat_final: crate::streaming::StreamFinal =
-        (PROVIDER_NAME, CopilotStreamingResponse::Chat(chat_terminal)).into();
+    let chat_final = chat_terminal.into_stream_final(PROVIDER_NAME);
     assert_eq!(chat_final.provider_request_id.as_deref(), Some("req-chat"));
-
-    let mut responses_terminal = responses_api::streaming::StreamingCompletionResponse::new(
-        serde_json::from_value(
-            serde_json::json!({"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}),
-        )
-        .expect("usage should parse"),
-    );
-    responses_terminal.provider_request_id = Some("req-responses".to_string());
-    let responses_final: crate::streaming::StreamFinal = (
-        PROVIDER_NAME,
-        CopilotStreamingResponse::Responses(responses_terminal),
-    )
-        .into();
-    assert_eq!(
-        responses_final.provider_request_id.as_deref(),
-        Some("req-responses")
-    );
+    assert_eq!(chat_final.provider, PROVIDER_NAME);
 }
 
 /// The Responses-route unary wire type carries the stamped id through

@@ -94,7 +94,7 @@ mod message_content_validation {
             Message::user("hello"),
             Message::User {
                 content: vec![UserContent::ToolResult(ToolResult {
-                    call: ToolCallId::new_or_mint("call_1"),
+                    call: ToolCallId::new_or_minted("call_1", 0),
                     provider: None,
                     name: "lookup".to_owned(),
                     content: Vec::<ToolResultContent>::new(),
@@ -119,7 +119,7 @@ mod message_content_validation {
         // pass cannot collapse it.
         let request = request(vec![Message::User {
             content: vec![UserContent::ToolResult(ToolResult {
-                call: ToolCallId::new_or_mint("call_1"),
+                call: ToolCallId::new_or_minted("call_1", 0),
                 provider: None,
                 name: "lookup".to_owned(),
                 content: vec![ToolResultContent::text("")],
@@ -337,18 +337,18 @@ fn completion_request_content_telemetry_is_opt_in_and_not_serialized() {
         opt_in_json.get("record_telemetry_content").is_none(),
         "local telemetry policy must not be serialized into provider requests"
     );
-    let legacy_roundtrip: CompletionRequest =
-        serde_json::from_value(opt_in_json).expect("deserialize legacy request");
+    let without_field: CompletionRequest =
+        serde_json::from_value(opt_in_json).expect("deserialize a request without the field");
     assert!(
-        !legacy_roundtrip.record_telemetry_content,
+        !without_field.record_telemetry_content,
         "missing field should deserialize to the safe default"
     );
 }
 
 /// The deserialization mirror carries `raw`: a response with a captured
-/// payload survives serialize → deserialize with the payload intact, a
-/// response serialized before the field existed still loads with `raw`
-/// unset, and an unset `raw` is not written.
+/// payload survives serialize → deserialize with the payload intact, an
+/// unset `raw` is not written, and a response written without the field
+/// (which is what an unset `raw` serializes to) loads with `raw` unset.
 #[test]
 fn normalized_response_raw_round_trips_through_serde_mirror() {
     let payload = serde_json::json!({
@@ -375,12 +375,13 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
         encoded
     );
 
-    let legacy = serde_json::json!({
+    let without_raw = serde_json::json!({
         "choice": [{"type": "text", "text": "hello"}],
         "usage": serde_json::to_value(Usage::new()).unwrap(),
         "provider": "example"
     });
-    let decoded: CompletionResponse = serde_json::from_value(legacy).expect("legacy loads");
+    let decoded: CompletionResponse =
+        serde_json::from_value(without_raw).expect("loads without `raw`");
     assert!(decoded.raw.is_null());
 
     let bare = serde_json::to_value(CompletionResponse::new(
@@ -782,10 +783,12 @@ fn completion_error_provider_error_is_not_a_provider_response() {
 #[test]
 fn completion_error_provider_response_helpers_with_http_non_success_body_and_status() {
     let body = r#"{"error":{"type":"invalid_request","message":"bad request"}}"#;
-    let error = CompletionError::HttpError(http_client::Error::InvalidStatusCodeWithMessage(
-        http::StatusCode::BAD_REQUEST,
-        body.to_string(),
-    ));
+    let error =
+        CompletionError::from_transport_error(http_client::Error::non_success_with_details(
+            http::StatusCode::BAD_REQUEST,
+            http::HeaderMap::new(),
+            body.to_string(),
+        ));
 
     assert_eq!(error.provider_response_body(), Some(body));
     assert_eq!(
@@ -830,4 +833,43 @@ fn provider_response_json_returns_none_for_empty_preserved_body() {
             .expect("empty body is not a JSON parse error"),
         None
     );
+}
+
+mod additional_params_precedence {
+    use super::super::shadowed_typed_fields;
+    use serde_json::json;
+
+    /// A passthrough key names a typed field only when that field is set too;
+    /// an unset typed field is not shadowed, and a non-object passthrough
+    /// shadows nothing.
+    #[test]
+    fn shadowed_keys_are_the_intersection_with_set_typed_fields() {
+        let params = json!({"temperature": 0.9, "top_p": 0.5, "max_tokens": 10});
+        let shadowed = shadowed_typed_fields(
+            Some(&params),
+            &[
+                ("temperature", true),
+                ("max_tokens", false),
+                ("model", true),
+            ],
+        );
+        assert_eq!(shadowed, ["temperature"]);
+        assert!(shadowed_typed_fields(Some(&json!([1])), &[("temperature", true)]).is_empty());
+        assert!(shadowed_typed_fields(None, &[("temperature", true)]).is_empty());
+    }
+
+    /// `additional_params(None)` merges nothing; a second call merges into
+    /// the first rather than replacing it.
+    #[test]
+    fn additional_params_merges_and_none_is_a_no_op() {
+        let model = crate::test_utils::MockCompletionModel::text("x");
+        let request = crate::completion::CompletionRequestBuilder::new(model, "p")
+            .additional_params(json!({"a": 1}))
+            .additional_params(None)
+            .additional_params(json!({"b": 2}))
+            .temperature(None)
+            .build();
+        assert_eq!(request.additional_params, Some(json!({"a": 1, "b": 2})));
+        assert_eq!(request.temperature, None);
+    }
 }

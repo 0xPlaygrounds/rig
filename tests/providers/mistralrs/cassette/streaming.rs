@@ -17,11 +17,10 @@ async fn chat_completions_stream_emits_reasoning_and_text_incrementally() {
                 .max_tokens(512)
                 .build();
             let mut stream = agent
-                .stream_prompt(
+                .prompt(
                     "Think briefly, then answer with three short bullet points about token usage reporting.",
                 )
-                .stream()
-                .await;
+                .stream();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(

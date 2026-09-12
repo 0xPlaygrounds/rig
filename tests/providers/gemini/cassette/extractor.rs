@@ -12,10 +12,10 @@ use serde::{Deserialize, Serialize};
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 
 #[derive(Debug, Deserialize, JsonSchema, Serialize)]
-struct Person {
-    first_name: Option<String>,
-    last_name: Option<String>,
-    job: Option<String>,
+pub(super) struct Person {
+    pub(super) first_name: Option<String>,
+    pub(super) last_name: Option<String>,
+    pub(super) job: Option<String>,
 }
 
 #[tokio::test]

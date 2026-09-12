@@ -30,8 +30,14 @@ async fn bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, C
 }
 
 async fn replay_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Client) {
-    let cassette =
-        ProviderCassette::start_direct_recording("bedrock", spec, BEDROCK_REAL_BASE_URL).await;
+    let cassette = ProviderCassette::start_via(
+        rig_cassette::Transport::Direct,
+        &crate::cassettes::cassette_root(),
+        "bedrock",
+        spec,
+        BEDROCK_REAL_BASE_URL,
+    )
+    .await;
     let sdk_config = aws_config::defaults(BehaviorVersion::latest())
         .region(Region::new(BEDROCK_REGION))
         .credentials_provider(Credentials::new(
@@ -51,8 +57,14 @@ async fn replay_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCass
 }
 
 async fn record_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Client) {
-    let cassette =
-        ProviderCassette::start_direct_recording("bedrock", spec, BEDROCK_REAL_BASE_URL).await;
+    let cassette = ProviderCassette::start_via(
+        rig_cassette::Transport::Direct,
+        &crate::cassettes::cassette_root(),
+        "bedrock",
+        spec,
+        BEDROCK_REAL_BASE_URL,
+    )
+    .await;
     let recorder = cassette
         .direct_recorder()
         .expect("Bedrock record mode should use a direct recorder");

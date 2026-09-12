@@ -1,5 +1,6 @@
 use super::*;
 use rig_core::message::{ToolFunction, ToolResultContent};
+use rig_core::streaming::BlockId;
 use serde_json::json;
 
 #[test]
@@ -107,28 +108,6 @@ fn entries_never_reach_the_protocol_steps() {
     assert_eq!(plain_turn, logged_turn);
 }
 
-#[test]
-fn deserializing_a_persisted_internal_call_id_advances_the_mint_counter() {
-    // A run persisted by an earlier process may carry ids far ahead of
-    // this process's counter; loading it must advance the counter so
-    // fresh mints cannot collide with ids consumers already saw.
-    let seen = InternalCallId::new().to_raw() + 50_000;
-    let json = format!(
-        r#"{{"tool_call":{},"preresolved_result":null,"internal_call_id":{seen}}}"#,
-        serde_json::to_string(&ToolCall::from_wire(
-            "call_1",
-            ToolFunction::new("add".to_string(), json!({"x": 1})),
-        ))
-        .expect("serialize call")
-    );
-    let restored: PendingToolCall = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(
-        restored.internal_call_id.map(InternalCallId::to_raw),
-        Some(seen)
-    );
-    assert!(InternalCallId::new().to_raw() > seen);
-}
-
 /// The step and outcome types round-trip: a host caching an in-flight
 /// step in serializable state (a saved world) can restore it.
 #[test]
@@ -221,10 +200,21 @@ fn text_turn(text: &str) -> ModelTurn {
 
 fn tool_call(id: &str, name: &str) -> AssistantContent {
     // The provider-boundary shape: a non-empty wire id becomes both the
-    // durable id and the provider correlator; an empty wire id mints a
-    // fresh unique handle (`provider` records the absence).
+    // durable id and the provider correlator; an empty wire id takes the
+    // deterministic `tool-0` handle (`provider` records the absence).
     AssistantContent::ToolCall(ToolCall::from_wire(
         id,
+        ToolFunction::new(name.to_string(), json!({"x": 1})),
+    ))
+}
+
+/// The `index`-th id-less call of one response: an adapter that meets a
+/// wire without ids names calls by position, so two such calls in one
+/// turn stay distinct (`tool-0`, `tool-1`).
+fn id_less_call(index: u64, name: &str) -> AssistantContent {
+    AssistantContent::ToolCall(ToolCall::from_wire_indexed(
+        "",
+        index,
         ToolFunction::new(name.to_string(), json!({"x": 1})),
     ))
 }
@@ -281,7 +271,7 @@ fn expect_continue(outcome: ModelTurnOutcome) -> bool {
 
 fn expect_needs_resolution(outcome: ModelTurnOutcome) -> InvalidToolCallContext {
     match outcome {
-        ModelTurnOutcome::NeedsResolution(context) => context,
+        ModelTurnOutcome::NeedsResolution(context) => *context,
         outcome => panic!("expected NeedsResolution, got {outcome:?}"),
     }
 }
@@ -503,8 +493,8 @@ fn parallel_tool_calls_surface_in_emission_order() {
 
     let calls = expect_call_tools(&mut run);
     assert_eq!(calls.len(), 2);
-    assert_eq!(calls[0].tool_call.id, "call_1");
-    assert_eq!(calls[1].tool_call.id, "call_2");
+    assert_eq!(calls[0].tool_call.id.explicit(), Some("call_1"));
+    assert_eq!(calls[1].tool_call.id.explicit(), Some("call_2"));
 
     // Results fed out of order still land in one user message.
     run.tool_results(vec![tool_result("call_2", "b"), tool_result("call_1", "a")])
@@ -773,7 +763,7 @@ fn id_less_calls_keep_distinct_skip_results() {
     expect_call_model(&mut run);
     let turn = ModelTurn::new(
         None,
-        vec![tool_call("", "unknown"), tool_call("", "add")],
+        vec![id_less_call(0, "unknown"), id_less_call(1, "add")],
         Usage::new(),
         tool_names(&["add"]),
         tool_names(&["add"]),
@@ -797,7 +787,7 @@ fn id_less_calls_keep_distinct_skip_results() {
     assert!(
         calls
             .iter()
-            .all(|call| !call.tool_call.id.is_empty() && call.tool_call.provider.is_none()),
+            .all(|call| call.tool_call.id.is_generated() && call.tool_call.provider.is_none()),
         "minted handles are non-empty and record the provider's absence"
     );
     let results: Vec<String> = calls
@@ -947,7 +937,14 @@ fn serialized_run_alone_carries_pending_tool_calls() {
     // Answer using only IDs learned from the re-emitted step.
     let results = calls
         .iter()
-        .map(|call| tool_result(&call.tool_call.id, "2"))
+        .map(|call| {
+            UserContent::tool_result_for(
+                call.tool_call.id.clone(),
+                call.tool_call.provider.clone(),
+                call.tool_call.function.name.clone(),
+                vec![ToolResultContent::text("2")],
+            )
+        })
         .collect::<Vec<_>>();
     resumed
         .tool_results(results)
@@ -1003,14 +1000,25 @@ fn agent_run_deserializes_suspended_state() {
     // A suspended run persisted mid-`ExecutingTools` restores and resumes:
     // the recorded call's usage loads, the pending tool call is re-issued,
     // and the run advances to the next model call after results arrive.
-    let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"type":"toolcall","id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"internal_call_id":null}]}}"#;
+    let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"type":"toolcall","id":{"origin":"explicit","id":"call_1"},"function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":{"origin":"explicit","id":"call_1"},"function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"block_id":"wire:call_1"}]}}"#;
+
+    let legacy = fixture.replace(
+        r#""id":{"origin":"explicit","id":"call_1"}"#,
+        r#""id":"call_1""#,
+    );
+    assert_ne!(legacy, fixture);
+    assert!(
+        serde_json::from_str::<AgentRun>(&legacy).is_err(),
+        "legacy bare IDs must not be silently reinterpreted"
+    );
 
     let mut restored: AgentRun =
-        serde_json::from_str(fixture).expect("old-format suspended run should deserialize");
+        serde_json::from_str(fixture).expect("suspended run should deserialize");
     assert_eq!(restored.completion_calls()[0].usage, Usage::new());
 
     let calls = expect_call_tools(&mut restored);
     assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].block_id, BlockId::wire("call_1"));
     restored
         .tool_results(vec![tool_result("call_1", "2")])
         .expect("tool_results should succeed");
@@ -1071,6 +1079,13 @@ fn serde_round_trip_mid_run_resumes_identically() {
 
     let suspended = drive_to_pending_tools();
     let serialized = serde_json::to_string(&suspended).expect("mid-run state should serialize");
+    // The pending call's block id is part of the persisted state, not a
+    // default a decoder fills in: a resumed process keeps the id its
+    // consumers already saw.
+    assert!(
+        serialized.contains("\"block_id\""),
+        "the pending call persists its block id: {serialized}"
+    );
     let restored: AgentRun =
         serde_json::from_str(&serialized).expect("mid-run state should deserialize");
     let resumed = finish(restored);
@@ -1103,6 +1118,14 @@ fn pending_invalid_tool_call_survives_serde_round_trip() {
         restored_context.chat_history.len(),
         context.chat_history.len()
     );
+    // Buffered calls have durable identity but no observed stream block.
+    assert_eq!(context.block_id, None);
+    assert_eq!(restored_context.block_id, None);
+    assert_eq!(
+        context.tool_call_id.as_ref().and_then(|id| id.explicit()),
+        Some("call_1")
+    );
+    assert_eq!(restored_context.tool_call_id, context.tool_call_id);
 }
 
 /// A turn calling `name`, advertising it as an allowed-but-not-executable
@@ -1133,29 +1156,33 @@ fn output_tool_turn_with_args(id: &str, name: &str, arguments: serde_json::Value
 /// Every assistant tool call in `messages` must have a matching user tool
 /// result — an unanswered tool_use is rejected by providers on replay.
 fn assert_no_orphan_tool_use(messages: &[Message]) {
-    let mut answered = BTreeSet::new();
+    let mut pending = Vec::new();
     for message in messages {
-        if let Message::User { content } = message {
-            for item in content.iter() {
-                if let UserContent::ToolResult(result) = item {
-                    answered.insert(result.call.to_string());
+        match message {
+            Message::Assistant { content, .. } => {
+                pending.extend(content.iter().filter_map(|item| match item {
+                    AssistantContent::ToolCall(call) => Some(&call.id),
+                    _ => None,
+                }));
+            }
+            Message::User { content } => {
+                for item in content {
+                    if let UserContent::ToolResult(result) = item {
+                        let index = pending
+                            .iter()
+                            .position(|id| *id == &result.call)
+                            .expect("result must answer a preceding pending call");
+                        pending.remove(index);
+                    }
                 }
             }
+            Message::System { .. } => {}
         }
     }
-    for message in messages {
-        if let Message::Assistant { content, .. } = message {
-            for item in content.iter() {
-                if let AssistantContent::ToolCall(call) = item {
-                    assert!(
-                        answered.contains(call.id.as_str()),
-                        "assistant tool_call {:?} has no matching tool_result in history",
-                        call.id
-                    );
-                }
-            }
-        }
-    }
+    assert!(
+        pending.is_empty(),
+        "unanswered tool call occurrences: {pending:?}"
+    );
 }
 
 #[test]
@@ -1394,19 +1421,17 @@ fn tool_mode_finalizes_best_effort_when_output_retry_budget_exhausted() {
 }
 
 #[test]
-fn set_output_tool_name_is_idempotent_and_only_fills_when_unset() {
+fn commit_output_tool_name_pins_the_first_name() {
     // A pre-set name (e.g. via `with_output_tool_name`) is never overwritten,
-    // keeping a resumed run deterministic.
+    // keeping a resumed run deterministic; the refusal is reported.
     let mut run = AgentRun::new("x").with_output_tool_name("first");
-    run.set_output_tool_name(Some("second".to_string()));
-    run.set_output_tool_name(None);
+    assert!(!run.commit_output_tool_name("second"));
     assert_eq!(run.output_tool_name.as_deref(), Some("first"));
 
-    // When unset, the first non-None value fills it.
+    // When unset, the first commit takes and later ones are refused.
     let mut run = AgentRun::new("x");
-    run.set_output_tool_name(None);
-    assert_eq!(run.output_tool_name, None);
-    run.set_output_tool_name(Some("filled".to_string()));
+    assert!(run.commit_output_tool_name("filled"));
+    assert!(!run.commit_output_tool_name("again"));
     assert_eq!(run.output_tool_name.as_deref(), Some("filled"));
 }
 
@@ -1450,8 +1475,8 @@ fn durable_human_in_the_loop_approval_survives_serialize_resume() {
     // The resumed run re-emits the pending calls purely from its own state.
     let calls = expect_call_tools(&mut resumed);
     assert_eq!(calls.len(), 2);
-    assert_eq!(calls[0].tool_call.id, "c1");
-    assert_eq!(calls[1].tool_call.id, "c2");
+    assert_eq!(calls[0].tool_call.id.explicit(), Some("c1"));
+    assert_eq!(calls[1].tool_call.id.explicit(), Some("c2"));
 
     // The human decision lands only after the resume: approve c1 (real
     // result), deny c2 (the reason becomes the tool result the model sees).
@@ -1690,5 +1715,20 @@ fn with_validated_history_gates_construction() {
         AgentRun::new("x")
             .with_validated_history(vec![Message::user("ok")])
             .is_ok()
+    );
+}
+
+/// The model a run last asked survives a suspension: a resumed run's
+/// selection hook is shown it as `previous_model`, as a fresh run's is.
+#[test]
+fn serde_round_trip_keeps_the_previous_model() {
+    let mut run = AgentRun::new("add things").max_turns(3);
+    assert!(run.previous_model().is_none());
+    run.set_previous_model(rig_core::completion::ModelRef::new("fast"));
+    let state = serde_json::to_string(&run).expect("the run serializes");
+    let restored: AgentRun = serde_json::from_str(&state).expect("the run restores");
+    assert_eq!(
+        restored.previous_model().map(|model| model.as_str()),
+        Some("fast")
     );
 }

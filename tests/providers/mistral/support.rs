@@ -10,7 +10,13 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 const MISTRAL_BASE_URL: &str = "https://api.mistral.ai";
 
 async fn mistral_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, mistral::Client) {
-    let cassette = ProviderCassette::start("mistral", spec, MISTRAL_BASE_URL).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "mistral",
+        spec,
+        MISTRAL_BASE_URL,
+    )
+    .await;
     let client = mistral::Client::builder()
         .api_key(cassette.api_key("MISTRAL_API_KEY"))
         .base_url(cassette.base_url())
@@ -78,7 +84,13 @@ where
     F: FnOnce(mistral::Client) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    let cassette = ProviderCassette::start("mistral", spec, MISTRAL_BASE_URL).await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "mistral",
+        spec,
+        MISTRAL_BASE_URL,
+    )
+    .await;
     let client = mistral::Client::builder()
         .api_key("invalid-edge-matrix-key")
         .base_url(cassette.base_url())

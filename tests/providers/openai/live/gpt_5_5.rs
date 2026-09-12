@@ -63,7 +63,7 @@ async fn responses_streaming_prompt_smoke() {
         .preamble(STREAMING_PREAMBLE)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
+    let mut stream = agent.prompt(STREAMING_PROMPT).stream();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming prompt should succeed");
@@ -102,11 +102,7 @@ async fn responses_streaming_tools_smoke() {
         .tool(Subtract)
         .build();
 
-    let mut stream = agent
-        .stream_prompt(STREAMING_TOOLS_PROMPT)
-        .max_turns(3)
-        .stream()
-        .await;
+    let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).max_turns(3).stream();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming tool prompt should succeed");
@@ -256,10 +252,10 @@ async fn responses_reasoning_streaming_tool_roundtrip_smoke() {
         .build();
 
     let stream = agent
-        .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
+        .prompt(reasoning::TOOL_USER_PROMPT)
+        .history(Vec::<Message>::new())
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
 
     let stats = reasoning::collect_stream_stats(stream, "openai").await;
     reasoning::assert_universal(&stats, &call_count, "openai");
@@ -296,7 +292,7 @@ async fn chat_completions_streaming_prompt_smoke() {
         .preamble(STREAMING_PREAMBLE)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
+    let mut stream = agent.prompt(STREAMING_PROMPT).stream();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("chat completions streaming prompt should succeed");
@@ -339,7 +335,7 @@ async fn chat_completions_streaming_tools_smoke() {
         .tool(Subtract)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
+    let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("chat completions streaming tool prompt should succeed");

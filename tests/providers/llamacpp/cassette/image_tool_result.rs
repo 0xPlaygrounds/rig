@@ -32,7 +32,7 @@ const VISION_MODEL: &str = "Qwen3-VL-2B-Instruct-Q8_0";
 
 fn image_tool_result() -> ToolResult {
     ToolResult {
-        call: ToolCallId::new_or_mint("call_1"),
+        call: ToolCallId::new_or_minted("call_1", 0),
         provider: ProviderCallId::new("call_1"),
         name: "view_file".to_string(),
         content: vec![ToolResultContent::image_base64(

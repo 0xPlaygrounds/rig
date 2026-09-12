@@ -1,6 +1,6 @@
 //! An agent run driven by `bevy_tasks` instead of tokio.
 //!
-//! rig-agent has no runtime of its own: [`Agent::run_channel`] hands back a
+//! rig-agent has no runtime of its own: [`rig::agent::AgentRunner::run_channel`] hands back a
 //! plain future plus a bounded [`RunEvents`] feed, so the future can be spawned
 //! on any executor — here Bevy's `AsyncComputeTaskPool` — while a synchronous
 //! loop (think: a game frame, an ECS system) drains the events with
@@ -21,7 +21,7 @@ use rig::client::Provider as _;
 use rig::http_client::ReqwestClient;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 
 const PREAMBLE: &str = "You are a comedian here to entertain the user using humour and jokes.";
 const PROMPT: &str = "Entertain me!";
@@ -39,7 +39,7 @@ fn main() -> Result<()> {
         .build();
 
     // Split the run: a future for the pool, an event feed for the frame loop.
-    let (run, mut events) = agent.run_channel(PROMPT);
+    let (run, mut events) = agent.prompt(PROMPT).run_channel();
     let pool = AsyncComputeTaskPool::get_or_init(TaskPool::new);
     let mut task = pool.spawn(run);
 
@@ -47,8 +47,11 @@ fn main() -> Result<()> {
     let response = loop {
         while let Some(event) = events.try_next() {
             match event {
-                MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text)) => {
-                    print!("{}", text.text);
+                MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                    delta: Delta::Text { text },
+                    ..
+                }) => {
+                    print!("{text}");
                 }
                 MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {
                     println!("\n[tool {}]", tool_call.function.name);

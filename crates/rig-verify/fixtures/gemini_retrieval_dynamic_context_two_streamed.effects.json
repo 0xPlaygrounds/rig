@@ -1,0 +1,213 @@
+{
+  "header": {
+    "run_spec": 10072942899351225430,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "golden/retrieve:context#0",
+        "family": {
+          "family": "retrieve"
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/retrieve:context#0": "retrieve"
+    },
+    "hooks": [
+      "DynamicContext"
+    ],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/retrieve:context#0": "retrieve"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/retrieve:context#0",
+      "kind": {
+        "effect": "retrieve",
+        "query": {
+          "query": "top_n",
+          "req": {
+            "query": "What is a glarb-glarb? Answer in one sentence.",
+            "samples": 2,
+            "threshold": null,
+            "additional_params": null,
+            "filter": null
+          }
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "documents",
+          "retrieved": "scored",
+          "results": [
+            [
+              0.8021126156790721,
+              "doc1",
+              "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
+            ],
+            [
+              0.6483787167257034,
+              "doc0",
+              "A flurbo is a green alien that lives on cold planets."
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "What is a glarb-glarb? Answer in one sentence."
+                }
+              ]
+            }
+          ],
+          "documents": [
+            {
+              "id": "doc1",
+              "text": "\"A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.\""
+            },
+            {
+              "id": "doc0",
+              "text": "\"A flurbo is a green alien that lives on cold planets.\""
+            }
+          ],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
+            }
+          ],
+          "usage": {
+            "input_tokens": 95,
+            "output_tokens": 27,
+            "total_tokens": 239,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 117
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 95,
+              "candidatesTokenCount": 27,
+              "totalTokenCount": 239,
+              "thoughtsTokenCount": 117,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 95
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "model_version": "gemini-2.5-flash",
+            "response_id": "id_REDACTED_1"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 95,
+            "output_tokens": 27,
+            "total_tokens": 239,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 117
+          },
+          "finish_reason": "stop",
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 95,
+              "candidatesTokenCount": 27,
+              "totalTokenCount": 239,
+              "thoughtsTokenCount": 117,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 95
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "model_version": "gemini-2.5-flash",
+            "response_id": "id_REDACTED_1"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -72,16 +72,17 @@ use crate::support::{
 /// `gpt-4o-mini` is deliberately *not* a reasoning model: a reasoning model
 /// spends the whole cap on hidden tokens and the resulting answerless turn
 /// fails before any hook runs, which is `truncated_turn_matrix`'s subject.
-const TINY_CAP: u64 = 16;
+pub(super) const TINY_CAP: u64 = 16;
 /// Roomy enough for every prompt below to finish naturally.
-const ROOMY_CAP: u64 = 512;
+pub(super) const ROOMY_CAP: u64 = 512;
 /// Truncates at `TINY_CAP` and completes at `ROOMY_CAP`.
-const TRUNCATING_PROMPT: &str = "Write two sentences about maple trees.";
-const RETRY_PROMPT: &str = "Write two sentences about maple trees.";
-const SHORT_PROMPT: &str = "Reply with exactly the word: cedar.";
-const TOOL_PROMPT: &str = "Calculate 2 + 3.";
-const CONCISE_PREAMBLE: &str = "You are a concise assistant. Answer directly in plain text.";
-const TOOL_PREAMBLE: &str = "Use the provided tool to answer arithmetic questions.";
+pub(super) const TRUNCATING_PROMPT: &str = "Write two sentences about maple trees.";
+pub(super) const RETRY_PROMPT: &str = "Write two sentences about maple trees.";
+pub(super) const SHORT_PROMPT: &str = "Reply with exactly the word: cedar.";
+pub(super) const TOOL_PROMPT: &str = "Calculate 2 + 3.";
+pub(super) const CONCISE_PREAMBLE: &str =
+    "You are a concise assistant. Answer directly in plain text.";
+pub(super) const TOOL_PREAMBLE: &str = "Use the provided tool to answer arithmetic questions.";
 
 // ---------------------------------------------------------------------------
 // Length — the provider cut the turn short at the cap we set.
@@ -107,7 +108,7 @@ async fn blocking_truncated_turn_reports_length_and_cap() {
                         .max_tokens(TINY_CAP)
                         .add_hook(probe)
                         .build()
-                        .runner(TRUNCATING_PROMPT)
+                        .prompt(TRUNCATING_PROMPT)
                         .run()
                         .await
                         .expect("a partially truncated turn still carries an answer");
@@ -157,11 +158,7 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
                         .max_tokens(TINY_CAP)
                         .build();
 
-                    let mut stream = agent
-                        .stream_prompt(TRUNCATING_PROMPT)
-                        .add_hook(probe)
-                        .stream()
-                        .await;
+                    let mut stream = agent.prompt(TRUNCATING_PROMPT).add_hook(probe).stream();
                     let _ = collect_stream_final_response(&mut stream).await;
                 }
             },
@@ -203,7 +200,7 @@ async fn blocking_completed_turn_reports_stop_and_cap() {
                         .max_tokens(ROOMY_CAP)
                         .add_hook(probe)
                         .build()
-                        .runner(SHORT_PROMPT)
+                        .prompt(SHORT_PROMPT)
                         .run()
                         .await
                         .expect("a short answer under a roomy cap");
@@ -244,11 +241,7 @@ async fn streaming_completed_turn_reports_stop_and_cap() {
                         .max_tokens(ROOMY_CAP)
                         .build();
 
-                    let mut stream = agent
-                        .stream_prompt(SHORT_PROMPT)
-                        .add_hook(probe)
-                        .stream()
-                        .await;
+                    let mut stream = agent.prompt(SHORT_PROMPT).add_hook(probe).stream();
                     let _ = collect_stream_final_response(&mut stream).await;
                 }
             },
@@ -287,7 +280,7 @@ async fn blocking_tool_turn_reports_tool_calls() {
                         .tool(Adder)
                         .add_hook(probe)
                         .build()
-                        .runner(TOOL_PROMPT)
+                        .prompt(TOOL_PROMPT)
                         .max_turns(3)
                         .run()
                         .await
@@ -334,11 +327,10 @@ async fn streaming_tool_turn_reports_tool_calls() {
                         .build();
 
                     let mut stream = agent
-                        .stream_prompt(TOOL_PROMPT)
+                        .prompt(TOOL_PROMPT)
                         .add_hook(probe)
                         .max_turns(3)
-                        .stream()
-                        .await;
+                        .stream();
                     let _ = collect_stream_final_response(&mut stream).await;
                 }
             },
@@ -387,7 +379,7 @@ async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
                         .add_hook(probe)
                         .add_hook(escalate)
                         .build()
-                        .runner(RETRY_PROMPT)
+                        .prompt(RETRY_PROMPT)
                         .max_turns(2)
                         .run()
                         .await
@@ -443,12 +435,11 @@ async fn streaming_escalating_retry_reports_each_attempts_own_cap() {
                         .build();
 
                     let mut stream = agent
-                        .stream_prompt(RETRY_PROMPT)
+                        .prompt(RETRY_PROMPT)
                         .add_hook(probe)
                         .add_hook(escalate)
                         .max_turns(2)
-                        .stream()
-                        .await;
+                        .stream();
                     let _ = collect_stream_final_response(&mut stream).await;
                 }
             },
@@ -524,7 +515,7 @@ fn body_json_objects(body: &str) -> Vec<Value> {
 /// non-null one the body carries. A stream repeats `null` on every chunk until
 /// the terminal one, so taking the first non-null entry yields exactly one
 /// reason per call on both surfaces.
-fn recorded_wire_reasons(scenario: &str) -> Vec<String> {
+pub(super) fn recorded_wire_reasons(scenario: &str) -> Vec<String> {
     {
         interaction_bodies(scenario, "then")
             .iter()
@@ -544,7 +535,7 @@ fn recorded_wire_reasons(scenario: &str) -> Vec<String> {
     }
 }
 
-fn assert_recorded_wire_reason(scenario: &str, expected: &str) {
+pub(super) fn assert_recorded_wire_reason(scenario: &str, expected: &str) {
     {
         let reasons = recorded_wire_reasons(scenario);
         assert!(
@@ -557,7 +548,7 @@ fn assert_recorded_wire_reason(scenario: &str, expected: &str) {
 
 /// The output-token cap of every recorded *request*, in order — proof that the
 /// cap the hook reported is the cap that actually went on the wire.
-fn recorded_request_caps(scenario: &str) -> Vec<u64> {
+pub(super) fn recorded_request_caps(scenario: &str) -> Vec<u64> {
     {
         interaction_bodies(scenario, "when")
             .iter()
@@ -571,7 +562,7 @@ fn recorded_request_caps(scenario: &str) -> Vec<u64> {
     }
 }
 
-fn assert_recorded_request_cap(scenario: &str, expected: u64) {
+pub(super) fn assert_recorded_request_cap(scenario: &str, expected: u64) {
     {
         let caps = recorded_request_caps(scenario);
         assert!(

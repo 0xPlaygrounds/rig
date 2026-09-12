@@ -191,7 +191,7 @@ fn streaming_terminal_record_is_normalized() {
         eval_duration: None,
     };
 
-    let final_record = StreamFinal::from(terminal);
+    let final_record = stream_final(terminal);
     assert_eq!(final_record.provider, PROVIDER_NAME);
     assert_eq!(final_record.model.as_deref(), Some("llama3.2"));
     assert_eq!(
@@ -522,7 +522,9 @@ fn wire_message_conversion_preserves_the_daemon_tool_call_id() {
     let ids: Vec<String> = content
         .iter()
         .filter_map(|item| match item {
-            crate::message::AssistantContent::ToolCall(call) => Some(call.id.as_str().to_owned()),
+            crate::message::AssistantContent::ToolCall(call) => {
+                Some(call.id.explicit().expect("provider-issued ID").to_owned())
+            }
             _ => None,
         })
         .collect();
@@ -1325,7 +1327,7 @@ fn ndjson_buffer_yields_parseable_chunks_when_split_arbitrarily() {
 async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -1349,8 +1351,11 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     let mut saw_terminal = false;
     while let Some(item) = stream.next().await {
         match item.expect("stream item should be Ok") {
-            StreamedAssistantContent::Text(text) => texts.push(text.text),
-            StreamedAssistantContent::Final(_) => saw_terminal = true,
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => texts.push(text),
+            StreamEvent::Final(_) => saw_terminal = true,
             _ => {}
         }
     }
@@ -1370,7 +1375,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
 async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -1400,8 +1405,11 @@ async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
     let mut terminal = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text),
-            Ok(StreamedAssistantContent::Final(final_response)) => {
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            }) => texts.push(text),
+            Ok(StreamEvent::Final(final_response)) => {
                 terminal = Some(final_response);
             }
             Ok(_) => {}
@@ -1423,7 +1431,7 @@ async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
 async fn content_after_the_done_record_is_not_yielded() {
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
-    use crate::streaming::StreamedAssistantContent;
+    use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
@@ -1451,14 +1459,19 @@ async fn content_after_the_done_record_is_not_yielded() {
     let mut terminal = None;
     while let Some(item) = stream.next().await {
         match item.expect("stream item should be Ok") {
-            StreamedAssistantContent::Text(text) => texts.push(text.text),
-            StreamedAssistantContent::Final(final_response) => {
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            } => texts.push(text),
+            StreamEvent::Final(final_response) => {
                 assert!(
                     terminal.is_none(),
                     "the terminal record must be yielded exactly once"
                 );
                 terminal = Some(final_response);
             }
+            // The text block's minted start/end bracket the deltas.
+            StreamEvent::BlockStart { .. } | StreamEvent::BlockEnd { .. } => {}
             other => panic!("unexpected stream item: {other:?}"),
         }
     }
@@ -1498,7 +1511,7 @@ async fn completion_non_success_preserves_status_and_body() {
         .await
         .expect_err("should fail with non-success status");
 
-    assert!(matches!(error, CompletionError::HttpError(_)));
+    assert!(matches!(error, CompletionError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)
@@ -1530,7 +1543,7 @@ async fn embeddings_non_success_preserves_status_and_body() {
         .await
         .expect_err("should fail with non-success status");
 
-    assert!(matches!(error, EmbeddingError::HttpError(_)));
+    assert!(matches!(error, EmbeddingError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)
@@ -1617,4 +1630,58 @@ mod raw_capture {
         assert_eq!(response.model.as_deref(), Some("llama3.2"));
         assert_eq!(response.usage.total_tokens, 31);
     }
+}
+
+/// Synthetic wire values test absent-ID and explicit-ID collisions deterministically;
+/// recordings cannot reliably force a provider to emit these boundary combinations.
+#[test]
+fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses_and_messages() {
+    let wire = json!({
+        "model": "test", "created_at": "2024-01-01T00:00:00Z", "done": true,
+        "message": {"role":"assistant", "content":"", "tool_calls":[
+            {"function":{"name":"same","arguments":{"value":1}}},
+            {"id":"tool-0","function":{"name":"same","arguments":{"value":2}}},
+            {"function":{"name":"same","arguments":{"value":3}}}
+        ]}
+    });
+    let normalize = || {
+        completion::CompletionResponse::try_from(
+            serde_json::from_value::<CompletionResponse>(wire.clone()).unwrap(),
+        )
+        .unwrap()
+    };
+    let first = normalize();
+    assert_eq!(
+        serde_json::to_value(&first.choice).unwrap(),
+        serde_json::to_value(normalize().choice).unwrap()
+    );
+    let normalized_message: crate::message::Message =
+        serde_json::from_value::<Message>(wire["message"].clone())
+            .unwrap()
+            .into();
+    let crate::message::Message::Assistant { content, .. } = normalized_message else {
+        panic!("assistant");
+    };
+    assert_eq!(
+        serde_json::to_value(&first.choice).unwrap(),
+        serde_json::to_value(&content).unwrap()
+    );
+    let calls: Vec<_> = content
+        .iter()
+        .filter_map(|item| match item {
+            crate::message::AssistantContent::ToolCall(call) => Some(call),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| &call.id)
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        3
+    );
+    assert!(calls[0].provider.is_none());
+    assert_eq!(calls[1].id.explicit(), Some("tool-0"));
+    assert!(calls[2].provider.is_none());
 }

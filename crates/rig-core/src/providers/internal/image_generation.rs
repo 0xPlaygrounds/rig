@@ -185,8 +185,7 @@ where
     // path (rig#2210).
     let (parts, body) = response.into_parts();
     let status = parts.status;
-    let provider_request_id =
-        super::transcription::request_id_from_headers(&parts.headers, request_id_header);
+    let provider_request_id = super::request_id_from_headers(&parts.headers, request_id_header);
     let headers = Box::new(parts.headers);
     let response_body = body.into_future().await?;
 
@@ -195,6 +194,7 @@ where
             status,
             String::from_utf8_lossy(&response_body).into_owned(),
         )
+        .with_provider_request_id(provider_request_id)
         .with_response_headers(Some(headers)));
     }
 
@@ -206,6 +206,7 @@ where
                 status,
                 String::from_utf8_lossy(&response_body).into_owned(),
             )
+            .with_provider_request_id(provider_request_id)
             .with_response_headers(Some(headers)))
         }
     }

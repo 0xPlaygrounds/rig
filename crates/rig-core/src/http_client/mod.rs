@@ -18,14 +18,13 @@ pub use multipart::MultipartForm;
 pub enum Error {
     #[error("Http error: {0}")]
     Protocol(#[from] http::Error),
-    #[error("Invalid status code: {0}")]
-    InvalidStatusCode(StatusCode),
-    #[error("Invalid status code {0} with message: {1}")]
-    InvalidStatusCodeWithMessage(StatusCode, String),
-    /// A non-success HTTP response whose headers were preserved alongside the
-    /// body, so provider layers can read transport metadata — e.g. their
-    /// request-id contract — off the failed response (rig#2314). Displays
-    /// identically to [`Self::InvalidStatusCodeWithMessage`].
+    /// The one non-success response shape: the server answered, and the
+    /// transport kept everything it said — status, body and headers — so
+    /// provider layers can read the reply and its transport metadata (their
+    /// request-id contract, `Retry-After`) off the error (rig#2314). A
+    /// transport never reports a status without the body behind it; a
+    /// response-less failure is [`Self::Instance`] or one of the protocol
+    /// variants.
     #[error("Invalid status code {status} with message: {body}")]
     InvalidStatusCodeWithDetails {
         /// The non-success status.
@@ -61,9 +60,6 @@ impl Error {
     /// layer that maps it back into its own error model reads the status here.
     pub fn non_success_status(&self) -> Option<StatusCode> {
         match self {
-            Self::InvalidStatusCode(status) | Self::InvalidStatusCodeWithMessage(status, _) => {
-                Some(*status)
-            }
             Self::InvalidStatusCodeWithDetails { status, .. } => Some(*status),
             _ => None,
         }
@@ -73,7 +69,6 @@ impl Error {
     /// [`Self::non_success_status`] and [`Self::non_success_headers`].
     pub fn non_success_body(&self) -> Option<&str> {
         match self {
-            Self::InvalidStatusCodeWithMessage(_, body) => Some(body.as_str()),
             Self::InvalidStatusCodeWithDetails { body, .. } => Some(body.as_str()),
             _ => None,
         }
@@ -114,9 +109,8 @@ impl Error {
     /// }
     /// ```
     ///
-    /// Returns `None` when the error carries no captured headers: transports
-    /// that report a non-success status without them, and errors built from
-    /// only a status and body.
+    /// Returns `None` for a response-less failure: every non-success error
+    /// carries its headers.
     pub fn non_success_headers(&self) -> Option<&HeaderMap> {
         match self {
             Self::InvalidStatusCodeWithDetails { headers, .. } => Some(headers),

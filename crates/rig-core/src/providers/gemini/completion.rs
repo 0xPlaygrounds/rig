@@ -34,7 +34,7 @@ use crate::message::{self, MimeType, Reasoning};
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
-use crate::providers::internal::completion_send::send_completion;
+use crate::providers::internal::completion_send::send_completion_with;
 use crate::providers::internal::envelope::DirectPayload;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use gemini_api_types::{
@@ -162,6 +162,25 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<GenerateContentResponse, CompletionError> {
+        self.raw_completion_with_context(completion_request, None)
+            .await
+    }
+
+    /// Return provider-native output with context owned by this invocation.
+    pub async fn raw_completion_with_context(
+        &self,
+        completion_request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<GenerateContentResponse, CompletionError> {
+        self.complete_with(completion_request, context, Ok).await
+    }
+
+    async fn complete_with<R>(
+        &self,
+        completion_request: CompletionRequest,
+        observation: Option<crate::observe::AdapterContext>,
+        normalize: impl FnOnce(GenerateContentResponse) -> Result<R, CompletionError>,
+    ) -> Result<R, CompletionError> {
         let request_model = resolve_request_model(&self.model, &completion_request);
         let span = CompletionSpanBuilder::new(
             PROVIDER_NAME,
@@ -189,13 +208,20 @@ where
 
         let path = completion_endpoint(&request_model);
 
-        let request = self
+        let mut request = self
             .client
             .post(path.as_str())?
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        send_completion::<_, DirectPayload<GenerateContentResponse>, _>(
+        if let Some(observation) = observation {
+            super::observation::attach(
+                observation,
+                &mut request,
+                "/models/{model}:generateContent",
+            );
+        }
+        send_completion_with::<_, DirectPayload<GenerateContentResponse>, _, _, _>(
             &self.client,
             request,
             "Gemini completion",
@@ -212,6 +238,7 @@ where
                     .unwrap_or_default();
                 span.record_token_usage(&usage);
             },
+            normalize,
         )
         .instrument(span)
         .await
@@ -225,20 +252,37 @@ where
 {
     async fn completion(
         &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Capture before `try_into` consumes the raw value.
-        let raw = self.raw_completion(completion_request).await?;
-        let captured = serde_json::to_value(&raw)?;
-        let response: completion::CompletionResponse = raw.try_into()?;
-        Ok(response.with_raw(captured))
+        request: CompletionRequest,
+    ) -> Result<crate::completion::CompletionResponse, CompletionError> {
+        self.completion_with_context(request, None).await
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
     ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        CompletionModel::stream(self, request).await
+        self.stream_with_context(request, None).await
+    }
+
+    async fn completion_with_context(
+        &self,
+        completion_request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.complete_with(completion_request, context, |raw| {
+            let captured = serde_json::to_value(&raw)?;
+            let response: completion::CompletionResponse = raw.try_into()?;
+            Ok(response.with_raw(captured))
+        })
+        .await
+    }
+
+    async fn stream_with_context(
+        &self,
+        request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
+        self.stream_observed(request, context).await
     }
 }
 
@@ -580,6 +624,58 @@ impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
     }
 }
 
+/// The wire spelling of a serde enum (`SCREAMING_SNAKE_CASE`, or the raw
+/// string of an `Unknown` variant), for messages that quote the provider.
+mod erased_wire {
+    pub(super) trait Wire {
+        fn wire_name(&self) -> String;
+    }
+    impl<T: serde::Serialize> Wire for T {
+        fn wire_name(&self) -> String {
+            match serde_json::to_value(self) {
+                Ok(serde_json::Value::String(name)) => name,
+                Ok(other) => other.to_string(),
+                Err(_) => "<unserializable>".to_owned(),
+            }
+        }
+    }
+}
+
+/// A prompt Gemini refused to answer: `promptFeedback.blockReason` is set and
+/// no candidate is returned. Both wires (`generateContent` and
+/// `streamGenerateContent`) spell it the same way, so both surface the same
+/// error, naming the reason and the safety ratings that explain it, instead
+/// of a generic missing-candidate failure (unary) or a stream that ends
+/// before its terminal record (streaming).
+pub(crate) fn blocked_prompt_error(
+    feedback: &gemini_api_types::PromptFeedback,
+) -> Option<CompletionError> {
+    let reason = match feedback.block_reason.as_ref()? {
+        // Documented as unused: the zero value is never sent, and it names
+        // no block if it ever were.
+        gemini_api_types::BlockReason::BlockReasonUnspecified => return None,
+        reason => reason,
+    };
+    let wire = |value: &dyn erased_wire::Wire| value.wire_name();
+    let ratings = feedback
+        .safety_ratings
+        .as_ref()
+        .filter(|ratings| !ratings.is_empty())
+        .map(|ratings| {
+            ratings
+                .iter()
+                .map(|rating| format!("{}={}", wire(&rating.category), wire(&rating.probability)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .map(|ratings| format!(", safety_ratings=[{ratings}]"))
+        .unwrap_or_default();
+    Some(CompletionError::ProviderError(format!(
+        "Gemini blocked the prompt: block_reason={}{ratings}",
+        reason.as_wire_str()
+    )))
+}
+
 pub(crate) fn function_call_finish_reason_error(
     reason: &FinishReason,
     finish_message: Option<&str>,
@@ -607,7 +703,10 @@ pub(crate) fn function_call_finish_reason_error(
 /// all is an `Err`. One part can yield *two* items: a trailing
 /// `thoughtSignature` rides a text part that carries no `thought` flag, and
 /// the signature belongs to a reasoning block rather than to the text.
-fn map_response_part(part: &Part) -> Result<Vec<completion::AssistantContent>, CompletionError> {
+fn map_response_part(
+    part: &Part,
+    tool_index: &mut u64,
+) -> Result<Vec<completion::AssistantContent>, CompletionError> {
     let Part {
         thought,
         thought_signature,
@@ -652,8 +751,13 @@ fn map_response_part(part: &Part) -> Result<Vec<completion::AssistantContent>, C
             }
         }
         PartKind::FunctionCall(function_call) => {
-            let tool_call = message::ToolCall::from_wire(
+            // Gemini function calls carry no id on most models: the
+            // `index`-th call of the response is `tool-<index>`.
+            let index = *tool_index;
+            *tool_index += 1;
+            let tool_call = message::ToolCall::from_wire_indexed(
                 function_call.id.clone().unwrap_or_default(),
+                index,
                 message::ToolFunction::new(function_call.name.clone(), function_call.args.clone()),
             )
             .with_signature(thought_signature.clone());
@@ -744,6 +848,13 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
+        if let Some(blocked) = response
+            .prompt_feedback
+            .as_ref()
+            .and_then(blocked_prompt_error)
+        {
+            return Err(blocked);
+        }
         let candidate = response.candidates.first().ok_or_else(|| {
             CompletionError::ResponseError("No response candidates in response".into())
         })?;
@@ -781,8 +892,9 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
         // signature is placed against the content mapped *before* it, so the
         // fold cannot become a `map`.
         let mut content: Vec<completion::AssistantContent> = Vec::with_capacity(parts.len());
+        let mut tool_index = 0;
         for part in parts {
-            content.extend(map_response_part(part)?);
+            content.extend(map_response_part(part, &mut tool_index)?);
             if !part.thought.unwrap_or(false)
                 && matches!(part.part, PartKind::Text(_))
                 && let Some(signature) = part.thought_signature.clone()
@@ -791,6 +903,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             }
         }
 
+        crate::message::normalize_missing_tool_call_ids(&mut content);
         let choice = crate::message::require_non_empty_response(content)?;
 
         let usage = response
@@ -1550,6 +1663,10 @@ pub mod gemini_api_types {
         Low,
         Medium,
         High,
+        /// A probability this crate does not know yet, carried verbatim so
+        /// a rating (and the chunk that carries it) stays deserializable.
+        #[serde(untagged)]
+        Unknown(String),
     }
 
     #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -1567,6 +1684,12 @@ pub mod gemini_api_types {
         HarmCategorySexuallyExplicit,
         HarmCategoryDangerousContent,
         HarmCategoryCivicIntegrity,
+        /// A category this crate does not know yet (Google adds them without
+        /// notice: `HARM_CATEGORY_JAILBREAK`, the `HARM_CATEGORY_IMAGE_*`
+        /// family), carried verbatim so a rating — and a blocked prompt's
+        /// only chunk, which carries the ratings — stays deserializable.
+        #[serde(untagged)]
+        Unknown(String),
     }
 
     #[derive(Debug, Deserialize, Clone, Default, Serialize)]
@@ -1689,6 +1812,21 @@ pub mod gemini_api_types {
         /// whole payload deserializable instead of failing on the new value.
         #[serde(untagged)]
         Unknown(String),
+    }
+
+    impl BlockReason {
+        /// The exact spelling Gemini uses for this reason on the wire (see
+        /// [`FinishReason::as_wire_str`] for why it is spelled out).
+        pub fn as_wire_str(&self) -> &str {
+            match self {
+                Self::BlockReasonUnspecified => "BLOCK_REASON_UNSPECIFIED",
+                Self::Safety => "SAFETY",
+                Self::Other => "OTHER",
+                Self::Blocklist => "BLOCKLIST",
+                Self::ProhibitedContent => "PROHIBITED_CONTENT",
+                Self::Unknown(raw) => raw.as_str(),
+            }
+        }
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]

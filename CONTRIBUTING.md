@@ -1,5 +1,7 @@
 # Contributing to Rig
 
+For the fast edit/check loop, run `cargo xtask verify --changed`. Before publishing, run `cargo xtask verify --pr --base <intended-base-ref>` and complete independent review and committed-head CI. See [development verification](DEVELOPING.md) for modes, prerequisites, result invalidation, and recovery.
+
 Thank you for considering contributing to Rig! Here are some guidelines to help you get started.
 
 General guidelines and requested contributions can be found in the [How to Contribute](https://docs.rig.rs/docs/how_to_contribute) section of the documentation.
@@ -76,9 +78,13 @@ expectations:
   streaming normalization patterns.
 - Provider error responses preserve status/body details through the relevant Rig
   error helpers, so callers can inspect provider response details.
-- Non-2xx completion responses surface through the capability error's
-  `from_http_response(status, body)` helper so retry/status logic can inspect
-  `provider_response_status()` and the raw provider body.
+- Non-2xx completion responses surface through the capability error's one
+  funnel, `from_http_response(status, body)` (or `?` on the transport error,
+  which routes through it), stamped with `with_provider_request_id` and
+  `with_response_headers` when the call site has them, so retry/status logic
+  can inspect `provider_response_status()`, the raw provider body, the
+  request id and `Retry-After`. `HttpError` is only a transport failure that
+  produced no provider reply, and never carries a status.
 - `ProviderResponseExt`, telemetry spans, and GenAI fields are populated
   consistently with nearby providers where applicable.
 - Tests cover the smallest reliable scope: unit tests, cassette-backed provider
@@ -111,7 +117,8 @@ Rig is split up into multiple crates in a monorepo structure:
 - `crates/rig-derive`: derive macros.
 - `crates/rig-*`: first-party provider, vector-store, memory, and companion integration crates.
 - `examples/*`: workspace example packages.
-- `xtask/`: workspace maintenance tasks, run as `cargo xtask <task>`. This is where source-tree checks that need a real parser rather than a grep live. Today: `cargo xtask check-test-layout`, which fails on any inline `#[cfg(test)] mod x { }` (test modules are sibling files). Not a default workspace member, so it is not built by `cargo test`.
+- `xtask/`: authoritative verification planning and source-tree checks. Run `cargo xtask verify --changed`; see `DEVELOPING.md` for the complete workflow. Its own tests run explicitly in CI.
+- `test-support/service-tests`: unpublished runner for vector-store integrations, separated from provider build dependencies.
 - `tests/*.rs`: root integration test targets.
 - `tests/providers/<provider>/`: provider-specific test modules.
 - `tests/cassettes/<provider>/`: committed HTTP cassette fixtures for replayable provider tests.
@@ -163,8 +170,8 @@ cargo test -p rig --test core
 External-service integration tests are collected under the `integrations` target and may require feature flags, Docker, credentials, or pre-provisioned services. For example:
 
 ```bash
-cargo test -p rig --features qdrant --test integrations qdrant -- --nocapture
-cargo test -p rig --all-features --test integrations
+cargo test -p rig-service-tests --features qdrant --test integrations qdrant -- --nocapture
+cargo test -p rig-service-tests --all-features --test integrations
 ```
 
 ### Cassette regression tests

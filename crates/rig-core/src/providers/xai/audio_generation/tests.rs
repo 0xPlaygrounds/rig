@@ -58,7 +58,7 @@ async fn audio_generation_non_success_preserves_status_and_body() {
         .await
         .expect_err("should fail with non-success status");
 
-    assert!(matches!(error, AudioGenerationError::HttpError(_)));
+    assert!(matches!(error, AudioGenerationError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)

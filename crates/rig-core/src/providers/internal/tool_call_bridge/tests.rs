@@ -1,17 +1,26 @@
 use super::*;
+use crate::streaming::{BlockClose, StreamEvent};
 
 #[test]
 fn wire_id_becomes_the_assembly_key() {
     let mut bridge = ToolCallBridge::<usize>::new();
     let slot = bridge.open(0, Some("call_abc"), Some("get_weather"));
-    assert_eq!(slot.key(), &StreamPartId::wire("call_abc"));
+    assert_eq!(slot.key(), &BlockId::wire("call_abc"));
     assert_eq!(slot.id, "call_abc");
     assert_eq!(slot.name, "get_weather");
 
-    // The established id rides the end event as the override.
-    let end = slot.end_event(UnparseableToolInput::Drop);
-    assert_eq!(end.id, StreamPartId::wire("call_abc"));
-    assert_eq!(end.tool_id.as_ref().map(|id| id.as_str()), Some("call_abc"));
+    // The established id rides the end event as the override, and the
+    // end event is keyed by the assembly key.
+    let end = slot.end(UnparseableToolInput::Drop);
+    assert_eq!(end.tool_id.as_deref(), Some("call_abc"));
+    assert_eq!(
+        slot.end_event(UnparseableToolInput::Drop),
+        StreamEvent::BlockEnd {
+            id: BlockId::wire("call_abc"),
+            end: BlockClose::ToolCall(end),
+            block: None,
+        }
+    );
 }
 
 #[test]
@@ -30,9 +39,12 @@ fn id_less_open_mints_a_distinct_minted_key_per_index() {
     // A call whose wire never supplied an id keeps its minted key with
     // no provider-id override.
     let slot = bridge.remove(0).expect("slot must be open");
-    let end = slot.end_event(UnparseableToolInput::Drop);
-    assert_eq!(end.id, first_key);
+    let end = slot.end(UnparseableToolInput::Drop);
     assert!(end.tool_id.is_none());
+    assert_eq!(
+        slot.end_event(UnparseableToolInput::Drop).block_id(),
+        Some(&first_key)
+    );
 }
 
 #[test]
@@ -58,7 +70,7 @@ fn evict_if_takes_the_slot_only_when_the_predicate_says_so() {
     let evicted = bridge
         .evict_if(0, |slot| slot.id == "call_a")
         .expect("predicate matched: slot must be evicted");
-    assert_eq!(evicted.key(), &StreamPartId::wire("call_a"));
+    assert_eq!(evicted.key(), &BlockId::wire("call_a"));
     assert!(bridge.get(0).is_none());
 }
 
@@ -75,11 +87,11 @@ fn decoration_matches_by_established_provider_id_and_rides_the_end_event() {
     });
 
     let undecorated = bridge.remove(0).expect("slot 0 open");
-    let end = undecorated.end_event(UnparseableToolInput::Drop);
+    let end = undecorated.end(UnparseableToolInput::Drop);
     assert!(end.signature.is_none());
 
     let decorated = bridge.remove(1).expect("slot 1 open");
-    let end = decorated.end_event(UnparseableToolInput::Drop);
+    let end = decorated.end(UnparseableToolInput::Drop);
     assert_eq!(end.signature.as_deref(), Some("sig-b"));
     assert_eq!(end.additional_params, Some(serde_json::json!({"k": "v"})));
 }
@@ -148,7 +160,7 @@ fn drain_ordered_preserves_wire_index_order() {
     bridge.open(0, Some("call_a"), None);
     bridge.open(1, Some("call_b"), None);
 
-    let keys: Vec<StreamPartId> = bridge
+    let keys: Vec<BlockId> = bridge
         .drain_ordered()
         .into_iter()
         .map(|slot| slot.key().clone())
@@ -156,9 +168,9 @@ fn drain_ordered_preserves_wire_index_order() {
     assert_eq!(
         keys,
         vec![
-            StreamPartId::wire("call_a"),
-            StreamPartId::wire("call_b"),
-            StreamPartId::wire("call_c")
+            BlockId::wire("call_a"),
+            BlockId::wire("call_b"),
+            BlockId::wire("call_c")
         ]
     );
     assert!(bridge.is_empty());

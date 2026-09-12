@@ -166,9 +166,8 @@ async fn none_streaming_does_not_emit_tool_calls() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("Calculate 20 + 22 directly in text. Do not call tools.")
-                .stream()
-                .await;
+                .prompt("Calculate 20 + 22 directly in text. Do not call tools.")
+                .stream();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(

@@ -822,6 +822,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 
                 normalized_content.extend(images.iter().map(response_image_to_assistant_content));
 
+                crate::message::normalize_missing_tool_call_ids(&mut normalized_content);
                 Ok(normalized_content)
             }
             _ => Err(CompletionError::ResponseError(
@@ -1129,7 +1130,7 @@ fn user_contents_to_messages(
                 // assistant echo (shared From<message::ToolCall>);
                 // provider-less results fall back to rig's minted
                 // handle — never empty.
-                let tool_call_id = tool_result.wire_call_id().to_owned();
+                let tool_call_id = tool_result.wire_call_id().into_owned();
                 let content = tool_result
                     .content
                     .into_iter()
@@ -1195,15 +1196,36 @@ enum ToolCallAdditionalParams {
 fn assistant_contents_to_messages(
     value: Vec<message::AssistantContent>,
 ) -> Result<Vec<Message>, message::MessageError> {
+    assistant_contents_with_tool_ids(value, None)
+}
+
+fn assistant_contents_with_tool_ids(
+    value: Vec<message::AssistantContent>,
+    plan: Option<(
+        usize,
+        &crate::providers::internal::tool_call_ids::ToolCallIds,
+    )>,
+) -> Result<Vec<Message>, message::MessageError> {
     let mut text_content = Vec::new();
     let mut tool_calls = Vec::new();
     let mut reasoning = None;
     let mut reasoning_details = Vec::new();
 
-    for content in value.into_iter() {
+    for (position, content) in value.into_iter().enumerate() {
         match content {
             message::AssistantContent::Text(text) => text_content.push(text),
             message::AssistantContent::ToolCall(tool_call) => {
+                let wire_id = match plan {
+                    Some((message, ids)) => ids
+                        .get(message, position)
+                        .ok_or_else(|| {
+                            message::MessageError::ConversionError(
+                                "missing planned OpenRouter tool identity".into(),
+                            )
+                        })?
+                        .to_owned(),
+                    None => tool_call.wire_call_id().into_owned(),
+                };
                 // We usually want to provide back the reasoning to OpenRouter since some
                 // providers require it.
                 // 1. Full reasoning details passed back the user
@@ -1222,14 +1244,7 @@ fn assistant_contents_to_messages(
                             // Correlate with the id the wire tool call will
                             // carry (provider call id when present, else
                             // rig's handle).
-                            let id = id
-                                .or_else(|| {
-                                    tool_call
-                                        .provider
-                                        .as_ref()
-                                        .map(|provider| provider.call_id.clone())
-                                })
-                                .unwrap_or_else(|| tool_call.id.as_str().to_owned());
+                            let id = id.unwrap_or_else(|| wire_id.clone());
                             if let Some(signature) = &tool_call.signature {
                                 reasoning_details.push(ReasoningDetails::Encrypted {
                                     id: Some(id),
@@ -1242,16 +1257,15 @@ fn assistant_contents_to_messages(
                     }
                 } else if let Some(signature) = &tool_call.signature {
                     reasoning_details.push(ReasoningDetails::Encrypted {
-                        id: Some(tool_call.provider.as_ref().map_or_else(
-                            || tool_call.id.as_str().to_owned(),
-                            |provider| provider.call_id.clone(),
-                        )),
+                        id: Some(wire_id.clone()),
                         format: None,
                         index: None,
                         data: signature.clone(),
                     });
                 }
-                tool_calls.push(tool_call.into());
+                let mut call = openai::completion::ToolCall::from(tool_call);
+                call.id = wire_id;
+                tool_calls.push(call);
             }
             message::AssistantContent::Reasoning(r) => {
                 if r.content.is_empty() {
@@ -1463,15 +1477,30 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
 
         let mut full_history: Vec<Message> = vec![];
 
-        let chat_history: Vec<Message> = chat_history
-            .into_iter()
-            .map(messages_from_rig_message)
-            .collect::<Result<Vec<Vec<Message>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        full_history.extend(chat_history);
+        let tool_ids = crate::providers::internal::tool_call_ids::ToolCallIds::new(&chat_history)
+            .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+        for (position, message) in chat_history.into_iter().enumerate() {
+            let mut messages = match message {
+                message::Message::Assistant { content, .. } => {
+                    assistant_contents_with_tool_ids(content, Some((position, &tool_ids)))?
+                }
+                message => messages_from_rig_message(message)?,
+            };
+            let slots: Vec<&mut String> = messages
+                .iter_mut()
+                .flat_map(|message| match message {
+                    Message::Assistant { tool_calls, .. } => {
+                        tool_calls.iter_mut().map(|call| &mut call.id).collect()
+                    }
+                    Message::ToolResult { tool_call_id, .. } => vec![tool_call_id],
+                    _ => Vec::new(),
+                })
+                .collect();
+            tool_ids
+                .apply(position, slots)
+                .map_err(|error| CompletionError::RequestError(Box::new(error)))?;
+            full_history.extend(messages);
+        }
 
         let tool_choice = req
             .tool_choice
@@ -1596,8 +1625,8 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouter {
         &self,
         detail: &serde_json::Value,
     ) -> Option<(
-        crate::streaming::StreamPartId,
-        Option<crate::streaming::WireId>,
+        crate::streaming::BlockId,
+        Option<String>,
         message::ReasoningContent,
     )> {
         let Ok(ReasoningDetails::Encrypted { id, data, .. }) =
@@ -1615,13 +1644,10 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouter {
         // under `Minted { Reasoning, 0 }`, and a whole block under that same
         // key would restate — i.e. replace — the open text part. Distinct
         // content classes get distinct minted keys.
-        let provider_id = id.and_then(crate::streaming::WireId::new);
+        let provider_id = id.and_then(crate::streaming::non_empty_id);
         let key = provider_id.as_ref().map_or(
-            crate::streaming::StreamPartId::minted(
-                crate::streaming::MintKind::EncryptedReasoning,
-                0,
-            ),
-            |id| crate::streaming::StreamPartId::wire(id.as_str()),
+            crate::streaming::BlockId::minted(crate::streaming::MintKind::EncryptedReasoning, 0),
+            |id| crate::streaming::BlockId::wire(id.as_str()),
         );
         Some((key, provider_id, message::ReasoningContent::Encrypted(data)))
     }
@@ -1647,10 +1673,9 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouter {
 ///
 /// The provider-native escape hatches come with it:
 /// [`raw_completion`](openai::completion::GenericCompletionModel::raw_completion)
-/// returns OpenRouter's own [`CompletionResponse`] and
-/// [`raw_stream`](openai::completion::GenericCompletionModel::raw_stream) a
-/// stream whose terminal record stays provider-native — both over the same
-/// single request path as the normalized methods.
+/// returns OpenRouter's own [`CompletionResponse`] over the same single
+/// request path as the normalized method, and a stream's terminal record is
+/// serialized onto [`StreamFinal::raw`](crate::streaming::StreamFinal::raw).
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
     openai::completion::GenericCompletionModel<OpenRouter, H>;
 

@@ -24,7 +24,7 @@ async fn streaming_tool_call_roundtrip() {
                 .default_max_turns(2)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
+            let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream();
             let observation = collect_stream_observation(&mut stream).await;
 
             assert!(

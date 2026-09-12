@@ -12,7 +12,13 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 /// Replays by default; set `RIG_PROVIDER_TEST_MODE=record` (with a local Ollama
 /// server on http://localhost:11434) to record. Ollama needs no API key.
 async fn ollama_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, ollama::Client) {
-    let cassette = ProviderCassette::start("ollama", spec, "http://localhost:11434").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "ollama",
+        spec,
+        "http://localhost:11434",
+    )
+    .await;
     let client = ollama::Client::builder()
         .api_key(Nothing)
         .base_url(cassette.base_url())

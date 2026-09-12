@@ -16,5 +16,7 @@
 
 #[path = "core/mod.rs"]
 mod core;
+#[path = "common/goldens.rs"]
+mod goldens;
 #[path = "common/reasoning.rs"]
 mod reasoning;

@@ -84,18 +84,16 @@ where
             .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
 
         let response = self.client.send(req).await?;
+        let (parts, body) = response.into_parts();
+        let data: Vec<u8> = body.await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let text: Vec<u8> = response.into_body().await?;
-
+        if !parts.status.is_success() {
             return Err(ImageGenerationError::from_http_response(
-                status,
-                String::from_utf8_lossy(&text),
-            ));
+                parts.status,
+                String::from_utf8_lossy(&data),
+            )
+            .with_response_headers(Some(Box::new(parts.headers))));
         }
-
-        let data: Vec<u8> = response.into_body().await?;
 
         Ok(ImageGenerationResponse { data })
     }

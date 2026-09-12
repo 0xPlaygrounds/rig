@@ -1,69 +1,95 @@
 use super::super::adapter::{AdapterOutput, WireAdapter, run_wire_buffered};
 use super::super::wire::WireEvent;
-use crate::streaming::{MintKind, RawStreamingChoice, StreamPartId};
+use crate::streaming::{BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, ToolCallEnd};
 
 /// A scripted adapter: each frame index replays its preloaded batch.
 struct Scripted {
-    batches: Vec<Vec<RawStreamingChoice<()>>>,
+    batches: Vec<Vec<StreamEvent>>,
 }
 
 impl WireAdapter for Scripted {
     type Frame = usize;
     type Event = usize;
-    type Response = ();
 
     fn classify(&self, frame: usize) -> WireEvent<usize> {
         WireEvent::Known(frame)
     }
 
-    fn interpret(&mut self, event: usize, out: &mut AdapterOutput<()>) {
+    fn interpret(&mut self, event: usize, out: &mut AdapterOutput) {
         if let Some(batch) = self.batches.get_mut(event) {
-            out.extend(std::mem::take(batch).into_iter().map(Ok));
+            for event in std::mem::take(batch) {
+                out.push(Ok(event));
+            }
         }
     }
 
-    fn finish(&mut self, _out: &mut AdapterOutput<()>) {}
+    fn finish(&mut self, _out: &mut AdapterOutput) {}
 }
 
-fn drive(batches: Vec<Vec<RawStreamingChoice<()>>>) {
+fn drive(batches: Vec<Vec<StreamEvent>>) {
     let frames = 0..batches.len();
     run_wire_buffered(frames, Scripted { batches }).expect("no data errors");
 }
 
-fn minted_delta() -> RawStreamingChoice<()> {
-    RawStreamingChoice::ReasoningDelta {
-        id: StreamPartId::minted(MintKind::Reasoning, 0),
-        provider_id: None,
-        reasoning: "thinking".to_owned(),
+fn text(text: &str) -> StreamEvent {
+    StreamEvent::text(BlockId::minted(MintKind::Text, 0), text)
+}
+
+fn minted_delta() -> StreamEvent {
+    StreamEvent::BlockDelta {
+        id: BlockId::minted(MintKind::Reasoning, 0),
+        delta: Delta::Reasoning {
+            text: "thinking".to_owned(),
+        },
     }
 }
 
-fn minted_end() -> RawStreamingChoice<()> {
-    RawStreamingChoice::ReasoningEnd {
-        id: StreamPartId::minted(MintKind::Reasoning, 0),
-        reasoning: None,
-        signature: None,
-        wire_sent: false,
+fn minted_end() -> StreamEvent {
+    StreamEvent::BlockEnd {
+        id: BlockId::minted(MintKind::Reasoning, 0),
+        end: BlockClose::Reasoning {
+            reasoning: None,
+            signature: None,
+            wire_sent: false,
+        },
+        block: None,
+    }
+}
+
+fn whole_reasoning(id: BlockId, provider_id: Option<String>, text: &str) -> StreamEvent {
+    StreamEvent::BlockEnd {
+        id,
+        end: BlockClose::Reasoning {
+            reasoning: Some(crate::message::Reasoning {
+                id: provider_id,
+                content: vec![crate::message::ReasoningContent::Text {
+                    text: text.to_owned(),
+                    signature: None,
+                }],
+            }),
+            signature: None,
+            wire_sent: true,
+        },
+        block: None,
     }
 }
 
 #[test]
-#[should_panic(expected = "sequence-law violation (boundary): Message")]
+#[should_panic(expected = "sequence-law violation (boundary): BlockDelta")]
 fn text_while_a_minted_reasoning_part_is_open_panics() {
-    drive(vec![
-        vec![minted_delta()],
-        vec![RawStreamingChoice::Message("visible".to_owned())],
-    ]);
+    drive(vec![vec![minted_delta()], vec![text("visible")]]);
 }
 
 #[test]
-#[should_panic(expected = "sequence-law violation (boundary): ToolCallDelta")]
+#[should_panic(expected = "sequence-law violation (boundary): BlockDelta")]
 fn tool_content_while_a_minted_reasoning_part_is_open_panics() {
     drive(vec![
         vec![minted_delta()],
-        vec![RawStreamingChoice::ToolCallDelta {
-            id: StreamPartId::minted(MintKind::Tool, 0),
-            content: crate::streaming::ToolCallDeltaContent::Name("probe".to_owned()),
+        vec![StreamEvent::BlockDelta {
+            id: BlockId::minted(MintKind::Tool, 0),
+            delta: Delta::ToolName {
+                name: "probe".to_owned(),
+            },
         }],
     ]);
 }
@@ -72,22 +98,28 @@ fn tool_content_while_a_minted_reasoning_part_is_open_panics() {
 fn a_synthesized_end_before_text_satisfies_the_boundary_law() {
     drive(vec![
         vec![minted_delta()],
-        vec![
-            minted_end(),
-            RawStreamingChoice::Message("visible".to_owned()),
-        ],
+        vec![minted_end(), text("visible")],
     ]);
 }
 
 #[test]
 fn a_wire_keyed_part_may_stay_open_across_interleaving() {
     drive(vec![
-        vec![RawStreamingChoice::ReasoningDelta {
-            id: StreamPartId::wire("rs_1"),
-            provider_id: crate::streaming::WireId::new("rs_1"),
-            reasoning: "thinking".to_owned(),
-        }],
-        vec![RawStreamingChoice::Message("visible".to_owned())],
+        vec![
+            StreamEvent::BlockStart {
+                id: BlockId::wire("rs_1"),
+                kind: BlockKind::Reasoning {
+                    provider_id: crate::streaming::non_empty_id("rs_1"),
+                },
+            },
+            StreamEvent::BlockDelta {
+                id: BlockId::wire("rs_1"),
+                delta: Delta::Reasoning {
+                    text: "thinking".to_owned(),
+                },
+            },
+        ],
+        vec![text("visible")],
     ]);
 }
 
@@ -97,40 +129,31 @@ fn a_wire_keyed_part_may_stay_open_across_interleaving() {
 #[test]
 fn wire_order_within_a_batch_is_not_a_violation() {
     drive(vec![vec![
-        RawStreamingChoice::Message("visible".to_owned()),
-        RawStreamingChoice::Reasoning {
-            id: StreamPartId::minted(MintKind::EncryptedReasoning, 0),
-            provider_id: None,
-            content: crate::message::ReasoningContent::Text {
-                text: "late".to_owned(),
-                signature: None,
-            },
-        },
+        text("visible"),
+        whole_reasoning(
+            BlockId::minted(MintKind::EncryptedReasoning, 0),
+            None,
+            "late",
+        ),
     ]]);
 }
 
-/// A same-key whole-block Reasoning event is open + restatement + close
-/// in one event: it closes the accumulation its deltas opened (the
-/// Bedrock shape — deltas under a minted Block key, then the full block
-/// under the same key), so following text is legal.
+/// A same-key whole-block reasoning end is open + restatement + close in
+/// one event: it closes the accumulation its deltas opened (the Bedrock
+/// shape — deltas under a minted Block key, then the full block under the
+/// same key), so following text is legal.
 #[test]
 fn a_same_key_whole_block_closes_the_open_reasoning_part() {
-    let key = || StreamPartId::minted(MintKind::Block, 0);
+    let key = || BlockId::minted(MintKind::Block, 0);
     drive(vec![
-        vec![RawStreamingChoice::ReasoningDelta {
+        vec![StreamEvent::BlockDelta {
             id: key(),
-            provider_id: None,
-            reasoning: "thinking".to_owned(),
-        }],
-        vec![RawStreamingChoice::Reasoning {
-            id: key(),
-            provider_id: None,
-            content: crate::message::ReasoningContent::Text {
-                text: "thinking, complete".to_owned(),
-                signature: None,
+            delta: Delta::Reasoning {
+                text: "thinking".to_owned(),
             },
         }],
-        vec![RawStreamingChoice::Message("visible".to_owned())],
+        vec![whole_reasoning(key(), None, "thinking, complete")],
+        vec![text("visible")],
     ]);
 }
 
@@ -139,16 +162,13 @@ fn lifecycle_bookkeeping_is_not_boundary_content() {
     // Closing an older tool entity after newer text is legitimate
     // eviction.
     drive(vec![vec![
-        RawStreamingChoice::Message("visible".to_owned()),
-        RawStreamingChoice::ToolInputEnd(crate::streaming::ToolInputEnd {
-            id: StreamPartId::minted(MintKind::Tool, 0),
-            tool_id: None,
-            call_id: None,
-            name: None,
-            arguments: None,
-            signature: None,
-            additional_params: None,
-            on_unparseable: crate::streaming::UnparseableToolInput::Drop,
-        }),
+        text("visible"),
+        StreamEvent::BlockEnd {
+            id: BlockId::minted(MintKind::Tool, 0),
+            end: BlockClose::ToolCall(ToolCallEnd::new(
+                crate::streaming::UnparseableToolInput::Drop,
+            )),
+            block: None,
+        },
     ]]);
 }

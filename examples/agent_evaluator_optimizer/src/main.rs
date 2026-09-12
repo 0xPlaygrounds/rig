@@ -46,7 +46,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let evaluator_agent = openai_client.extractor::<Evaluation>(openai::GPT_4)
-        .preamble("
+        .append_preamble("
             Evaluate this following code implementation for:
             1. code correctness
             2. time complexity

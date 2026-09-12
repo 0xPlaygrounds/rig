@@ -27,6 +27,7 @@ agents must follow while reading, editing, testing, and documenting code.
 - Provider test modules: `tests/providers/<provider>/`
 - Provider cassette fixtures: `tests/cassettes/<provider>/`
 - External-service integration tests: `tests/integrations/`
+- Unpublished vector-store test runner: `test-support/service-tests`
 
 The root `rig` crate re-exports `rig-core` and exposes companion crates behind
 feature flags. Check `Cargo.toml` and `src/lib.rs` before documenting or changing
@@ -250,22 +251,6 @@ presenting changes.
 
 ## Verification
 
-Run the smallest useful checks first, then broaden as needed. For tests, prefer
-the targeted commands in `tests/README.md` before running broad workspace checks.
+Use `cargo xtask verify --changed` for the edit/check loop and `--dry-run` to inspect selection. Do not repeat broad workspace checks after every small edit when targeted checks suffice. For a complete intended PR diff, run `cargo xtask verify --pr --base <intended-base-ref>`; never silently assume main. `cargo xtask verify --full` runs exhaustive supported verification. See [DEVELOPING.md](DEVELOPING.md) for prerequisites, invalidation, and the complete PR gate.
 
-Before considering code complete, run when feasible:
-
-```bash
-cargo fmt
-cargo clippy --all-targets --all-features
-cargo test
-```
-
-For documentation changes, also consider:
-
-```bash
-cargo doc --workspace --no-deps
-```
-
-If a command cannot be run, say why and tell the user exactly what remains
-unverified.
+Finish implementation, examples, tests, migration notes, and scope review first. Inspect the full intended diff against its actual merge base, including staged, unstaged, and relevant untracked files. Run formatting, targeted tests, and cheap checks, then obtain independent full-diff review and fix confirmed findings before expensive final verification. Run the final plan on the frozen tree; keep progress reports outside the repository. This does not require committing unfinished work. After a late fix, rerun the affected checks and the final review; every selected check executes fresh, nothing is reused between runs. Validate findings, fix confirmed P0/P1 and in-scope issues, then rerun affected checks and review. After publishing, inspect committed-head required CI and actionable review threads. Do not declare completion while checks are pending/failing or required work remains. Report exact unrelated failures or missing prerequisites without broadening scope. These requirements do not independently authorize commits, pushes, or PR creation.

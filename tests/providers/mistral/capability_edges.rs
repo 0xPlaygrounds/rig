@@ -12,6 +12,8 @@
 //! - Model listing dropped `description` and `max_context_length`, both of
 //!   which `Model` has slots for.
 
+use rig::streaming::Delta;
+
 use anyhow::Result;
 use futures::StreamExt;
 use rig::client::{CompletionClient, EmbeddingsClient, ModelListingClient};
@@ -134,8 +136,12 @@ async fn streaming_with_two_candidates_answers_from_the_first() -> Result<()> {
 
             let mut text = String::new();
             while let Some(item) = stream.next().await {
-                if let rig::streaming::StreamedAssistantContent::Text(chunk) = item? {
-                    text.push_str(&chunk.text);
+                if let rig::streaming::StreamEvent::BlockDelta {
+                    delta: Delta::Text { text: chunk },
+                    ..
+                } = item?
+                {
+                    text.push_str(&chunk);
                 }
             }
             assert_answers_from_candidate_zero(

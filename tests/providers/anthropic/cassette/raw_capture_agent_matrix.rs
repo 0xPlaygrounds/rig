@@ -9,7 +9,7 @@
 //! **per attempt**, never a previous attempt's — as `raw` on the
 //! `CompletionResponse` and `ModelTurnFinished` hook events, on each
 //! `CompletionCall` the run records, and on the streamed
-//! `StreamedAssistantContent::Final`. `raw` is `Value::Null` only on a value
+//! `StreamEvent::Final`. `raw` is `Value::Null` only on a value
 //! built by hand, with no provider response behind it; `Value::Null` never
 //! means "not requested".
 //!
@@ -18,12 +18,12 @@
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
 //! | 1 | `hooks_observe_raw_blocking` | `agent.prompt` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `id` matches fixture | recorded |
-//! | 2 | `hooks_observe_raw_streamed` | `agent.stream_prompt` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `message_id` matches fixture | recorded |
+//! | 2 | `hooks_observe_raw_streamed` | `agent.prompt(..).stream()` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `message_id` matches fixture | recorded |
 //! | 3 | `multi_turn_tool_run_records_distinct_raw_blocking` | tool run, `agent.prompt` | two `completion_calls`, two different `raw["id"]`s equal to the interactions' ids in order | recorded |
-//! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.stream_prompt` | two `CompletionCall` items, two different `raw["message_id"]`s equal to the interactions' ids in order | recorded |
-//! | 5 | `streamed_final_carries_final_turn_raw` | tool run, `agent.stream_prompt` | the last `StreamedAssistantContent::Final.raw["message_id"]` is the last interaction's id | recorded |
+//! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.prompt(..).stream()` | two `CompletionCall` items, two different `raw["message_id"]`s equal to the interactions' ids in order | recorded |
+//! | 5 | `streamed_final_carries_final_turn_raw` | tool run, `agent.prompt(..).stream()` | the last `StreamEvent::Final.raw["message_id"]` is the last interaction's id | recorded |
 //! | 6 | `retried_turn_records_retried_attempt_raw_blocking` | `ModelTurnFinished` → `Retry` once, `agent.prompt` | second recorded call / second event carry the second interaction's `id` | recorded |
-//! | 7 | `retried_turn_records_retried_attempt_raw_streamed` | same, `agent.stream_prompt` | same, by `message_id` | recorded |
+//! | 7 | `retried_turn_records_retried_attempt_raw_streamed` | same, `agent.prompt(..).stream()` | same, by `message_id` | recorded |
 //!
 //! Both surfaces fire the same two events per accepted model turn:
 //! `CompletionResponse` — after the unary call returns on the blocking
@@ -43,14 +43,14 @@ use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 use rig::agent::{
-    AgentHook, HookContext, ModelTurnAction, ModelTurnFinished, MultiTurnStreamItem,
-    ObservationAction,
+    AgentHook, HookContext, ModelTurnAction, ModelTurnFinished, MultiTurnStreamItem, OutcomeAction,
+    OutcomeEvent,
 };
 use rig::completion::Message;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_HAIKU_4_5;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde_json::Value;
 
@@ -123,23 +123,22 @@ impl RawProbe {
 }
 
 impl AgentHook for RawProbe {
-    async fn on_completion_response(
-        &self,
-        ctx: &HookContext,
-        event: rig::agent::CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
+    async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        let Some(response) = event.completion() else {
+            return OutcomeAction::proceed();
+        };
         self.completion_response
             .lock()
             .expect("probe")
             .push(ResponseSeen {
                 streaming: ctx.is_streaming(),
-                tool_call: event
-                    .content
+                tool_call: response
+                    .choice
                     .iter()
                     .any(|content| matches!(content, AssistantContent::ToolCall(_))),
-                raw: event.raw.clone(),
+                raw: response.raw.clone(),
             });
-        ObservationAction::continue_run()
+        OutcomeAction::proceed()
     }
 
     async fn on_model_turn_finished(
@@ -171,7 +170,7 @@ async fn drain(mut stream: rig::agent::StreamingResult) -> StreamedRun {
     while let Some(item) = stream.next().await {
         match item.expect("stream item should succeed") {
             MultiTurnStreamItem::CompletionCall(call) => run.completion_calls.push(call),
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(final_)) => {
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::Final(final_)) => {
                 run.finals.push(final_);
             }
             MultiTurnStreamItem::FinalResponse(response) => {
@@ -185,7 +184,7 @@ async fn drain(mut stream: rig::agent::StreamingResult) -> StreamedRun {
 
 /// Message ids of every recorded interaction, in wire order — from the
 /// blocking body's `id`, or from the stream's `message_start`.
-fn recorded_message_ids(scenario: &str, streamed: bool) -> Vec<Option<String>> {
+pub(super) fn recorded_message_ids(scenario: &str, streamed: bool) -> Vec<Option<String>> {
     crate::cassettes::recorded_interaction_bodies(ANTHROPIC_PROVIDER, scenario)
         .iter()
         .map(|(_, response)| {
@@ -206,7 +205,7 @@ fn recorded_message_ids(scenario: &str, streamed: bool) -> Vec<Option<String>> {
 }
 
 /// Stop reasons of every recorded interaction, in wire order.
-fn recorded_stop_reasons(scenario: &str, streamed: bool) -> Vec<Option<String>> {
+pub(super) fn recorded_stop_reasons(scenario: &str, streamed: bool) -> Vec<Option<String>> {
     crate::cassettes::recorded_interaction_bodies(ANTHROPIC_PROVIDER, scenario)
         .iter()
         .map(|(_, response)| {
@@ -226,7 +225,7 @@ fn recorded_stop_reasons(scenario: &str, streamed: bool) -> Vec<Option<String>> 
         .collect()
 }
 
-fn ids_of(raws: &[Value], key: &str) -> Vec<Option<String>> {
+pub(super) fn ids_of(raws: &[Value], key: &str) -> Vec<Option<String>> {
     raws.iter()
         .map(|raw| raw[key].as_str().map(str::to_string))
         .collect()
@@ -234,14 +233,14 @@ fn ids_of(raws: &[Value], key: &str) -> Vec<Option<String>> {
 
 /// Every payload in `raws` has a provider response behind it — none is the
 /// hand-built `Value::Null`.
-fn assert_all_populated(raws: &[Value], context: &str) {
+pub(super) fn assert_all_populated(raws: &[Value], context: &str) {
     assert!(
         raws.iter().all(|raw| !raw.is_null()),
         "{context}: every call carries raw, got {raws:?}"
     );
 }
 
-fn assert_distinct_msg_ids(ids: &[Option<String>], context: &str) {
+pub(super) fn assert_distinct_msg_ids(ids: &[Option<String>], context: &str) {
     assert!(
         ids.iter()
             .all(|id| id.as_deref().is_some_and(|id| id.starts_with("msg_"))),
@@ -317,13 +316,7 @@ async fn hooks_observe_raw_streamed() {
                 .max_tokens(32)
                 .add_hook(hook)
                 .build();
-            let run = drain(
-                agent
-                    .stream_prompt(Message::user(TEXT_PROMPT))
-                    .stream()
-                    .await,
-            )
-            .await;
+            let run = drain(agent.prompt(Message::user(TEXT_PROMPT)).stream()).await;
             assert!(run.output.is_some(), "the run finished");
             assert_eq!(run.finals.len(), 1, "one text turn, one terminal record");
             assert!(
@@ -432,10 +425,9 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
                 .build();
             let run = drain(
                 agent
-                    .stream_prompt(Message::user(TOOL_PROMPT))
+                    .prompt(Message::user(TOOL_PROMPT))
                     .max_turns(3)
-                    .stream()
-                    .await,
+                    .stream(),
             )
             .await;
             assert!(run.output.is_some(), "the run finished");
@@ -488,10 +480,9 @@ async fn streamed_final_carries_final_turn_raw() {
                 .build();
             let run = drain(
                 agent
-                    .stream_prompt(Message::user(TOOL_PROMPT))
+                    .prompt(Message::user(TOOL_PROMPT))
                     .max_turns(3)
-                    .stream()
-                    .await,
+                    .stream(),
             )
             .await;
             assert_eq!(
@@ -594,10 +585,9 @@ async fn retried_turn_records_retried_attempt_raw_streamed() {
                 .build();
             let run = drain(
                 agent
-                    .stream_prompt(Message::user(TEXT_PROMPT))
+                    .prompt(Message::user(TEXT_PROMPT))
                     .max_turns(3)
-                    .stream()
-                    .await,
+                    .stream(),
             )
             .await;
             assert!(run.output.is_some());

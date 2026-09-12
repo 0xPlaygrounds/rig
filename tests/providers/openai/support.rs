@@ -15,7 +15,13 @@ use futures::FutureExt;
 use crate::cassettes::DirectRecordingHttpClient;
 
 async fn openai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, openai::Client) {
-    let cassette = ProviderCassette::start("openai", spec, "https://api.openai.com/v1").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "openai",
+        spec,
+        "https://api.openai.com/v1",
+    )
+    .await;
     let client = openai::Client::builder()
         .api_key(cassette.api_key("OPENAI_API_KEY"))
         .base_url(cassette.base_url())
@@ -41,7 +47,13 @@ where
     F: FnOnce(openai::Client<BoxedHttpClient>) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start("openai", spec, "https://api.openai.com/v1").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "openai",
+        spec,
+        "https://api.openai.com/v1",
+    )
+    .await;
     let client = openai::Client::builder()
         .api_key(cassette.api_key("OPENAI_API_KEY"))
         .base_url(cassette.base_url())
@@ -66,7 +78,13 @@ pub(super) async fn with_openai_lifecycle_cassette<M, F, Fut>(
     F: FnOnce(openai::Client<BoxedHttpClient>) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start("openai", spec, "https://api.openai.com/v1").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "openai",
+        spec,
+        "https://api.openai.com/v1",
+    )
+    .await;
     let client = openai::Client::builder()
         .api_key(cassette.api_key("OPENAI_API_KEY"))
         .base_url(cassette.base_url())
@@ -75,6 +93,66 @@ pub(super) async fn with_openai_lifecycle_cassette<M, F, Fut>(
         .expect("client should build");
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
+}
+
+/// The effect corpus's retrieval matrix (Matrix A):
+/// `tests/cassettes/openai/corpus_retrieval/`.
+pub(super) async fn with_openai_corpus_retrieval_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's provider-breadth matrix (Matrix N):
+/// `tests/cassettes/openai/corpus_breadth/`.
+pub(super) async fn with_openai_corpus_breadth_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's delta-wire matrix (Matrix K):
+/// `tests/cassettes/openai/corpus_delta/`.
+pub(super) async fn with_openai_corpus_delta_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's host-families matrix (Matrix I):
+/// `tests/cassettes/openai/corpus_host/`.
+pub(super) async fn with_openai_corpus_host_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's output-mode matrix (Matrix H):
+/// `tests/cassettes/openai/corpus_output/`.
+pub(super) async fn with_openai_corpus_output_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
 }
 
 pub(super) async fn with_openai_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
@@ -276,8 +354,14 @@ where
     F: FnOnce(openai::Client<DirectRecordingHttpClient>) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette =
-        ProviderCassette::start_direct_recording("openai", spec, "https://api.openai.com/v1").await;
+    let cassette = ProviderCassette::start_via(
+        rig_cassette::Transport::Direct,
+        &crate::cassettes::cassette_root(),
+        "openai",
+        spec,
+        "https://api.openai.com/v1",
+    )
+    .await;
     let client = openai::Client::builder()
         .api_key(cassette.api_key("OPENAI_API_KEY"))
         .base_url(cassette.base_url())
@@ -305,7 +389,13 @@ pub(super) async fn with_openai_websocket_cassette<F, Fut>(
     F: FnOnce(openai::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start("openai", spec, "https://api.openai.com/v1").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "openai",
+        spec,
+        "https://api.openai.com/v1",
+    )
+    .await;
     let client = openai::Client::builder()
         .api_key("sk-invalid-websocket-edge-matrix-key")
         .base_url(cassette.base_url())
@@ -324,7 +414,13 @@ pub(super) async fn with_openai_cassette_bogus_key<F, Fut>(
     F: FnOnce(openai::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start("openai", spec, "https://api.openai.com/v1").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "openai",
+        spec,
+        "https://api.openai.com/v1",
+    )
+    .await;
     let client = openai::Client::builder()
         .api_key("sk-invalid-edge-matrix-key")
         .base_url(cassette.base_url())

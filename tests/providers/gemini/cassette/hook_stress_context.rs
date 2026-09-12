@@ -177,18 +177,18 @@ async fn scratchpad_tally_grows_across_turns_and_is_read_by_second_hook_blocking
 }
 
 // ---------------------------------------------------------------------------
-// Tool-call correlation: internal_call_id pairs ToolCall with ToolResult.
+// Tool-call correlation: block_id pairs ToolCall with ToolResult.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn internal_call_id_correlates_tool_call_and_result_blocking() {
+async fn block_id_correlates_tool_call_and_result_blocking() {
     let add = CountingAdd::default();
     let subtract = CountingSubtract::default();
     let tap = EventTap::default();
     let probe = tap.clone();
 
     with_gemini_cassette(
-        "hook_stress_context/internal_call_id_correlates_tool_call_and_result_blocking",
+        "hook_stress_context/block_id_correlates_tool_call_and_result_blocking",
         |client| async move {
             let agent = client
                 .agent(gemini::completion::GEMINI_2_5_FLASH)
@@ -215,11 +215,11 @@ async fn internal_call_id_correlates_tool_call_and_result_blocking() {
             assert!(!call_ids.is_empty(), "the run should make tool calls");
             assert_eq!(
                 call_ids, result_ids,
-                "each ToolResult must carry the same internal_call_id as its ToolCall, in order"
+                "each ToolResult must carry the same block_id as its ToolCall, in order"
             );
             assert!(
                 call_ids.iter().all(|id| !id.is_empty()),
-                "internal_call_ids must be non-empty"
+                "block_ids must be non-empty"
             );
         },
     )

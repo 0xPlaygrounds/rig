@@ -80,9 +80,11 @@ use thiserror::Error;
 /// ```
 #[derive(Debug, Error)]
 pub enum CompletionError {
-    /// Http error (e.g.: connection error, timeout, etc.)
+    /// A transport failure that produced no provider reply (a connection
+    /// error, a timeout, an unreadable response); it never carries a
+    /// status. A reply the server made is [`Self::ProviderResponse`].
     #[error("HttpError: {0}")]
-    HttpError(#[from] http_client::Error),
+    HttpError(http_client::Error),
 
     /// Json error (e.g.: serialization, deserialization)
     #[error("JsonError: {0}")]
@@ -117,18 +119,18 @@ pub enum CompletionError {
 
 crate::provider_response::impl_provider_response_helpers!(CompletionError);
 
+impl From<http_client::Error> for CompletionError {
+    fn from(error: http_client::Error) -> Self {
+        Self::from_transport_error(error)
+    }
+}
+
 impl CompletionError {
-    /// Maps an SSE transport error into a completion error without flattening HTTP failures.
-    ///
-    /// Non-success HTTP responses remain [`CompletionError::HttpError`] so provider response
-    /// helpers can read status and body. Other transport failures keep the existing
-    /// [`CompletionError::ProviderError`] display string behavior.
+    /// Maps an SSE transport error like every other transport error: the
+    /// provider's reply becomes [`Self::ProviderResponse`], a response-less
+    /// failure stays [`Self::HttpError`] with its own retryability.
     pub(crate) fn from_stream_transport(error: http_client::Error) -> Self {
-        if error.non_success_status().is_some() {
-            Self::HttpError(error)
-        } else {
-            Self::ProviderError(error.to_string())
-        }
+        Self::from_transport_error(error)
     }
 }
 
@@ -263,8 +265,9 @@ impl FinishReason {
     ///
     /// This is the single place the upgrade happens. Construct normalized
     /// responses through [`CompletionResponse::with_finish_reason`] or
-    /// [`CompletionResponse::with_optional_finish_reason`] (and, for streams,
-    /// [`crate::streaming::normalize_stream`]) so it is always applied.
+    /// [`CompletionResponse::with_optional_finish_reason`] (streams apply it
+    /// in [`crate::streaming::StreamingCompletionResponse`] against the tool
+    /// calls the accumulator actually saw) so it is always applied.
     pub fn reconcile_with_output(self, has_tool_call: bool) -> Self {
         if has_tool_call && matches!(self, Self::Stop) {
             Self::ToolCalls
@@ -624,7 +627,7 @@ impl AddAssign for Usage {
 /// enabling flags with the `with_*` methods: that form keeps external
 /// implementations compiling when new capabilities are added, where a struct
 /// literal does not.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ProviderCapabilities {
     /// Whether this provider's native structured output (`output_schema` ->
     /// `format`/`response_format`) composes with tool calls in the same
@@ -682,6 +685,36 @@ pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
     ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
     + WasmCompatSend;
 
+    /// Observe one provider invocation, independently of request data.
+    ///
+    /// Every HTTP wire in this crate implements this and attaches the
+    /// context to the request it sends, so a witness sees the request, the
+    /// response, the provider's verdict and usage where the wire projects
+    /// them, and how the attempt closed; the conformance harness requires
+    /// it. The default delegates without provider observations and is what
+    /// a model over a non-HTTP transport (an SDK, a local runtime) still
+    /// takes. Forwarding wrappers pass the context through to preserve
+    /// per-call identity across retries and tasks.
+    fn completion_with_context(
+        &self,
+        request: CompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend
+    {
+        self.completion(request)
+    }
+
+    /// Optionally observe a stream, retaining context through lazy startup and drop.
+    /// The default delegates to [`Self::stream`] without provider observations.
+    fn stream_with_context(
+        &self,
+        request: CompletionRequest,
+        _context: Option<crate::observe::AdapterContext>,
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
+    + WasmCompatSend {
+        self.stream(request)
+    }
+
     /// Generates a completion request builder for the given `prompt`.
     fn completion_request(&self, prompt: impl Into<Message>) -> CompletionRequestBuilder<Self>
     where
@@ -719,6 +752,24 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
     ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
     + WasmCompatSend {
         (**self).stream(request)
+    }
+
+    fn completion_with_context(
+        &self,
+        request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + WasmCompatSend
+    {
+        (**self).completion_with_context(request, context)
+    }
+
+    fn stream_with_context(
+        &self,
+        request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
+    + WasmCompatSend {
+        (**self).stream_with_context(request, context)
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
@@ -822,9 +873,9 @@ impl CompletionRequest {
     /// that resolved to `""`.
     ///
     /// **Where this runs.** [`CompletionRequestBuilder::send`] and
-    /// [`CompletionRequestBuilder::stream`] call it, which covers both agent
-    /// surfaces too — the blocking and streaming turn drivers both issue their
-    /// request through the builder. Handing a request straight to a
+    /// [`CompletionRequestBuilder::stream`] call it, and the agent driver
+    /// calls it on the request it builds before dispatching it over the bus,
+    /// so both agent surfaces are covered. Handing a request straight to a
     /// [`CompletionModel`] bypasses it; call this yourself there.
     pub fn validate_message_content(&self) -> Result<(), CompletionError> {
         if self.chat_history.is_empty() {
@@ -1039,7 +1090,8 @@ fn merge_provider_tools_into_additional_params(
 ///
 /// Note: It is usually unnecessary to create a completion request builder directly.
 /// Instead, use the [CompletionModel::completion_request] method.
-pub struct CompletionRequestBuilder<M: CompletionModel> {
+#[must_use = "a request builder does nothing until built or sent"]
+pub struct CompletionRequestBuilder<M = Unbound> {
     model: M,
     prompt: Message,
     request_model: Option<String>,
@@ -1056,7 +1108,20 @@ pub struct CompletionRequestBuilder<M: CompletionModel> {
     record_telemetry_content: bool,
 }
 
-impl<M: CompletionModel> CompletionRequestBuilder<M> {
+/// The model slot of a request under assembly that has no model attached:
+/// the request is built with [`CompletionRequestBuilder::build`] and
+/// dispatched elsewhere (an agent dispatches it through its bus).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Unbound;
+
+impl CompletionRequestBuilder<Unbound> {
+    /// A builder with no model attached; `build` produces the request.
+    pub fn unbound(prompt: impl Into<Message>) -> Self {
+        Self::new(Unbound, prompt)
+    }
+}
+
+impl<M> CompletionRequestBuilder<M> {
     pub fn new(model: M, prompt: impl Into<Message>) -> Self {
         Self {
             model,
@@ -1086,12 +1151,6 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// Overrides the model used for this request.
     pub fn model(mut self, model: impl Into<String>) -> Self {
         self.request_model = Some(model.into());
-        self
-    }
-
-    /// Overrides the model used for this request.
-    pub fn model_opt(mut self, model: Option<String>) -> Self {
-        self.request_model = model;
         self
     }
 
@@ -1146,56 +1205,47 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             .fold(self, CompletionRequestBuilder::provider_tool)
     }
 
-    /// Adds additional parameters to the completion request.
-    /// This can be used to set additional provider-specific parameters. For example,
-    /// Cohere's completion models accept a `connectors` parameter that can be used to
-    /// specify the data connectors used by Cohere when executing the completion
-    /// (see `examples/cohere_connectors.rs`).
-    pub fn additional_params(mut self, additional_params: serde_json::Value) -> Self {
-        match self.additional_params {
-            Some(params) => {
-                self.additional_params = Some(json_utils::merge(params, additional_params));
-            }
-            None => {
-                self.additional_params = Some(additional_params);
-            }
-        }
+    /// Merges provider-specific parameters into the completion request
+    /// (`None` merges nothing). For example, Cohere's completion models accept
+    /// a `connectors` parameter that can be used to specify the data
+    /// connectors used by Cohere when executing the completion (see
+    /// `examples/cohere_connectors.rs`).
+    ///
+    /// These parameters are passed through to the provider's request body
+    /// **after** the typed fields, so a key that names a typed sampling field
+    /// (`temperature`, `max_tokens`, `tool_choice`, `model`) overrides the
+    /// typed value. That precedence is deliberate — it is the escape hatch for
+    /// a provider knob rig does not model — but it is easy to hit by accident,
+    /// so [`build`](Self::build) logs a warning naming each such key. `tools`
+    /// and `response_format` are the exception: most providers (OpenAI,
+    /// Gemini, Anthropic, xAI) merge a passthrough `tools` list into the
+    /// typed one, a few (Cohere) let it replace the typed list, and each
+    /// reconciles `response_format` with the typed `output_schema` its own
+    /// way — so for those two the warning only says both were supplied.
+    pub fn additional_params(
+        mut self,
+        additional_params: impl Into<Option<serde_json::Value>>,
+    ) -> Self {
+        let Some(additional_params) = additional_params.into() else {
+            return self;
+        };
+        self.additional_params = Some(match self.additional_params.take() {
+            Some(params) => json_utils::merge(params, additional_params),
+            None => additional_params,
+        });
         self
     }
 
-    /// Sets the additional parameters for the completion request.
-    /// This can be used to set additional provider-specific parameters. For example,
-    /// Cohere's completion models accept a `connectors` parameter that can be used to
-    /// specify the data connectors used by Cohere when executing the completion
-    /// (see `examples/cohere_connectors.rs`).
-    pub fn additional_params_opt(mut self, additional_params: Option<serde_json::Value>) -> Self {
-        self.additional_params = additional_params;
+    /// Sets (or, with `None`, clears) the temperature for the completion request.
+    pub fn temperature(mut self, temperature: impl Into<Option<f64>>) -> Self {
+        self.temperature = temperature.into();
         self
     }
 
-    /// Sets the temperature for the completion request.
-    pub fn temperature(mut self, temperature: f64) -> Self {
-        self.temperature = Some(temperature);
-        self
-    }
-
-    /// Sets the temperature for the completion request.
-    pub fn temperature_opt(mut self, temperature: Option<f64>) -> Self {
-        self.temperature = temperature;
-        self
-    }
-
-    /// Sets the max tokens for the completion request.
+    /// Sets (or, with `None`, clears) the max tokens for the completion request.
     /// Note: This is required if using Anthropic
-    pub fn max_tokens(mut self, max_tokens: u64) -> Self {
-        self.max_tokens = Some(max_tokens);
-        self
-    }
-
-    /// Sets the max tokens for the completion request.
-    /// Note: This is required if using Anthropic
-    pub fn max_tokens_opt(mut self, max_tokens: Option<u64>) -> Self {
-        self.max_tokens = max_tokens;
+    pub fn max_tokens(mut self, max_tokens: impl Into<Option<u64>>) -> Self {
+        self.max_tokens = max_tokens.into();
         self
     }
 
@@ -1211,18 +1261,10 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// with `Agent::prompt()` will still output a String at the end, it'll just be compatible with whatever
     /// type you want to use here. This method is primarily an escape hatch for agents being used as tools
     /// to still be able to leverage structured outputs.
-    pub fn output_schema(mut self, schema: schemars::Schema) -> Self {
-        self.output_schema = Some(schema);
-        self
-    }
-
-    /// Sets the output schema for structured output from an optional value.
-    /// NOTE: For direct type conversion, you may want to use `Agent::prompt_typed()` - using this method
-    /// with `Agent::prompt()` will still output a String at the end, it'll just be compatible with whatever
-    /// type you want to use here. This method is primarily an escape hatch for agents being used as tools
-    /// to still be able to leverage structured outputs.
-    pub fn output_schema_opt(mut self, schema: Option<schemars::Schema>) -> Self {
-        self.output_schema = schema;
+    ///
+    /// `None` clears a schema set earlier.
+    pub fn output_schema(mut self, schema: impl Into<Option<schemars::Schema>>) -> Self {
+        self.output_schema = schema.into();
         self
     }
 
@@ -1283,6 +1325,31 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         // used to follow could never be taken — and it forced a clone of the
         // prompt to feed it.
         chat_history.push(prompt);
+        // Checked before provider tools are merged in: that merge writes a
+        // `tools` key of its own, which is not a caller collision.
+        for key in shadowed_typed_fields(
+            self.additional_params.as_ref(),
+            &[
+                ("temperature", self.temperature.is_some()),
+                ("max_tokens", self.max_tokens.is_some()),
+                ("tool_choice", self.tool_choice.is_some()),
+                ("model", self.request_model.is_some()),
+                ("tools", !self.tools.is_empty()),
+                ("response_format", self.output_schema.is_some()),
+            ],
+        ) {
+            if matches!(key, "tools" | "response_format") {
+                tracing::warn!(
+                    key,
+                    "additional_params also carries `{key}`; the provider decides how it combines with the typed field"
+                );
+            } else {
+                tracing::warn!(
+                    key,
+                    "additional_params overrides the typed `{key}` field set on the same request"
+                );
+            }
+        }
         let additional_params = merge_provider_tools_into_additional_params(
             self.additional_params,
             self.provider_tools,
@@ -1302,7 +1369,27 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         };
         (model, request)
     }
+}
 
+/// The passthrough keys that will override a typed field the caller also set.
+/// The override itself is the documented precedence (see
+/// [`CompletionRequestBuilder::additional_params`]); naming the collisions
+/// makes an accidental one visible instead of silent.
+pub(crate) fn shadowed_typed_fields<'a>(
+    additional_params: Option<&serde_json::Value>,
+    typed: &[(&'a str, bool)],
+) -> Vec<&'a str> {
+    let Some(serde_json::Value::Object(params)) = additional_params else {
+        return Vec::new();
+    };
+    typed
+        .iter()
+        .filter(|(key, set)| *set && params.contains_key(*key))
+        .map(|(key, _)| *key)
+        .collect()
+}
+
+impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// Sends the completion request to the completion model provider and returns the completion response.
     pub async fn send(self) -> Result<CompletionResponse, CompletionError> {
         let (model, request) = self.into_model_and_request();

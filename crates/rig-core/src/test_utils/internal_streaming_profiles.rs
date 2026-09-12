@@ -1,7 +1,7 @@
 //! Crate-internal streaming profile helpers for compatible provider tests.
 
 use crate::{
-    completion::Usage,
+    completion::{CompletionError, Usage},
     providers::internal::openai_chat_completions_compatible::{
         CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
         CompatibleTerminal, CompatibleToolCallChunk,
@@ -9,8 +9,6 @@ use crate::{
     providers::internal::wire::WireEvent,
     streaming::StreamFinal,
 };
-
-use super::MOCK_PROVIDER;
 
 fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<Usage, ()> {
     CompatibleChunk {
@@ -66,7 +64,6 @@ pub(crate) struct ErrorAfterPendingToolCallProfile;
 impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
     type Usage = Usage;
     type Detail = ();
-    type FinalResponse = StreamFinal;
 
     fn classify_chunk(&self, data: &str) -> WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
         match data {
@@ -81,12 +78,13 @@ impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
         }
     }
 
-    fn build_final_response(
+    fn final_record(
         &self,
+        provider: &str,
         terminal: CompatibleTerminal<Self::Usage>,
-    ) -> Self::FinalResponse {
-        StreamFinal::new(MOCK_PROVIDER, terminal.usage)
-            .with_optional_finish_reason(terminal.finish_reason)
+    ) -> Result<StreamFinal, CompletionError> {
+        Ok(StreamFinal::new(provider, terminal.usage)
+            .with_optional_finish_reason(terminal.finish_reason))
     }
 }
 
@@ -97,7 +95,6 @@ pub(crate) struct DistinctToolCallEvictionProfile;
 impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
     type Usage = Usage;
     type Detail = ();
-    type FinalResponse = StreamFinal;
 
     fn classify_chunk(&self, data: &str) -> WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
         let choice = match data {
@@ -148,12 +145,13 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
         }
     }
 
-    fn build_final_response(
+    fn final_record(
         &self,
+        provider: &str,
         terminal: CompatibleTerminal<Self::Usage>,
-    ) -> Self::FinalResponse {
-        StreamFinal::new(MOCK_PROVIDER, terminal.usage)
-            .with_optional_finish_reason(terminal.finish_reason)
+    ) -> Result<StreamFinal, CompletionError> {
+        Ok(StreamFinal::new(provider, terminal.usage)
+            .with_optional_finish_reason(terminal.finish_reason))
     }
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
@@ -169,7 +167,6 @@ pub(crate) struct ReasoningAroundToolCallProfile;
 impl CompatibleStreamProfile for ReasoningAroundToolCallProfile {
     type Usage = Usage;
     type Detail = ();
-    type FinalResponse = StreamFinal;
 
     fn classify_chunk(&self, data: &str) -> WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
         let choice = match data {
@@ -227,12 +224,13 @@ impl CompatibleStreamProfile for ReasoningAroundToolCallProfile {
         }
     }
 
-    fn build_final_response(
+    fn final_record(
         &self,
+        provider: &str,
         terminal: CompatibleTerminal<Self::Usage>,
-    ) -> Self::FinalResponse {
-        StreamFinal::new(MOCK_PROVIDER, terminal.usage)
-            .with_optional_finish_reason(terminal.finish_reason)
+    ) -> Result<StreamFinal, CompletionError> {
+        Ok(StreamFinal::new(provider, terminal.usage)
+            .with_optional_finish_reason(terminal.finish_reason))
     }
 }
 
@@ -243,7 +241,6 @@ pub(crate) struct FinishReasonCleanupProfile;
 impl CompatibleStreamProfile for FinishReasonCleanupProfile {
     type Usage = Usage;
     type Detail = ();
-    type FinalResponse = StreamFinal;
 
     fn classify_chunk(&self, data: &str) -> WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
         let choice = match data {
@@ -277,11 +274,12 @@ impl CompatibleStreamProfile for FinishReasonCleanupProfile {
         }
     }
 
-    fn build_final_response(
+    fn final_record(
         &self,
+        provider: &str,
         terminal: CompatibleTerminal<Self::Usage>,
-    ) -> Self::FinalResponse {
-        StreamFinal::new(MOCK_PROVIDER, terminal.usage)
-            .with_optional_finish_reason(terminal.finish_reason)
+    ) -> Result<StreamFinal, CompletionError> {
+        Ok(StreamFinal::new(provider, terminal.usage)
+            .with_optional_finish_reason(terminal.finish_reason))
     }
 }

@@ -64,11 +64,11 @@ use crate::cache_conformance::{
 use super::super::support::{always_deleting_cached_contents, with_gemini_prompt_caching_cassette};
 
 /// Gemini 2.5 Flash: implicit caching, and the cheapest model that has it.
-const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
+pub(super) const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
 
 /// Gemini's documented implicit-cache minimum for 2.5 Flash is 1,024 tokens
 /// (2.5 Pro's is 2,048). The probe pads well past both.
-const GEMINI_CACHE_SUPPORT: CacheSupport = CacheSupport {
+pub(super) const GEMINI_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "gemini",
     accounting: CacheAccounting::Subset,
     explicit_breakpoints: false,
@@ -93,7 +93,7 @@ const GEMINI_CACHE_SUPPORT: CacheSupport = CacheSupport {
 /// ("Response contained no message or tool call"). Zeroing the thinking budget
 /// keeps the cheap, short, deterministic answer the probe wants; the thinking
 /// tokens are output-side anyway and have no bearing on what gets cached.
-fn probe() -> CacheProbe {
+pub(super) fn probe() -> CacheProbe {
     CacheProbe::new("gemini prompt caching").with_additional_params(serde_json::json!({
         "generationConfig": {
             "thinkingConfig": { "thinkingBudget": 0 }

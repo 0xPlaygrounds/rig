@@ -18,7 +18,9 @@ autoexamples = false
 # the tarball to 3.33 MiB. They are replay fixtures the test binaries read at
 # runtime from `CARGO_MANIFEST_DIR`, never embedded with `include_*!`, so nothing
 # in the package needs them to compile.
-exclude = ["tests/cassettes/**"]
+exclude = [
+    "tests/cassettes/**",
+]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -30,6 +32,7 @@ members = [
     "crates/*",
     "examples/*",
     "xtask",
+    "test-support/service-tests",
 ]
 # The root manifest is itself the `rig` facade package, so without an
 # explicit `default-members` a bare `cargo nextest run` resolved to the
@@ -50,12 +53,17 @@ members = [
 default-members = [
     ".",
     "crates/rig-core",
+    "crates/rig-cassette",
+    "crates/rig-effect-log",
     "crates/rig-agent",
+    "crates/rig-ecs",
     "crates/rig-reqwest",
     "crates/rig-tungstenite",
     "crates/rig-bedrock",
     "crates/rig-candle",
     "crates/rig-gemini-grpc",
+    "crates/rig-verify",
+    "test-support/service-tests",
 ]
 exclude = [
     "archived",
@@ -67,6 +75,12 @@ exclude = [
     # Excluding it keeps that subtree out of the workspace lockfile.
     "examples/discord_bot",
 ]
+
+[workspace.lints.rust]
+# `--cfg rig_loom` selects the model checker's sync shims (rig-agent's
+# `sync.rs`); a build flag, not a feature, and crate-specific so no
+# dependency reacts to it (`event-listener` reacts to a bare `loom`).
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(rig_loom)'] }
 
 [workspace.lints.clippy]
 dbg_macro = "forbid"
@@ -104,7 +118,7 @@ edition = "2024"
 # raised floors, forcing downstream users to `cargo update` a dozen crates
 # just to take a point release (#2195). Raise a floor when rig starts using
 # an API the old floor lacks, and say so in the changelog.
-# `scripts/check-dependency-floors.py` (CI: nightly.yaml `dependency-floors`)
+# `scripts/check-dependency-floors.py` (CI: slow.yaml `dependency-floors`)
 # downgrades every direct dependency to its floor and builds the workspace,
 # so a floor that has silently rotted fails there rather than downstream.
 #
@@ -115,6 +129,7 @@ rig-agent = { path = "crates/rig-agent", version = "0.42.0" }
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.42.0" }
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.42.0" }
 rig-core = { path = "crates/rig-core", version = "0.42.0" }
+rig-effect-log = { path = "crates/rig-effect-log", version = "0.42.0" }
 anyhow = "1"
 arrow-array = "58"
 as-any = "0.3"
@@ -143,8 +158,19 @@ eventsource-stream = "0.2.3"
 fastembed = { version = "4.5", default-features = false }
 fastrand = "2"
 futures = "0.3"
-# Runtime-agnostic executor used by the `agent_no_tokio` example.
-bevy_tasks = { version = "0.19", features = ["multi_threaded"] }
+# Runtime-agnostic executor used by the `agent_no_tokio` example, and the
+# pool rig-ecs runs handler futures on. Bevy 0.19.1: crates.io, never git;
+# `tests/core/bevy_pin.rs` guards the pin. Each Bevy crate with default
+# features off and only what rig-ecs needs: the `bus` module's three, and
+# `bevy_reflect` / `bevy_asset` behind rig-ecs's `reflect` / `assets`
+# features (the inspector's view of the graph; prompts and tool
+# definitions as assets).
+bevy_tasks = { version = "0.19.1", default-features = false, features = ["multi_threaded"] }
+bevy_platform = { version = "0.19.1", default-features = false }
+bevy_ecs = { version = "0.19.1", default-features = false, features = ["std", "multi_threaded"] }
+bevy_app = { version = "0.19.1", default-features = false, features = ["std"] }
+bevy_reflect = { version = "0.19.1", default-features = false, features = ["std"] }
+bevy_asset = { version = "0.19.1", default-features = false }
 futures-timer = "3"
 glob = "0.3"
 google-cloud-auth = "1"
@@ -153,6 +179,7 @@ google-cloud-aiplatform-v1 = { version = "1.7", default-features = false, featur
     "prediction-service",
 ] }
 http = "1"
+httpdate = "1"
 # 0.8.2: `Recording::export_async` (cassette harness).
 httpmock = "0.8.2"
 # 0.1.2: the `service` feature.
@@ -181,7 +208,6 @@ qdrant-client = { version = "1.10", default-features = false, features = [
 ] }
 quick-xml = "0.41"
 quote = "1"
-rayon = "1"
 redis = "1"
 reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5", default-features = false }
@@ -238,6 +264,7 @@ workspace = true
 
 [dependencies]
 rig-core = { path = "crates/rig-core", version = "0.42.0", default-features = false }
+rig-effect-log = { path = "crates/rig-effect-log", version = "0.42.0" }
 rig-reqwest = { path = "crates/rig-reqwest", version = "0.42.0", optional = true, default-features = false }
 rig-agent = { path = "crates/rig-agent", version = "0.42.0", optional = true, default-features = false }
 rig-rmcp = { path = "crates/rig-rmcp", version = "0.42.0", optional = true }
@@ -247,7 +274,6 @@ rig-fastembed = { path = "crates/rig-fastembed", version = "0.42.0", optional = 
 rig-gemini-grpc = { path = "crates/rig-gemini-grpc", version = "0.42.0", optional = true, default-features = false }
 rig-helixdb = { path = "crates/rig-helixdb", version = "0.42.0", optional = true, default-features = false }
 rig-lancedb = { path = "crates/rig-lancedb", version = "0.42.0", optional = true, default-features = false }
-lancedb = { workspace = true, optional = true }
 rig-memory = { path = "crates/rig-memory", version = "0.42.0", optional = true, default-features = false }
 rig-derive = { path = "crates/rig-derive", version = "0.42.0", optional = true }
 rig-milvus = { path = "crates/rig-milvus", version = "0.42.0", optional = true, default-features = false }
@@ -280,8 +306,12 @@ rig-vertexai = { path = "crates/rig-vertexai", version = "0.42.0", optional = tr
 rig-tungstenite = { path = "crates/rig-tungstenite", version = "0.42.0", optional = true }
 
 [dev-dependencies]
+# The repository census checks Bedrock binary fixtures even in default suites.
+rig-cassette = { path = "crates/rig-cassette", features = ["bedrock"] }
+rig-ecs = { path = "crates/rig-ecs" }
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
 anyhow = { workspace = true }
-arrow-array = { workspace = true }
 assert_fs = { workspace = true }
 async-stream = { workspace = true }
 aws-config = { workspace = true }
@@ -298,15 +328,11 @@ rig-agent = { path = "crates/rig-agent", version = "0.42.0", default-features = 
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }
-redis = { workspace = true, features = ["tokio-comp", "aio", "vector-sets"] }
 serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
 futures = { workspace = true }
 httpmock = { workspace = true, features = ["record", "proxy"] }
-mongodb = { workspace = true }
-neo4rs = { workspace = true }
-qdrant-client = { workspace = true }
 reqwest-retry = { workspace = true }
 reqwest = { workspace = true, features = ["json", "stream"] }
 reqwest-middleware = { workspace = true, features = [
@@ -322,15 +348,12 @@ sha2 = { workspace = true }
 # float_roundtrip keeps cassette scrubbing idempotent on float-heavy bodies
 # (e.g. embedding vectors): without it, parse→print can oscillate between two
 # representations of the same decimal and the recorded YAML never stabilizes.
-serde_json = { workspace = true, features = ["float_roundtrip"] }
+# Golden logs preserve JSON object insertion order. Declare that requirement
+# directly instead of inheriting it from a database driver's feature graph.
+serde_json = { workspace = true, features = ["float_roundtrip", "preserve_order"] }
 serde_yaml = { workspace = true }
 syn = { workspace = true, features = ["full", "visit"] }
-rusqlite = { workspace = true, features = ["bundled"] }
-sqlite-vec = { workspace = true }
-sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "json"] }
-testcontainers = { workspace = true }
 thiserror = { workspace = true }
-tokio-rusqlite = { workspace = true, features = ["bundled"] }
 hyper-util = { workspace = true, features = ["service", "server"] }
 rmcp = { workspace = true, features = [
   "client",
@@ -349,7 +372,6 @@ opentelemetry-otlp = { workspace = true }
 tracing = { workspace = true }
 tracing-opentelemetry = { workspace = true }
 url = { workspace = true }
-
 [features]
 default = ["rig-core/default", "reqwest", "agent", "derive", "rustls"]
 agent = ["dep:rig-agent"]
@@ -369,7 +391,7 @@ fastembed-hf-hub = ["dep:rig-fastembed", "rig-fastembed/hf-hub"]
 fastembed-ort-download-binaries = ["dep:rig-fastembed", "rig-fastembed/ort-download-binaries"]
 gemini-grpc = ["dep:rig-gemini-grpc"]
 helixdb = ["dep:rig-helixdb"]
-lancedb = ["dep:rig-lancedb", "dep:lancedb"]
+lancedb = ["dep:rig-lancedb"]
 memory = ["dep:rig-memory"]
 milvus = ["dep:rig-milvus"]
 mongodb = ["dep:rig-mongodb"]
@@ -387,7 +409,6 @@ image = ["rig-core/image", "rig-agent?/image", "rig-reqwest?/image"]
 derive = ["dep:rig-derive", "rig-core/derive", "rig-agent?/derive"]
 pdf = ["rig-core/pdf"]
 epub = ["rig-core/epub"]
-rayon = ["rig-core/rayon"]
 rmcp = ["dep:rig-rmcp"]
 socks = ["reqwest", "rig-reqwest/socks"]
 reqwest = ["dep:rig-reqwest"]

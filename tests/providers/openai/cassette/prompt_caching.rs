@@ -57,14 +57,14 @@ use super::super::support::{
 };
 
 /// A cheap model that still participates in prompt caching.
-const CACHE_MODEL: &str = openai::GPT_4O_MINI;
+pub(super) const CACHE_MODEL: &str = openai::GPT_4O_MINI;
 
 /// Shared descriptor for both OpenAI surfaces.
 ///
 /// `min_cacheable_tokens` is OpenAI's documented 1,024-token floor: below it the
 /// API silently declines to cache, and a fixture recorded under it would pin a
 /// miss no matter what rig did.
-const OPENAI_CACHE_SUPPORT: CacheSupport = CacheSupport {
+pub(super) const OPENAI_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "openai",
     accounting: CacheAccounting::Subset,
     explicit_breakpoints: false,
@@ -80,7 +80,7 @@ const OPENAI_RESPONSES_KEYED_SUPPORT: CacheSupport = CacheSupport {
     ..OPENAI_CACHE_SUPPORT
 };
 
-fn probe() -> CacheProbe {
+pub(super) fn probe() -> CacheProbe {
     CacheProbe::new("openai prompt caching")
 }
 

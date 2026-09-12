@@ -3,7 +3,7 @@
 Runs a rig agent on Bevy's `AsyncComputeTaskPool` with no tokio dependency in
 this crate's manifest.
 
-`Agent::run_channel` splits a run into a runtime-agnostic future and a bounded
+`AgentRunner::run_channel` splits a run into a runtime-agnostic future and a bounded
 `RunEvents` feed. The future is spawned on the pool; the main thread acts as a
 frame loop, draining events with the non-blocking `RunEvents::try_next` and
 checking the task with `bevy_tasks::futures::check_ready` — the shape a Bevy

@@ -19,10 +19,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     agent::{
-        AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent,
-        CompletionResponseEvent, HookContext, InvalidToolCallAction, MultiTurnStreamItem,
-        NoToolConfig, ObservationAction, OutputMode, RequestPatch, StreamingError,
-        ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
+        AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction,
+        DispatchEvent, HookContext, InvalidToolCallAction, MultiTurnStreamItem, NoToolConfig,
+        OutcomeAction, OutcomeEvent, OutputMode, RequestPatch, StreamingError,
         run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
     },
     completion::{
@@ -44,6 +43,9 @@ pub enum ScenarioError {
     /// A streaming agent run failed.
     #[error(transparent)]
     Streaming(#[from] StreamingError),
+    /// A stream item or bus effect failed, as the wire reports it.
+    #[error(transparent)]
+    Report(#[from] rig_core::error::ErrorReport),
     /// Structured content could not be decoded.
     #[error(transparent)]
     Json(#[from] serde_json::Error),
@@ -372,13 +374,16 @@ fn validate_tool_correlation(
 ) -> Result<(), ScenarioError> {
     let mut calls = Vec::new();
     let mut results = Vec::new();
+    let mut turn = 0usize;
     for message in messages {
         match message {
             Message::Assistant { content, .. } => {
+                turn += 1;
                 calls.extend(content.iter().filter_map(|item| {
                     match item {
                         AssistantContent::ToolCall(call) => Some((
-                            call.id.as_str(),
+                            turn,
+                            &call.id,
                             call.provider
                                 .as_ref()
                                 .map(|provider| provider.call_id.as_str()),
@@ -391,7 +396,8 @@ fn validate_tool_correlation(
                 results.extend(content.iter().filter_map(|item| {
                     match item {
                         UserContent::ToolResult(result) => Some((
-                            result.call.as_str(),
+                            turn,
+                            &result.call,
                             result
                                 .provider
                                 .as_ref()
@@ -410,10 +416,12 @@ fn validate_tool_correlation(
             format!("history has no assistant tool calls: {messages:?}"),
         ));
     }
-    for (id, call_id) in &calls {
+    for (turn, id, call_id) in &calls {
         let matches = results
             .iter()
-            .filter(|(result_id, result_call_id)| result_id == id && call_id == result_call_id)
+            .filter(|(result_turn, result_id, result_call_id)| {
+                result_turn == turn && result_id == id && call_id == result_call_id
+            })
             .count();
         if matches != 1 {
             return Err(ScenarioError::contract(
@@ -543,18 +551,21 @@ struct RewriteArgument {
 }
 
 impl AgentHook for RewriteArgument {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        if event.tool_name != CountingAdd::NAME {
-            return ToolCallAction::run();
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        let (Some(name), Some(args)) = (event.tool_name(), event.tool_args()) else {
+            return DispatchAction::proceed();
+        };
+        if name != CountingAdd::NAME {
+            return DispatchAction::proceed();
         }
-        let Ok(mut arguments) = serde_json::from_str::<serde_json::Value>(event.args) else {
-            return ToolCallAction::run();
+        let Ok(mut arguments) = serde_json::from_str::<serde_json::Value>(args) else {
+            return DispatchAction::proceed();
         };
         let Some(object) = arguments.as_object_mut() else {
-            return ToolCallAction::run();
+            return DispatchAction::proceed();
         };
         object.insert(self.key.to_string(), self.value.clone());
-        ToolCallAction::rewrite(arguments)
+        DispatchAction::rewrite_tool_args(event.kind, arguments)
     }
 }
 
@@ -562,11 +573,13 @@ impl AgentHook for RewriteArgument {
 struct ObserveArguments(Arc<Mutex<Vec<serde_json::Value>>>);
 
 impl AgentHook for ObserveArguments {
-    async fn on_tool_call(&self, _ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        let value = serde_json::from_str(event.args)
-            .unwrap_or_else(|_| serde_json::Value::String(event.args.to_string()));
-        lock_recover(&self.0).push(value);
-        ToolCallAction::run()
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if let Some(args) = event.tool_args() {
+            let value = serde_json::from_str(args)
+                .unwrap_or_else(|_| serde_json::Value::String(args.to_string()));
+            lock_recover(&self.0).push(value);
+        }
+        DispatchAction::proceed()
     }
 }
 
@@ -574,15 +587,11 @@ impl AgentHook for ObserveArguments {
 struct ReplaceResult(&'static str);
 
 impl AgentHook for ReplaceResult {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name == CountingAdd::NAME {
-            ToolResultAction::rewrite(self.0)
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.tool_name() == Some(CountingAdd::NAME) {
+            OutcomeAction::rewrite_tool_result(&event, self.0)
         } else {
-            ToolResultAction::keep()
+            OutcomeAction::proceed()
         }
     }
 }
@@ -591,15 +600,15 @@ impl AgentHook for ReplaceResult {
 struct WrapResult;
 
 impl AgentHook for WrapResult {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name == CountingAdd::NAME {
-            ToolResultAction::rewrite(format!("[{}]", event.presentation.render()))
-        } else {
-            ToolResultAction::keep()
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        match (event.tool_name(), event.tool_result()) {
+            (Some(name), Some(result)) if name == CountingAdd::NAME => {
+                OutcomeAction::rewrite_tool_result(
+                    &event,
+                    format!("[{}]", result.output().render()),
+                )
+            }
+            _ => OutcomeAction::proceed(),
         }
     }
 }
@@ -625,15 +634,11 @@ impl AgentHook for FirstTurnPatch {
 struct StopAfterResult(&'static str);
 
 impl AgentHook for StopAfterResult {
-    async fn on_tool_result(
-        &self,
-        _ctx: &HookContext,
-        event: ToolResultEvent<'_>,
-    ) -> ToolResultAction {
-        if event.tool_name == CountingAdd::NAME {
-            ToolResultAction::stop(self.0)
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.tool_name() == Some(CountingAdd::NAME) {
+            OutcomeAction::stop(self.0)
         } else {
-            ToolResultAction::keep()
+            OutcomeAction::proceed()
         }
     }
 }
@@ -1256,17 +1261,19 @@ where
     let mut streamed_usage = None;
     while let Some(item) = stream.next().await {
         match item? {
-            crate::streaming::StreamedAssistantContent::Text(text) => {
-                streamed_text.push_str(&text.text);
+            crate::streaming::StreamEvent::BlockDelta {
+                delta: crate::streaming::Delta::Text { text },
+                ..
+            } => {
+                streamed_text.push_str(&text);
             }
-            crate::streaming::StreamedAssistantContent::Final(response) => {
+            crate::streaming::StreamEvent::Final(response) => {
                 streamed_usage = Some(response.usage);
             }
-            crate::streaming::StreamedAssistantContent::ToolCall { .. }
-            | crate::streaming::StreamedAssistantContent::ToolCallDelta { .. }
-            | crate::streaming::StreamedAssistantContent::Reasoning { .. }
-            | crate::streaming::StreamedAssistantContent::ReasoningDelta { .. }
-            | crate::streaming::StreamedAssistantContent::Unknown(_) => {}
+            crate::streaming::StreamEvent::BlockStart { .. }
+            | crate::streaming::StreamEvent::BlockDelta { .. }
+            | crate::streaming::StreamEvent::BlockEnd { .. }
+            | crate::streaming::StreamEvent::Unknown(_) => {}
         }
     }
     let usage = streamed_usage.ok_or_else(|| {
@@ -1398,25 +1405,24 @@ where
     struct CaptureTurn(Arc<Mutex<Option<ModelTurn>>>);
 
     impl AgentHook for CaptureTurn {
-        async fn on_completion_response(
-            &self,
-            _ctx: &HookContext,
-            event: CompletionResponseEvent<'_>,
-        ) -> ObservationAction {
+        async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+            let Some(response) = event.completion() else {
+                return OutcomeAction::proceed();
+            };
             *lock_recover(&self.0) = Some(ModelTurn::new(
-                event.identity.message_id.clone(),
-                event.content.clone(),
-                event.usage,
+                response.message_id.clone(),
+                response.choice.clone(),
+                response.usage,
                 BTreeSet::new(),
                 BTreeSet::new(),
             ));
-            ObservationAction::stop("captured conformance model turn")
+            OutcomeAction::stop("captured conformance model turn")
         }
     }
 
     let captured = Arc::new(Mutex::new(None));
     let stopped = agent
-        .runner(PROMPT)
+        .prompt(PROMPT)
         .add_hook(CaptureTurn(captured.clone()))
         .run()
         .await;
@@ -1803,10 +1809,9 @@ where
         .default_max_turns(4)
         .build();
     let mut stream = agent
-        .stream_prompt("Use add to calculate 17 + 25, then state the final number.")
+        .prompt("Use add to calculate 17 + 25, then state the final number.")
         .max_turns(4)
-        .stream()
-        .await;
+        .stream();
     let mut final_response = None;
     let mut final_count = 0_usize;
     let mut completion_usage = crate::completion::Usage::new();
@@ -1814,16 +1819,10 @@ where
     let mut streamed_result_ids = Vec::new();
     while let Some(item) = stream.next().await {
         match item? {
-            MultiTurnStreamItem::StreamAssistantItem(
-                crate::streaming::StreamedAssistantContent::ToolCall {
-                    internal_call_id, ..
-                },
-            ) => streamed_call_ids.push(internal_call_id),
+            MultiTurnStreamItem::ToolCall { block_id, .. } => streamed_call_ids.push(block_id),
             MultiTurnStreamItem::StreamUserItem(
-                crate::streaming::StreamedUserContent::ToolResult {
-                    internal_call_id, ..
-                },
-            ) => streamed_result_ids.push(internal_call_id),
+                crate::streaming::StreamedUserContent::ToolResult { id, .. },
+            ) => streamed_result_ids.push(id),
             MultiTurnStreamItem::CompletionCall(call) => completion_usage += call.usage,
             MultiTurnStreamItem::FinalResponse(response) => {
                 final_count += 1;
@@ -2049,12 +2048,9 @@ where
         .default_max_turns(5)
         .build();
     let mut stream = agent
-        .stream_prompt(
-            "Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.",
-        )
+        .prompt("Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.")
         .max_turns(5)
-        .stream()
-        .await;
+        .stream();
     let mut final_response = None;
     let mut final_count = 0_usize;
     while let Some(item) = stream.next().await {

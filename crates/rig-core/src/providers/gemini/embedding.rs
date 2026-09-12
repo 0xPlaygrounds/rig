@@ -112,26 +112,28 @@ where
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
         let response = self.client.send::<_, Vec<u8>>(req).await?;
 
-        let status = response.status();
-        let body = response.into_body().await?;
+        let (parts, body) = response.into_parts();
+        let status = parts.status;
+        let headers = Box::new(parts.headers);
+        let body = body.await?;
 
         // Preserve non-success bodies before deserialization because providers
         // may return empty, non-JSON, or otherwise unexpected error payloads.
         if !status.is_success() {
-            return Err(EmbeddingError::from_http_response(
-                status,
-                String::from_utf8_lossy(&body),
-            ));
+            return Err(
+                EmbeddingError::from_http_response(status, String::from_utf8_lossy(&body))
+                    .with_response_headers(Some(headers)),
+            );
         }
 
         match serde_json::from_slice::<ApiResponse<gemini_api_types::EmbeddingResponse>>(&body)? {
             ApiResponse::Ok(response) => Ok(response),
             ApiResponse::Err(err) => {
                 tracing::warn!(message = %err.error.message, "provider returned an error response");
-                Err(EmbeddingError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&body),
-                ))
+                Err(
+                    EmbeddingError::from_http_response(status, String::from_utf8_lossy(&body))
+                        .with_response_headers(Some(headers)),
+                )
             }
         }
     }

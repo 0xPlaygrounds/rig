@@ -3,8 +3,8 @@
 //! # The bug
 //!
 //! `GeminiRestAdapter::interpret` treated *any* chunk carrying a
-//! `finishReason` as the provider completing the turn and pushed
-//! `RawStreamingChoice::FinalResponse` there; the shared driver stops reading
+//! `finishReason` as the provider completing the turn and pushed the
+//! terminal `StreamEvent::Final` there; the shared driver stops reading
 //! as soon as it sees a terminal record. Gemini's `streamGenerateContent`
 //! does not honour that assumption: when a built-in tool runs a round it
 //! emits an **intermediate** `finishReason` and keeps streaming. A recorded
@@ -35,11 +35,11 @@
 //! |---|------|------|------------------|
 //! | 1 | `two_terminal_stream_keeps_the_text_after_the_first_finish` | recorded | the bug itself |
 //! | 2 | `two_terminal_stream_blocking_twin_has_the_same_answer` | recorded | the blocking yardstick cell 1 is measured against |
-//! | 3 | `two_terminal_stream_agent_prompt_keeps_the_answer` | recorded | `Agent::stream_prompt` |
+//! | 3 | `two_terminal_stream_agent_prompt_keeps_the_answer` | recorded | `Agent::prompt` |
 //! | 4 | `two_terminal_stream_terminal_carries_the_last_usage` | recorded | terminal metadata comes from the last chunk |
 //! | 5 | `two_terminal_stream_with_visible_thoughts` | recorded | reasoning spanning the boundary |
 //! | 6 | `gemini_3_flash_does_not_emit_the_intermediate_finish` | recorded | second model family: control, shape absent |
-//! | 7 | `two_terminal_stream_through_raw_stream` | recorded | the provider-native `raw_stream` entry |
+//! | 7 | `two_terminal_stream_through_raw_stream` | recorded | the provider-native terminal on `Final.raw` |
 //! | 8 | `two_terminal_stream_unicode_answer_after_the_first_finish` | recorded | multi-byte text after the boundary |
 //! | 9 | `single_terminal_text_stream_is_unchanged` | recorded | regression guard: ordinary stream |
 //! | 10 | `single_terminal_tool_call_stream_is_unchanged` | recorded | regression guard: tool-call stream |
@@ -82,7 +82,7 @@ use rig::completion::{CompletionModel, FinishReason};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::gemini;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::{Delta, StreamEvent};
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -92,15 +92,15 @@ use super::super::support::{
 
 /// The prompt that reliably makes Gemini take two code-execution rounds, and
 /// therefore emit an intermediate `finishReason`.
-const TWO_ROUND_PROMPT: &str = "You must call the code execution tool twice as two separate executions. \
+pub(super) const TWO_ROUND_PROMPT: &str = "You must call the code execution tool twice as two separate executions. \
      Execution 1: run only print(987654321 * 123456789). Then, after seeing that number, \
      Execution 2: run only print(sum(int(d) for d in str(N))) where N is the exact number \
      from Execution 1. Never combine them. Finally state both numbers.";
 
 /// The product printed by the first round, which the answer must restate.
-const FIRST_ROUND_VALUE: &str = "121932631112635269";
+pub(super) const FIRST_ROUND_VALUE: &str = "121932631112635269";
 
-fn code_execution_params() -> Value {
+pub(super) fn code_execution_params() -> Value {
     json!({ "tools": [{ "codeExecution": {} }] })
 }
 
@@ -122,7 +122,7 @@ fn text_of(choice: &[AssistantContent]) -> String {
 /// `value` must not be a fragment of a longer number — "2880" in "28800" is
 /// not the answer — so digit-adjacency is rejected. An empty or non-numeric
 /// `value` keeps plain substring semantics.
-fn states(text: &str, value: &str) -> bool {
+pub(super) fn states(text: &str, value: &str) -> bool {
     let text: String = text
         .char_indices()
         .filter(|(index, ch)| {
@@ -170,16 +170,19 @@ async fn drain(mut stream: rig::streaming::StreamingCompletionResponse) -> Drain
     let mut last_item_was_terminal = false;
     while let Some(item) = stream.next().await {
         let item = item.expect("no stream item should be an error");
-        last_item_was_terminal = matches!(item, StreamedAssistantContent::Final(_));
+        last_item_was_terminal = matches!(item, StreamEvent::Final(_));
         match item {
-            StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
-            StreamedAssistantContent::Final(_) => terminals += 1,
+            StreamEvent::BlockDelta {
+                delta: Delta::Text { text: chunk },
+                ..
+            } => text.push_str(&chunk),
+            StreamEvent::Final(_) => terminals += 1,
             _ => {}
         }
     }
     Drained {
         text,
-        choice: stream.choice.clone(),
+        choice: stream.snapshot(),
         terminals,
         terminal: stream.response.clone(),
         last_item_was_terminal,
@@ -282,14 +285,17 @@ async fn two_terminal_stream_agent_prompt_keeps_the_answer() {
                 .additional_params(code_execution_params())
                 .build();
 
-            let mut stream = agent.stream_prompt(TWO_ROUND_PROMPT).stream().await;
+            let mut stream = agent.prompt(TWO_ROUND_PROMPT).stream();
             let mut answer = String::new();
             while let Some(item) = stream.next().await {
                 if let rig::agent::MultiTurnStreamItem::StreamAssistantItem(
-                    StreamedAssistantContent::Text(text),
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text },
+                        ..
+                    },
                 ) = item.expect("no stream item should be an error")
                 {
-                    answer.push_str(&text.text);
+                    answer.push_str(&text);
                 }
             }
 
@@ -461,8 +467,6 @@ async fn two_terminal_stream_through_raw_stream() {
     with_gemini_stream_terminal_cassette(
         "stream_terminal_matrix/two_terminal_stream_through_raw_stream",
         |client| async move {
-            use rig::streaming::RawStreamingChoice;
-
             let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
             let request = model
                 .completion_request(TWO_ROUND_PROMPT)
@@ -471,18 +475,35 @@ async fn two_terminal_stream_through_raw_stream() {
                 .additional_params(code_execution_params())
                 .build();
 
-            // `raw_stream` keeps Gemini's own terminal type, so this pins the fix
-            // on the provider-native entry point as well as the normalized one.
-            let mut stream = model
-                .raw_stream(request)
+            // The terminal record carries Gemini's own terminal type on
+            // `raw`, so this pins the fix on the provider-native record as
+            // well as the normalized one.
+            let mut stream = CompletionModel::stream(&model, request)
                 .await
-                .expect("raw stream should open");
+                .expect("stream should open");
             let mut text = String::new();
             let mut natives = 0;
             while let Some(item) = stream.next().await {
-                match item.expect("no raw item should be an error") {
-                    RawStreamingChoice::Message(chunk) => text.push_str(&chunk),
-                    RawStreamingChoice::FinalResponse(_) => natives += 1,
+                match item.expect("no stream item should be an error") {
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text: chunk },
+                        ..
+                    } => text.push_str(&chunk),
+                    StreamEvent::Final(record) => {
+                        let native: gemini::streaming::StreamingCompletionResponse =
+                            serde_json::from_value(record.raw.clone())
+                                .expect("Final.raw should decode as Gemini's native terminal");
+                        assert_eq!(
+                            native
+                                .finish_reason
+                                .as_ref()
+                                .map(|reason| reason.as_wire_str()),
+                            Some("STOP"),
+                            "the native terminal reports the reason the turn actually ended on"
+                        );
+                        assert_eq!(record.finish_reason, Some(FinishReason::Stop));
+                        natives += 1;
+                    }
                     _ => {}
                 }
             }
@@ -712,9 +733,10 @@ async fn thinking_stream_terminal_is_unchanged() {
 mod unit {
     use futures::StreamExt;
     use rig::completion::{CompletionModel, FinishReason};
+    use rig::message::AssistantContent;
     use rig::prelude::*;
     use rig::providers::gemini;
-    use rig::streaming::StreamedAssistantContent;
+    use rig::streaming::{Delta, StreamEvent};
     use rig_core::test_utils::{MockStreamingClient, SequencedStreamingHttpClient};
 
     /// Frames written from the bytes recorded by cells 1–12.
@@ -742,6 +764,8 @@ mod unit {
         unknowns: usize,
         terminals: Vec<rig::streaming::StreamFinal>,
         errors: usize,
+        /// The error items' messages, in order.
+        error_messages: Vec<String>,
         last_was_terminal: bool,
         response: Option<rig::streaming::StreamFinal>,
     }
@@ -775,27 +799,38 @@ mod unit {
             unknowns: 0,
             terminals: Vec::new(),
             errors: 0,
+            error_messages: Vec::new(),
             last_was_terminal: false,
             response: None,
         };
         while let Some(item) = stream.next().await {
             match item {
                 Ok(item) => {
-                    run.last_was_terminal = matches!(item, StreamedAssistantContent::Final(_));
+                    run.last_was_terminal = matches!(item, StreamEvent::Final(_));
                     match item {
-                        StreamedAssistantContent::Text(text) => run.text.push_str(&text.text),
-                        StreamedAssistantContent::Reasoning { .. } => run.reasoning += 1,
-                        StreamedAssistantContent::ToolCall { .. } => run.tool_calls += 1,
-                        StreamedAssistantContent::Unknown(_) => run.unknowns += 1,
-                        StreamedAssistantContent::Final(final_record) => {
+                        StreamEvent::BlockDelta {
+                            delta: Delta::Text { text },
+                            ..
+                        } => run.text.push_str(&text),
+                        StreamEvent::BlockEnd {
+                            block: Some(AssistantContent::Reasoning(_)),
+                            ..
+                        } => run.reasoning += 1,
+                        StreamEvent::BlockEnd {
+                            block: Some(AssistantContent::ToolCall(_)),
+                            ..
+                        } => run.tool_calls += 1,
+                        StreamEvent::Unknown(_) => run.unknowns += 1,
+                        StreamEvent::Final(final_record) => {
                             run.terminals.push(final_record);
                         }
                         _ => {}
                     }
                 }
-                Err(_) => {
+                Err(error) => {
                     run.last_was_terminal = false;
                     run.errors += 1;
+                    run.error_messages.push(error.to_string());
                 }
             }
         }
@@ -865,14 +900,62 @@ mod unit {
         assert_eq!(run.text, "The answer is 42.");
     }
 
+    /// Gemini's in-band abort: a frame carrying only its error envelope.
+    const ERROR_FRAME: &str =
+        r#"{"error":{"code":500,"message":"An internal error has occurred.","status":"INTERNAL"}}"#;
+
+    #[tokio::test]
+    async fn an_error_frame_after_text_is_the_providers_verdict_not_a_truncation() {
+        let run = run(&[ANSWER, ERROR_FRAME]).await;
+        assert_eq!(run.text, "The answer is 42.");
+        assert_eq!(
+            run.unknowns, 0,
+            "the envelope is a modeled frame, never skipped"
+        );
+        assert_eq!(run.errors, 1, "one error item: the provider's");
+        assert!(
+            run.terminals.is_empty(),
+            "no terminal record after an abort"
+        );
+        let message = &run.error_messages[0];
+        assert!(
+            message.contains("INTERNAL"),
+            "the envelope's status survives: {message}"
+        );
+        assert!(
+            message.contains("An internal error has occurred."),
+            "the envelope's message survives: {message}"
+        );
+        assert!(
+            !message.contains("terminal record"),
+            "not reported as a cut stream: {message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_error_frame_alone_is_the_providers_verdict() {
+        let run = run(&[ERROR_FRAME]).await;
+        assert!(run.text.is_empty());
+        assert_eq!(run.errors, 1);
+        assert!(run.terminals.is_empty());
+        assert!(run.error_messages[0].contains("INTERNAL"));
+    }
+
+    #[tokio::test]
+    async fn frames_after_an_error_frame_are_not_read() {
+        let run = run(&[ERROR_FRAME, ANSWER]).await;
+        assert_eq!(run.errors, 1);
+        assert!(run.text.is_empty(), "the abort is the wire's terminal");
+    }
+
     #[tokio::test]
     async fn a_transport_error_after_a_finish_reason_yields_no_terminal_record() {
         let run = run_client(SequencedStreamingHttpClient::new(vec![
             Ok(sse(&[INTERMEDIATE_TERMINAL, ANSWER])),
-            Err(rig::http_client::Error::InvalidStatusCodeWithMessage(
-                reqwest::StatusCode::BAD_GATEWAY,
-                "connection reset".to_string(),
-            )),
+            Err(rig::http_client::Error::instance(std::io::Error::new(
+                std::io::ErrorKind::ConnectionReset,
+                "connection reset",
+            ))),
         ]))
         .await;
 
@@ -908,10 +991,10 @@ mod unit {
     async fn a_transport_error_after_the_real_terminal_also_reports_truncation() {
         let run = run_client(SequencedStreamingHttpClient::new(vec![
             Ok(sse(&[ANSWER, REAL_TERMINAL])),
-            Err(rig::http_client::Error::InvalidStatusCodeWithMessage(
-                reqwest::StatusCode::BAD_GATEWAY,
-                "connection reset".to_string(),
-            )),
+            Err(rig::http_client::Error::instance(std::io::Error::new(
+                std::io::ErrorKind::ConnectionReset,
+                "connection reset",
+            ))),
         ]))
         .await;
 

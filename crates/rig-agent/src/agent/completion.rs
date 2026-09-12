@@ -1,17 +1,22 @@
 use super::hook::{HookStack, RequestPatch};
-use super::run::OutputMode;
+use super::run::{AgentRun, OutputMode};
 use super::runner::AgentRunner;
 use super::typed::TypedRun;
+use crate::bus::{BusDriver, Dispatcher, ModelHandle};
 use crate::{
     completion::{
-        CompletionError, CompletionModel, CompletionRequestBuilder, Document, Message, PromptError,
-        ToolDefinition,
+        CompletionError, CompletionModel, CompletionRequest, CompletionRequestBuilder, Document,
+        Message, PromptError, ToolDefinition,
     },
     run::response::PromptResponse,
     tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
 };
-use rig_core::completion::ModelHandle;
+use rig_core::completion::ModelRef;
+use rig_core::effect::{HandlerDescriptor, Key, family};
 use rig_core::id::ConversationId;
+use rig_effect_log::EffectLog;
+
+use super::drive::AgentBus;
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -23,7 +28,11 @@ pub(crate) struct PreparedCompletionRequest {
     /// Builder carrying the selected model handle: request preparation ran
     /// against this handle's captured capabilities, and the same handle
     /// executes the prepared request.
-    pub(crate) builder: CompletionRequestBuilder<ModelHandle>,
+    pub(crate) request: CompletionRequest,
+    /// The messages telemetry records for this attempt.
+    pub(crate) telemetry_messages: Vec<Message>,
+    /// The typed view the request is dispatched to.
+    pub(crate) model: ModelHandle,
     /// Exact implementations behind this turn's provider definitions.
     pub(crate) tool_snapshot: Arc<ToolRegistrySnapshot>,
     /// The definitions the request carries (executable tools plus, in Tool
@@ -61,6 +70,7 @@ pub(crate) struct PreparedCompletionRequest {
 /// model's request builder and pin the snapshot to the executable set.
 pub(crate) async fn build_prepared_completion_request(
     runner: &crate::agent::AgentRunner,
+    ctx: &crate::agent::HookContext,
     model: &ModelHandle,
     prompt: Message,
     chat_history: &[Message],
@@ -79,10 +89,32 @@ pub(crate) async fn build_prepared_completion_request(
             .find_map(rig_core::completion::Message::rag_text)
     });
 
-    let mut tool_snapshot = tool_server_handle
-        .snapshot_tool_defs(retrieval_query)
+    // Tool retrieval is a `Retrieve` dispatch at the boundary (observe-only
+    // for hooks unless one opts in), recorded like every other effect.
+    let mut dynamic_tool_ids = Vec::new();
+    for (key, kind) in tool_server_handle.retrieval_effects(retrieval_query) {
+        let ids = crate::agent::engine::dispatch_effect(
+            &runner.config.hooks,
+            ctx,
+            runner.config.bus.dispatcher(),
+            &key,
+            kind,
+        )
         .await
-        .map_err(|_| CompletionError::RequestError("Failed to get tool definitions".into()))?;
+        .and_then(|outcome| match outcome {
+            rig_core::effect::Outcome::Documents(rig_core::effect::RetrievedDocuments::Ids(
+                ids,
+            )) => Ok(ids.into_iter().map(|(_, id)| id).collect::<Vec<String>>()),
+            other => Err(crate::agent::engine::wrong_outcome("retrieved ids", &other)),
+        })
+        .map_err(|report| {
+            CompletionError::RequestError(
+                format!("Failed to get tool definitions: {report}").into(),
+            )
+        })?;
+        dynamic_tool_ids.extend(ids);
+    }
+    let mut tool_snapshot = tool_server_handle.snapshot_with_dynamic(&dynamic_tool_ids);
 
     let mut spec = runner.config.run_spec();
     spec.output_tool_description
@@ -108,18 +140,31 @@ pub(crate) async fn build_prepared_completion_request(
     let allowed_tool_names = prepared.allowed_tool_names.clone();
     let output_tool_name = prepared.output_tool_name.clone();
     let max_tokens = prepared.max_tokens;
-    let completion_request = prepared
-        .apply(model.completion_request(prompt))
+    let builder = prepared
+        .apply(CompletionRequestBuilder::unbound(prompt))
         .record_content_telemetry(record_telemetry_content);
+    let telemetry_messages = if record_telemetry_content {
+        builder.messages_for_telemetry()
+    } else {
+        Vec::new()
+    };
+    // The agent records the input itself, so the request the provider sees
+    // carries the flag off: one span, no double recording.
+    let request = builder.record_content_telemetry(false).build();
+    // The same guard the builder's own `send`/`stream` apply: an empty
+    // history or content block is a local, named error, not a remote 400.
+    request.validate_message_content()?;
 
     Ok(PreparedCompletionRequest {
-        builder: completion_request,
+        request,
+        telemetry_messages,
+        model: model.clone(),
         tool_snapshot: Arc::new(tool_snapshot),
         advertised_tools,
         executable_tool_names,
         allowed_tool_names,
         output_tool_name,
-        // The post-patch binding from above — the one `.max_tokens_opt(..)`
+        // The post-patch binding from above — the one `.max_tokens(..)`
         // put on the request.
         max_tokens,
     })
@@ -169,8 +214,10 @@ pub(crate) struct AgentConfig {
     pub(crate) name: Option<String>,
     /// Agent description. Primarily useful when using sub-agents as part of an agent workflow and converting agents to other formats.
     pub(crate) description: Option<String>,
-    /// Completion model (e.g.: OpenAI's gpt-3.5-turbo-1106, Cohere's command-r)
-    pub(crate) model: ModelHandle,
+    /// The bus every run dispatches through.
+    pub(crate) bus: AgentBus,
+    /// The key of the default model on the bus.
+    pub(crate) model_key: Key<family::Completion>,
     /// System prompt
     pub(crate) preamble: Option<String>,
     /// Context documents always available to the agent
@@ -203,18 +250,30 @@ pub(crate) struct AgentConfig {
     /// prompt injection (see [`OutputMode`] and issue #1928).
     pub(crate) output_mode: OutputMode,
     /// Optional conversation memory backend that loads/saves history per conversation id.
-    pub(crate) memory: Option<Arc<dyn rig_core::memory::ConversationMemory>>,
+    pub(crate) memory_key: Option<Key<family::Memory>>,
+    /// The models registered as routes at build (`model_route`), part of
+    /// the required row: a program that can select them needs them served.
+    pub(crate) route_keys: Vec<Key<family::Completion>>,
+    /// The dynamic-context indexes registered at build
+    /// (`dynamic_context`), part of the required row: every model call
+    /// queries them.
+    pub(crate) context_keys: Vec<Key<family::Retrieve>>,
     /// Optional conversation id used when none is set per-request.
     pub(crate) conversation_id: Option<ConversationId>,
+    /// The anonymous model this value selected ([`Agent::set_model`],
+    /// [`AgentRunner::using_model_value`]); its registration lives as long
+    /// as the values sharing it.
+    pub(crate) anonymous_model: Option<std::sync::Arc<super::drive::AnonymousModel>>,
 }
 
 impl AgentConfig {
     /// The unconfigured starting point for a builder over `model`.
-    pub(crate) fn new(model: ModelHandle) -> Self {
+    pub(crate) fn new(bus: AgentBus, model_key: Key<family::Completion>) -> Self {
         Self {
             name: None,
             description: None,
-            model,
+            bus,
+            model_key,
             preamble: None,
             static_context: vec![],
             additional_params: None,
@@ -224,11 +283,62 @@ impl AgentConfig {
             tool_choice: None,
             max_turns: 1,
             hooks: HookStack::new(),
+            route_keys: Vec::new(),
+            context_keys: Vec::new(),
             output_schema: None,
             output_mode: OutputMode::default(),
-            memory: None,
+            memory_key: None,
             conversation_id: None,
+            anonymous_model: None,
         }
+    }
+
+    /// Bind the default model's typed view.
+    pub(crate) fn model_handle(&self) -> Result<ModelHandle, rig_core::error::ErrorReport> {
+        self.bus.dispatcher().bind(&self.model_key)
+    }
+
+    /// The default model's label as registered now (the key's tail when
+    /// nothing serves it).
+    pub(crate) fn model_ref(&self) -> ModelRef {
+        match self
+            .bus
+            .dispatcher()
+            .descriptor(self.model_key.raw())
+            .map(|descriptor| descriptor.family)
+        {
+            Some(rig_core::effect::FamilyDescriptor::Completion { model, .. }) => model,
+            Some(rig_core::effect::FamilyDescriptor::Tool { .. })
+            | Some(rig_core::effect::FamilyDescriptor::Embed { .. })
+            | Some(rig_core::effect::FamilyDescriptor::Memory {})
+            | Some(rig_core::effect::FamilyDescriptor::Retrieve {})
+            | Some(rig_core::effect::FamilyDescriptor::Rerank { .. })
+            | Some(rig_core::effect::FamilyDescriptor::Custom { .. })
+            | None => ModelRef::new(
+                self.bus
+                    .model_label(self.model_key.raw())
+                    .unwrap_or(self.model_key.as_str()),
+            ),
+        }
+    }
+
+    /// Bind the model registered under `label`.
+    pub(crate) fn model_by_ref(
+        &self,
+        label: &ModelRef,
+    ) -> Result<ModelHandle, rig_core::error::ErrorReport> {
+        self.bus
+            .dispatcher()
+            .bind(&self.bus.model_key(label.as_str()))
+    }
+
+    /// Bind the memory handle, when memory is configured.
+    pub(crate) fn memory_handle(
+        &self,
+    ) -> Option<Result<crate::bus::MemoryHandle, rig_core::error::ErrorReport>> {
+        self.memory_key
+            .as_ref()
+            .map(|key| self.bus.dispatcher().bind(key))
     }
 }
 
@@ -256,29 +366,6 @@ impl AgentConfig {
             augment_output_preamble: true,
             unhandled_invalid_tool_call: crate::run::spec::UnhandledInvalidToolCall::Fail,
         }
-    }
-
-    /// Overwrite the protocol-facing fields from `spec`, leaving model, hooks,
-    /// memory and identity untouched. Fails only if `spec.output_schema` is
-    /// not a valid JSON schema.
-    pub(crate) fn apply_run_spec(
-        &mut self,
-        spec: &crate::run::spec::RunSpec,
-    ) -> Result<(), serde_json::Error> {
-        self.preamble.clone_from(&spec.preamble);
-        self.static_context.clone_from(&spec.static_context);
-        self.additional_params.clone_from(&spec.additional_params);
-        self.max_tokens = spec.max_tokens;
-        self.temperature = spec.temperature;
-        self.tool_choice.clone_from(&spec.tool_choice);
-        self.max_turns = spec.effective_max_turns();
-        self.output_schema = spec
-            .output_schema
-            .clone()
-            .map(schemars::Schema::try_from)
-            .transpose()?;
-        self.output_mode = spec.output_mode.clone();
-        Ok(())
     }
 }
 
@@ -314,44 +401,80 @@ impl Agent {
         self.name().unwrap_or(UNKNOWN_AGENT_NAME)
     }
 
-    /// Build a hook-aware [`AgentRunner`] for this agent, seeded with the
-    /// agent's default hook stack. Attach more hooks with
-    /// [`AgentRunner::add_hook`], then call [`AgentRunner::run`].
-    pub fn runner(&self, prompt: impl Into<Message>) -> AgentRunner {
-        AgentRunner::from_agent(self, prompt)
+    /// The key of this agent's default model on its bus (a completion key;
+    /// `.raw()` for the wire string).
+    pub fn model_key(&self) -> &Key<family::Completion> {
+        &self.config.model_key
     }
 
-    /// Returns the agent's current default model handle.
-    pub fn model_handle(&self) -> &ModelHandle {
-        &self.config.model
+    /// The descriptor of this agent's default model, as registered now.
+    pub fn model_descriptor(&self) -> Option<HandlerDescriptor> {
+        self.config
+            .bus
+            .dispatcher()
+            .descriptor(self.config.model_key.raw())
     }
 
-    /// Replace the default model used by runners created after this call.
-    ///
-    /// Existing runners retain their model snapshot, and replacing one cloned
-    /// agent does not mutate another clone. Model-selection hooks may replace
-    /// the captured default at each model-call boundary.
-    pub fn set_model_handle(&mut self, model: ModelHandle) {
-        self.config.model = model;
+    /// The label of this agent's default model, as registered now.
+    pub fn model_ref(&self) -> Option<ModelRef> {
+        self.model_descriptor()
+            .and_then(|descriptor| match descriptor.family {
+                rig_core::effect::FamilyDescriptor::Completion { model, .. } => Some(model),
+                rig_core::effect::FamilyDescriptor::Tool { .. }
+                | rig_core::effect::FamilyDescriptor::Embed { .. }
+                | rig_core::effect::FamilyDescriptor::Memory {}
+                | rig_core::effect::FamilyDescriptor::Retrieve {}
+                | rig_core::effect::FamilyDescriptor::Rerank { .. }
+                | rig_core::effect::FamilyDescriptor::Custom { .. } => None,
+            })
     }
 
-    /// Erase and install a typed completion model as this agent's new default.
+    /// Register `model` on this agent's bus under `label` and return the
+    /// label a run selects it by.
+    pub fn register_model<M>(&self, label: impl Into<ModelRef>, model: M) -> ModelRef
+    where
+        M: CompletionModel + 'static,
+    {
+        let label = label.into();
+        self.config.bus.register_model(&label, model);
+        label
+    }
+
+    /// Make the model registered under `label` this agent value's default.
+    /// Value semantics: clones of the agent keep their own default.
+    pub fn set_model_ref(&mut self, label: impl Into<ModelRef>) {
+        self.config.model_key = self.config.bus.model_key(label.into().as_str());
+        self.config.anonymous_model = None;
+    }
+
+    /// Register `model` under a generated label and make it this agent
+    /// value's default. The registration is scoped to the values that
+    /// select it (this agent, its clones, the runners it produces): it
+    /// leaves the bus when the last of them drops or selects another model.
     pub fn set_model<M>(&mut self, model: M)
     where
         M: CompletionModel + 'static,
     {
-        self.set_model_handle(ModelHandle::new(model));
+        let anonymous = self.config.bus.register_anonymous_model(model);
+        self.config.model_key = anonymous.key().clone();
+        self.config.anonymous_model = Some(anonymous);
     }
 
-    /// Return this agent with a replacement default model handle.
-    ///
-    /// Model-selection hooks may replace this default for individual calls.
-    pub fn with_model_handle(mut self, model: ModelHandle) -> Self {
-        self.set_model_handle(model);
+    /// The owner segment of the keys this agent minted
+    /// (`<owner>/model:<label>`, `<owner>/memory`, ...): the label given to
+    /// [`AgentBuilder::owner`](crate::agent::AgentBuilder::owner), else
+    /// `agent#<n>`.
+    pub fn owner(&self) -> &str {
+        self.config.bus.owner()
+    }
+
+    /// [`Agent::set_model_ref`] by value.
+    pub fn with_model_ref(mut self, label: impl Into<ModelRef>) -> Self {
+        self.set_model_ref(label);
         self
     }
 
-    /// Return this agent with an erased typed model as its new default.
+    /// [`Agent::set_model`] by value.
     pub fn with_model<M>(mut self, model: M) -> Self
     where
         M: CompletionModel + 'static,
@@ -360,10 +483,213 @@ impl Agent {
         self
     }
 
+    /// The effect log recorded so far, when the agent was built with
+    /// [`AgentBuilder::record_effects`](super::AgentBuilder::record_effects).
+    pub fn effect_log(&self) -> Option<EffectLog> {
+        self.config.bus.effect_log().map(|log| self.stamp(log))
+    }
+
+    /// Take the recorded effect log, leaving the recorder empty.
+    pub fn take_effect_log(&self) -> Option<EffectLog> {
+        self.config.bus.take_effect_log().map(|log| self.stamp(log))
+    }
+
+    /// A stable hash of this agent's run spec, what a log it records
+    /// carries in its header and what [`check_replayable`](Self::check_replayable)
+    /// compares.
+    pub fn run_spec_hash(&self) -> u64 {
+        rig_effect_log::stable_hash(&self.config.run_spec()).unwrap_or_default()
+    }
+
+    /// `log` with this agent's program identity in its header: the run-spec
+    /// hash, the hook stack, the required row and, for an agent that owns
+    /// its bus, the bus policy. What [`take_effect_log`](Self::take_effect_log)
+    /// does to a log the agent's own driver recorded; an agent over a
+    /// host's bus does not record, so the host taps its driver and stamps
+    /// the log here before committing it as a golden.
+    pub fn stamp(&self, mut log: EffectLog) -> EffectLog {
+        log.header.run_spec = Some(self.run_spec_hash());
+        log.header.hooks = self.program_names();
+        log.header.required = self.required_row();
+        log.header.bus = self.config.bus.config();
+        log
+    }
+
+    /// The effect row this program can dispatch to: its model, every tool
+    /// the registry serves, its memory backend and its retrieval indexes,
+    /// each with the family it needs — from the registry, not from what a
+    /// run happened to dispatch.
+    pub fn required_row(&self) -> rig_core::effect::EffectRow {
+        use rig_core::effect::EffectFamily;
+        let mut row = rig_core::effect::EffectRow::new();
+        row.insert(
+            self.config.model_key.raw().clone(),
+            EffectFamily::Completion,
+        );
+        for route in &self.config.route_keys {
+            row.insert(route.raw().clone(), EffectFamily::Completion);
+        }
+        if let Some(memory) = &self.config.memory_key {
+            row.insert(memory.raw().clone(), EffectFamily::Memory);
+        }
+        for (_, tool) in self.tool_server_handle.toolset().iter() {
+            row.insert(tool.key().raw().clone(), EffectFamily::Tool);
+        }
+        for key in self.tool_server_handle.retrieval_keys() {
+            row.insert(key, EffectFamily::Retrieve);
+        }
+        for context in &self.config.context_keys {
+            row.insert(context.raw().clone(), EffectFamily::Retrieve);
+        }
+        row
+    }
+
+    /// Whether `log` can be replayed by this agent: the log's format is this
+    /// rig's, its run spec hash is this agent's, and every key its
+    /// signature names is served on this agent's bus by a handler of the
+    /// recorded family. Refused up front, with both sides in the message,
+    /// rather than at the record where the run would have diverged.
+    pub fn check_replayable(&self, log: &EffectLog) -> Result<(), rig_core::error::ErrorReport> {
+        rig_effect_log::EffectLogReplayer::check_header(log)?;
+        if let Some(recorded) = log.header.run_spec {
+            let mine = self.run_spec_hash();
+            if recorded != mine {
+                return Err(rig_core::error::ErrorReport::new(
+                    rig_core::error::ErrorKind::Internal,
+                    format!(
+                        "replay refused: the log was recorded under run spec {recorded:#018x}, this agent runs under {mine:#018x}"
+                    ),
+                ));
+            }
+        }
+        // Hooks are program: a different stack re-makes different decisions.
+        // So are the layers on the bus's keys.
+        let mine = self.program_names();
+        if log.header.hooks != mine {
+            return Err(rig_core::error::ErrorReport::new(
+                rig_core::error::ErrorKind::Internal,
+                format!(
+                    "replay refused: the log was recorded under the hook stack {:?}, this agent runs under {mine:?}",
+                    log.header.hooks
+                ),
+            ));
+        }
+        // The serving policy: dispatch order is the same under either, but
+        // a log states the one it ran under and the agent must match it.
+        if let (Some(recorded), Some(mine)) = (log.header.bus, self.config.bus.config())
+            && recorded != mine
+        {
+            return Err(rig_core::error::ErrorReport::new(
+                rig_core::error::ErrorKind::Internal,
+                format!(
+                    "replay refused: the log was recorded under bus policy {recorded:?}, this agent runs under {mine:?}"
+                ),
+            ));
+        }
+        for (key, family) in &log.header.signature {
+            match self.config.bus.dispatcher().descriptor(key) {
+                Some(descriptor) if descriptor.family.family() == *family => {}
+                Some(descriptor) => {
+                    return Err(rig_core::error::ErrorReport::new(
+                        rig_core::error::ErrorKind::HandlerUnavailable,
+                        format!(
+                            "replay refused: `{key}` serves {} on this bus, the log needs {family}",
+                            descriptor.family.family()
+                        ),
+                    ));
+                }
+                None => {
+                    return Err(rig_core::error::ErrorReport::new(
+                        rig_core::error::ErrorKind::HandlerUnavailable,
+                        format!("replay refused: nothing serves `{key}`, which the log needs"),
+                    ));
+                }
+            }
+        }
+        // The program's required row must be served by the log's handlers.
+        if let Err(gap) = self.required_row().is_subset_of(&log.header.handlers) {
+            return Err(rig_core::error::ErrorReport::new(
+                rig_core::error::ErrorKind::HandlerUnavailable,
+                format!(
+                    "replay refused: this agent needs `{}` ({}), which the log never served: {gap}",
+                    gap.key, gap.needed
+                ),
+            ));
+        }
+        let mine = self.required_row();
+        let diffs = log.header.required.diff(&mine);
+        if !diffs.is_empty() {
+            let diffs: Vec<String> = diffs.iter().map(ToString::to_string).collect();
+            return Err(rig_core::error::ErrorReport::new(
+                rig_core::error::ErrorKind::HandlerUnavailable,
+                format!(
+                    "replay refused: the log was recorded by a program requiring {:?}, this agent requires {mine:?}: {}",
+                    log.header.required,
+                    diffs.join("; ")
+                ),
+            ));
+        }
+        Ok(())
+    }
+
+    /// What decides on this agent's behalf: its hook stack's names, then
+    /// every layer on the bus's handlers (the handler table's order,
+    /// outermost in). The log's `hooks`; a replay under another stack of
+    /// either is refused.
+    pub fn program_names(&self) -> Vec<String> {
+        let mut names = self.config.hooks.names();
+        for descriptor in self.config.bus.dispatcher().descriptors() {
+            names.extend(descriptor.layers);
+        }
+        names
+    }
+
+    /// The policy this agent's own bus runs under; `None` over a host's bus.
+    pub fn bus_config(&self) -> Option<rig_core::serve::ServingPolicy> {
+        self.config.bus.config()
+    }
+
+    /// Whether this agent owns and drives its own bus driver.
+    pub fn owns_bus(&self) -> bool {
+        self.config.bus.owns_driver()
+    }
+
+    /// Take the agent apart: the dispatcher and the driver leave together,
+    /// so whoever gets the dispatcher also gets the duty to drive. Fails
+    /// when the agent was built over a host's bus or when another clone of
+    /// it still shares the driver.
+    pub fn into_parts(self) -> Result<AgentParts, Box<Agent>> {
+        let Agent {
+            mut config,
+            tool_server_handle,
+        } = self;
+        let detached = config.bus.detached();
+        let bus = std::mem::replace(&mut config.bus, detached);
+        let registrar = bus.registrar().clone();
+        match bus.try_into_parts() {
+            Ok((dispatcher, driver)) => Ok(AgentParts {
+                dispatcher,
+                registrar,
+                driver,
+                agent: Agent {
+                    config,
+                    tool_server_handle,
+                },
+            }),
+            Err(bus) => {
+                config.bus = *bus;
+                Err(Box::new(Agent {
+                    config,
+                    tool_server_handle,
+                }))
+            }
+        }
+    }
+
     /// Resolve the provider-facing tool definitions available for a prompt.
     ///
     /// This read-only view does not expose tool dispatch. Agent execution and
-    /// tool lifecycle hooks remain owned by [`Self::runner`].
+    /// tool lifecycle hooks remain owned by [`Self::prompt`].
     pub async fn tool_definitions(
         &self,
         prompt: Option<String>,
@@ -373,16 +699,33 @@ impl Agent {
 }
 
 impl Agent {
-    /// Run `prompt` through the agent loop. The returned [`AgentRunner`] is the
-    /// run: configure it (history, turn budget, tool context, hooks, …) and
-    /// `.await` it for the [`PromptResponse`], whose `output` is the accepted
-    /// assistant text.
+    /// Start a run from `prompt`. The returned [`AgentRunner`] is the run:
+    /// configure it (history, turn budget, tool context, hooks, …), then pick
+    /// how to drive it. Nothing happens until it is driven.
+    ///
+    /// - `.await` (or [`run`](AgentRunner::run)) folds the whole loop to a
+    ///   [`PromptResponse`], whose `output` is the accepted assistant text.
+    /// - [`stream`](AgentRunner::stream) yields every provider delta, tool
+    ///   event and the final response as a stream.
+    /// - [`run_channel`](AgentRunner::run_channel) splits the run into a
+    ///   future and an event feed for a host with its own executor or tick.
+    ///
+    /// The medium is chosen by the terminal call alone: an awaited runner asks
+    /// the provider for a complete response, a streamed one for a stream.
+    /// Hooks, tools, memory and the resulting history are the same in each.
     ///
     /// ```rust,no_run
     /// # use rig_agent::Agent;
+    /// # use futures::StreamExt;
     /// # async fn example(agent: Agent) -> Result<(), Box<dyn std::error::Error>> {
     /// let response = agent.prompt("What is 2 + 2?").max_turns(3).await?;
     /// println!("{}", response.output);
+    ///
+    /// let mut stream = agent.prompt("And 3 + 3?").stream();
+    /// while let Some(item) = stream.next().await {
+    ///     let item = item?;
+    ///     // text deltas, tool calls and results, then `FinalResponse`
+    /// }
     /// # Ok(())
     /// # }
     /// ```
@@ -390,37 +733,73 @@ impl Agent {
         AgentRunner::from_agent(self, prompt)
     }
 
-    /// Run one turn against caller-owned history, appending only the messages
-    /// the run committed. Returns the same [`PromptResponse`] as
-    /// [`prompt`](Self::prompt).
+    /// Continue a persisted run instead of starting one from a prompt.
+    ///
+    /// The state a driver serialized between steps (see [`AgentRun`]) is
+    /// picked up where it stopped — its pending tool calls execute, its next
+    /// model turn is asked for — under this agent's hooks, tools and bus.
+    /// The run is authoritative for what it persisted: its prompt, its
+    /// history, its turn budget and its invalid-tool-call retry budget, so
+    /// [`history`](AgentRunner::history) and [`max_turns`](AgentRunner::max_turns)
+    /// on the returned runner have no effect. Everything else still comes
+    /// from the agent and the runner: the request shape (preamble, documents,
+    /// sampling parameters, additional params, tool choice, output mode),
+    /// [`add_hook`](AgentRunner::add_hook),
+    /// [`tool_context`](AgentRunner::tool_context),
+    /// [`tool_concurrency`](AgentRunner::tool_concurrency), the model
+    /// selection and telemetry settings (inbound tool context is driver
+    /// state, never part of the persisted run). Two run-side values still show
+    /// through: the run's persisted tool choice is what invalid-call hooks
+    /// see and what gates a `Skip`, while the request's tool choice is the
+    /// runner's; and the output tool the run committed stays committed even
+    /// though the schema and mode advertising it are the runner's. The
+    /// unhandled-invalid-tool-call policy is the run's on the blocking path
+    /// and the runner's on the streamed path. Conversation memory is neither
+    /// loaded nor appended: the history is already in the run, and the driver
+    /// that persisted it owns its memory — it appends the finished run's
+    /// `messages` itself, since a suspended run never reached the `Done`
+    /// append, so the response's `memory_append` is `None`. Pending tool
+    /// calls re-execute on resume: a tool that ran before the suspension and
+    /// answered nothing runs again. Drive it like any runner: `.await`,
+    /// [`stream`](AgentRunner::stream) or
+    /// [`run_channel`](AgentRunner::run_channel). The run must have been
+    /// suspended by the same rig version.
+    ///
+    /// ```rust,no_run
+    /// # use rig_agent::{Agent, AgentRun};
+    /// # async fn example(agent: Agent, saved: &str) -> Result<(), Box<dyn std::error::Error>> {
+    /// let run: AgentRun = serde_json::from_str(saved)?;
+    /// let response = agent.resume(run).tool_concurrency(4).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn resume(&self, run: AgentRun) -> AgentRunner {
+        AgentRunner::resuming(self, run)
+    }
+
+    /// Run `prompt` against caller-owned history with the agent's defaults,
+    /// then append the messages the run committed to `chat_history`. This is
+    /// [`prompt`](Self::prompt) with [`history`](AgentRunner::history) plus
+    /// the write-back; the runner form is the one to configure or stream.
+    /// The returned [`PromptResponse`] keeps its `messages`.
+    ///
+    /// The caller's history is the run's input history, so conversation
+    /// memory is bypassed (no load, no append) and the caller owns
+    /// persistence. A run that fails appends nothing: the error carries the
+    /// history the run had, the caller's vector is unchanged.
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name_or_default()))]
     pub async fn chat(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
         chat_history: &mut Vec<Message>,
     ) -> Result<PromptResponse, PromptError> {
-        let mut response = AgentRunner::from_agent(self, prompt)
+        let response = AgentRunner::from_agent(self, prompt)
             .history(chat_history.clone())
             .await?;
-        if let Some(messages) = response.messages.take() {
-            chat_history.extend(messages);
+        if let Some(messages) = &response.messages {
+            chat_history.extend(messages.iter().cloned());
         }
         Ok(response)
-    }
-
-    /// Run `prompt` as a stream: configure the returned runner, then call
-    /// [`AgentRunner::stream`] or [`AgentRunner::run_channel`].
-    pub fn stream_prompt(&self, prompt: impl Into<Message>) -> AgentRunner {
-        AgentRunner::from_agent(self, prompt)
-    }
-
-    /// [`stream_prompt`](Self::stream_prompt) with canonical chat history.
-    pub fn stream_chat<I, T>(&self, prompt: impl Into<Message>, chat_history: I) -> AgentRunner
-    where
-        I: IntoIterator<Item = T>,
-        T: Into<Message>,
-    {
-        AgentRunner::from_agent(self, prompt).history(chat_history)
     }
 
     /// Run `prompt` and deserialize the accepted structured response as `T`.
@@ -452,3 +831,17 @@ use serde::de::DeserializeOwned;
 
 #[cfg(test)]
 mod request_identity_tests;
+
+/// An agent taken apart by [`Agent::into_parts`]: the same agent, now over
+/// the bus as a host would hold it, plus the dispatcher and the driver.
+pub struct AgentParts {
+    /// The bus's client half.
+    pub dispatcher: Dispatcher,
+    /// The bus's registration handle: register on the bus once the driver
+    /// is spawned.
+    pub registrar: crate::bus::Registrar,
+    /// The bus's serving half: spawn it or drive it, or the agent hangs.
+    pub driver: BusDriver,
+    /// The agent, now over the bus rather than owning it.
+    pub agent: Agent,
+}

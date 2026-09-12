@@ -4,8 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, CompletionResponseEvent,
-    ObservationAction,
+    AgentHook, CompletionCallAction, CompletionCallEvent, OutcomeAction, OutcomeEvent,
 };
 use rig::completion::Message;
 use rig::message::UserContent;
@@ -43,13 +42,15 @@ impl AgentHook for ObservingHook {
         CompletionCallAction::continue_run()
     }
 
-    async fn on_completion_response(
+    async fn on_outcome(
         &self,
         _ctx: &rig::agent::HookContext,
-        _event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
-        self.response_calls.fetch_add(1, Ordering::SeqCst);
-        ObservationAction::continue_run()
+        event: OutcomeEvent<'_>,
+    ) -> OutcomeAction {
+        if event.completion().is_some() {
+            self.response_calls.fetch_add(1, Ordering::SeqCst);
+        }
+        OutcomeAction::proceed()
     }
 }
 

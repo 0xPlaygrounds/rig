@@ -6,7 +6,7 @@
 //! The streamed twin of `raw_capture_matrix`: every terminal
 //! `StreamedAssistantContent::Final` carries `raw` — the route's
 //! provider-native terminal record, the `R` of that route's `raw_stream`,
-//! serialized at the shared `normalize_stream` seam. There is no switch
+//! serialized at the adapter's `final_record` seam. There is no switch
 //! behind it; a terminal `raw` is `Value::Null` only on a record built by
 //! hand, never on one a stream yielded. It round-trips into that terminal type and
 //! re-serializes equal, it exposes a terminal-only field the normalized
@@ -58,7 +58,7 @@ use rig::completion::{CompletionModel, CompletionRequest, FinishReason, ToolDefi
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::{StreamFinal, StreamedAssistantContent};
+use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize as _;
 use serde_json::{Value, json};
 
@@ -128,7 +128,7 @@ async fn drain_to_terminal(
 ) -> StreamFinal {
     let mut terminal = None;
     while let Some(item) = stream.next().await {
-        if let StreamedAssistantContent::Final(final_record) =
+        if let StreamEvent::Final(final_record) =
             item.unwrap_or_else(|err| panic!("{context}: stream item should succeed: {err}"))
         {
             terminal = Some(final_record);
@@ -257,9 +257,30 @@ fn captured_raw<'a>(scenario: &str, terminal: &'a StreamFinal) -> &'a Value {
 
 /// `raw` and the normalized terminal tell one story: mapping the typed
 /// terminal through the route's own `From<(&str, R)> for StreamFinal` — the
-/// mapper `normalize_stream` ran — reproduces every normalized field. A text
+/// mapper `final_record` ran — reproduces every normalized field. A text
 /// turn emits no tool call, so the reconciliation `normalize_stream` layers
 /// on top leaves `finish_reason` untouched and the comparison is exact.
+fn assert_responses_raw_matches_terminal(
+    scenario: &str,
+    terminal: &StreamFinal,
+    typed: &openai::responses_api::streaming::StreamingCompletionResponse,
+) {
+    assert_eq!(
+        rig::completion::Usage::from(&typed.usage),
+        terminal.usage,
+        "{scenario}: usage"
+    );
+    assert_eq!(typed.model, terminal.model, "{scenario}: model");
+    assert_eq!(
+        typed.message_id, terminal.message_id,
+        "{scenario}: message id"
+    );
+    assert_eq!(
+        typed.response_id, terminal.response_id,
+        "{scenario}: response id"
+    );
+}
+
 fn assert_raw_renormalizes_to(scenario: &str, terminal: &StreamFinal, renormalized: &StreamFinal) {
     assert_eq!(terminal.usage, renormalized.usage, "{scenario}: usage");
     assert_eq!(
@@ -272,9 +293,18 @@ fn assert_raw_renormalizes_to(scenario: &str, terminal: &StreamFinal, renormaliz
         "{scenario}: provider"
     );
     assert_eq!(
-        terminal.identity(),
-        renormalized.identity(),
-        "{scenario}: identity (message, response and transport ids)"
+        terminal.message_id, renormalized.message_id,
+        "{scenario}: message id"
+    );
+    assert_eq!(
+        terminal.response_id, renormalized.response_id,
+        "{scenario}: response id"
+    );
+    // The transport id is stamped by the transport onto the normalized
+    // terminal; renormalizing the native record alone cannot recover it.
+    assert_eq!(
+        renormalized.provider_request_id, None,
+        "{scenario}: transport id is not in the native record"
     );
 }
 
@@ -335,14 +365,14 @@ async fn chat_stream_raw_round_trips_typed() {
         usage["completion_tokens"].as_u64(),
         "{SCENARIO}: terminal completion tokens"
     );
-    // The transport id is stamped on the terminal record and is the same one
-    // the normalized record reports.
+    // The transport id is stamped on the normalized terminal, never on the
+    // native record inside `raw`.
     assert_eq!(
-        typed.provider_request_id, terminal.provider_request_id,
-        "{SCENARIO}: the captured terminal carries the stream's request id"
+        typed.provider_request_id, None,
+        "{SCENARIO}: the native record never carries the transport id"
     );
     // One story: the typed terminal re-normalizes to what the stream yielded.
-    let renormalized = StreamFinal::from((PROVIDER, typed));
+    let renormalized = typed.into_stream_final(PROVIDER);
     assert_raw_renormalizes_to(SCENARIO, &terminal, &renormalized);
 }
 
@@ -425,12 +455,11 @@ async fn responses_stream_raw_round_trips_typed() {
         "{SCENARIO}: terminal output tokens"
     );
     assert_eq!(
-        typed.provider_request_id, terminal.provider_request_id,
-        "{SCENARIO}: the captured terminal carries the stream's request id"
+        typed.provider_request_id, None,
+        "{SCENARIO}: the native record never carries the transport id"
     );
-    // One story: the typed terminal re-normalizes to what the stream yielded.
-    let renormalized = StreamFinal::from((PROVIDER, typed));
-    assert_raw_renormalizes_to(SCENARIO, &terminal, &renormalized);
+    // One story: the typed terminal carries what the stream yielded.
+    assert_responses_raw_matches_terminal(SCENARIO, &terminal, &typed);
 }
 
 #[tokio::test]
@@ -581,9 +610,8 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
         completed["usage"]["output_tokens_details"]["reasoning_tokens"].as_u64(),
         "{SCENARIO}: normalized reasoning tokens"
     );
-    // One story: the typed terminal re-normalizes to what the stream yielded.
-    let renormalized = StreamFinal::from((PROVIDER, typed));
-    assert_raw_renormalizes_to(SCENARIO, &terminal, &renormalized);
+    // One story: the typed terminal carries what the stream yielded.
+    assert_responses_raw_matches_terminal(SCENARIO, &terminal, &typed);
 }
 
 /// A forced Chat tool-call stream: the terminal record round-trips, `raw`
@@ -661,13 +689,13 @@ async fn chat_tool_call_stream_raw_round_trips_typed() {
         "{SCENARIO}: terminal prompt tokens"
     );
     assert_eq!(
-        typed.provider_request_id, terminal.provider_request_id,
-        "{SCENARIO}: the captured terminal carries the stream's request id"
+        typed.provider_request_id, None,
+        "{SCENARIO}: the native record never carries the transport id"
     );
     // One story: the typed terminal re-normalizes to what the stream yielded.
     // The wire already said `tool_calls`, so the `Stop -> ToolCalls`
-    // reconciliation `normalize_stream` layers on has nothing to change and
+    // reconciliation `StreamingCompletionResponse` layers on has nothing to change and
     // the comparison stays exact.
-    let renormalized = StreamFinal::from((PROVIDER, typed));
+    let renormalized = typed.into_stream_final(PROVIDER);
     assert_raw_renormalizes_to(SCENARIO, &terminal, &renormalized);
 }

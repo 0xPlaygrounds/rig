@@ -87,6 +87,22 @@ pub mod core {
     pub use rig_core::*;
 }
 
+/// The classic runtime's effect bus (`rig_agent::bus`): the dispatcher,
+/// the registrar, the driver, the typed views. What a handler implements is
+/// `rig::core::serve`; the vocabulary is `rig::core::effect`. Effects
+/// without the classic agent are `rig-ecs`'s.
+#[cfg(feature = "agent")]
+#[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+pub mod bus {
+    pub use rig_agent::bus::*;
+}
+
+/// Record and replay (`rig_effect_log`): the effect log, its header, the
+/// recorder a driver writes to and the replayer that answers from it.
+pub mod effect_log {
+    pub use rig_effect_log::*;
+}
+
 /// The sans-IO run layer of rig-agent (`rig_agent::run`): `AgentRun` and its
 /// step/turn types, the run's spec, request preparation, output policy and
 /// per-turn patch, its response and error types, the invalid-call decision
@@ -188,16 +204,22 @@ pub mod streaming {
 
 /// Tools: contextual authoring, the erased tool set, and the live registry.
 ///
-/// `Tool`, `ToolContext`, `DynamicTool`, `ToolSet`, and `ToolCatalog` are
-/// rig-core types, available with or without the `agent` feature, so
+/// `Tool`, `ToolContext`, `ContextValue`, and `DynamicTool` are rig-core
+/// types, available with or without the `agent` feature, so
 /// `use rig::tool::{Tool, ToolContext};` keeps working everywhere. The
 /// runtime-independent portable contracts are exposed explicitly as
 /// [`crate::tool::PortableTool`], [`crate::tool::PortableToolEmbedding`], and
 /// [`crate::tool::PortableDynamicTool`] (and in full under
 /// [`crate::tool::portable`]). The live registry (`server`) is the agent
-/// runtime's and needs the `agent` feature; the same surface also lives at
+/// runtime's and needs the `agent` feature, as do `ToolSet` and `ToolCatalog`;
+/// the same registry surface also lives at
 /// [`crate::agent::tool`] for code that prefers the explicit runtime path.
 pub mod tool {
+    /// Derive a stable serialized key for a tool-context value.
+    #[cfg(feature = "derive")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
+    pub use rig_derive::ContextValue;
+
     // Canonical execution values — portable, always available.
     pub use rig_core::tool::{
         IntoToolOutput, ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult,
@@ -206,10 +228,17 @@ pub mod tool {
     pub use rig_core::tool::{
         PortableDynamicTool, PortableTool, PortableToolEmbedding, portable_tool_definition,
     };
-    // Contextual authoring and the erased tool set — rig-core, always available.
+    // Contextual authoring and the erased tool — rig-core, always available.
     pub use rig_core::tool::{
-        DynamicTool, ErasedTool, MissingToolContext, RegisteredTool, Tool, ToolCatalog,
-        ToolContext, ToolDispatch, ToolEmbedding, ToolSet, dispatch_tool, tool_definition,
+        ContextValue, DynamicTool, ErasedTool, Tool, ToolContext, ToolContextError, ToolEmbedding,
+        tool_definition,
+    };
+    // The registry — a registration, the ordered set, the per-turn catalog,
+    // dispatch by name — is the driver's: rig-agent, under `agent`.
+    #[cfg(feature = "agent")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
+    pub use rig_agent::tool::{
+        RegisteredTool, ToolCatalog, ToolDispatch, ToolLease, ToolSet, execute_tool,
     };
     // Built-in portable tools (e.g. `ThinkTool`), always available.
     pub use rig_core::tool::builtin;

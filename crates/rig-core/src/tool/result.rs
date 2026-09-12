@@ -1,6 +1,8 @@
 //! Canonical structured tool errors and execution results.
 
-use std::{error::Error, sync::Arc};
+use std::error::Error;
+#[cfg(not(target_family = "wasm"))]
+use std::sync::Arc;
 
 use crate::{
     tool::ToolOutput,
@@ -8,7 +10,8 @@ use crate::{
 };
 
 /// Normalized classification for a tool execution error.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ToolErrorKind {
     /// Arguments could not be decoded or validated.
     InvalidArgs,
@@ -42,7 +45,12 @@ macro_rules! kind_defaults {
                 match self { $(Self::$variant => $name,)+ }
             }
 
-            const fn default_retryable(self) -> Option<bool> {
+            /// The kind's default retryability: `Some(true)`/`Some(false)`
+            /// when the kind decides, `None` when only the tool can know —
+            /// on the wire that reads as not retryable. This is the one
+            /// table; `ToolExecutionError::is_retryable` and the wire
+            /// `ErrorReport` both derive from it.
+            pub const fn default_retryable(self) -> Option<bool> {
                 match self { $(Self::$variant => $retryable,)+ }
             }
 
@@ -119,7 +127,8 @@ impl std::fmt::Display for ToolErrorKind {
 /// [`Self::from_error`] instead treats an arbitrary source as operator-only and
 /// exposes safe kind-level feedback. Use [`Self::with_model_feedback`] or
 /// [`Self::with_model_output`] to provide a purpose-built presentation.
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(from = "ToolExecutionErrorRepr", into = "ToolExecutionErrorRepr")]
 pub struct ToolExecutionError {
     kind: ToolErrorKind,
     message: String,
@@ -128,10 +137,55 @@ pub struct ToolExecutionError {
     code: Option<String>,
     http_status: Option<u16>,
     refusal: bool,
+    /// The concrete source, kept for downcasting on native. Browser wasm
+    /// retains none: its errors are not `Send + Sync`, and this type must be
+    /// (it crosses the effect bus and the wire as part of an `Outcome`).
     #[cfg(not(target_family = "wasm"))]
     source: Option<Arc<dyn Error + Send + Sync + 'static>>,
-    #[cfg(target_family = "wasm")]
-    source: Option<Arc<dyn Error + 'static>>,
+}
+
+/// The wire form of [`ToolExecutionError`]: every field but `source`. A
+/// source is live process state (a boxed error); it does not cross a wire
+/// and a report reconstructed from one has none.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ToolExecutionErrorRepr {
+    kind: ToolErrorKind,
+    message: String,
+    model_output: ToolOutput,
+    retryable: Option<bool>,
+    code: Option<String>,
+    http_status: Option<u16>,
+    refusal: bool,
+}
+
+impl From<ToolExecutionError> for ToolExecutionErrorRepr {
+    fn from(error: ToolExecutionError) -> Self {
+        Self {
+            kind: error.kind,
+            message: error.message,
+            model_output: *error.model_output,
+            retryable: error.retryable,
+            code: error.code,
+            http_status: error.http_status,
+            refusal: error.refusal,
+        }
+    }
+}
+
+impl From<ToolExecutionErrorRepr> for ToolExecutionError {
+    fn from(repr: ToolExecutionErrorRepr) -> Self {
+        Self {
+            kind: repr.kind,
+            message: repr.message,
+            model_output: Box::new(repr.model_output),
+            retryable: repr.retryable,
+            code: repr.code,
+            http_status: repr.http_status,
+            refusal: repr.refusal,
+            #[cfg(not(target_family = "wasm"))]
+            source: None,
+        }
+    }
 }
 
 impl ToolExecutionError {
@@ -146,6 +200,7 @@ impl ToolExecutionError {
             code: None,
             http_status: None,
             refusal: false,
+            #[cfg(not(target_family = "wasm"))]
             source: None,
         }
     }
@@ -188,12 +243,7 @@ impl ToolExecutionError {
             let source: Box<dyn Error + 'static> = Box::new(error);
             match source.downcast::<Self>() {
                 Ok(error) => *error,
-                Err(source) => {
-                    let message = source.to_string();
-                    let mut error = Self::other(message).redact_model_feedback();
-                    error.source = Some(Arc::from(source));
-                    error
-                }
+                Err(source) => Self::other(source.to_string()).redact_model_feedback(),
             }
         }
     }
@@ -218,7 +268,7 @@ impl ToolExecutionError {
     /// keep failures actionable. Call this when an explicitly constructed
     /// error's operator diagnostic may contain secrets; [`Self::from_error`]
     /// already uses this safe presentation for arbitrary source errors.
-    pub fn redact_model_feedback(mut self) -> Self {
+    pub(crate) fn redact_model_feedback(mut self) -> Self {
         self.model_output = Box::new(ToolOutput::text(self.kind.default_model_feedback()));
         self
     }
@@ -242,11 +292,22 @@ impl ToolExecutionError {
     }
 
     /// Preserve a concrete source for later downcasting.
+    ///
+    /// Browser wasm keeps no source (see the field): the call is accepted
+    /// and the source dropped, so tool code stays target-independent.
+    #[cfg_attr(target_family = "wasm", allow(unused_mut))]
     pub fn with_source<E>(mut self, source: E) -> Self
     where
         E: Error + WasmCompatSend + WasmCompatSync + 'static,
     {
-        self.source = Some(Arc::new(source));
+        #[cfg(not(target_family = "wasm"))]
+        {
+            self.source = Some(Arc::new(source));
+        }
+        #[cfg(target_family = "wasm")]
+        {
+            let _ = source;
+        }
         self
     }
 
@@ -298,7 +359,14 @@ impl ToolExecutionError {
     where
         E: Error + WasmCompatSend + WasmCompatSync + 'static,
     {
-        self.source.as_ref()?.downcast_ref::<E>()
+        #[cfg(not(target_family = "wasm"))]
+        {
+            self.source.as_ref()?.downcast_ref::<E>()
+        }
+        #[cfg(target_family = "wasm")]
+        {
+            None
+        }
     }
 
     /// Whether the concrete source has type `E`.
@@ -325,21 +393,42 @@ impl std::fmt::Debug for ToolExecutionError {
             .field("http_status", &self.http_status)
             .field("refusal", &self.refusal)
             .field("model_output", &"<redacted>")
-            .field("source_configured", &self.source.is_some())
+            .field("source_configured", &self.has_source())
             .finish()
+    }
+}
+
+impl ToolExecutionError {
+    fn has_source(&self) -> bool {
+        #[cfg(not(target_family = "wasm"))]
+        {
+            self.source.is_some()
+        }
+        #[cfg(target_family = "wasm")]
+        {
+            false
+        }
     }
 }
 
 impl Error for ToolExecutionError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.source
-            .as_deref()
-            .map(|source| source as &(dyn Error + 'static))
+        #[cfg(not(target_family = "wasm"))]
+        {
+            self.source
+                .as_deref()
+                .map(|source| source as &(dyn Error + 'static))
+        }
+        #[cfg(target_family = "wasm")]
+        {
+            None
+        }
     }
 }
 
 /// Private mutually exclusive state behind [`ToolResult`].
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "status", content = "value", rename_all = "snake_case")]
 enum ToolDisposition {
     Success(ToolOutput),
     Error(ToolExecutionError),
@@ -352,7 +441,8 @@ enum ToolDisposition {
 /// Each result has exactly one disposition. The tagged state is private so tool
 /// authors keep returning ordinary `Result` values while runtime callers use
 /// the stable query methods on this type.
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
 pub struct ToolResult {
     disposition: ToolDisposition,
 }
@@ -400,6 +490,23 @@ impl ToolResult {
         Self {
             disposition: ToolDisposition::Skipped(ToolOutput::text(reason)),
         }
+    }
+
+    /// The same result with its model-visible output replaced, keeping its
+    /// disposition: a success or a skip carries the new output; a failure or
+    /// refusal keeps its error and presents the new output to the model.
+    pub fn with_output(self, output: ToolOutput) -> Self {
+        let disposition = match self.disposition {
+            ToolDisposition::Success(_) => ToolDisposition::Success(output),
+            ToolDisposition::Skipped(_) => ToolDisposition::Skipped(output),
+            ToolDisposition::Error(error) => {
+                ToolDisposition::Error(error.with_model_output(output))
+            }
+            ToolDisposition::Refused(error) => {
+                ToolDisposition::Refused(error.with_model_output(output))
+            }
+        };
+        Self { disposition }
     }
 
     /// Canonical model-visible output before any presentation-only hook rewrite.
@@ -466,6 +573,15 @@ impl ToolResult {
     }
 
     /// Returns the stable telemetry name for this result disposition.
+    /// The result as the tool author's `Result`: a success or a skip is
+    /// `Ok(output)`, an error or a refusal is `Err(error)`.
+    pub fn into_result(self) -> Result<ToolOutput, ToolExecutionError> {
+        match self.disposition {
+            ToolDisposition::Success(output) | ToolDisposition::Skipped(output) => Ok(output),
+            ToolDisposition::Error(error) | ToolDisposition::Refused(error) => Err(error),
+        }
+    }
+
     pub fn status_name(&self) -> &'static str {
         match &self.disposition {
             ToolDisposition::Success(_) => "success",

@@ -286,8 +286,13 @@ pub(super) fn assert_recorded_stream_finishes_early(scenario: &str, expected: bo
 }
 
 async fn gemini_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, gemini::Client) {
-    let cassette =
-        ProviderCassette::start("gemini", spec, "https://generativelanguage.googleapis.com").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "gemini",
+        spec,
+        "https://generativelanguage.googleapis.com",
+    )
+    .await;
     let client = gemini::Client::builder()
         .api_key(cassette.api_key("GEMINI_API_KEY"))
         .base_url(cassette.base_url())
@@ -318,8 +323,13 @@ pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
     F: FnOnce(gemini::Client<rig::http_client::BoxedHttpClient>) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette =
-        ProviderCassette::start("gemini", spec, "https://generativelanguage.googleapis.com").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "gemini",
+        spec,
+        "https://generativelanguage.googleapis.com",
+    )
+    .await;
     let client = gemini::Client::builder()
         .api_key(cassette.api_key("GEMINI_API_KEY"))
         .base_url(cassette.base_url())
@@ -332,6 +342,42 @@ pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
         .expect("client should build");
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
+}
+
+/// The effect corpus's provider-breadth matrix (Matrix N):
+/// `tests/cassettes/gemini/corpus_breadth/`.
+pub(super) async fn with_gemini_corpus_breadth_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(gemini::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_gemini_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's delta-wire matrix (Matrix K):
+/// `tests/cassettes/gemini/corpus_delta/`.
+pub(super) async fn with_gemini_corpus_delta_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(gemini::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_gemini_cassette(spec, test_body).await;
+}
+
+/// The effect corpus's retrieval matrix (Matrix A):
+/// `tests/cassettes/gemini/corpus_retrieval/`.
+pub(super) async fn with_gemini_corpus_retrieval_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(gemini::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_gemini_cassette(spec, test_body).await;
 }
 
 pub(super) async fn with_gemini_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
@@ -416,8 +462,13 @@ pub(super) async fn with_gemini_cassette_bogus_key<F, Fut>(
     F: FnOnce(gemini::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette =
-        ProviderCassette::start("gemini", spec, "https://generativelanguage.googleapis.com").await;
+    let cassette = ProviderCassette::start(
+        &crate::cassettes::cassette_root(),
+        "gemini",
+        spec,
+        "https://generativelanguage.googleapis.com",
+    )
+    .await;
     let client = gemini::Client::builder()
         .api_key(cassette.bogus_api_key())
         .base_url(cassette.base_url())

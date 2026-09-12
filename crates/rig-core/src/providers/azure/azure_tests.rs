@@ -72,7 +72,7 @@ async fn image_generation_non_success_response_preserves_status_and_body() {
         .await
         .expect_err("image generation should fail with non-success status");
 
-    assert!(matches!(error, ImageGenerationError::HttpError(_)));
+    assert!(matches!(error, ImageGenerationError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::BAD_REQUEST)
@@ -161,7 +161,7 @@ async fn audio_generation_non_success_response_preserves_status_and_body() {
         panic!("audio generation should fail with non-success status")
     };
 
-    assert!(matches!(error, AudioGenerationError::HttpError(_)));
+    assert!(matches!(error, AudioGenerationError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::UNPROCESSABLE_ENTITY)
@@ -193,7 +193,7 @@ async fn transcription_http_non_success_preserves_status_and_body() {
         panic!("transcription should fail with non-success status")
     };
 
-    assert!(matches!(error, TranscriptionError::HttpError(_)));
+    assert!(matches!(error, TranscriptionError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::BAD_REQUEST)
@@ -260,7 +260,7 @@ async fn embedding_http_non_success_preserves_status_and_body() {
         panic!("embedding should fail with non-success status")
     };
 
-    assert!(matches!(error, EmbeddingError::HttpError(_)));
+    assert!(matches!(error, EmbeddingError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::BAD_REQUEST)
@@ -400,7 +400,7 @@ async fn completion_http_non_success_preserves_status_and_body() {
         panic!("completion should fail with non-success status")
     };
 
-    assert!(matches!(error, CompletionError::HttpError(_)));
+    assert!(matches!(error, CompletionError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::BAD_REQUEST)

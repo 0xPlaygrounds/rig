@@ -1,15 +1,14 @@
 use crate::agent::ResponseIdentity;
 use crate::agent::typed::{TypedPromptResponse, deserialize_structured_output};
-use crate::run::response::{CompletionCall, PromptResponse};
+use crate::run::response::{CompletionCall, MemoryAppend, PromptResponse};
 use crate::run::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, turn_delivered_no_answer};
 use crate::run::transcript::{assistant_text_from_choice, is_empty_assistant_turn};
 use crate::{
     agent::{
         AgentBuilder,
         hook::{
-            AgentHook, CompletionResponse as CompletionResponseEvent, HookContext,
-            InvalidToolCallAction, InvalidToolCallContext, ObservationAction,
-            ToolCall as ToolCallEvent, ToolCallAction,
+            AgentHook, DispatchAction, DispatchEvent, HookContext, InvalidToolCallAction,
+            InvalidToolCallContext, OutcomeAction, OutcomeEvent,
         },
     },
     completion::{
@@ -38,7 +37,7 @@ use std::sync::{
 ///
 /// The premise of the whole fix is that the two surfaces disagreeing is
 /// what let truncation surface as a blank answer, yet every other guard
-/// test drives `stream_prompt`. Until `MockTurn::with_finish_reason`
+/// test drives the streamed surface. Until `MockTurn::with_finish_reason`
 /// existed the blocking mock could not report a reason at all, so
 /// `runner.rs`'s `.with_finish_reason(resp.finish_reason())` — and its
 /// propagation through `model_response` → `record_completion_call` → this
@@ -312,15 +311,17 @@ fn deserialize_structured_output_tolerates_fences_and_prose() {
 struct PanicOnUnknownToolHook;
 
 impl AgentHook for PanicOnUnknownToolHook {
-    async fn on_completion_response(
-        &self,
-        _ctx: &HookContext,
-        _event: CompletionResponseEvent<'_>,
-    ) -> ObservationAction {
-        panic!("unknown tool response should fail before response hooks run")
+    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if event.completion().is_some() {
+            panic!("unknown tool response should fail before response hooks run")
+        }
+        OutcomeAction::proceed()
     }
-    async fn on_tool_call(&self, _ctx: &HookContext, _event: ToolCallEvent<'_>) -> ToolCallAction {
-        panic!("unknown tool call should fail before tool hooks run")
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name().is_some() {
+            panic!("unknown tool call should fail before tool hooks run")
+        }
+        DispatchAction::proceed()
     }
 }
 
@@ -328,8 +329,11 @@ impl AgentHook for PanicOnUnknownToolHook {
 struct PanicOnToolCallHook;
 
 impl AgentHook for PanicOnToolCallHook {
-    async fn on_tool_call(&self, _ctx: &HookContext, _event: ToolCallEvent<'_>) -> ToolCallAction {
-        panic!("recovered invalid turn should not invoke normal tool hooks")
+    async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if event.tool_name().is_some() {
+            panic!("recovered invalid turn should not invoke normal tool hooks")
+        }
+        DispatchAction::proceed()
     }
 }
 
@@ -344,8 +348,8 @@ impl AgentHook for SkipDefaultApiAndPanicOnToolCallHook {
     ) -> Option<InvalidToolCallAction> {
         SkipDefaultApiHook.on_invalid_tool_call(ctx, event).await
     }
-    async fn on_tool_call(&self, ctx: &HookContext, event: ToolCallEvent<'_>) -> ToolCallAction {
-        PanicOnToolCallHook.on_tool_call(ctx, event).await
+    async fn on_dispatch(&self, ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        PanicOnToolCallHook.on_dispatch(ctx, event).await
     }
 }
 
@@ -786,7 +790,7 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) {
             if matches!(
                 content.first(),
                 Some(AssistantContent::ToolCall(tool_call))
-                    if tool_call.id == "tool_call_1"
+                    if tool_call.id.explicit() == Some("tool_call_1")
                         && tool_call.provider.as_ref().is_some_and(
                             |provider| provider.call_id == "call_1"
                         )
@@ -799,7 +803,7 @@ fn validate_follow_up_tool_history(request: &CompletionRequest) {
             if matches!(
                 content.first(),
                 Some(UserContent::ToolResult(tool_result))
-                    if tool_result.call == "tool_call_1"
+                    if tool_result.call.explicit() == Some("tool_call_1")
                         && tool_result.provider.as_ref().is_some_and(
                             |provider| provider.call_id == "call_1"
                         )
@@ -831,34 +835,31 @@ fn assert_retry_transcript_ids_pair(assistant: &Message, results: &Message) {
     let Message::Assistant { content, .. } = assistant else {
         panic!("expected the assistant tool-call turn, got {assistant:?}");
     };
-    let call_ids: Vec<&str> = content
+    let call_ids: Vec<&rig_core::message::ToolCallId> = content
         .iter()
         .filter_map(|item| match item {
-            AssistantContent::ToolCall(tool_call) => Some(tool_call.id.as_str()),
+            AssistantContent::ToolCall(tool_call) => Some(&tool_call.id),
             _ => None,
         })
         .collect();
     let Message::User { content } = results else {
         panic!("expected the user retry-result turn, got {results:?}");
     };
-    let result_ids: Vec<&str> = content
+    let result_ids: Vec<&rig_core::message::ToolCallId> = content
         .iter()
         .filter_map(|item| match item {
-            UserContent::ToolResult(result) => Some(result.call.as_str()),
+            UserContent::ToolResult(result) => Some(&result.call),
             _ => None,
         })
         .collect();
-    assert!(
-        call_ids.iter().all(|id| !id.is_empty()),
-        "every tool call carries a non-empty id: {call_ids:?}"
-    );
-    let unique_calls: BTreeSet<&str> = call_ids.iter().copied().collect();
+    let unique_calls: BTreeSet<&rig_core::message::ToolCallId> = call_ids.iter().copied().collect();
     assert_eq!(
         unique_calls.len(),
         call_ids.len(),
         "tool-call ids must be unique: {call_ids:?}"
     );
-    let unique_results: BTreeSet<&str> = result_ids.iter().copied().collect();
+    let unique_results: BTreeSet<&rig_core::message::ToolCallId> =
+        result_ids.iter().copied().collect();
     assert_eq!(
         unique_results.len(),
         result_ids.len(),
@@ -915,7 +916,7 @@ async fn tool_context_reaches_tool_through_agent_loop() {
     let agent = AgentBuilder::new(model).tool(probe.clone()).build();
 
     let mut context = ToolContext::new();
-    context.insert(SessionId("abc-123".to_string()));
+    context.insert(SessionId("abc-123".to_string())).unwrap();
 
     let out = agent
         .prompt("use the tool")
@@ -942,7 +943,7 @@ async fn tool_context_persists_across_multiple_rounds() {
     let agent = AgentBuilder::new(model).tool(probe.clone()).build();
 
     let mut context = ToolContext::new();
-    context.insert(SessionId("abc-123".to_string()));
+    context.insert(SessionId("abc-123".to_string())).unwrap();
 
     let out = agent
         .prompt("use the tool twice")
@@ -1016,8 +1017,12 @@ async fn invalid_tool_call_context_uses_completed_tool_call_provider_id() {
     assert_eq!(contexts.len(), 1);
     let context = &contexts[0];
     assert_eq!(context.tool_name, "default_api");
-    assert_eq!(context.tool_call_id.as_deref(), Some("tool_call_1"));
-    assert_eq!(context.internal_call_id, None);
+    assert_eq!(
+        context.tool_call_id.as_ref().and_then(|id| id.explicit()),
+        Some("tool_call_1")
+    );
+    // No stream block was observed for this buffered model response.
+    assert_eq!(context.block_id, None);
     assert!(!context.is_streaming);
 }
 
@@ -1227,13 +1232,13 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
             if content.iter().any(|item| matches!(
                 item,
                 AssistantContent::ToolCall(tool_call)
-                    if tool_call.id == "tool_call_1"
+                    if tool_call.id.explicit() == Some("tool_call_1")
                         && tool_call.function.name == "add"
             ))
                 && content.iter().any(|item| matches!(
                     item,
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id == "tool_call_2"
+                        if tool_call.id.explicit() == Some("tool_call_2")
                             && tool_call.function.name == "default_api"
                 ))
     ));
@@ -1244,7 +1249,7 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call == "tool_call_1"
+                        if result.call.explicit() == Some("tool_call_1")
                             && result.provider.as_ref().is_some_and(
                                 |provider| provider.call_id == "call_1"
                             )
@@ -1257,7 +1262,7 @@ async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executi
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call == "tool_call_2"
+                        if result.call.explicit() == Some("tool_call_2")
                             && result.provider.as_ref().is_some_and(
                                 |provider| provider.call_id == "call_2"
                             )
@@ -1319,7 +1324,7 @@ async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call == "tool_call_1"
+                        if result.call.explicit() == Some("tool_call_1")
                             && result.provider.as_ref().is_some_and(
                                 |provider| provider.call_id == "call_1"
                             )
@@ -1332,7 +1337,7 @@ async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing
                 && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call == "tool_call_2"
+                        if result.call.explicit() == Some("tool_call_2")
                             && result.provider.as_ref().is_some_and(
                                 |provider| provider.call_id == "call_2"
                             )
@@ -1450,7 +1455,7 @@ async fn skip_under_specific_tool_choice_returns_synthetic_feedback() {
                     matches!(
                         content,
                         UserContent::ToolResult(result)
-                            if result.call == "tool_call_1"
+                            if result.call.explicit() == Some("tool_call_1")
                                 && result.content.iter().any(|content| {
                                     matches!(
                                         content,
@@ -1781,7 +1786,7 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
             if matches!(
                 content.first(),
                 Some(AssistantContent::ToolCall(tool_call))
-                    if tool_call.id == "tool_call_1"
+                    if tool_call.id.explicit() == Some("tool_call_1")
                         && tool_call.provider.as_ref().is_some_and(
                             |provider| provider.call_id == "call_1"
                         )
@@ -1793,7 +1798,7 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
             if matches!(
                 content.first(),
                 Some(UserContent::ToolResult(tool_result))
-                    if tool_result.call == "tool_call_1"
+                    if tool_result.call.explicit() == Some("tool_call_1")
                         && tool_result.provider.as_ref().is_some_and(
                             |provider| provider.call_id == "call_1"
                         )
@@ -1911,7 +1916,7 @@ async fn memory_appends_full_turn_after_success() {
     let model = MockCompletionModel::text("ack");
     let agent = AgentBuilder::new(model).memory(memory.clone()).build();
 
-    let _ = agent
+    let response = agent
         .prompt("hello")
         .conversation("t1")
         .await
@@ -1919,6 +1924,16 @@ async fn memory_appends_full_turn_after_success() {
 
     let stored = memory.load(&"t1".into()).await.unwrap();
     assert_eq!(stored.len(), 2, "user prompt + assistant response saved");
+    assert_eq!(
+        response.memory_append,
+        Some(MemoryAppend::Acknowledged),
+        "the response acknowledges the append"
+    );
+    assert_eq!(
+        response.messages.as_deref(),
+        Some(stored.as_slice()),
+        "what was appended is the response's transcript"
+    );
 }
 
 #[tokio::test]
@@ -1934,7 +1949,7 @@ async fn explicit_with_history_overrides_memory() {
     let recorded = model.clone();
 
     let agent = AgentBuilder::new(model).memory(memory.clone()).build();
-    let _ = agent
+    let response = agent
         .prompt("hello")
         .conversation("t1")
         .history(vec![Message::user("from-caller")])
@@ -1944,6 +1959,10 @@ async fn explicit_with_history_overrides_memory() {
     assert_eq!(memory.load_count(), 0, "load skipped");
     let appends = memory.append_count();
     assert_eq!(appends, 0, "append skipped");
+    assert_eq!(
+        response.memory_append, None,
+        "explicit history bypasses memory: nothing to acknowledge"
+    );
 
     let received = recorded.requests()[0].chat_history.clone();
     assert_eq!(received.len(), 2, "caller history (1) + current prompt");
@@ -2215,7 +2234,7 @@ async fn without_memory_disables_for_request() {
         .conversation("t1")
         .build();
 
-    let _ = agent
+    let response = agent
         .prompt("hello")
         .without_memory()
         .await
@@ -2223,6 +2242,7 @@ async fn without_memory_disables_for_request() {
 
     assert_eq!(memory.load_count(), 0);
     assert_eq!(memory.append_count(), 0);
+    assert_eq!(response.memory_append, None);
 }
 
 #[tokio::test]
@@ -2242,20 +2262,35 @@ async fn memory_load_error_surfaces_as_prompt_error() {
     }
 }
 
+/// A refused append does not fail the run: the answer stands, and the
+/// response says the transcript was not persisted — a caller can tell the
+/// two endings apart without a hook or the effect log.
 #[tokio::test]
 async fn memory_append_error_does_not_drop_response() {
     let model = MockCompletionModel::text("ack");
     let agent = AgentBuilder::new(model)
         .memory(AppendFailingMemory::default())
         .build();
-    let response: String = agent
+    let response = agent
         .prompt("hello")
         .conversation("t1")
         .await
-        .expect("append failure must not block successful completion")
-        .output;
+        .expect("append failure must not block successful completion");
 
-    assert!(!response.is_empty());
+    assert_eq!(response.output, "ack");
+    assert_eq!(
+        response.messages.as_ref().map(Vec::len),
+        Some(2),
+        "the transcript the run tried to persist"
+    );
+    let report = response
+        .memory_append
+        .as_ref()
+        .and_then(MemoryAppend::failure)
+        .expect("the refused append is reported on the response");
+    assert_eq!(report.kind, rig_core::error::ErrorKind::MemoryBackend);
+    assert!(report.message.contains("append boom"), "{report:?}");
+    assert!(!response.memory_append.as_ref().unwrap().is_acknowledged());
 }
 
 /// Serde compatibility (rig#2265): run records persisted before the
@@ -2284,4 +2319,30 @@ fn completion_call_identity_round_trips() {
     let json = serde_json::to_string(&call).expect("serialize");
     let restored: CompletionCall = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(restored, call);
+}
+
+/// The agent driver validates the request it builds the way the builder's
+/// own `send`/`stream` do: an empty user content block is a local, named
+/// error and never reaches the provider.
+#[tokio::test]
+async fn an_empty_content_block_is_rejected_before_the_provider() {
+    let model = MockCompletionModel::text("unreachable");
+    let recorded = model.clone();
+    let agent = AgentBuilder::new(model).build();
+
+    let error = agent
+        .prompt(Message::User {
+            content: Vec::new(),
+        })
+        .await
+        .expect_err("an empty content block is refused");
+
+    assert!(
+        error.to_string().contains("content"),
+        "the error names the empty content: {error}"
+    );
+    assert!(
+        recorded.requests().is_empty(),
+        "the provider was never asked"
+    );
 }

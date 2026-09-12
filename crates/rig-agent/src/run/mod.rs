@@ -30,11 +30,11 @@
 //! hook stack. Hand-driving it is a low-level provider integration: the caller
 //! owns all IO and any lifecycle policy. To execute a configured `Agent`
 //! with its hooks, tools, retrieval, and memory, use
-//! `Agent::runner`; constructing an `AgentRun`
+//! `Agent::prompt`; constructing an `AgentRun`
 //! directly is not an alternate way to execute an `Agent`.
 //!
 //! `Prompt::prompt` and
-//! `Agent::runner` drive this machine internally;
+//! `Agent::prompt` drive this machine internally;
 //! the same machine can be driven by hand for custom provider control flow.
 //! A host that does so (an ECS schedule, a job system) depends on `rig-agent`
 //! with default features off — that graph carries no async runtime, transport
@@ -85,23 +85,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{CompletionError, CompletionResponse, FinishReason, ToolDefinition};
-use rig_core::id::InternalCallId;
+use rig_core::streaming::BlockId;
 
-/// Deserialize a persisted internal call id, advancing this process's mint
-/// counter past it so ids minted after a resume cannot collide with ids the
-/// run's consumers already saw in tool-call deltas.
-fn de_persisted_internal_call_id<'de, D>(
-    deserializer: D,
-) -> Result<Option<InternalCallId>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let id = <Option<InternalCallId> as serde::Deserialize>::deserialize(deserializer)?;
-    if let Some(id) = id {
-        InternalCallId::advance_past(id.to_raw());
-    }
-    Ok(id)
-}
 use rig_core::message::{
     AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent,
 };
@@ -112,7 +97,7 @@ pub mod response;
 pub mod streamed;
 
 pub use policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
-pub use response::{CompletionCall, PromptError, PromptResponse};
+pub use response::{CompletionCall, MemoryAppend, PromptError, PromptResponse};
 use rig_core::json_utils;
 use transcript::{
     TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, TranscriptError, assistant_text_from_choice,
@@ -213,12 +198,13 @@ pub struct PendingToolCall {
     /// recovery. When set, the driver must return this content as the tool
     /// result without executing the tool or invoking tool hooks.
     pub preresolved_result: Option<UserContent>,
-    /// Rig-generated identifier correlating this call's stream items, when
-    /// the call arrived via a streamed turn. Persisted with the run state so
-    /// a resumed process keeps emitting the IDs consumers already saw in
-    /// tool-call deltas. Drivers generate a fresh ID when absent.
-    #[serde(default, deserialize_with = "de_persisted_internal_call_id")]
-    pub internal_call_id: Option<InternalCallId>,
+    /// The stream block this call arrived under — equal on the call's
+    /// deltas, its execution commit and its result. Buffered turns assign
+    /// independent completion-local minted tool keys; `tool_call.id` remains
+    /// the durable correlation identity. Required in
+    /// persisted run state: a resumed process keeps emitting the id its
+    /// consumers already saw, never a re-minted one.
+    pub block_id: BlockId,
 }
 
 /// A completed model turn fed back to [`AgentRun::model_response`].
@@ -356,16 +342,17 @@ pub enum ModelTurnOutcome {
     ///
     /// `response_hook_suppressed` is set when invalid tool-call recovery
     /// (repair or skip) modified the turn, matching the agent loop's behavior
-    /// of not invoking `on_completion_response` for recovered turns.
+    /// of not firing the completion's outcome hook (`on_outcome`) for
+    /// recovered turns.
     Continue {
-        /// Whether the driver should suppress its completion-response hook.
+        /// Whether the driver should suppress the completion's outcome hook.
         response_hook_suppressed: bool,
     },
     /// The model emitted a tool call that is unknown or disallowed for this
     /// turn. The driver must decide how to recover (typically by asking its
     /// invalid tool-call hook) and answer via
     /// [`AgentRun::resolve_invalid_tool_call`].
-    NeedsResolution(InvalidToolCallContext),
+    NeedsResolution(Box<InvalidToolCallContext>),
     /// The turn was rolled back with corrective feedback appended to the
     /// history. Call [`AgentRun::next_step`] to obtain the retry
     /// [`AgentRunStep::CallModel`].
@@ -423,10 +410,10 @@ struct TurnState {
     has_tool_calls: bool,
     /// Keyed by position in `items` (see `ResolvingState::skipped`).
     skipped: BTreeMap<usize, UserContent>,
-    /// `(tool_call_id, internal_call_id)` pairs for streamed turns, in
+    /// `(tool_call_id, block_id)` pairs for streamed turns, in
     /// emission order; empty for non-streamed turns.
     #[serde(default)]
-    internal_call_ids: Vec<(String, InternalCallId)>,
+    block_ids: Vec<(rig_core::message::ToolCallId, BlockId)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -493,6 +480,14 @@ pub struct AgentRun {
     /// [`AgentRunStep::CallModel`] is emitted.
     #[serde(default)]
     streamed_completion_call_recorded: bool,
+    /// The model behind the run's preceding issued completion attempt, as
+    /// the driver advances it immediately before the attempt is issued
+    /// (a stop or a preparation failure leaves it unchanged; a provider
+    /// error still counts). Persisted so a resumed run's model-selection
+    /// hook sees the model the run last asked, as a fresh run's would,
+    /// rather than a run that has asked none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    previous_model: Option<rig_core::completion::ModelRef>,
     /// The tool definitions the driver advertised to the model for a turn,
     /// recorded with [`AgentRun::advertise_tools`]. Protocol data, so a second
     /// driver (or a resumed run) can re-pair tool calls with what was offered.
@@ -574,6 +569,7 @@ impl AgentRun {
             invalid_tool_call_retries: 0,
             rollback_pending: false,
             streamed_completion_call_recorded: false,
+            previous_model: None,
             turn_tools: None,
             entries: Vec::new(),
             state: RunState::PreparingRequest,
@@ -597,7 +593,7 @@ impl AgentRun {
     /// [`initial_prompt`](Self::initial_prompt) is `Some`; once the first
     /// [`AgentRunStep::CallModel`] has been emitted the prompt is committed
     /// and rewriting returns [`PromptError::PromptCancelled`].
-    pub fn rewrite_initial_prompt(
+    pub(crate) fn rewrite_initial_prompt(
         &mut self,
         prompt: impl Into<Message>,
     ) -> Result<(), PromptError> {
@@ -768,16 +764,20 @@ impl AgentRun {
         self
     }
 
-    /// Set (or clear) the output-tool name in place. The driver resolves the
-    /// name from the prepared request inside the run loop, where the agent's
-    /// tool set (and thus the resolved output mode) is known.
-    pub fn set_output_tool_name(&mut self, name: Option<String>) {
-        // The name is committed once and pinned for the whole run, so the
-        // request the driver builds each turn stays consistent with the
-        // intercept (and a tool set that shifts mid-run cannot flip the mode).
-        if self.output_tool_name.is_none() {
-            self.output_tool_name = name;
+    /// Commit the output-tool name once the driver has resolved it from the
+    /// prepared request inside the run loop, where the agent's tool set (and
+    /// thus the resolved output mode) is known. Returns whether this call
+    /// committed it: the name is pinned for the whole run, so the request
+    /// the driver builds each turn stays consistent with the intercept (and
+    /// a tool set that shifts mid-run cannot flip the mode); a later call
+    /// with a different name is refused, not applied.
+    #[must_use = "a refused commit means the run already pinned a name"]
+    pub fn commit_output_tool_name(&mut self, name: impl Into<String>) -> bool {
+        if self.output_tool_name.is_some() {
+            return false;
         }
+        self.output_tool_name = Some(name.into());
+        true
     }
 
     /// The synthetic output-tool name committed for this run, if any. The driver
@@ -798,6 +798,18 @@ impl AgentRun {
     }
 
     /// Details for each completed model call so far.
+    /// The model behind the run's preceding issued completion attempt, if
+    /// any: what a model-selection hook is shown as `previous_model`.
+    pub fn previous_model(&self) -> Option<&rig_core::completion::ModelRef> {
+        self.previous_model.as_ref()
+    }
+
+    /// Record the model an attempt is about to be issued to; the driver
+    /// calls this immediately before the model turn is driven.
+    pub fn set_previous_model(&mut self, model: rig_core::completion::ModelRef) {
+        self.previous_model = Some(model);
+    }
+
     pub fn completion_calls(&self) -> &[CompletionCall] {
         &self.completion_calls
     }
@@ -822,6 +834,39 @@ impl AgentRun {
             return None;
         }
         Some(turn.items.clone())
+    }
+
+    /// Replace the accepted model turn's content while it is parked — what a
+    /// completion outcome hook's
+    /// [`OutcomeAction::Replace`](crate::agent::OutcomeAction::Replace) lands as. The turn has not
+    /// entered history yet, so the replacement is what history keeps. Like a
+    /// retry, this does not support tool-bearing turns: neither the parked
+    /// turn nor the replacement may carry tool calls.
+    pub fn replace_accepted_turn_choice(
+        &mut self,
+        choice: Vec<AssistantContent>,
+    ) -> Result<(), PromptError> {
+        let replacement_has_tool_calls = choice
+            .iter()
+            .any(|item| matches!(item, AssistantContent::ToolCall(_)));
+        let parked_has_tool_calls = match &self.state {
+            RunState::AwaitingAdvance(turn) => turn.has_tool_calls,
+            _ => {
+                return Err(self.protocol_violation(
+                    "replace_accepted_turn_choice called without an accepted turn awaiting advancement",
+                ));
+            }
+        };
+        if parked_has_tool_calls || replacement_has_tool_calls {
+            return Err(PromptError::prompt_cancelled(
+                self.full_history(),
+                "a completion outcome replacement does not support tool-bearing model turns; patch or deny the tool dispatches instead",
+            ));
+        }
+        if let RunState::AwaitingAdvance(turn) = &mut self.state {
+            turn.items = choice;
+        }
+        Ok(())
     }
 
     /// Reject the accepted, tool-free model turn and prepare another model call.
@@ -918,8 +963,10 @@ impl AgentRun {
 
         Some(InvalidToolCallContext {
             tool_name: tool_call.function.name.clone(),
-            tool_call_id: Some(tool_call.id.as_str().to_owned()),
-            internal_call_id: None,
+            tool_call_id: Some(tool_call.id.clone()),
+            // A buffered/unary diagnostic has no live stream block.
+            // Correlation uses the typed call ID, including after resume.
+            block_id: None,
             args: Some(json_utils::serialize_json_value(
                 &tool_call.function.arguments,
             )),
@@ -975,7 +1022,7 @@ impl AgentRun {
                     items,
                     has_tool_calls,
                     skipped,
-                    mut internal_call_ids,
+                    mut block_ids,
                 } = *turn_state;
                 // Tool output mode (#1928): a call to the synthetic output tool
                 // finalizes the run with the call's arguments as the response,
@@ -1121,25 +1168,34 @@ impl AgentRun {
                     // single per-run allowance an early stray turn could burn
                     // before the model genuinely needs to produce output (#1928).
                     self.output_retries = 0;
+                    // Allocate assembly keys independently of durable tool identities.
+                    // Advance for every content position, matching buffered re-emission.
+                    let mut synthetic_blocks = rig_core::streaming::SyntheticIds::tool();
                     let calls: Vec<PendingToolCall> = items
                         .iter()
                         .enumerate()
-                        .filter_map(|(index, item)| match item {
-                            AssistantContent::ToolCall(tool_call) => {
-                                // Consume pairs positionally so duplicate
-                                // provider IDs within one turn stay
-                                // distinguishable.
-                                let internal_call_id = internal_call_ids
-                                    .iter()
-                                    .position(|(id, _)| tool_call.id == id.as_str())
-                                    .map(|pair| internal_call_ids.remove(pair).1);
-                                Some(PendingToolCall {
-                                    tool_call: tool_call.clone(),
-                                    preresolved_result: skipped.get(&index).cloned(),
-                                    internal_call_id,
-                                })
+                        .filter_map(|(index, item)| {
+                            let synthetic_block = synthetic_blocks.mint();
+                            match item {
+                                AssistantContent::ToolCall(tool_call) => {
+                                    // Consume pairs positionally so duplicate
+                                    // provider IDs within one turn stay
+                                    // distinguishable.
+                                    let block_id = block_ids
+                                        .iter()
+                                        .position(|(id, _)| tool_call.id == *id)
+                                        .map_or_else(
+                                            || synthetic_block,
+                                            |pair| block_ids.remove(pair).1,
+                                        );
+                                    Some(PendingToolCall {
+                                        tool_call: tool_call.clone(),
+                                        preresolved_result: skipped.get(&index).cloned(),
+                                        block_id,
+                                    })
+                                }
+                                _ => None,
                             }
-                            _ => None,
                         })
                         .collect();
                     self.state = RunState::ExecutingTools(calls.clone());
@@ -1317,21 +1373,21 @@ impl AgentRun {
     /// Park an accepted model turn in [`RunState::AwaitingAdvance`]. Both the
     /// non-streamed (`advance_resolution`) and streamed (`streamed_turn`)
     /// ingestion paths converge here, differing only in the `skipped` map and
-    /// the streamed `internal_call_ids`.
+    /// the streamed `block_ids`.
     fn finalize_turn(
         &mut self,
         message_id: Option<String>,
         items: Vec<AssistantContent>,
         has_tool_calls: bool,
         skipped: BTreeMap<usize, UserContent>,
-        internal_call_ids: Vec<(String, InternalCallId)>,
+        block_ids: Vec<(rig_core::message::ToolCallId, BlockId)>,
     ) {
         self.state = RunState::AwaitingAdvance(Box::new(TurnState {
             message_id,
             items,
             has_tool_calls,
             skipped,
-            internal_call_ids,
+            block_ids,
         }));
     }
 
@@ -1524,9 +1580,9 @@ impl AgentRun {
         };
         // Match results against pending calls by tool call ID as a multiset,
         // so duplicate provider IDs within one turn stay answerable.
-        let mut unanswered: Vec<String> = pending
+        let mut unanswered: Vec<rig_core::message::ToolCallId> = pending
             .iter()
-            .map(|call| call.tool_call.id.as_str().to_owned())
+            .map(|call| call.tool_call.id.clone())
             .collect();
 
         if results.is_empty() {
@@ -1542,10 +1598,7 @@ impl AgentRun {
                     "tool_results received content that is not a tool result",
                 ));
             };
-            let Some(index) = unanswered
-                .iter()
-                .position(|id| tool_result.call == id.as_str())
-            else {
+            let Some(index) = unanswered.iter().position(|id| tool_result.call == *id) else {
                 return Err(self.protocol_violation(&format!(
                     "tool_results received a result for unknown or already-answered tool call id `{}`",
                     tool_result.call
@@ -1598,7 +1651,7 @@ impl AgentRun {
         if resolving.next_index < resolving.items.len() {
             self.state = RunState::ResolvingToolCalls(resolving);
             return match self.pending_invalid_tool_call() {
-                Some(context) => Ok(ModelTurnOutcome::NeedsResolution(context)),
+                Some(context) => Ok(ModelTurnOutcome::NeedsResolution(Box::new(context))),
                 None => Err(self.protocol_violation(
                     "internal: pending invalid tool call could not be derived",
                 )),
@@ -1689,8 +1742,8 @@ impl AgentRun {
     ) -> InvalidToolCallContext {
         InvalidToolCallContext {
             tool_name: invalid.tool_call.function.name.clone(),
-            tool_call_id: Some(invalid.tool_call.id.as_str().to_owned()),
-            internal_call_id: Some(invalid.internal_call_id),
+            tool_call_id: Some(invalid.tool_call.id.clone()),
+            block_id: Some(invalid.block_id.clone()),
             args: invalid.args.clone(),
             available_tools: invalid.executable_tool_names.iter().cloned().collect(),
             allowed_tools: invalid.allowed_tool_names.iter().cloned().collect(),
@@ -1764,6 +1817,20 @@ impl AgentRun {
                 )
             }
         }
+    }
+
+    /// Drop a streamed invalid call and go on with the turn without it —
+    /// [`UnhandledInvalidToolCall::Ignore`] on the streaming surface, the
+    /// counterpart of [`ignore_invalid_tool_call`](Self::ignore_invalid_tool_call).
+    /// The call never enters the run; the assembler drops its pending
+    /// state on [`StreamedResolution::Ignored`].
+    pub fn ignore_streamed_invalid_tool_call(&mut self) -> Result<StreamedResolution, PromptError> {
+        if !matches!(self.state, RunState::AwaitingModel) {
+            return Err(self.protocol_violation(
+                "ignore_streamed_invalid_tool_call called without a pending CallModel step",
+            ));
+        }
+        Ok(StreamedResolution::Ignored)
     }
 
     /// Shared rollback for the streamed Retry and Skip resolutions: push the
@@ -1865,7 +1932,7 @@ impl AgentRun {
             turn.choice,
             has_tool_calls,
             BTreeMap::new(),
-            turn.internal_call_ids,
+            turn.block_ids,
         );
         Ok(())
     }

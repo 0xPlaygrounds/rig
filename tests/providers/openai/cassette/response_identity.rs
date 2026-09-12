@@ -6,7 +6,7 @@ use futures::StreamExt;
 use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::streaming::StreamedAssistantContent;
+use rig::streaming::StreamEvent;
 
 use super::super::support::{with_openai_cassette, with_openai_completions_cassette};
 
@@ -61,8 +61,7 @@ async fn responses_streaming_carries_identity() {
 
             let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamedAssistantContent::Final(final_record) =
-                    item.expect("stream item should succeed")
+                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
                 {
                     terminal = Some(final_record);
                 }
@@ -117,8 +116,7 @@ async fn chat_completions_streaming_carries_identity() {
 
             let mut terminal = None;
             while let Some(item) = stream.next().await {
-                if let StreamedAssistantContent::Final(final_record) =
-                    item.expect("stream item should succeed")
+                if let StreamEvent::Final(final_record) = item.expect("stream item should succeed")
                 {
                     terminal = Some(final_record);
                 }
@@ -191,11 +189,10 @@ async fn streamed_agent_run_reports_identity() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(rig::completion::Message::user(
+                .prompt(rig::completion::Message::user(
                     "Reply with exactly: streamed identity probe",
                 ))
-                .stream()
-                .await;
+                .stream();
             while let Some(item) = stream.next().await {
                 item.expect("stream item should succeed");
             }
