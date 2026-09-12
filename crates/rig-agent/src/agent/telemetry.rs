@@ -35,8 +35,9 @@ pub(crate) use build_chat_span;
 /// Build (or adopt) the top-level `invoke_agent` span for a run, shared by the
 /// blocking and streaming drivers so the run-level span shape is defined once.
 ///
-/// `ambient` is the span the run is invoked under — the current span when
-/// `run()` is first polled, the span `stream()` was built in. Returns the span
+/// `ambient` is the span the terminal (`run()`, `stream()`, `run_channel()`,
+/// a typed run's `into_future()`) was called in, whatever task later polls
+/// the future. Returns the span
 /// plus whether it was newly created. An enabled ambient span is adopted and
 /// reported as `false`, so the driver can avoid recording run-level usage onto
 /// a span it does not own (see the `created_agent_span` guard in both drivers'

@@ -559,49 +559,52 @@ impl AgentRunner {
 
         // Fold the shared engine to its final response. The blocking surface
         // uses a unary model transport and ignores the intermediate items the
-        // engine yields; the engine is driven under the caller's ambient span
-        // (no `instrument`), keeping the agent span detached and the chat/tool
-        // spans on the blocking `follows_from` chain.
+        // engine yields. The fold runs under the agent span: an adopted span
+        // (the caller's, already entered by `run`) parents the chat/tool
+        // spans as before, and a created `invoke_agent` does too instead of
+        // leaving them to whatever span polls the future. The blocking
+        // `follows_from` chain between chat/tool spans is unaffected.
         let record_telemetry_content = self.config.record_telemetry_content;
         let driver = drive_agent(
             self,
             UnaryTurnSource::new(record_telemetry_content),
             run,
-            agent_span,
+            agent_span.clone(),
             created_agent_span,
             memory_handle,
             hook_ctx,
         );
         let driver = bus.drive(Box::pin(driver));
-        futures::pin_mut!(driver);
-
-        let mut response = None;
-        while let Some(item) = driver.next().await {
-            match item {
-                Ok(DriveItem::Done(done)) => response = Some(*done),
-                Ok(DriveItem::Item(_)) => {}
-                Err(err) => {
-                    // The engine settles an error ending *after* yielding
-                    // it (`on_run_settled` with `SettledOutcome::Error`),
-                    // so the fold drains the engine before returning: a
-                    // fold that returned here dropped the engine at the
-                    // yield and the settled hook never fired for a
-                    // blocking run that a hook stopped or a provider
-                    // refused, while the streaming surface's consumer,
-                    // polling to the end, saw it fire.
-                    let error = streaming_error_into_prompt(err);
-                    while driver.next().await.is_some() {}
-                    return Err(error);
+        let fold = async move {
+            futures::pin_mut!(driver);
+            let mut response = None;
+            while let Some(item) = driver.next().await {
+                match item {
+                    Ok(DriveItem::Done(done)) => response = Some(*done),
+                    Ok(DriveItem::Item(_)) => {}
+                    Err(err) => {
+                        // The engine settles an error ending *after* yielding
+                        // it (`on_run_settled` with `SettledOutcome::Error`),
+                        // so the fold drains the engine before returning: a
+                        // fold that returned here dropped the engine at the
+                        // yield and the settled hook never fired for a
+                        // blocking run that a hook stopped or a provider
+                        // refused, while the streaming surface's consumer,
+                        // polling to the end, saw it fire.
+                        let error = streaming_error_into_prompt(err);
+                        while driver.next().await.is_some() {}
+                        return Err(error);
+                    }
                 }
             }
-        }
-
-        // The engine yields `Done` unless it errored (handled above).
-        response.ok_or_else(|| {
-            PromptError::CompletionError(CompletionError::ResponseError(
-                "agent run ended without producing a final response".to_string(),
-            ))
-        })
+            // The engine yields `Done` unless it errored (handled above).
+            response.ok_or_else(|| {
+                PromptError::CompletionError(CompletionError::ResponseError(
+                    "agent run ended without producing a final response".to_string(),
+                ))
+            })
+        };
+        fold.instrument(agent_span).await
     }
 }
 

@@ -681,6 +681,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
 struct CapturedSpan {
     id: u64,
     name: String,
+    target: String,
     parent_id: Option<u64>,
     fields: HashMap<String, u64>,
     string_fields: HashMap<String, String>,
@@ -697,12 +698,13 @@ impl CapturedSpans {
         }
     }
 
-    fn insert(&self, id: &Id, name: &str, parent_id: Option<u64>) {
+    fn insert(&self, id: &Id, name: &str, target: &str, parent_id: Option<u64>) {
         let id = id.into_u64();
         if let Ok(mut spans) = self.0.lock() {
             spans.push(CapturedSpan {
                 id,
                 name: name.to_string(),
+                target: target.to_string(),
                 parent_id,
                 fields: HashMap::new(),
                 string_fields: HashMap::new(),
@@ -764,7 +766,12 @@ where
                 .map(Id::into_u64)
                 .or_else(|| ctx.current_span().id().map(Id::into_u64))
         };
-        self.spans.insert(id, attrs.metadata().name(), parent_id);
+        self.spans.insert(
+            id,
+            attrs.metadata().name(),
+            attrs.metadata().target(),
+            parent_id,
+        );
         let mut string_fields = Vec::new();
         attrs.record(&mut SpanStringCaptureVisitor {
             fields: &mut string_fields,
@@ -6052,7 +6059,9 @@ async fn a_stream_built_outside_a_span_stays_a_root_when_polled_inside_one() {
 
 /// The blocking terminal follows the same rule: `run()` called inside
 /// `outer` and awaited from a spawned task adopts `outer` — no
-/// `invoke_agent`, the chat span is `outer`'s child.
+/// `invoke_agent`, the chat span is `outer`'s child. (These tests rely on
+/// `#[tokio::test]`'s current-thread runtime: the spawned task polls on
+/// the thread holding the thread-local `set_default` subscriber.)
 #[tokio::test]
 async fn a_blocking_run_belongs_to_the_span_it_was_started_in() {
     let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
@@ -6128,4 +6137,47 @@ async fn a_typed_run_belongs_to_the_span_it_was_started_in() {
     let chat_spans: Vec<_> = snapshot.iter().filter(|span| span.name == "chat").collect();
     assert_eq!(chat_spans.len(), 1, "one model turn: {snapshot:?}");
     assert_eq!(chat_spans[0].parent_id, Some(outer_id));
+}
+
+/// The blocking counterpart of the stream root test: a run started outside
+/// any span creates a root `invoke_agent` when polled inside an unrelated
+/// span, and its chat span is the `invoke_agent`'s child, not the poller's.
+#[tokio::test]
+async fn a_blocking_run_started_outside_a_span_stays_a_root_when_polled_inside_one() {
+    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+    let spans = CapturedSpans::default();
+    let subscriber = Registry::default().with(SpanCaptureLayer {
+        spans: spans.clone(),
+    });
+    let _default = tracing::subscriber::set_default(subscriber);
+
+    let warmup_agent = AgentBuilder::new(MockCompletionModel::text("warmup")).build();
+    warmup_agent.prompt("warmup").await.expect("warmup");
+    tracing::callsite::rebuild_interest_cache();
+    spans.clear();
+
+    let agent = AgentBuilder::new(MockCompletionModel::text("done")).build();
+    let run = agent.prompt("go").run();
+    let poller_span = tracing::info_span!("poller");
+    let response = run.instrument(poller_span).await.expect("run succeeds");
+    assert_eq!(response.output(), "done");
+
+    let snapshot = spans.snapshot();
+    let poller_id = snapshot
+        .iter()
+        .find(|span| span.name == "poller")
+        .map(|span| span.id)
+        .expect("poller span captured");
+    let invoke = snapshot
+        .iter()
+        .find(|span| span.name == "invoke_agent")
+        .unwrap_or_else(|| panic!("a root invoke_agent is created: {snapshot:?}"));
+    assert_eq!(invoke.parent_id, None, "not the poller's child");
+    let chat_spans: Vec<_> = snapshot
+        .iter()
+        .filter(|span| span.name == "chat" && span.target == "rig::agent_chat")
+        .collect();
+    assert_eq!(chat_spans.len(), 1, "one model turn: {snapshot:?}");
+    assert_eq!(chat_spans[0].parent_id, Some(invoke.id));
+    assert_ne!(chat_spans[0].parent_id, Some(poller_id));
 }
