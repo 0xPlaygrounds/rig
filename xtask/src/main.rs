@@ -51,7 +51,8 @@ const USAGE: &str = "\
 usage: cargo xtask <task>
 
 tasks:
-  verify --changed|--pr|--full [--base REF] [--dry-run]  plan and run verification
+  verify --changed|--pr|--full|--lanes [--base REF] [--dry-run]  plan and run verification
+  verify --check ID           run one check by id (CI runs one per job)
   check-ecs-scenarios [nextest.json]  validate current scenario files and compiled mappings
   check-test-layout           fail if any crates/*/src file has an inline
                               test-gated `mod x { }` instead of `mod x;`
