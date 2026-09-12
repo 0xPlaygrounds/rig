@@ -607,7 +607,9 @@ impl AgentBuilder<NoToolConfig> {
     /// `model` must be registered on the bus (the key is used as given),
     /// and the host drives it. Everything else the builder registers
     /// (memory, routes, tools) goes through `registrar`, keyed under
-    /// `owner`.
+    /// `owner`. The host records too, through its driver: an agent built
+    /// here holds no driver to tap, and [`record_effects`](Self::record_effects)
+    /// on it fails at build, at this call site.
     #[track_caller]
     pub fn over_bus(
         dispatcher: Dispatcher,

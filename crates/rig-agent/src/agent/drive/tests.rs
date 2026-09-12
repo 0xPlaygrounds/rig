@@ -34,11 +34,8 @@ fn custom() -> EffectKind {
     }
 }
 
-/// Answers at once, or never: the shape of a run that finishes on its own
-/// and of one that is dropped mid-flight.
-struct Handler {
-    answers: bool,
-}
+/// Answers at once.
+struct Handler;
 
 impl Serve for Handler {
     type Family = rig_core::effect::family::Dynamic;
@@ -54,9 +51,6 @@ impl Serve for Handler {
     }
 
     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
-        if !self.answers {
-            std::future::pending::<()>().await;
-        }
         Reply::Outcome(Ok(Outcome::Custom {
             payload: serde_json::Value::Null,
         }))
@@ -65,12 +59,10 @@ impl Serve for Handler {
 
 /// An owned agent bus serving `k`, and another run's waker registered on
 /// it — a run that found the driver lock taken and is waiting to drive.
-fn bus_with_a_waiting_run(answers: bool) -> (AgentBus, Arc<Counting>) {
+fn bus_with_a_waiting_run() -> (AgentBus, Arc<Counting>) {
     let policy = ServingPolicy::default();
     let (dispatcher, registrar, mut driver) = Bus::channel_with(policy);
-    driver
-        .register("k", Handler { answers })
-        .expect("a fresh key");
+    driver.register("k", Handler).expect("a fresh key");
     let bus = AgentBus::owned(dispatcher, registrar, driver, "owner".to_owned(), policy);
     let waiting = Arc::new(Counting(AtomicUsize::new(0)));
     let slot = bus.wakers.slot();
@@ -84,45 +76,54 @@ fn bus_with_a_waiting_run(answers: bool) -> (AgentBus, Arc<Counting>) {
 /// the finished run's last drain; nothing else polls the driver between
 /// runs, so the finished run must wake the runs still registered, which
 /// then take the lock and drive. (The obligation the loom model of the
-/// protocol assumes of a run's end.)
+/// protocol assumes of a run's end.) Exactly one wake, at the end: the
+/// polls that serve the run's own dispatch wake nobody.
 #[test]
 fn a_finished_run_wakes_the_runs_that_registered_while_it_drove() {
-    let (bus, waiting) = bus_with_a_waiting_run(true);
+    let (bus, waiting) = bus_with_a_waiting_run();
     let key = HandlerKey::from("k");
     let mut run = bus.drive(futures::stream::once(
         bus.dispatcher().dispatch(&key, custom()),
     ));
     let mut cx = Context::from_waker(noop_waker_ref());
-    let mut answered = false;
-    for _ in 0..16 {
-        match run.poll_next_unpin(&mut cx) {
-            Poll::Ready(Some(outcome)) => answered = outcome.is_ok(),
-            Poll::Ready(None) => break,
-            Poll::Pending => {}
-        }
-    }
-    assert!(answered, "the run served its own dispatch while it drove");
     assert!(
-        waiting.0.load(Ordering::SeqCst) >= 1,
-        "the run that stopped driving must wake the runs still registered"
+        matches!(run.poll_next_unpin(&mut cx), Poll::Ready(Some(Ok(_)))),
+        "the run served its own dispatch while it drove"
+    );
+    assert_eq!(
+        waiting.0.load(Ordering::SeqCst),
+        0,
+        "serving the run's own dispatch woke nobody"
+    );
+    assert!(matches!(run.poll_next_unpin(&mut cx), Poll::Ready(None)));
+    assert_eq!(
+        waiting.0.load(Ordering::SeqCst),
+        1,
+        "the run that stopped driving woke the runs still registered, once"
     );
 }
 
-/// The same obligation for a run dropped mid-flight: its last driver poll
-/// settles its own cancelled dispatch, and the runs still registered are
-/// woken to take over the bus.
+/// The same obligation for a run dropped while live: its answer landed
+/// but its stream was never polled to its end, so `Drop` gives the driver
+/// its last poll (nothing in flight to settle) and wakes the runs still
+/// registered to take over the bus. Exactly one wake, from the drop.
 #[test]
 fn a_dropped_run_wakes_the_runs_that_registered_while_it_drove() {
-    let (bus, waiting) = bus_with_a_waiting_run(false);
+    let (bus, waiting) = bus_with_a_waiting_run();
     let key = HandlerKey::from("k");
     let mut run = bus.drive(futures::stream::once(
         bus.dispatcher().dispatch(&key, custom()),
     ));
     let mut cx = Context::from_waker(noop_waker_ref());
-    assert!(run.poll_next_unpin(&mut cx).is_pending());
+    assert!(matches!(
+        run.poll_next_unpin(&mut cx),
+        Poll::Ready(Some(Ok(_)))
+    ));
+    assert_eq!(waiting.0.load(Ordering::SeqCst), 0);
     drop(run);
-    assert!(
-        waiting.0.load(Ordering::SeqCst) >= 1,
-        "the dropped run must wake the runs still registered"
+    assert_eq!(
+        waiting.0.load(Ordering::SeqCst),
+        1,
+        "the dropped run woke the runs still registered, once"
     );
 }

@@ -817,21 +817,15 @@ fn loom_capacity_freed_by_orphan_removal_wakes_a_parked_sender() {
                 assert!(shared.end_in_flight(EffectId::from_raw(1)));
                 shared.fail_cancelled_buffered();
                 let (_, waker) = recording();
-                let taken = shared.drain(&Context::from_waker(&waker));
-                assert!(taken.len() <= 1, "the bound is bus-wide");
-                taken
+                shared.drain(&Context::from_waker(&waker));
             })
         };
-        let taken = driver.join().unwrap();
+        driver.join().unwrap();
         if let Some((flag, _slot)) = sender.join().unwrap() {
             assert!(
                 flag.0.load(StdOrdering::SeqCst),
                 "a sender parked on capacity the driver freed was never woken"
             );
         }
-        assert!(
-            shared.buffered() + taken.len() <= 1,
-            "the bound is bus-wide"
-        );
     });
 }

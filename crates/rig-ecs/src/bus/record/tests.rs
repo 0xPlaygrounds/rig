@@ -97,8 +97,8 @@ fn a_despawn_from_the_outcome_observer_still_closes_the_record() {
         "the observer despawned the effect as its outcome landed"
     );
     let log = recorder.log();
+    assert_eq!(log.len(), 1, "the record closed: {log:?}");
     let record = log.first().unwrap();
-    assert_eq!(log.len(), 1, "one record: {log:?}");
     assert_eq!(
         serde_json::to_value(&record.outcome).unwrap(),
         serde_json::to_value(Ok::<_, ErrorReport>(answer)).unwrap(),
