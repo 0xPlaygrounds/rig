@@ -37,6 +37,16 @@ async fn retired_model_id_preserves_provider_error() {
                 body.contains("end of its life"),
                 "expected Bedrock's end-of-life wording, got {body:?}"
             );
+            // The SDK saw the HTTP reply: its status classifies the error,
+            // and the exception type is the provider's code.
+            assert_eq!(
+                error.provider_response_status(),
+                Some(rig::http_client::StatusCode::NOT_FOUND)
+            );
+            assert!(!error.is_retryable());
+            let report = error.report();
+            assert_eq!(report.http_status, Some(404));
+            assert_eq!(report.code.as_deref(), Some("ResourceNotFoundException"));
         },
     )
     .await;
@@ -66,6 +76,14 @@ async fn bare_profile_only_model_id_is_rejected() {
                 body.contains("on-demand throughput"),
                 "expected Bedrock's on-demand-throughput wording, got {body:?}"
             );
+            assert_eq!(
+                error.provider_response_status(),
+                Some(rig::http_client::StatusCode::BAD_REQUEST)
+            );
+            assert!(!error.is_retryable());
+            let report = error.report();
+            assert_eq!(report.http_status, Some(400));
+            assert_eq!(report.code.as_deref(), Some("ValidationException"));
         },
     )
     .await;

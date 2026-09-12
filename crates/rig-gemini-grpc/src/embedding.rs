@@ -131,6 +131,8 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
 // out as a Rig diagnostic the way Bedrock's typed service errors are.
 fn rpc_error(status: &tonic::Status) -> EmbeddingError {
     EmbeddingError::from_provider_body(status.to_string())
+        .with_provider_code(Some(super::completion::grpc_code_name(status.code())))
+        .with_transient(Some(super::completion::transient_grpc_code(status.code())))
 }
 
 #[cfg(test)]

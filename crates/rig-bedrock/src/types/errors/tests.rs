@@ -25,10 +25,11 @@ use aws_sdk_bedrockruntime::types::error::{
 fn unclassified_error_falls_back_to_the_raw_provider_body() {
     let raw_body =
         Some(r#"{"message":"This model version has reached the end of its life."}"#.to_string());
-    let unclassified = (None, UNEXPECTED.to_string());
+    let unclassified = (None, UNEXPECTED.to_string(), None);
 
     let error: CompletionError = gated(
         with_raw_body(unclassified, raw_body.clone()),
+        Transport::default(),
         CompletionError::from_provider_body,
         CompletionError::ProviderError,
     );
@@ -40,9 +41,9 @@ fn unclassified_error_falls_back_to_the_raw_provider_body() {
 /// a replacement, so classified errors keep their existing wording.
 #[test]
 fn classified_error_message_wins_over_the_raw_body() {
-    let classified = (Some("boom".to_string()), UNEXPECTED.to_string());
+    let classified = (Some("boom".to_string()), UNEXPECTED.to_string(), None);
 
-    let (message, _fallback) =
+    let (message, _fallback, _) =
         with_raw_body(classified, Some(r#"{"message":"ignored"}"#.to_string()));
 
     assert_eq!(message, Some("boom".to_string()));
@@ -53,7 +54,8 @@ fn classified_error_message_wins_over_the_raw_body() {
 #[test]
 fn absent_message_and_body_yields_rig_prose_not_a_provider_body() {
     let error: CompletionError = gated(
-        with_raw_body((None, UNEXPECTED.to_string()), None),
+        with_raw_body((None, UNEXPECTED.to_string(), None), None),
+        Transport::default(),
         CompletionError::from_provider_body,
         CompletionError::ProviderError,
     );
@@ -67,14 +69,14 @@ fn invoke_model_message_returns_provider_message_when_present() {
     let err = InvokeModelError::ModelTimeoutException(
         ModelTimeoutException::builder().message("boom").build(),
     );
-    let (message, _fallback) = invoke_model_message(err);
+    let (message, _fallback, _) = invoke_model_message(err);
     assert_eq!(message, Some("boom".to_string()));
 }
 
 #[test]
 fn invoke_model_message_returns_none_when_message_absent() {
     let err = InvokeModelError::InternalServerException(InternalServerException::builder().build());
-    let (message, fallback) = invoke_model_message(err);
+    let (message, fallback, _) = invoke_model_message(err);
     assert_eq!(message, None);
     assert_eq!(fallback, "An internal server error occurred.".to_string());
 }
@@ -85,8 +87,8 @@ fn image_generation_with_provider_message_yields_provider_response() {
         ValidationException::builder().message("boom").build(),
     );
     let error: ImageGenerationError = match invoke_model_message(err) {
-        (Some(msg), _) => ImageGenerationError::from_provider_body(msg),
-        (None, fallback) => ImageGenerationError::ProviderError(fallback),
+        (Some(msg), _, _) => ImageGenerationError::from_provider_body(msg),
+        (None, fallback, _) => ImageGenerationError::ProviderError(fallback),
     };
     assert_eq!(error.provider_response_body(), Some("boom"));
     assert_eq!(error.provider_response_status(), None);
@@ -98,8 +100,8 @@ fn image_generation_without_provider_message_yields_provider_error() {
     // which must NOT surface Rig prose through `provider_response_body()`.
     let err = InvokeModelError::ValidationException(ValidationException::builder().build());
     let error: ImageGenerationError = match invoke_model_message(err) {
-        (Some(msg), _) => ImageGenerationError::from_provider_body(msg),
-        (None, fallback) => ImageGenerationError::ProviderError(fallback),
+        (Some(msg), _, _) => ImageGenerationError::from_provider_body(msg),
+        (None, fallback, _) => ImageGenerationError::ProviderError(fallback),
     };
     assert_eq!(error.provider_response_body(), None);
     assert_eq!(error.provider_response_status(), None);
@@ -111,8 +113,8 @@ fn embedding_with_provider_message_yields_provider_response() {
         ValidationException::builder().message("boom").build(),
     );
     let error: EmbeddingError = match invoke_model_message(err) {
-        (Some(msg), _) => EmbeddingError::from_provider_body(msg),
-        (None, fallback) => EmbeddingError::ProviderError(fallback),
+        (Some(msg), _, _) => EmbeddingError::from_provider_body(msg),
+        (None, fallback, _) => EmbeddingError::ProviderError(fallback),
     };
     assert_eq!(error.provider_response_body(), Some("boom"));
     assert_eq!(error.provider_response_status(), None);
@@ -122,8 +124,8 @@ fn embedding_with_provider_message_yields_provider_response() {
 fn embedding_without_provider_message_yields_provider_error() {
     let err = InvokeModelError::InternalServerException(InternalServerException::builder().build());
     let error: EmbeddingError = match invoke_model_message(err) {
-        (Some(msg), _) => EmbeddingError::from_provider_body(msg),
-        (None, fallback) => EmbeddingError::ProviderError(fallback),
+        (Some(msg), _, _) => EmbeddingError::from_provider_body(msg),
+        (None, fallback, _) => EmbeddingError::ProviderError(fallback),
     };
     assert_eq!(error.provider_response_body(), None);
 }
@@ -133,7 +135,7 @@ fn converse_message_returns_provider_message_when_present() {
     let err = ConverseError::ModelTimeoutException(
         ModelTimeoutException::builder().message("boom").build(),
     );
-    let (message, _fallback) = converse_message(err);
+    let (message, _fallback, _) = converse_message(err);
     assert_eq!(message, Some("boom".to_string()));
 }
 
@@ -143,8 +145,8 @@ fn converse_with_provider_message_yields_provider_response() {
         ModelTimeoutException::builder().message("boom").build(),
     );
     let error: CompletionError = match converse_message(err) {
-        (Some(msg), _) => CompletionError::from_provider_body(msg),
-        (None, fallback) => CompletionError::ProviderError(fallback),
+        (Some(msg), _, _) => CompletionError::from_provider_body(msg),
+        (None, fallback, _) => CompletionError::ProviderError(fallback),
     };
     assert_eq!(error.provider_response_body(), Some("boom"));
     assert_eq!(error.provider_response_status(), None);
@@ -154,8 +156,8 @@ fn converse_with_provider_message_yields_provider_response() {
 fn converse_without_provider_message_yields_provider_error() {
     let err = ConverseError::ModelTimeoutException(ModelTimeoutException::builder().build());
     let error: CompletionError = match converse_message(err) {
-        (Some(msg), _) => CompletionError::from_provider_body(msg),
-        (None, fallback) => CompletionError::ProviderError(fallback),
+        (Some(msg), _, _) => CompletionError::from_provider_body(msg),
+        (None, fallback, _) => CompletionError::ProviderError(fallback),
     };
     assert_eq!(error.provider_response_body(), None);
     assert_eq!(error.provider_response_status(), None);
@@ -166,7 +168,7 @@ fn converse_stream_message_returns_provider_message_when_present() {
     let err = ConverseStreamError::ModelTimeoutException(
         ModelTimeoutException::builder().message("boom").build(),
     );
-    let (message, _fallback) = converse_stream_message(err);
+    let (message, _fallback, _) = converse_stream_message(err);
     assert_eq!(message, Some("boom".to_string()));
 }
 
@@ -176,8 +178,8 @@ fn converse_stream_with_provider_message_yields_provider_response() {
         ValidationException::builder().message("boom").build(),
     );
     let error: CompletionError = match converse_stream_message(err) {
-        (Some(msg), _) => CompletionError::from_provider_body(msg),
-        (None, fallback) => CompletionError::ProviderError(fallback),
+        (Some(msg), _, _) => CompletionError::from_provider_body(msg),
+        (None, fallback, _) => CompletionError::ProviderError(fallback),
     };
     assert_eq!(error.provider_response_body(), Some("boom"));
     assert_eq!(error.provider_response_status(), None);
@@ -187,8 +189,8 @@ fn converse_stream_with_provider_message_yields_provider_response() {
 fn converse_stream_without_provider_message_yields_provider_error() {
     let err = ConverseStreamError::ValidationException(ValidationException::builder().build());
     let error: CompletionError = match converse_stream_message(err) {
-        (Some(msg), _) => CompletionError::from_provider_body(msg),
-        (None, fallback) => CompletionError::ProviderError(fallback),
+        (Some(msg), _, _) => CompletionError::from_provider_body(msg),
+        (None, fallback, _) => CompletionError::ProviderError(fallback),
     };
     assert_eq!(error.provider_response_body(), None);
     assert_eq!(error.provider_response_status(), None);
@@ -211,4 +213,90 @@ fn converse_stream_output_without_provider_message_yields_provider_error() {
     let error = converse_stream_output_completion_error(err);
     assert_eq!(error.provider_response_body(), None);
     assert_eq!(error.provider_response_status(), None);
+}
+
+/// Bedrock's exception type is the provider's code. Without the SDK's HTTP
+/// status at hand the type decides retryability (throttled, unavailable,
+/// not ready, timed out retry; a bad request does not); with the status,
+/// the status decides, whatever the type says.
+#[test]
+fn exception_types_classify_without_a_status_and_the_status_wins_with_one() {
+    use aws_sdk_bedrockruntime::types::error::ThrottlingException;
+    let cells = [
+        ("ThrottlingException", true),
+        ("ServiceUnavailableException", true),
+        ("InternalServerException", true),
+        ("ModelNotReadyException", true),
+        ("ModelTimeoutException", true),
+        ("ModelStreamErrorException", true),
+        ("ValidationException", false),
+        ("AccessDeniedException", false),
+        ("ResourceNotFoundException", false),
+        ("ServiceQuotaExceededException", false),
+        ("ModelErrorException", false),
+    ];
+    for (code, transient) in cells {
+        let classified = || {
+            (
+                Some("boom".to_string()),
+                UNEXPECTED.to_string(),
+                Some(code.to_string()),
+            )
+        };
+        let err: CompletionError = gated(
+            classified(),
+            Transport::default(),
+            CompletionError::from_provider_body,
+            CompletionError::ProviderError,
+        );
+        assert_eq!(err.is_retryable(), transient, "{code} without a status");
+        let report = err.report();
+        assert_eq!(report.code.as_deref(), Some(code));
+        assert_eq!(report.http_status, None);
+
+        let throttled: CompletionError = gated(
+            classified(),
+            Transport {
+                status: Some(StatusCode::TOO_MANY_REQUESTS),
+            },
+            CompletionError::from_provider_body,
+            CompletionError::ProviderError,
+        );
+        assert!(throttled.is_retryable(), "{code} under a 429 retries");
+        assert_eq!(throttled.report().http_status, Some(429));
+
+        let rejected: CompletionError = gated(
+            classified(),
+            Transport {
+                status: Some(StatusCode::BAD_REQUEST),
+            },
+            CompletionError::from_provider_body,
+            CompletionError::ProviderError,
+        );
+        assert!(
+            !rejected.is_retryable(),
+            "{code} under a 400 does not retry"
+        );
+    }
+
+    // The macro names the typed variant as the code.
+    let (_, _, code) = converse_message(ConverseError::ThrottlingException(
+        ThrottlingException::builder().message("slow down").build(),
+    ));
+    assert_eq!(code.as_deref(), Some("ThrottlingException"));
+
+    // Rig prose never carries a code: a message-less exception is a
+    // diagnostic, not a reply.
+    let plain: CompletionError = gated(
+        (
+            None,
+            UNEXPECTED.to_string(),
+            Some("ThrottlingException".to_string()),
+        ),
+        Transport::default(),
+        CompletionError::from_provider_body,
+        CompletionError::ProviderError,
+    );
+    assert!(matches!(plain, CompletionError::ProviderError(_)));
+    assert!(!plain.is_retryable());
 }

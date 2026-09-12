@@ -10980,6 +10980,7 @@ dependencies = [
  "base64 0.22.1",
  "google-cloud-aiplatform-v1",
  "google-cloud-auth",
+ "google-cloud-gax",
  "rig-agent",
  "rig-core",
  "schemars 1.2.1",
