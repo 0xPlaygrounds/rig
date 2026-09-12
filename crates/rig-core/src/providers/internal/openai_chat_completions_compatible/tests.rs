@@ -470,7 +470,7 @@ async fn streaming_http_non_success_preserves_status_and_body() {
     assert_eq!(
         err.to_string(),
         format!(
-            "HttpError: Invalid status code {} with message: {}",
+            "ProviderResponseError: status {}: {}",
             http::StatusCode::TOO_MANY_REQUESTS,
             body
         )
@@ -564,8 +564,9 @@ async fn streaming_mid_stream_http_non_success_preserves_status_and_body() {
         Ok(sse_bytes_from_data_lines([
             "{\"choices\":[{\"delta\":{\"content\":\"partial\",\"tool_calls\":[]}}],\"usage\":null}",
         ])),
-        Err(http_client::Error::InvalidStatusCodeWithMessage(
+        Err(http_client::Error::non_success_with_details(
             http::StatusCode::BAD_GATEWAY,
+            http::HeaderMap::new(),
             body.to_string(),
         )),
     ];
@@ -642,7 +643,7 @@ async fn streaming_http_non_success_json_parse_error_is_visible() {
 }
 
 #[tokio::test]
-async fn streaming_non_http_transport_error_stays_provider_error() {
+async fn streaming_non_http_transport_error_stays_a_transport_error() {
     use crate::test_utils::SequencedStreamingHttpClient;
 
     use crate::providers::openai::send_compatible_streaming_request;
@@ -668,10 +669,10 @@ async fn streaming_non_http_transport_error_stays_provider_error() {
     };
     assert_eq!(
         err.to_string(),
-        "ProviderError: Invalid content type was returned: \"application/json\""
+        "HttpError: Invalid content type was returned: \"application/json\""
     );
-    assert_eq!(err.kind, ErrorKind::Provider);
-    // Rig-generated transport diagnostics are not provider response bodies.
+    assert_eq!(err.kind, ErrorKind::Http);
+    // A response-less transport failure has no provider response body.
     assert_eq!(err.provider_response_body(), None);
     assert_eq!(err.http_status, None);
 }
@@ -852,8 +853,9 @@ async fn transport_error_still_flushes_fully_delivered_tool_calls() {
         Ok(sse_bytes_from_data_lines([
             "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"{\\\"x\\\":1}\"}}]}}],\"usage\":null}",
         ])),
-        Err(http_client::Error::InvalidStatusCodeWithMessage(
+        Err(http_client::Error::non_success_with_details(
             http::StatusCode::BAD_GATEWAY,
+            http::HeaderMap::new(),
             r#"{"error":{"message":"upstream unavailable"}}"#.to_string(),
         )),
     ];

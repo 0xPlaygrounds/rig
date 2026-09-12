@@ -80,9 +80,11 @@ use thiserror::Error;
 /// ```
 #[derive(Debug, Error)]
 pub enum CompletionError {
-    /// Http error (e.g.: connection error, timeout, etc.)
+    /// A transport failure that produced no provider reply (a connection
+    /// error, a timeout, an unreadable response); it never carries a
+    /// status. A reply the server made is [`Self::ProviderResponse`].
     #[error("HttpError: {0}")]
-    HttpError(#[from] http_client::Error),
+    HttpError(http_client::Error),
 
     /// Json error (e.g.: serialization, deserialization)
     #[error("JsonError: {0}")]
@@ -117,18 +119,18 @@ pub enum CompletionError {
 
 crate::provider_response::impl_provider_response_helpers!(CompletionError);
 
+impl From<http_client::Error> for CompletionError {
+    fn from(error: http_client::Error) -> Self {
+        Self::from_transport_error(error)
+    }
+}
+
 impl CompletionError {
-    /// Maps an SSE transport error into a completion error without flattening HTTP failures.
-    ///
-    /// Non-success HTTP responses remain [`CompletionError::HttpError`] so provider response
-    /// helpers can read status and body. Other transport failures keep the existing
-    /// [`CompletionError::ProviderError`] display string behavior.
+    /// Maps an SSE transport error like every other transport error: the
+    /// provider's reply becomes [`Self::ProviderResponse`], a response-less
+    /// failure stays [`Self::HttpError`] with its own retryability.
     pub(crate) fn from_stream_transport(error: http_client::Error) -> Self {
-        if error.non_success_status().is_some() {
-            Self::HttpError(error)
-        } else {
-            Self::ProviderError(error.to_string())
-        }
+        Self::from_transport_error(error)
     }
 }
 
@@ -683,12 +685,16 @@ pub trait CompletionModel: WasmCompatSend + WasmCompatSync {
     ) -> impl std::future::Future<Output = Result<StreamingCompletionResponse, CompletionError>>
     + WasmCompatSend;
 
-    /// Optionally observe one provider invocation, independently of request data.
+    /// Observe one provider invocation, independently of request data.
     ///
-    /// Ordinary providers need only implement [`Self::completion`] and
-    /// [`Self::stream`]. The default delegates without provider observations.
-    /// Observed providers override this method; forwarding wrappers pass the
-    /// context through to preserve per-call identity across retries and tasks.
+    /// Every HTTP wire in this crate implements this and attaches the
+    /// context to the request it sends, so a witness sees the request, the
+    /// response, the provider's verdict and usage where the wire projects
+    /// them, and how the attempt closed; the conformance harness requires
+    /// it. The default delegates without provider observations and is what
+    /// a model over a non-HTTP transport (an SDK, a local runtime) still
+    /// takes. Forwarding wrappers pass the context through to preserve
+    /// per-call identity across retries and tasks.
     fn completion_with_context(
         &self,
         request: CompletionRequest,

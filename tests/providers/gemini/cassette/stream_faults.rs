@@ -39,15 +39,6 @@ pub(super) const BLOCKED_FRAME: &str = r#"{"promptFeedback":{"blockReason":"SAFE
 /// for an overloaded model in the same capture, in the frame position the
 /// adapter's unit tests pin (`in_band_http_errors_match_unary_classification`).
 pub(super) const IN_BAND_ERROR_FRAME: &str = r#"{"error":{"code":503,"message":"The model is overloaded. Please try again later.","status":"UNAVAILABLE"}}"#;
-/// Gemini's classification of an HTTP error envelope on the streamed path:
-/// the transport's status, with the envelope preserved on the report (the
-/// metadata-less funnel in `rig_core::provider_response`; the Responses
-/// wire's request-id funnel classifies the same fault as `ProviderResponse`).
-pub(super) fn http_error(status: u16) -> ErrorKind {
-    ErrorKind::Http {
-        status: Some(status),
-    }
-}
 /// A key the scripted cells send: it must never reach a trace.
 pub(super) const SCRIPTED_KEY: &str = "scripted-fault-key-7f3a9c";
 
@@ -93,10 +84,14 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
             assert_eq!(drained.terminals, 0, "no terminal record: {drained:?}");
             assert!(drained.text.is_empty(), "no text: {drained:?}");
             assert_eq!(drained.errors.len(), 1, "one error item: {drained:?}");
-            assert_setup_failure(&drained.errors[0], http_error(404), 404);
+            assert_setup_failure(&drained.errors[0], ErrorKind::ProviderResponse, 404);
 
             let log = agent.take_effect_log().expect("recording");
-            assert_setup_failure(sole_failed_completion(&log), http_error(404), 404);
+            assert_setup_failure(
+                sole_failed_completion(&log),
+                ErrorKind::ProviderResponse,
+                404,
+            );
             let errors = recorded_stream_errors(&log);
             assert_eq!(errors.len(), 1, "one recorded error item: {errors:?}");
             assert_eq!(errors[0].0, 0, "the error is the stream's first item");
@@ -190,7 +185,7 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
     assert_eq!(drained.terminals, 0, "{drained:?}");
     assert_eq!(drained.errors.len(), 1, "{drained:?}");
     let report = &drained.errors[0];
-    assert_eq!(report.kind, http_error(503), "{report:?}");
+    assert_eq!(report.kind, ErrorKind::ProviderResponse, "{report:?}");
     assert_eq!(report.http_status, Some(503), "{report:?}");
     assert!(report.is_retryable(), "{report:?}");
     assert_eq!(
@@ -203,7 +198,7 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
 
     let log = agent.take_effect_log().expect("recording");
     let recorded = sole_failed_completion(&log);
-    assert_eq!(recorded.kind, http_error(503), "{recorded:?}");
+    assert_eq!(recorded.kind, ErrorKind::ProviderResponse, "{recorded:?}");
     assert_eq!(recorded.http_status, Some(503), "{recorded:?}");
     let errors = recorded_stream_errors(&log);
     assert_eq!(errors.len(), 1, "{errors:?}");
@@ -215,5 +210,66 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
     assert_eq!(
         errors[0].0, delivered,
         "the error item sits after the delivered content"
+    );
+}
+
+/// The recording the two cells below derive from, once it exists: one
+/// streamed prompt long enough for `gemini-3-flash-preview` to answer in
+/// several `streamGenerateContent` frames, so a prefix can be cut from a
+/// real Gemini stream instead of assembled from a downstream capture. The
+/// prompt is the runner's own; the assertion is the ordinary smoke.
+#[ignore = "needs a live recording: no committed Gemini REST stream carries more than one frame; record `stream_faults/multi_frame_stream` with GEMINI_API_KEY (one streamed prompt, gemini-3-flash-preview, a few hundred output tokens)"]
+#[tokio::test]
+async fn multi_frame_stream_recording() {
+    with_gemini_cassette("stream_faults/multi_frame_stream", |client| async move {
+        let agent = client
+            .agent(rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW)
+            .preamble(crate::support::STREAMING_PREAMBLE)
+            .build();
+        let mut stream = agent
+            .prompt(
+                "Write four short paragraphs about the history of the Rust programming language.",
+            )
+            .stream();
+        let drained = drain(&mut stream).await;
+        assert_eq!(drained.finals, 1, "{drained:?}");
+        assert!(!drained.text.is_empty(), "{drained:?}");
+    })
+    .await;
+}
+
+/// EOF before the terminal frame of a real multi-frame Gemini stream: the
+/// same hypothesis as `truncation_after_content_fails_the_run_and_keeps_the_prefix`,
+/// on frames Gemini itself streamed in sequence.
+#[ignore = "derives from `stream_faults/multi_frame_stream`; see multi_frame_stream_recording"]
+#[tokio::test]
+async fn multi_frame_stream_cut_before_its_terminal_is_a_truncation() {
+    let frames =
+        crate::stream_faults::recorded_sse_frames("gemini", "stream_faults/multi_frame_stream", 0);
+    let prefix =
+        crate::stream_faults::frames_before(&frames, |frame| frame.contains("finishReason"));
+    let expected: String = prefix
+        .iter()
+        .filter_map(|frame| {
+            crate::stream_faults::frame_data(frame)["candidates"][0]["content"]["parts"][0]["text"]
+                .as_str()
+                .map(str::to_owned)
+        })
+        .collect();
+    let client = scripted_client(vec![crate::stream_faults::sse_bytes(&prefix)]);
+    let agent = client
+        .agent(GEMINI_2_5_FLASH)
+        .record_effects_with_events()
+        .build();
+    let mut stream = agent.prompt("pong?").stream();
+    let drained = drain(&mut stream).await;
+    drop(stream);
+
+    assert_eq!(drained.text, expected, "{drained:?}");
+    assert_eq!(drained.finals, 0, "{drained:?}");
+    let log = agent.take_effect_log().expect("recording");
+    assert_eq!(
+        sole_failed_completion(&log).message,
+        rig::serve::stream_truncated().message
     );
 }

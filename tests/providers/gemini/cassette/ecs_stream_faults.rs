@@ -22,7 +22,7 @@ use rig_ecs::agent::{AdditionalParams, MaxTokens, Preamble, Role};
 use super::super::support::with_gemini_cassette;
 use super::stream_faults::{
     BLOCKED_FRAME, CONTENT_FRAME, CONTENT_TEXT, IN_BAND_ERROR_FRAME, MISSING_MODEL, SCRIPTED_KEY,
-    SETUP_MAX_TOKENS, SETUP_PROMPT, gemini_sse, http_error, scripted_client,
+    SETUP_MAX_TOKENS, SETUP_PROMPT, gemini_sse, scripted_client,
 };
 use crate::{
     ecs_agent::EcsAgent,
@@ -83,8 +83,12 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
                     configure,
                 )
                 .await;
-                assert_setup_failure(run.provider_report(), http_error(404), 404);
-                assert_setup_failure(sole_failed_completion(&run.log), http_error(404), 404);
+                assert_setup_failure(run.provider_report(), ErrorKind::ProviderResponse, 404);
+                assert_setup_failure(
+                    sole_failed_completion(&run.log),
+                    ErrorKind::ProviderResponse,
+                    404,
+                );
                 assert_eq!(run.roles, [Role::User], "only the prompt is history");
                 assert!(run.stream().text.is_empty(), "{:?}", run.stream);
                 assert_eq!(
@@ -259,7 +263,7 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
         )
         .await;
         let report = run.provider_report();
-        assert_eq!(report.kind, http_error(503), "{report:?}");
+        assert_eq!(report.kind, ErrorKind::ProviderResponse, "{report:?}");
         assert_eq!(report.http_status, Some(503), "{report:?}");
         assert!(report.is_retryable(), "{report:?}");
         assert_eq!(

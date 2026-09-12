@@ -30,9 +30,10 @@ use crate::http_client::HttpClientExt;
 /// does not report one", never an error.
 ///
 /// Error paths, preserved exactly:
-/// - non-success status → `from_http_response(status, raw_body)`, with the
-///   failed response's headers attached so rate-limit metadata such as
-///   `Retry-After` stays readable (rig#2210);
+/// - non-success status → `from_http_response(status, raw_body)` with the
+///   provider's request id and the failed response's headers attached, so
+///   support's id and rate-limit metadata such as `Retry-After` stay
+///   readable (rig#2314, rig#2210);
 /// - 2xx error envelope → warn-log the provider message, preserve raw body;
 /// - undecodable 2xx body → error-log the body, surface the JSON error.
 pub(crate) async fn send_completion<C, A, F>(
@@ -89,57 +90,17 @@ where
             }
         }) {
             Ok(response) => response,
-            // The reqwest transport reports a non-success status as an error with
-            // the failed response's headers preserved. A provider with a
-            // request-id contract reads its header off them so the failed call's
-            // transport id — the one support asks for — survives onto the error
-            // (rig#2314); classification then follows the contract, so a given
-            // provider's errors stay one shape. Either way the whole header map
-            // rides along, so a caller can still read `Retry-After` off a 429
-            // (rig#2210).
-            Err(crate::http_client::Error::InvalidStatusCodeWithDetails {
-                status,
-                body,
-                headers,
-            }) => {
-                return Err(match request_id_header {
-                    Some(header) => {
-                        let provider_request_id = headers
-                            .get(header)
-                            .and_then(|value| value.to_str().ok())
-                            .filter(|value| !value.is_empty())
-                            .map(str::to_string);
-                        CompletionError::from_http_response_with_request_id(
-                            status,
-                            body,
-                            provider_request_id,
-                        )
-                        .with_response_headers(Some(headers))
-                    }
-                    // Contract-less providers keep the pre-#2314 transport shape;
-                    // the details variant is that shape plus the headers, and
-                    // displays identically.
-                    None => CompletionError::HttpError(
-                        crate::http_client::Error::InvalidStatusCodeWithDetails {
-                            status,
-                            body,
-                            headers,
-                        },
-                    ),
-                });
+            // A transport that reports the non-success reply as an error: the
+            // reply is the provider's, so it funnels to ProviderResponse with
+            // the id read off its headers (rig#2314) and the headers themselves
+            // (rig#2210); a response-less failure stays a transport error.
+            Err(error) => {
+                let provider_request_id = error
+                    .non_success_headers()
+                    .and_then(|headers| super::request_id_from_headers(headers, request_id_header));
+                return Err(CompletionError::from_transport_error(error)
+                    .with_provider_request_id(provider_request_id));
             }
-            // A transport that reports non-success without preserved headers (a
-            // custom `HttpClientExt`): a contract provider still classifies as
-            // ProviderResponse — the shape follows the contract on every
-            // transport — with no id to read.
-            Err(crate::http_client::Error::InvalidStatusCodeWithMessage(status, body))
-                if request_id_header.is_some() =>
-            {
-                return Err(CompletionError::from_http_response_with_request_id(
-                    status, body, None,
-                ));
-            }
-            Err(other) => return Err(other.into()),
         };
 
         // Take the response apart before awaiting the body: that hands over the
@@ -167,19 +128,11 @@ where
         }
 
         if !status.is_success() {
-            // A provider with a request-id contract routes through the
-            // metadata-aware funnel so the failed call's transport id — the one
-            // support asks for — survives onto the error (rig#2314).
-            // Classification follows the contract, not the header's presence on
-            // a particular response, so a given provider's errors stay one shape.
-            return Err(match request_id_header {
-                Some(_) => CompletionError::from_http_response_with_request_id(
-                    status,
-                    String::from_utf8_lossy(&body),
-                    provider_request_id,
-                ),
-                None => CompletionError::from_http_response(status, String::from_utf8_lossy(&body)),
-            }
+            return Err(CompletionError::from_http_response(
+                status,
+                String::from_utf8_lossy(&body),
+            )
+            .with_provider_request_id(provider_request_id)
             .with_response_headers(response_headers));
         }
 
@@ -204,21 +157,14 @@ where
             }
             Err(message) => {
                 tracing::warn!(message = %message, "provider returned an error response");
-                // A 2xx error envelope preserves as ProviderResponse either way;
-                // the metadata-aware funnel just adds the captured id. Its headers
-                // matter as much as a non-success response's: gateways report rate
-                // limits this way, with `Retry-After` alongside a 200 (rig#2210).
-                Err(match request_id_header {
-                    Some(_) => CompletionError::from_http_response_with_request_id(
-                        status,
-                        String::from_utf8_lossy(&body),
-                        provider_request_id,
-                    ),
-                    None => {
-                        CompletionError::from_http_response(status, String::from_utf8_lossy(&body))
-                    }
-                }
-                .with_response_headers(response_headers))
+                // A 2xx error envelope's headers matter as much as a
+                // non-success response's: gateways report rate limits this
+                // way, with `Retry-After` alongside a 200 (rig#2210).
+                Err(
+                    CompletionError::from_http_response(status, String::from_utf8_lossy(&body))
+                        .with_provider_request_id(provider_request_id)
+                        .with_response_headers(response_headers),
+                )
             }
         }
     }

@@ -6,10 +6,6 @@ use thiserror::Error;
 /// Inspect provider failures with [`Self::provider_response_body`],
 /// [`Self::provider_response_json`], and [`Self::provider_response_status`].
 ///
-/// Note: no provider path currently constructs [`Self::ProviderResponse`] for
-/// verification; real verify failures surface as [`Self::HttpError`], which
-/// the helpers read. The variant is kept for symmetry with the other capability
-/// errors and for future provider paths that preserve a 2xx error envelope.
 #[derive(Debug, Error)]
 pub enum VerifyError {
     #[error("invalid authentication")]
@@ -19,15 +15,19 @@ pub enum VerifyError {
     /// Raw error response preserved from the provider
     #[error("provider response error: {0}")]
     ProviderResponse(provider_response::ProviderResponseError),
+    /// A transport failure that produced no provider reply; a rejected
+    /// verification with a body is [`Self::ProviderResponse`].
     #[error("http error: {0}")]
-    HttpError(
-        #[from]
-        #[source]
-        http_client::Error,
-    ),
+    HttpError(#[source] http_client::Error),
 }
 
 crate::provider_response::impl_provider_response_helpers!(VerifyError);
+
+impl From<http_client::Error> for VerifyError {
+    fn from(error: http_client::Error) -> Self {
+        Self::from_transport_error(error)
+    }
+}
 
 /// A provider client that can verify the configuration.
 /// Clone is required for conversions between client types.

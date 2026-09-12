@@ -29,8 +29,9 @@ fn embedding_error_provider_error_is_not_a_provider_response() {
 #[test]
 fn embedding_error_provider_response_helpers_with_http_non_success() {
     let body = r#"{"error":{"message":"bad request"}}"#;
-    let error = EmbeddingError::HttpError(http_client::Error::InvalidStatusCodeWithMessage(
+    let error = EmbeddingError::from_transport_error(http_client::Error::non_success_with_details(
         StatusCode::BAD_REQUEST,
+        http::HeaderMap::new(),
         body.to_string(),
     ));
 

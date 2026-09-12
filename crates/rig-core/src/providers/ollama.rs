@@ -311,13 +311,17 @@ where
 
         let response = self.client.send::<_, Vec<u8>>(req).await?;
 
-        let status = response.status();
+        let (parts, body) = response.into_parts();
+        let status = parts.status;
+        let bytes: Vec<u8> = body.await?;
         if !status.is_success() {
-            let text = http_client::text(response).await?;
-            return Err(EmbeddingError::from_http_response(status, text));
+            return Err(EmbeddingError::from_http_response(
+                status,
+                String::from_utf8_lossy(&bytes),
+            )
+            .with_response_headers(Some(Box::new(parts.headers))));
         }
 
-        let bytes: Vec<u8> = response.into_body().await?;
         let api_resp: EmbeddingResponse = serde_json::from_slice(&bytes)?;
         Ok(api_resp)
     }
@@ -785,6 +789,16 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
+        self.raw_completion_observed(completion_request, None).await
+    }
+
+    /// [`Self::raw_completion`] with observation context owned by this
+    /// invocation.
+    async fn raw_completion_observed(
+        &self,
+        completion_request: CompletionRequest,
+        observation: Option<crate::observe::AdapterContext>,
+    ) -> Result<CompletionResponse, CompletionError> {
         let system_instructions = completion_request.system_instructions().map(str::to_owned);
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = OllamaCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
@@ -801,11 +815,14 @@ where
 
         let body = serde_json::to_vec(&request)?;
 
-        let req = self
+        let mut req = self
             .client
             .post("api/chat")?
             .body(body)
             .map_err(http_client::Error::from)?;
+        if let Some(observation) = observation {
+            observation.attach(&mut req, "/api/chat");
+        }
 
         let async_block = internal::completion_send::send_completion::<
             _,
@@ -969,16 +986,34 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Capture before `try_into` consumes the raw value.
-        let raw = self.raw_completion(completion_request).await?;
-        let captured = serde_json::to_value(&raw)?;
-        let response: completion::CompletionResponse = raw.try_into()?;
-        Ok(response.with_raw(captured))
+        self.completion_with_context(completion_request, None).await
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        self.stream_with_context(request, None).await
+    }
+
+    async fn completion_with_context(
+        &self,
+        completion_request: CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        // Capture before `try_into` consumes the raw value.
+        let raw = self
+            .raw_completion_observed(completion_request, context)
+            .await?;
+        let captured = serde_json::to_value(&raw)?;
+        let response: completion::CompletionResponse = raw.try_into()?;
+        Ok(response.with_raw(captured))
+    }
+
+    async fn stream_with_context(
+        &self,
+        request: CompletionRequest,
+        observation: Option<crate::observe::AdapterContext>,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let system_instructions = request.system_instructions().map(str::to_owned);
         let record_telemetry_content = request.record_telemetry_content;
@@ -1000,19 +1035,45 @@ where
 
         let body = serde_json::to_vec(&request)?;
 
-        let req = self
+        let mut req = self
             .client
             .post("api/chat")?
             .body(body)
             .map_err(http_client::Error::from)?;
+        if let Some(observation) = observation {
+            observation.attach(&mut req, "/api/chat");
+        }
+        // This wire is NDJSON over a plain streaming response, not SSE, so
+        // the transport boundary is observed here rather than by the shared
+        // event source: the request, the response, each frame's bytes, and
+        // the closure the frame driver records. No payload projector is
+        // attached yet, and the SSE slot's frame tail is not fed, so EOF
+        // after a partial final line reports `Eof`, not `PartialFrame`.
+        let observation = crate::observe::AdapterContext::slot_for_request(&req);
+        if let Some(observation) = &observation {
+            observation.start(&req);
+        }
 
-        let response = self
+        let response = match self
             .client
             .send_streaming(req)
             .instrument(span.clone())
-            .await?;
-        let status = response.status();
-        let mut byte_stream = response.into_body();
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                let error = CompletionError::from_transport_error(error);
+                if let Some(observation) = &observation {
+                    observation.fail(&error);
+                }
+                return Err(error);
+            }
+        };
+        let (parts, mut byte_stream) = response.into_parts();
+        let status = parts.status;
+        if let Some(observation) = &observation {
+            observation.response_with_headers(status, Some(&parts.headers));
+        }
 
         if !status.is_success() {
             let mut body = Vec::new();
@@ -1025,15 +1086,19 @@ where
                     }
                 }
             }
-            return Err(CompletionError::from_http_response(
-                status,
-                String::from_utf8_lossy(&body),
-            ));
+            let error = CompletionError::from_http_response(status, String::from_utf8_lossy(&body))
+                .with_response_headers(Some(Box::new(parts.headers)));
+            if let Some(observation) = &observation {
+                observation.payload(&body);
+                observation.fail(&error);
+            }
+            return Err(error);
         }
 
         // Transport layer: HTTP byte chunks → NDJSON-line `WireFrame`s. Byte
         // splitting and framing only — classification and policy live
         // downstream.
+        let frame_observation = observation.clone();
         let transport = stream! {
             let mut line_buf = NdjsonBuffer::new();
             while let Some(chunk) = byte_stream.next().await {
@@ -1047,14 +1112,21 @@ where
 
                 for line in line_buf.decode(&bytes) {
                     tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
+                    if let Some(observation) = &frame_observation {
+                        observation.payload(&line);
+                    }
                     yield Ok(internal::adapter::WireFrame::Bytes(line));
                 }
             }
         };
 
         let stream: streaming::StreamingResult = Box::pin(
-            internal::adapter::run_wire_stream(transport, OllamaAdapter::default())
-                .instrument(span),
+            internal::adapter::run_wire_stream_observed(
+                transport,
+                OllamaAdapter::default(),
+                observation,
+            )
+            .instrument(span),
         );
 
         Ok(streaming::StreamingCompletionResponse::stream(

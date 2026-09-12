@@ -31,8 +31,6 @@ pub struct CapturedHttpRequest {
 pub enum MockHttpResponse {
     /// Return this body with a successful HTTP status.
     Success(Bytes),
-    /// Return a status-code error with the given body text.
-    Error(http::StatusCode, String),
     /// Return an HTTP response with the given (typically non-success) status
     /// and body, instead of a transport-level error.
     ErrorResponse(http::StatusCode, Bytes),
@@ -50,13 +48,11 @@ impl MockHttpResponse {
         Self::Success(body.into())
     }
 
-    /// Create an error response with a status code and message.
-    ///
-    /// Models a transport that reports a non-success status *without*
-    /// preserving the response headers (a custom [`HttpClientExt`]); use
-    /// [`Self::error_with_headers`] for the bundled reqwest behavior.
+    /// Create a transport-level status error whose reply carried no headers
+    /// of interest: the same shape as [`Self::error_with_headers`] with an
+    /// empty map, since a rejection always comes with its headers.
     pub fn error(status: http::StatusCode, message: impl Into<String>) -> Self {
-        Self::Error(status, message.into())
+        Self::error_with_headers(status, message, http::HeaderMap::new())
     }
 
     /// Create a transport-level status error that preserved the failed
@@ -183,11 +179,6 @@ impl RecordingHttpClient {
     {
         let (status, response_body, response_headers) = match response {
             MockHttpResponse::Success(response_body) => (http::StatusCode::OK, response_body, None),
-            MockHttpResponse::Error(status, message) => {
-                return Err(http_client::Error::InvalidStatusCodeWithMessage(
-                    status, message,
-                ));
-            }
             MockHttpResponse::ErrorWithHeaders(status, body, headers) => {
                 return Err(http_client::Error::InvalidStatusCodeWithDetails {
                     status,
@@ -249,8 +240,10 @@ impl HttpClientExt for RecordingHttpClient {
     where
         T: Into<Bytes> + WasmCompatSend,
     {
-        future::ready(Err(http_client::Error::InvalidStatusCode(
+        future::ready(Err(http_client::Error::non_success_with_details(
             http::StatusCode::NOT_IMPLEMENTED,
+            http::HeaderMap::new(),
+            String::new(),
         )))
     }
 }
@@ -323,8 +316,10 @@ impl HttpClientExt for SequencedHttpClient {
         async move {
             match response {
                 Some(response) => RecordingHttpClient::build_unary_response(response),
-                None => Err(http_client::Error::InvalidStatusCode(
+                None => Err(http_client::Error::non_success_with_details(
                     http::StatusCode::NOT_IMPLEMENTED,
+                    http::HeaderMap::new(),
+                    String::new(),
                 )),
             }
         }
@@ -344,8 +339,10 @@ impl HttpClientExt for SequencedHttpClient {
         async move {
             match response {
                 Some(response) => RecordingHttpClient::build_unary_response(response),
-                None => Err(http_client::Error::InvalidStatusCode(
+                None => Err(http_client::Error::non_success_with_details(
                     http::StatusCode::NOT_IMPLEMENTED,
+                    http::HeaderMap::new(),
+                    String::new(),
                 )),
             }
         }
@@ -358,8 +355,10 @@ impl HttpClientExt for SequencedHttpClient {
     where
         T: Into<Bytes> + WasmCompatSend,
     {
-        future::ready(Err(http_client::Error::InvalidStatusCode(
+        future::ready(Err(http_client::Error::non_success_with_details(
             http::StatusCode::NOT_IMPLEMENTED,
+            http::HeaderMap::new(),
+            String::new(),
         )))
     }
 }
@@ -382,8 +381,10 @@ impl HttpClientExt for MockStreamingClient {
         T: Into<Bytes> + WasmCompatSend,
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        future::ready(Err(http_client::Error::InvalidStatusCode(
+        future::ready(Err(http_client::Error::non_success_with_details(
             http::StatusCode::NOT_IMPLEMENTED,
+            http::HeaderMap::new(),
+            String::new(),
         )))
     }
 
@@ -394,8 +395,10 @@ impl HttpClientExt for MockStreamingClient {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        future::ready(Err(http_client::Error::InvalidStatusCode(
+        future::ready(Err(http_client::Error::non_success_with_details(
             http::StatusCode::NOT_IMPLEMENTED,
+            http::HeaderMap::new(),
+            String::new(),
         )))
     }
 
@@ -456,8 +459,10 @@ impl HttpClientExt for HttpErrorStreamingClient {
         T: Into<Bytes> + WasmCompatSend,
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        future::ready(Err(http_client::Error::InvalidStatusCode(
+        future::ready(Err(http_client::Error::non_success_with_details(
             http::StatusCode::NOT_IMPLEMENTED,
+            http::HeaderMap::new(),
+            String::new(),
         )))
     }
 
@@ -468,8 +473,10 @@ impl HttpClientExt for HttpErrorStreamingClient {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        future::ready(Err(http_client::Error::InvalidStatusCode(
+        future::ready(Err(http_client::Error::non_success_with_details(
             http::StatusCode::NOT_IMPLEMENTED,
+            http::HeaderMap::new(),
+            String::new(),
         )))
     }
 
@@ -483,8 +490,10 @@ impl HttpClientExt for HttpErrorStreamingClient {
         let status = self.status;
         let body = self.body.clone();
         async move {
-            Err(http_client::Error::InvalidStatusCodeWithMessage(
-                status, body,
+            Err(http_client::Error::non_success_with_details(
+                status,
+                http::HeaderMap::new(),
+                body,
             ))
         }
     }
@@ -515,8 +524,10 @@ impl HttpClientExt for SequencedStreamingHttpClient {
         T: Into<Bytes> + WasmCompatSend,
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        future::ready(Err(http_client::Error::InvalidStatusCode(
+        future::ready(Err(http_client::Error::non_success_with_details(
             http::StatusCode::NOT_IMPLEMENTED,
+            http::HeaderMap::new(),
+            String::new(),
         )))
     }
 
@@ -527,8 +538,10 @@ impl HttpClientExt for SequencedStreamingHttpClient {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        future::ready(Err(http_client::Error::InvalidStatusCode(
+        future::ready(Err(http_client::Error::non_success_with_details(
             http::StatusCode::NOT_IMPLEMENTED,
+            http::HeaderMap::new(),
+            String::new(),
         )))
     }
 
@@ -546,8 +559,9 @@ impl HttpClientExt for SequencedStreamingHttpClient {
 
         async move {
             let Some(chunks) = chunks else {
-                return Err(http_client::Error::InvalidStatusCodeWithMessage(
+                return Err(http_client::Error::non_success_with_details(
                     http::StatusCode::INTERNAL_SERVER_ERROR,
+                    http::HeaderMap::new(),
                     "streaming chunks should only be consumed once".to_string(),
                 ));
             };

@@ -18,7 +18,7 @@ fn native_http_errors_preserve_distinct_boundaries_before_report_erasure() {
     ] {
         let error = CompletionError::HttpError(native);
         let report = crate::error::ErrorReport::from(&error);
-        assert_eq!(report.kind, crate::error::ErrorKind::Http { status: None });
+        assert_eq!(report.kind, crate::error::ErrorKind::Http);
         let log = Arc::new(ObservationLog::default());
         let context = AdapterContext::new(log.clone(), Subject::default(), "call");
         let mut request = http::Request::new(());
@@ -356,7 +356,7 @@ async fn unary_failure_facts_preserve_retryability_without_copying_error_bodies(
                 AdapterEvent::Finished {
                     ending: AdapterEnding::Error {
                         boundary: AdapterErrorBoundary::ProviderResponse,
-                        kind: "http".into(),
+                        kind: "provider_response".into(),
                         status: Some(429),
                         retryable: true
                     }
@@ -637,7 +637,7 @@ async fn stream_terminal_eof_error_and_drop_have_distinct_closures() {
             false,
             AdapterEnding::Error {
                 boundary: AdapterErrorBoundary::ProviderResponse,
-                kind: "http".into(),
+                kind: "provider_response".into(),
                 status: Some(503),
                 retryable: true,
             },

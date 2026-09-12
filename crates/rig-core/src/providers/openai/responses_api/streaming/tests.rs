@@ -998,8 +998,9 @@ async fn transport_error_flushes_delivered_tool_calls_before_the_error() {
     });
     let chunks = vec![
         Ok(sse_bytes_from_data_lines([tool_call_done.to_string()])),
-        Err(crate::http_client::Error::InvalidStatusCodeWithMessage(
+        Err(crate::http_client::Error::non_success_with_details(
             http::StatusCode::BAD_GATEWAY,
+            http::HeaderMap::new(),
             r#"{"error":{"message":"upstream unavailable"}}"#.to_string(),
         )),
     ];
@@ -2234,7 +2235,7 @@ fn streaming_error_event_preserves_full_payload() {
 }
 
 #[tokio::test]
-async fn streaming_non_http_transport_error_stays_provider_error() {
+async fn streaming_non_http_transport_error_stays_a_transport_error() {
     use crate::http_client::sse::GenericEventSource;
     use crate::test_utils::SequencedStreamingHttpClient;
 
@@ -2258,13 +2259,13 @@ async fn streaming_non_http_transport_error_stays_provider_error() {
         .next()
         .await
         .expect("stream should yield transport error")
-        .expect_err("non-HTTP transport failure should surface as provider error");
+        .expect_err("non-HTTP transport failure should surface as a transport error");
     assert_eq!(
         err.to_string(),
-        "ProviderError: Invalid content type was returned: \"application/json\""
+        "HttpError: Invalid content type was returned: \"application/json\""
     );
-    assert_eq!(err.kind, ErrorKind::Provider);
-    // Rig-generated transport diagnostics are not provider response bodies.
+    assert_eq!(err.kind, ErrorKind::Http);
+    // A response-less transport failure has no provider response body.
     assert_eq!(err.provider_response_body(), None);
     assert_eq!(err.http_status, None);
 }

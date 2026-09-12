@@ -232,14 +232,12 @@ where
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 
-        let response = self
-            .client
-            .send::<_, Vec<u8>>(req)
-            .await
-            .map_err(EmbeddingError::HttpError)?;
+        let response = self.client.send::<_, Vec<u8>>(req).await?;
 
-        let status = response.status();
-        let raw_body = response.into_body().await?;
+        let (parts, body) = response.into_parts();
+        let status = parts.status;
+        let headers = Box::new(parts.headers);
+        let raw_body = body.await?;
 
         if status.is_success() {
             let body: ApiResponse<EmbeddingResponse> = serde_json::from_slice(raw_body.as_slice())?;
@@ -265,14 +263,15 @@ where
                     Err(EmbeddingError::from_http_response(
                         status,
                         String::from_utf8_lossy(&raw_body),
-                    ))
+                    )
+                    .with_response_headers(Some(headers)))
                 }
             }
         } else {
-            Err(EmbeddingError::from_http_response(
-                status,
-                String::from_utf8_lossy(&raw_body),
-            ))
+            Err(
+                EmbeddingError::from_http_response(status, String::from_utf8_lossy(&raw_body))
+                    .with_response_headers(Some(headers)),
+            )
         }
     }
 }
@@ -463,19 +462,18 @@ where
             .post("/v1/embed")?
             .body(body)
             .map_err(|error| EmbeddingError::HttpError(error.into()))?;
-        let response = self
-            .client
-            .send::<_, Vec<u8>>(request)
-            .await
-            .map_err(EmbeddingError::HttpError)?;
-        let status = response.status();
-        let raw_body = response.into_body().await?;
+        let response = self.client.send::<_, Vec<u8>>(request).await?;
+        let (parts, body) = response.into_parts();
+        let status = parts.status;
+        let headers = Box::new(parts.headers);
+        let raw_body = body.await?;
 
         if !status.is_success() {
             return Err(EmbeddingError::from_http_response(
                 status,
                 String::from_utf8_lossy(&raw_body),
-            ));
+            )
+            .with_response_headers(Some(headers)));
         }
 
         let body: ApiResponse<ImageEmbeddingResponse> =
@@ -490,7 +488,8 @@ where
                 return Err(EmbeddingError::from_http_response(
                     status,
                     String::from_utf8_lossy(&raw_body),
-                ));
+                )
+                .with_response_headers(Some(headers)));
             }
         };
 

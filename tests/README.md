@@ -458,10 +458,17 @@ hand-edited and no new fixture is committed. A scripted cell pins what the
 runtime does with the fault (the failure kind, the record, the committed
 history, the tools that never ran, the witness's facts); the request shape it
 would have sent is pinned by the recording's owning test, not by the cell.
-The same fault classifies differently by wire — Gemini's HTTP error envelope
-is `ErrorKind::Http { status }`, the Responses wire's is `ProviderResponse` —
-because the two go through different funnels in `rig_core::provider_response`
-(with and without a captured request id); the cells pin each wire's own kind.
+Every HTTP wire threads the witness's `AdapterContext` through its request,
+so a native cell reads the adapter's boundary facts (the request, the
+status, the provider's verdict, usage and error envelope, the closure) for
+Gemini, the OpenAI Chat Completions and Responses wires and Anthropic;
+Cohere, Ollama and the Gemini Interactions wire report the transport facts
+without a payload projection.
+A provider's error reply classifies the same on every wire —
+`ErrorKind::ProviderResponse`, status, body, headers and request id on the
+report — through the one funnel in `rig_core::provider_response`;
+`ErrorKind::Http` is a transport failure that produced no reply and carries
+no status: a transport never reports a status without the reply behind it.
 
 Historical execution logs, proof snapshots, review-application commands and
 archive infrastructure are intentionally not maintained. No historical download

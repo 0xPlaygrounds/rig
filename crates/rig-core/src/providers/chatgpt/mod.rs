@@ -487,11 +487,13 @@ where
             .body(body)
             .map_err(|err| CompletionError::HttpError(err.into()))?;
 
-        let response = self.client.send(req).await?;
-        let status = response.status();
-        let text = http_client::text(response).await?;
+        let response = self.client.send::<_, Vec<u8>>(req).await?;
+        let (parts, body) = response.into_parts();
+        let status = parts.status;
+        let text = String::from(String::from_utf8_lossy(&body.await?));
         if !status.is_success() {
-            return Err(CompletionError::from_http_response(status, text));
+            return Err(CompletionError::from_http_response(status, text)
+                .with_response_headers(Some(Box::new(parts.headers))));
         }
 
         // The `/responses` endpoint answers with an SSE body even for a

@@ -91,11 +91,10 @@ macro_rules! impl_model_lister {
 }
 pub(crate) use impl_model_lister;
 
-/// Map a transport-level send error into listing-flavored context: an
-/// [`http_client::Error::InvalidStatusCodeWithMessage`] (backends that reject
-/// non-2xx before handing back a response) keeps the provider label, path,
-/// status, and body preview, exactly like a non-2xx status on a returned
-/// response. Shared with listings that build their own request (copilot's
+/// Map a transport-level send error into listing-flavored context: a
+/// non-success reply the transport reported as an error keeps the provider
+/// label, path, status, and body preview, exactly like a non-2xx status on
+/// a returned response. Shared with listings that build their own request (copilot's
 /// auth-derived base URL cannot go through [`get_json`]).
 pub(crate) fn map_transport_error(
     provider_name: &str,
@@ -103,17 +102,8 @@ pub(crate) fn map_transport_error(
     error: http_client::Error,
 ) -> ModelListingError {
     match error {
-        http_client::Error::InvalidStatusCodeWithMessage(status, message) => {
-            ModelListingError::api_error_with_context(
-                provider_name,
-                path,
-                status.as_u16(),
-                message.as_bytes(),
-            )
-        }
-        // The reqwest transport reports non-success with preserved headers
-        // (rig#2314); listings have no request-id contract, so only the
-        // status and body matter here.
+        // Listings have no request-id contract, so only the status and body
+        // matter here.
         http_client::Error::InvalidStatusCodeWithDetails { status, body, .. } => {
             ModelListingError::api_error_with_context(
                 provider_name,
@@ -129,10 +119,9 @@ pub(crate) fn map_transport_error(
 /// GET `path` and decode the response body as `T`, with listing-flavored
 /// error context.
 ///
-/// Error triage is standardized on the most informative behavior: an
-/// [`http_client::Error::InvalidStatusCodeWithMessage`] surfaced by the
-/// transport (backends that reject non-2xx before handing back a response)
-/// is mapped into [`ModelListingError::api_error_with_context`] so the
+/// Error triage is standardized on the most informative behavior: a
+/// non-success reply surfaced by the transport as an error (backends that
+/// reject non-2xx before handing back a response) is mapped into [`ModelListingError::api_error_with_context`] so the
 /// provider label, path, status, and body preview survive, exactly like a
 /// non-2xx status on a returned response.
 pub(crate) async fn get_json<T, Ext, H>(

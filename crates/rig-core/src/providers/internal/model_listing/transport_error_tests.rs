@@ -18,8 +18,9 @@ fn details_variant_maps_to_api_error_with_context() {
     let with_message = map_transport_error(
         "test-provider",
         "/models",
-        http_client::Error::InvalidStatusCodeWithMessage(
+        http_client::Error::non_success_with_details(
             http::StatusCode::UNAUTHORIZED,
+            http::HeaderMap::new(),
             r#"{"error":"no"}"#.to_string(),
         ),
     );

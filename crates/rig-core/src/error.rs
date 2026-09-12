@@ -32,11 +32,11 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorKind {
-    /// A non-success HTTP response, or a transport failure without a status.
-    Http {
-        /// The status, when the failure had a response.
-        status: Option<u16>,
-    },
+    /// A transport failure that produced no provider reply: a reset
+    /// connection, a timeout, a protocol error, an unreadable response. It
+    /// never carries a status; a reply the server made, whatever its status,
+    /// is [`Self::ProviderResponse`].
+    Http,
     /// JSON serialization or deserialization failed.
     Json,
     /// A URL could not be parsed.
@@ -47,7 +47,9 @@ pub enum ErrorKind {
     Response,
     /// The provider reported a failure without a preserved raw response.
     Provider,
-    /// The provider's raw error response was preserved.
+    /// The provider replied and its raw response was preserved: a non-2xx
+    /// status with a body, a 2xx error envelope, or a non-HTTP transport's
+    /// error payload. Status, body, request id and headers are on the report.
     ProviderResponse,
     /// A tool failed; the inner kind is the tool's own classification.
     Tool(ToolErrorKind),
@@ -91,7 +93,7 @@ impl ErrorKind {
     /// deliberate change here, never a silent drift.
     pub fn code(&self) -> &'static str {
         match self {
-            Self::Http { .. } => "http",
+            Self::Http => "http",
             Self::Json => "json",
             Self::Url => "url",
             Self::Request => "request",
@@ -273,9 +275,7 @@ pub fn transient_transport(error: &crate::http_client::Error) -> bool {
         | crate::http_client::Error::InvalidHeaderValue(_)
         | crate::http_client::Error::NoHeaders
         | crate::http_client::Error::InvalidContentType(_) => false,
-        crate::http_client::Error::InvalidStatusCode(status)
-        | crate::http_client::Error::InvalidStatusCodeWithMessage(status, _)
-        | crate::http_client::Error::InvalidStatusCodeWithDetails { status, .. } => {
+        crate::http_client::Error::InvalidStatusCodeWithDetails { status, .. } => {
             retryable_status(Some(status.as_u16()))
         }
     }
@@ -294,9 +294,11 @@ fn source_chain(error: &(dyn std::error::Error + 'static)) -> Vec<String> {
 }
 
 impl CompletionError {
-    /// Whether the same request may reasonably be retried, per
-    /// [`retryable_status`]: HTTP failures classify by status, everything
-    /// else is a fault in the request or the response and is not retried.
+    /// Whether the same request may reasonably be retried: a provider's
+    /// reply classifies by status ([`retryable_status`]), a response-less
+    /// transport failure by what it is ([`transient_transport`]), and
+    /// everything else is a fault in the request or the response and is not
+    /// retried.
     pub fn is_retryable(&self) -> bool {
         match self {
             Self::HttpError(error) => transient_transport(error),
@@ -320,10 +322,7 @@ impl CompletionError {
 impl From<&CompletionError> for ErrorReport {
     fn from(error: &CompletionError) -> Self {
         let (kind, http_status) = match error {
-            CompletionError::HttpError(inner) => {
-                let status = inner.non_success_status().map(|s| s.as_u16());
-                (ErrorKind::Http { status }, status)
-            }
+            CompletionError::HttpError(_) => (ErrorKind::Http, None),
             CompletionError::JsonError(_) => (ErrorKind::Json, None),
             CompletionError::UrlError(_) => (ErrorKind::Url, None),
             CompletionError::RequestError(_) => (ErrorKind::Request, None),
@@ -348,20 +347,8 @@ impl From<&CompletionError> for ErrorReport {
         // readable after the failure crossed the wire.
         let provider_response = match error {
             CompletionError::ProviderResponse(response) => Some(Box::new(response.clone())),
-            CompletionError::HttpError(inner) => inner.non_success_status().map(|status| {
-                Box::new(
-                    crate::provider_response::ProviderResponseError::new(
-                        status,
-                        inner.non_success_body().unwrap_or_default(),
-                    )
-                    .with_headers(
-                        inner
-                            .non_success_headers()
-                            .map(|headers| Box::new(headers.clone())),
-                    ),
-                )
-            }),
-            CompletionError::JsonError(_)
+            CompletionError::HttpError(_)
+            | CompletionError::JsonError(_)
             | CompletionError::UrlError(_)
             | CompletionError::RequestError(_)
             | CompletionError::ResponseError(_)
@@ -464,10 +451,11 @@ impl From<MemoryError> for ErrorReport {
 
 impl From<&EmbeddingError> for ErrorReport {
     fn from(error: &EmbeddingError) -> Self {
+        let mut transport_retryable = false;
         let (kind, http_status) = match error {
             EmbeddingError::HttpError(inner) => {
-                let status = inner.non_success_status().map(|s| s.as_u16());
-                (ErrorKind::Http { status }, status)
+                transport_retryable = transient_transport(inner);
+                (ErrorKind::Http, None)
             }
             EmbeddingError::JsonError(_) => (ErrorKind::Json, None),
             EmbeddingError::UrlError(_) => (ErrorKind::Url, None),
@@ -485,7 +473,7 @@ impl From<&EmbeddingError> for ErrorReport {
             }
         };
         let retryable = match kind {
-            ErrorKind::Http { status } => retryable_status(status),
+            ErrorKind::Http => transport_retryable,
             ErrorKind::ProviderResponse => retryable_status(http_status),
             ErrorKind::Json
             | ErrorKind::Url
@@ -506,19 +494,6 @@ impl From<&EmbeddingError> for ErrorReport {
         };
         let provider_response = match error {
             EmbeddingError::ProviderResponse(response) => Some(Box::new(response.clone())),
-            EmbeddingError::HttpError(inner) => inner.non_success_status().map(|status| {
-                Box::new(
-                    crate::provider_response::ProviderResponseError::new(
-                        status,
-                        inner.non_success_body().unwrap_or_default(),
-                    )
-                    .with_headers(
-                        inner
-                            .non_success_headers()
-                            .map(|headers| Box::new(headers.clone())),
-                    ),
-                )
-            }),
             _ => None,
         };
         let request_id = provider_response
@@ -546,10 +521,11 @@ impl From<EmbeddingError> for ErrorReport {
 
 impl From<&RerankError> for ErrorReport {
     fn from(error: &RerankError) -> Self {
+        let mut transport_retryable = false;
         let (kind, http_status) = match error {
             RerankError::HttpError(inner) => {
-                let status = inner.non_success_status().map(|s| s.as_u16());
-                (ErrorKind::Http { status }, status)
+                transport_retryable = transient_transport(inner);
+                (ErrorKind::Http, None)
             }
             RerankError::JsonError(_) => (ErrorKind::Json, None),
             RerankError::UrlError(_) => (ErrorKind::Url, None),
@@ -561,7 +537,7 @@ impl From<&RerankError> for ErrorReport {
             }
         };
         let retryable = match kind {
-            ErrorKind::Http { status } => retryable_status(status),
+            ErrorKind::Http => transport_retryable,
             ErrorKind::ProviderResponse => retryable_status(http_status),
             ErrorKind::Json
             | ErrorKind::Url
@@ -582,19 +558,6 @@ impl From<&RerankError> for ErrorReport {
         };
         let provider_response = match error {
             RerankError::ProviderResponse(response) => Some(Box::new(response.clone())),
-            RerankError::HttpError(inner) => inner.non_success_status().map(|status| {
-                Box::new(
-                    crate::provider_response::ProviderResponseError::new(
-                        status,
-                        inner.non_success_body().unwrap_or_default(),
-                    )
-                    .with_headers(
-                        inner
-                            .non_success_headers()
-                            .map(|headers| Box::new(headers.clone())),
-                    ),
-                )
-            }),
             _ => None,
         };
         let request_id = provider_response
@@ -636,16 +599,25 @@ impl From<&VectorStoreError> for ErrorReport {
                 (ErrorKind::Request, None)
             }
             VectorStoreError::MissingIdError(_) => (ErrorKind::Response, None),
-            VectorStoreError::Http(inner) => {
-                let status = inner.non_success_status().map(|s| s.as_u16());
-                (ErrorKind::Http { status }, status)
-            }
+            VectorStoreError::Http(_) => (ErrorKind::Http, None),
+            // A store's own non-2xx reply: the server answered, so the status
+            // classifies it and its retryability, like any provider reply.
             VectorStoreError::ExternalAPIError(status, _) => {
-                let status = Some(status.as_u16());
-                (ErrorKind::Http { status }, status)
+                (ErrorKind::ProviderResponse, Some(status.as_u16()))
             }
         };
-        let retryable = matches!(kind, ErrorKind::Http { .. }) && retryable_status(http_status);
+        let retryable = match error {
+            VectorStoreError::Http(inner) => transient_transport(inner),
+            VectorStoreError::ExternalAPIError(..) => retryable_status(http_status),
+            _ => false,
+        };
+        // The store's reply travels with the report like any provider's.
+        let provider_response = match error {
+            VectorStoreError::ExternalAPIError(status, body) => Some(Box::new(
+                crate::provider_response::ProviderResponseError::new(*status, body.clone()),
+            )),
+            _ => None,
+        };
         ErrorReport {
             kind,
             retryable,
@@ -655,7 +627,7 @@ impl From<&VectorStoreError> for ErrorReport {
             refusal: false,
             source_chain: source_chain(error),
             request_id: None,
-            provider_response: None,
+            provider_response,
         }
     }
 }

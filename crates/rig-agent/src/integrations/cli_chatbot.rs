@@ -124,9 +124,9 @@ impl CliChat for AgentImpl {
                         .map(<[rig_core::completion::Message]>::to_vec);
                 }
                 Err(e) => {
-                    break Err(PromptError::CompletionError(
-                        CompletionError::ResponseError(e.to_string()),
-                    ));
+                    // The stream's error is the run's error: the provider's
+                    // report, a cancel, a memory failure — not its `Display`.
+                    break Err(crate::agent::streaming_error_into_prompt(e));
                 }
                 _ => continue,
             }

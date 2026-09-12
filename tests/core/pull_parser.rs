@@ -56,8 +56,10 @@ impl HttpClientExt for Replay {
         T: Into<Bytes> + WasmCompatSend,
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        std::future::ready(Err(http_client::Error::InvalidStatusCode(
+        std::future::ready(Err(http_client::Error::non_success_with_details(
             StatusCode::NOT_IMPLEMENTED,
+            rig::http_client::HeaderMap::new(),
+            String::new(),
         )))
     }
     fn send_multipart<U>(
@@ -67,8 +69,10 @@ impl HttpClientExt for Replay {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        std::future::ready(Err(http_client::Error::InvalidStatusCode(
+        std::future::ready(Err(http_client::Error::non_success_with_details(
             StatusCode::NOT_IMPLEMENTED,
+            rig::http_client::HeaderMap::new(),
+            String::new(),
         )))
     }
     fn send_streaming<T>(

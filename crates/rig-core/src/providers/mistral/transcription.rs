@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::completion::Usage;
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::transcription::request_id_from_headers;
+use crate::providers::internal::request_id_from_headers;
 use crate::providers::internal::transcription::{TranscriptionFields, transcription_form};
 use crate::transcription::{self, NormalizeTranscriptionResponse, TranscriptionError};
 use crate::wasm_compat::WasmCompatSend;
@@ -143,11 +143,7 @@ where
             .body(body)
             .map_err(|e| TranscriptionError::RequestError(e.into()))?;
 
-        let response = self
-            .client
-            .send_multipart::<Bytes>(req)
-            .await
-            .map_err(TranscriptionError::HttpError)?;
+        let response = self.client.send_multipart::<Bytes>(req).await?;
 
         let (parts, body) = response.into_parts();
         let status = parts.status;
@@ -169,6 +165,7 @@ where
                 status,
                 String::from_utf8_lossy(&response_bytes),
             )
+            .with_provider_request_id(provider_request_id)
             .with_response_headers(Some(Box::new(parts.headers))))
         }
     }

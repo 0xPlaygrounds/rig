@@ -105,6 +105,7 @@ mod builder;
 mod completion;
 pub(crate) mod drive;
 mod engine;
+pub(crate) use engine::streaming_error_into_prompt;
 pub mod hook;
 pub mod run;
 pub mod runner;

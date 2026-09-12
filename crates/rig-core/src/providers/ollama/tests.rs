@@ -1511,7 +1511,7 @@ async fn completion_non_success_preserves_status_and_body() {
         .await
         .expect_err("should fail with non-success status");
 
-    assert!(matches!(error, CompletionError::HttpError(_)));
+    assert!(matches!(error, CompletionError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)
@@ -1543,7 +1543,7 @@ async fn embeddings_non_success_preserves_status_and_body() {
         .await
         .expect_err("should fail with non-success status");
 
-    assert!(matches!(error, EmbeddingError::HttpError(_)));
+    assert!(matches!(error, EmbeddingError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)

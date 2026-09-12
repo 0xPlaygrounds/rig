@@ -303,7 +303,7 @@ async fn transcription_http_non_success_preserves_status_and_body() {
         panic!("transcription should fail with non-success status")
     };
 
-    assert!(matches!(error, TranscriptionError::HttpError(_)));
+    assert!(matches!(error, TranscriptionError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::BAD_REQUEST)

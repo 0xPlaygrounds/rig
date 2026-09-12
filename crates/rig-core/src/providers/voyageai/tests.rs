@@ -33,7 +33,7 @@ async fn rerank_non_success_preserves_status_and_body() {
         .await
         .expect_err("rerank should fail with non-success status");
 
-    assert!(matches!(error, RerankError::HttpError(_)));
+    assert!(matches!(error, RerankError::ProviderResponse(_)));
     assert_eq!(
         error.provider_response_status(),
         Some(http::StatusCode::SERVICE_UNAVAILABLE)

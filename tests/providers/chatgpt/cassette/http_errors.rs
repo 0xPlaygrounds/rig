@@ -36,7 +36,7 @@ async fn assert_nonstreaming_http_error(
         .await
         .expect_err("non-success response should fail");
 
-    assert!(matches!(&error, CompletionError::HttpError(_)));
+    assert!(matches!(&error, CompletionError::ProviderResponse(_)));
     assert_eq!(error.provider_response_status(), Some(expected_status));
     let body = error
         .provider_response_body()

@@ -25,9 +25,10 @@ fn prompt_error_forwards_provider_response_to_completion_error() {
 #[test]
 fn prompt_error_provider_response_helpers_forward_http_status_and_body() {
     let body = r#"{"error":{"message":"unauthorized"}}"#;
-    let error = PromptError::CompletionError(CompletionError::HttpError(
-        http_client::Error::InvalidStatusCodeWithMessage(
+    let error = PromptError::CompletionError(CompletionError::from_transport_error(
+        http_client::Error::non_success_with_details(
             http::StatusCode::UNAUTHORIZED,
+            http::HeaderMap::new(),
             body.to_string(),
         ),
     ));
@@ -81,16 +82,19 @@ fn prompt_error_forwards_captured_response_headers() {
     let body = r#"{"error":{"message":"rate limited"}}"#;
 
     for completion_error in [
-        // Contract provider: headers live on the ProviderResponse.
-        CompletionError::from_http_response_with_request_id(
-            http::StatusCode::TOO_MANY_REQUESTS,
-            body,
-            Some("req_abc".to_string()),
-        )
-        .with_response_headers(Some(Box::new(headers.clone()))),
-        // Contract-less provider: headers live on the transport error.
+        // A preserved response, with and without a request id.
+        CompletionError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, body)
+            .with_provider_request_id(Some("req_abc".to_string()))
+            .with_response_headers(Some(Box::new(headers.clone()))),
         CompletionError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, body)
             .with_response_headers(Some(Box::new(headers.clone()))),
+        // A transport that reported the reply as an error routes through
+        // the same funnel, headers included.
+        CompletionError::from_transport_error(http_client::Error::InvalidStatusCodeWithDetails {
+            status: http::StatusCode::TOO_MANY_REQUESTS,
+            body: body.to_string(),
+            headers: Box::new(headers.clone()),
+        }),
     ] {
         let prompt_error = PromptError::CompletionError(completion_error);
         assert_eq!(

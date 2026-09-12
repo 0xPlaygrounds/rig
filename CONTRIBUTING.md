@@ -78,9 +78,13 @@ expectations:
   streaming normalization patterns.
 - Provider error responses preserve status/body details through the relevant Rig
   error helpers, so callers can inspect provider response details.
-- Non-2xx completion responses surface through the capability error's
-  `from_http_response(status, body)` helper so retry/status logic can inspect
-  `provider_response_status()` and the raw provider body.
+- Non-2xx completion responses surface through the capability error's one
+  funnel, `from_http_response(status, body)` (or `?` on the transport error,
+  which routes through it), stamped with `with_provider_request_id` and
+  `with_response_headers` when the call site has them, so retry/status logic
+  can inspect `provider_response_status()`, the raw provider body, the
+  request id and `Retry-After`. `HttpError` is only a transport failure that
+  produced no provider reply, and never carries a status.
 - `ProviderResponseExt`, telemetry spans, and GenAI fields are populated
   consistently with nearby providers where applicable.
 - Tests cover the smallest reliable scope: unit tests, cassette-backed provider

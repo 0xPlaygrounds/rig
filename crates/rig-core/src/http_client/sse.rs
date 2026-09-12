@@ -168,7 +168,16 @@ where
             if let Some(observation) = &observation {
                 observation.start(&req_clone);
             }
-            let response = client_clone.send_streaming(req_clone).await;
+            let response = match client_clone.send_streaming(req_clone).await {
+                // The bundled transports reject a non-success reply before it
+                // gets here; a custom `HttpClientExt` may hand it back as a
+                // response. Either way the server answered, and its answer —
+                // status, headers, body — is the error, never a bare status.
+                Ok(response) if response.status() != StatusCode::OK => {
+                    Err(reject_response(response).await)
+                }
+                other => other,
+            };
             if let Some(observation) = &observation {
                 match &response {
                     Ok(response) => observation
@@ -272,9 +281,12 @@ where
                                             crate::observe::AdapterErrorBoundary::from_http(&err),
                                         );
                                     }
-                                    // Transition: Connecting -> Closed. A rejected
-                                    // response is terminal: the retry policy governs
-                                    // transport failures, not a server that answered.
+                                    // Transition: Connecting -> Closed. Only a
+                                    // content-type failure reaches here (a non-200
+                                    // was rejected in the response future and goes
+                                    // to the retry policy like any transport
+                                    // rejection); a 200 that is not an event stream
+                                    // is terminal.
                                     this.state.set(SourceState::Closed);
                                     return Poll::Ready(Some(Err(err)));
                                 }
@@ -409,14 +421,46 @@ fn capture_request_id_header<T>(capture: Option<&(String, RequestIdSlot)>, respo
     }
 }
 
+/// Bytes of a rejected reply's body kept on the error; a reply longer than
+/// this is cut there, the way a provider's error payload never is (a cut
+/// body is not JSON any more, so `provider_response_json` reports it as
+/// malformed rather than absent).
+const REJECTED_BODY_LIMIT: usize = 1 << 20;
+
+/// Chunks read off a rejected reply before giving up on it, so a transport
+/// that keeps yielding empty chunks cannot hold the opener.
+const REJECTED_CHUNK_LIMIT: usize = 4096;
+
+/// Turn a reply the event source will not stream (any status but 200,
+/// a 204 included: a status is a status) into the non-success error,
+/// reading the body to its end (bounded in bytes and chunks; the transport's
+/// own timeouts bound the time) so the provider's payload and the
+/// transport's headers ride on the error.
+async fn reject_response(response: Response<BoxedStream>) -> super::Error {
+    let (parts, mut body) = response.into_parts();
+    let mut collected = Vec::new();
+    let mut chunks = 0;
+    while let Some(chunk) = body.next().await {
+        chunks += 1;
+        let room = REJECTED_BODY_LIMIT.saturating_sub(collected.len());
+        match chunk {
+            Ok(bytes) if room > 0 && chunks <= REJECTED_CHUNK_LIMIT => {
+                collected.extend(bytes.iter().take(room));
+            }
+            _ => break,
+        }
+    }
+    super::Error::non_success_with_details(
+        parts.status,
+        parts.headers,
+        String::from_utf8_lossy(&collected).into_owned(),
+    )
+}
+
 fn check_response<T>(
     response: Response<T>,
     allow_missing_content_type: bool,
 ) -> Result<Response<T>, super::Error> {
-    let StatusCode::OK = response.status() else {
-        return Err(super::Error::InvalidStatusCode(response.status()));
-    };
-
     let Some(content_type) = response.headers().get(&http::header::CONTENT_TYPE) else {
         if allow_missing_content_type {
             return Ok(response);

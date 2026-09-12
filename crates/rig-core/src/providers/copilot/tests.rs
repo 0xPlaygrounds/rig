@@ -870,9 +870,11 @@ async fn chat_stream_terminates_after_transport_error() {
         Ok(sse_bytes_from_data_lines([
             "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"ping\",\"arguments\":\"\"}}]},\"finish_reason\":null}],\"usage\":null}",
         ])),
-        Err(http_client::Error::InvalidStatusCode(
-            http::StatusCode::BAD_GATEWAY,
-        )),
+        // The connection drops mid-stream: no reply, no status.
+        Err(http_client::Error::instance(std::io::Error::new(
+            std::io::ErrorKind::ConnectionReset,
+            "connection reset",
+        ))),
     ];
 
     let http_client = SequencedStreamingHttpClient::new(chunks);
@@ -909,14 +911,11 @@ async fn chat_stream_terminates_after_transport_error() {
             Err(err) => {
                 assert_eq!(
                     err.to_string(),
-                    "HttpError: Invalid status code: 502 Bad Gateway"
+                    "HttpError: Http client error: connection reset"
                 );
-                assert_eq!(
-                    err.http_status,
-                    Some(http::StatusCode::BAD_GATEWAY.as_u16())
-                );
-                // A status-only `HttpError` preserves no provider body.
-                assert!(err.provider_response_body().is_none_or(str::is_empty));
+                // A transport failure carries no status and no provider body.
+                assert_eq!(err.http_status, None);
+                assert!(err.provider_response_body().is_none());
                 saw_error = true;
             }
             Ok(other) => panic!("unexpected stream item: {other:?}"),
