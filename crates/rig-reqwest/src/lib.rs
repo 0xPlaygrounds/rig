@@ -168,7 +168,7 @@ use std::pin::Pin;
 ///
 /// This is the response-less side (connect, decode, timeout): a reply the
 /// server made is read off the `reqwest::Response` with its body and headers
-/// by [`non_success_status_error`] instead, never reduced to a bare status.
+/// by the send path instead, never reduced to a bare status.
 /// Rig never calls `error_for_status`, so a `reqwest::Error` here carries no
 /// reply to preserve.
 pub fn from_reqwest(err: reqwest::Error) -> Error {
