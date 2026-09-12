@@ -28,6 +28,8 @@ mod ecs_termination;
 mod goldens;
 #[path = "common/reasoning.rs"]
 mod reasoning;
+#[path = "common/stream_faults.rs"]
+mod stream_faults;
 #[path = "common/support.rs"]
 mod support;
 

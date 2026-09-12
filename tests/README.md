@@ -444,6 +444,25 @@ Run a native family using its catalog binary and test module, for example:
 cargo test --locked -p rig --test anthropic ecs_outcome -- --nocapture
 ```
 
+### Stream-fault cells
+
+`tests/providers/{gemini,openai}/cassette/stream_faults.rs` and their
+`ecs_stream_faults.rs` twins drive the runner and the native runtime through
+the real adapter into a stream that ends badly: the committed error
+recordings for a setup failure, the committed text stream dropped by its
+consumer, and scripted faults served by `rig::test_utils`'s sequenced
+transport — a recording cut before its terminal (`tests/common/stream_faults.rs`),
+a Gemini refusal, an in-band error after content. Every scripted frame is a
+labelled constant with its provenance beside the cell; no cassette is
+hand-edited and no new fixture is committed. A scripted cell pins what the
+runtime does with the fault (the failure kind, the record, the committed
+history, the tools that never ran, the witness's facts); the request shape it
+would have sent is pinned by the recording's owning test, not by the cell.
+The same fault classifies differently by wire — Gemini's HTTP error envelope
+is `ErrorKind::Http { status }`, the Responses wire's is `ProviderResponse` —
+because the two go through different funnels in `rig_core::provider_response`
+(with and without a captured request id); the cells pin each wire's own kind.
+
 Historical execution logs, proof snapshots, review-application commands and
 archive infrastructure are intentionally not maintained. No historical download
 or cache is required for regression tests. Consumed cassettes and goldens remain

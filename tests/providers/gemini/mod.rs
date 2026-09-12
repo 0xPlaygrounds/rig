@@ -26,6 +26,7 @@ mod cassette {
     mod ecs_ordering;
     mod ecs_parity;
     mod ecs_prompt_caching;
+    mod ecs_stream_faults;
     mod ecs_stress_context;
     mod ecs_stress_main;
     #[path = "ecs_stress/main_golden.rs"]
@@ -73,6 +74,7 @@ mod cassette {
     mod reasoning_tool_roundtrip;
     mod regression_suite;
     mod response_identity;
+    mod stream_faults;
     mod stream_terminal_matrix;
     mod streaming;
     mod streaming_grammar;

@@ -609,6 +609,7 @@
     "tests/common/cassette_safety.rs",
     "tests/common/cassettes.rs",
     "tests/common/goldens.rs",
+    "tests/common/stream_faults.rs",
     "tests/common/support.rs",
     "tests/data/camponotus_flavomarginatus_ant.jpg",
     "tests/ecs_parity/README.md",
@@ -856,6 +857,7 @@
     "tests/providers/gemini/cassette/ecs_ordering.rs",
     "tests/providers/gemini/cassette/ecs_parity.rs",
     "tests/providers/gemini/cassette/ecs_prompt_caching.rs",
+    "tests/providers/gemini/cassette/ecs_stream_faults.rs",
     "tests/providers/gemini/cassette/ecs_stress_context.rs",
     "tests/providers/gemini/cassette/ecs_stress_main.rs",
     "tests/providers/gemini/cassette/ecs_stress_patch.rs",
@@ -892,6 +894,7 @@
     "tests/providers/gemini/cassette/reasoning_tool_roundtrip.rs",
     "tests/providers/gemini/cassette/regression_suite.rs",
     "tests/providers/gemini/cassette/response_identity.rs",
+    "tests/providers/gemini/cassette/stream_faults.rs",
     "tests/providers/gemini/cassette/stream_terminal_matrix.rs",
     "tests/providers/gemini/cassette/streaming.rs",
     "tests/providers/gemini/cassette/streaming_grammar.rs",
@@ -1071,6 +1074,7 @@
     "tests/providers/openai/cassette/ecs_ordering.rs",
     "tests/providers/openai/cassette/ecs_parity.rs",
     "tests/providers/openai/cassette/ecs_prompt_caching.rs",
+    "tests/providers/openai/cassette/ecs_stream_faults.rs",
     "tests/providers/openai/cassette/ecs_termination.rs",
     "tests/providers/openai/cassette/effect_corpus.rs",
     "tests/providers/openai/cassette/embedding_matrix.rs",
@@ -1105,6 +1109,7 @@
     "tests/providers/openai/cassette/responses_sessions.rs",
     "tests/providers/openai/cassette/responses_tool_args.rs",
     "tests/providers/openai/cassette/responses_tool_choice.rs",
+    "tests/providers/openai/cassette/stream_faults.rs",
     "tests/providers/openai/cassette/streaming.rs",
     "tests/providers/openai/cassette/streaming_grammar.rs",
     "tests/providers/openai/cassette/streaming_grammar_chat.rs",
@@ -13044,6 +13049,50 @@
       "ecs": null
     },
     {
+      "id": "rig::gemini::gemini::cassette::stream_faults::blocked_prompt_is_a_provider_refusal_not_a_truncation",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/stream_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_stream_faults::blocked_prompt_is_a_provider_refusal_not_a_truncation",
+        "source": "tests/providers/gemini/cassette/ecs_stream_faults.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::stream_faults::in_band_error_after_content_fails_with_the_envelope",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/stream_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_stream_faults::in_band_error_after_content_fails_with_the_envelope",
+        "source": "tests/providers/gemini/cassette/ecs_stream_faults.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::stream_faults::setup_failure_fails_the_run_with_the_recorded_status",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/stream_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_stream_faults::setup_failure_fails_the_run_with_the_recorded_status",
+        "source": "tests/providers/gemini/cassette/ecs_stream_faults.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::stream_faults::truncation_after_content_fails_the_run_and_keeps_the_prefix",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/stream_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_stream_faults::truncation_after_content_fails_the_run_and_keeps_the_prefix",
+        "source": "tests/providers/gemini/cassette/ecs_stream_faults.rs"
+      }
+    },
+    {
       "id": "rig::gemini::gemini::cassette::stream_terminal_matrix::gemini_3_flash_does_not_emit_the_intermediate_finish",
       "classification": "shared_provider",
       "source": "tests/providers/gemini/cassette/stream_terminal_matrix.rs",
@@ -22181,6 +22230,61 @@
       "source": "tests/providers/openai/cassette/responses_tool_choice.rs",
       "configuration": "root-bedrock",
       "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::stream_faults::dropping_the_stream_at_the_first_delta_records_a_cancel",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/stream_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_stream_faults::despawning_the_stream_at_the_first_delta_records_a_cancel",
+        "source": "tests/providers/openai/cassette/ecs_stream_faults.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::stream_faults::error_event_after_content_fails_with_the_provider_error",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/stream_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_stream_faults::error_event_after_content_fails_with_the_provider_error",
+        "source": "tests/providers/openai/cassette/ecs_stream_faults.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::stream_faults::setup_failure_fails_the_run_with_the_recorded_status",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/stream_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_stream_faults::setup_failure_fails_the_run_with_the_recorded_status",
+        "source": "tests/providers/openai/cassette/ecs_stream_faults.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::stream_faults::truncation_after_a_complete_tool_call_never_runs_the_tool",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/stream_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_stream_faults::truncation_after_a_complete_tool_call_never_runs_the_tool",
+        "source": "tests/providers/openai/cassette/ecs_stream_faults.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::stream_faults::truncation_after_content_fails_the_run_and_keeps_the_prefix",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/stream_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_stream_faults::truncation_after_content_fails_the_run_and_keeps_the_prefix",
+        "source": "tests/providers/openai/cassette/ecs_stream_faults.rs"
+      }
     },
     {
       "id": "rig::openai::openai::cassette::streaming::example_streaming_prompt",
