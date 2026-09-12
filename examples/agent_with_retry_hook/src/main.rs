@@ -109,7 +109,7 @@ async fn main() -> Result<()> {
         .build();
 
     let response = agent
-        .runner("Begin the retry-hook demonstration.")
+        .prompt("Begin the retry-hook demonstration.")
         .max_turns(2)
         .add_hook(RetryOnMarker::with_feedback(
             "RETRY:",

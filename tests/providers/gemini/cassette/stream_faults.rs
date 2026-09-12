@@ -85,7 +85,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
                 .max_tokens(SETUP_MAX_TOKENS)
                 .record_effects_with_events()
                 .build();
-            let mut stream = agent.stream_prompt(SETUP_PROMPT).stream().await;
+            let mut stream = agent.prompt(SETUP_PROMPT).stream();
             let drained = drain(&mut stream).await;
             drop(stream);
 
@@ -115,7 +115,7 @@ async fn blocked_prompt_is_a_provider_refusal_not_a_truncation() {
         .agent(GEMINI_2_5_FLASH)
         .record_effects_with_events()
         .build();
-    let mut stream = agent.stream_prompt("pong?").stream().await;
+    let mut stream = agent.prompt("pong?").stream();
     let drained = drain(&mut stream).await;
     drop(stream);
 
@@ -149,7 +149,7 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
         .agent(GEMINI_2_5_FLASH)
         .record_effects_with_events()
         .build();
-    let mut stream = agent.stream_prompt("pong?").stream().await;
+    let mut stream = agent.prompt("pong?").stream();
     let drained = drain(&mut stream).await;
     drop(stream);
 
@@ -181,7 +181,7 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
         .agent(GEMINI_2_5_FLASH)
         .record_effects_with_events()
         .build();
-    let mut stream = agent.stream_prompt("pong?").stream().await;
+    let mut stream = agent.prompt("pong?").stream();
     let drained = drain(&mut stream).await;
     drop(stream);
 

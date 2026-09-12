@@ -36,11 +36,10 @@ async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("In one short sentence, describe the color of a clear daytime sky.")
+                .prompt("In one short sentence, describe the color of a clear daytime sky.")
                 .add_hook(tap)
                 .max_turns(2)
-                .stream()
-                .await;
+                .stream();
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -90,14 +89,13 @@ async fn streaming_tool_turns_fire_model_turn_finished() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(
+                .prompt(
                     "First add 40 and 2 with the add tool. Then subtract 10 from that sum with the \
                      subtract tool. Report the final number.",
                 )
                 .add_hook(tap)
                 .max_turns(6)
-                .stream()
-                .await;
+                .stream();
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -144,16 +142,13 @@ async fn streaming_result_redaction_reaches_final_response() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(
-                    "Use the add tool to add 5 and 5, then report the exact tool result.",
-                )
+                .prompt("Use the add tool to add 5 and 5, then report the exact tool result.")
                 .add_hook(RewriteToolResult {
                     tool: "add",
                     rewrite: ResultRewrite::Replace("STREAM-REDACTED-Q3"),
                 })
                 .max_turns(4)
-                .stream()
-                .await;
+                .stream();
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -193,13 +188,12 @@ async fn streaming_active_tools_narrowing_filters_a_tool() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("Compute 12 + 8, then compute 30 - 7. Report whichever you can.")
+                .prompt("Compute 12 + 8, then compute 30 - 7. Report whichever you can.")
                 .add_hook(ApplyPatch(
                     RequestPatch::new().active_tools(["add"]).temperature(0.0),
                 ))
                 .max_turns(5)
-                .stream()
-                .await;
+                .stream();
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -241,14 +235,13 @@ async fn streaming_skip_leaves_tool_unexecuted() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("Add 14 and 6, and subtract 9 from 40. Report what you can.")
+                .prompt("Add 14 and 6, and subtract 9 from 40. Report what you can.")
                 .add_hook(SkipToolHook {
                     tool_name: "subtract",
                     reason: "the subtract tool is offline; continue without it",
                 })
                 .max_turns(5)
-                .stream()
-                .await;
+                .stream();
 
             let final_text = collect_stream_final_response(&mut stream)
                 .await
@@ -308,7 +301,7 @@ async fn blocking_and_streaming_produce_same_final_answer() {
                 .tool(add_s)
                 .tool(sub_s)
                 .build();
-            let mut stream = agent.stream_prompt(PROMPT).max_turns(6).stream().await;
+            let mut stream = agent.prompt(PROMPT).max_turns(6).stream();
             let final_text = collect_stream_final_response(&mut stream)
                 .await
                 .expect("a final response");

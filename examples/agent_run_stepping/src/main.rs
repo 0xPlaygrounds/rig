@@ -11,7 +11,7 @@
 //!
 //! For the common case you don't need that level of control: attach an
 //! [`AgentHook`] to observe tool calls (and every other event) without
-//! hand-driving the loop. Use `agent.runner(prompt).add_hook(h).run().await`.
+//! hand-driving the loop. Use `agent.prompt(prompt).add_hook(h).run().await`.
 //!
 //! Both approaches are demonstrated in `main` below.
 //!
@@ -196,7 +196,7 @@ async fn main() -> Result<()> {
     // -----------------------------------------------------------------------
     // Part 2 — high-level AgentRunner path with hooks
     //
-    // Most use-cases don't need the manual stepping above. `agent.runner(…)`
+    // Most use-cases don't need the manual stepping above. `agent.prompt(…)`
     // returns an `AgentRunner` that drives the same machine internally while
     // firing an `AgentHook` at every observable point. Attach hooks with
     // `.add_hook(h)`; each call appends another hook to the stack.
@@ -205,7 +205,7 @@ async fn main() -> Result<()> {
     println!("\n--- Part 2: AgentRunner with ToolLoggerHook ---");
 
     let resp = agent
-        .runner("What is 2 + 5?")
+        .prompt("What is 2 + 5?")
         .max_turns(2)
         .add_hook(ToolLoggerHook)
         .run()

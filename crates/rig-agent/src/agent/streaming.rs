@@ -3,7 +3,7 @@ use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
 
 use crate::{
     agent::engine::{DriveItem, StreamingTurnSource, drive_agent, streaming_error_into_prompt},
-    agent::runner::AgentRunner,
+    agent::runner::{AgentRunner, RunOrigin},
     streaming::{BlockClose, Delta, StreamEvent, StreamedUserContent},
 };
 use futures::{SinkExt, Stream, StreamExt, channel::mpsc, stream::FusedStream};
@@ -11,12 +11,9 @@ use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 use tracing_futures::Instrument;
 
+use crate::completion::{CompletionError, PromptError};
 use crate::run::response::{CompletionCall, PromptResponse};
 use crate::run::transcript::assistant_text_from_choice;
-use crate::{
-    agent::Agent,
-    completion::{CompletionError, PromptError},
-};
 use rig_core::message::Message;
 
 // The `Send` bound is dropped exactly where `rig-core`'s `WasmCompat*` markers
@@ -270,25 +267,66 @@ impl From<rig_core::memory::MemoryError> for StreamingError {
 }
 
 impl AgentRunner {
-    /// Drive the agent loop, streaming assistant content, tool activity, and a
-    /// final response. Hooks fire at every observable point, including streamed
-    /// text and tool-call deltas. Returns the stream after loading any
-    /// configured conversation memory.
+    /// Drive the agent loop as a stream of assistant content, tool activity
+    /// and, last, the [`FinalResponse`](MultiTurnStreamItem::FinalResponse).
+    /// Hooks fire at every observable point, including streamed text and
+    /// tool-call deltas.
+    ///
+    /// Like [`run`](AgentRunner::run), this is lazy: nothing — not the memory
+    /// load, not the agent span — happens until the stream is first polled,
+    /// and a stream that is dropped unpolled has done nothing. A memory-load
+    /// failure is the stream's first (and only) item. The stream is `Send` on
+    /// native targets, so it can be built in synchronous code and handed to
+    /// whatever polls it; it runs under the span it was built in (a caller's
+    /// enabled span is adopted, otherwise a root `invoke_agent` is created),
+    /// not under whichever span first polls it.
+    ///
+    /// ```rust,no_run
+    /// # use rig_agent::{Agent, agent::StreamingResult};
+    /// fn start(agent: &Agent, prompt: &str) -> StreamingResult {
+    ///     // Nothing runs until whoever holds this polls it.
+    ///     agent.prompt(prompt).stream()
+    /// }
+    /// ```
     ///
     /// Shares the drive loop, run construction, tool execution and fail-closed
     /// hook handling with the blocking [`run`](AgentRunner::run) via
     /// `drive_agent`, so the two behave identically apart from the streamed
     /// delta events.
-    pub async fn stream(mut self) -> StreamingResult {
-        let (agent_span, created_agent_span) = self.open_agent_span();
+    #[must_use = "a stream does nothing until polled"]
+    pub fn stream(self) -> StreamingResult {
+        // The span the stream is built under is the one it runs under, not
+        // whichever span first polls it: a host may build the stream in a
+        // request span and hand it to a task of its own.
+        self.stream_under(tracing::Span::current())
+    }
+
+    /// [`stream`](Self::stream) under an explicitly captured ambient span —
+    /// the one terminal that builds the stream lazily inside another future
+    /// ([`run_channel`](Self::run_channel)) captures it at its own call.
+    fn stream_under(self, ambient: tracing::Span) -> StreamingResult {
+        let run_under = ambient.clone();
+        let stream = async_stream::stream! {
+            let mut inner = self.start_stream(run_under).await;
+            while let Some(item) = inner.next().await {
+                yield item;
+            }
+        };
+        Box::pin(stream.instrument(ambient))
+    }
+
+    /// The eager half of [`stream`](Self::stream): resolve memory, build the
+    /// run and return the driver as a stream. Called on the first poll,
+    /// under `ambient` — the span the stream was built in.
+    async fn start_stream(self, ambient: tracing::Span) -> StreamingResult {
+        let (agent_span, created_agent_span) = self.open_agent_span(ambient);
 
         let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(true);
         // A resumed run loads nothing and saves nothing (see `run`).
-        let resumed = self.resume.take();
-        let resolved = match &resumed {
-            Some(_) => Ok((None, None)),
-            None => {
+        let resolved = match &self.origin {
+            RunOrigin::Resume(_) => Ok((None, None)),
+            RunOrigin::Prompt(_) => {
                 let resolve = self.resolve_history_and_memory(&hook_ctx);
                 futures::pin_mut!(resolve);
                 let mut driven = bus.drive(futures::stream::once(resolve));
@@ -307,10 +345,7 @@ impl AgentRunner {
             }
         };
 
-        let run = match resumed {
-            Some(run) => *run,
-            None => self.build_run(history_override),
-        };
+        let run = self.build_run(history_override);
         let source = StreamingTurnSource::new(
             &self.config.hooks,
             self.agent_name_or_default().to_string(),
@@ -350,8 +385,7 @@ impl AgentRunner {
 /// it parks on back-pressure.
 pub const RUN_EVENTS_CAPACITY: usize = 32;
 
-/// Event feed of an agent run started with [`AgentRunner::run_channel`] or
-/// [`Agent::run_channel`].
+/// Event feed of an agent run started with [`AgentRunner::run_channel`].
 ///
 /// Every [`MultiTurnStreamItem`] the run would have streamed is delivered here
 /// in order, ending with [`MultiTurnStreamItem::FinalResponse`]. The feed is a
@@ -418,7 +452,10 @@ impl AgentRunner {
     ///
     /// The feed is bounded ([`RUN_EVENTS_CAPACITY`]); when it is full the run
     /// waits for the consumer rather than dropping events. Dropping the feed
-    /// lets the run continue to completion unobserved.
+    /// lets the run continue to completion unobserved. Like
+    /// [`stream`](Self::stream), the run belongs to the span this method was
+    /// called in, wherever the future is later polled.
+    #[must_use = "the run does nothing until the future is driven"]
     pub fn run_channel(
         self,
     ) -> (
@@ -426,8 +463,12 @@ impl AgentRunner {
         RunEvents,
     ) {
         let (mut sender, receiver) = mpsc::channel(RUN_EVENTS_CAPACITY);
+        // Captured here, not when the future is first polled: the doc above
+        // says to spawn the future, and the run must still belong to the span
+        // that split it.
+        let ambient = tracing::Span::current();
         let future = async move {
-            let mut stream = self.stream().await;
+            let mut stream = self.stream_under(ambient);
             let mut response = None;
             let mut forward = true;
             while let Some(item) = stream.next().await {
@@ -456,23 +497,6 @@ impl AgentRunner {
             })
         };
         (future, RunEvents { receiver })
-    }
-}
-
-impl Agent {
-    /// Run `prompt` with the agent's defaults, returning the driving future and
-    /// a [`RunEvents`] feed. See [`AgentRunner::run_channel`]; to configure the
-    /// run first (history, turn budget, tool context, …), configure the runner
-    /// from [`Agent::stream_prompt`] and call its
-    /// [`run_channel`](AgentRunner::run_channel).
-    pub fn run_channel<P: Into<Message> + WasmCompatSend>(
-        &self,
-        prompt: P,
-    ) -> (
-        impl Future<Output = Result<PromptResponse, PromptError>> + WasmCompatSend + use<P>,
-        RunEvents,
-    ) {
-        AgentRunner::from_agent(self, prompt).run_channel()
     }
 }
 

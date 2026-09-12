@@ -532,14 +532,13 @@ async fn streaming_lifecycle_ordering_and_context_streaming_flag() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(
+                .prompt(
                     "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the \
                      subtract tool. Report the final number.",
                 )
                 .add_hook(recorder)
                 .max_turns(6)
-                .stream()
-                .await;
+                .stream();
 
             // Ordered stream-item taxonomy tags, so we can assert lifecycle order.
             let mut events: Vec<&'static str> = Vec::new();
@@ -806,13 +805,12 @@ async fn tool_call_turns_effect_log_is_the_golden_fixture() {
                 .record_effects()
                 .build();
             let mut stream = agent
-                .stream_prompt(
+                .prompt(
                     "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the \
                      subtract tool. Report the final number.",
                 )
                 .max_turns(6)
-                .stream()
-                .await;
+                .stream();
             let mut saw_final = false;
             while let Some(item) = stream.next().await {
                 if let Ok(MultiTurnStreamItem::FinalResponse(_)) = item {

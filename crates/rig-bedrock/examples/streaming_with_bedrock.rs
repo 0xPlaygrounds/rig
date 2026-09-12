@@ -12,9 +12,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Stream the response and print chunks as they arrive
     let mut stream = agent
-        .stream_prompt("When and where and what type is the next solar eclipse?")
-        .stream()
-        .await;
+        .prompt("When and where and what type is the next solar eclipse?")
+        .stream();
 
     let _ = stream_to_stdout(&mut stream).await?;
 

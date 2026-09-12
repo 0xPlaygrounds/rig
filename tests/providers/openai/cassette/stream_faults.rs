@@ -113,7 +113,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
                 .max_tokens(SETUP_MAX_TOKENS)
                 .record_effects_with_events()
                 .build();
-            let mut stream = agent.stream_prompt(SETUP_PROMPT).stream().await;
+            let mut stream = agent.prompt(SETUP_PROMPT).stream();
             let drained = drain(&mut stream).await;
             drop(stream);
 
@@ -150,7 +150,7 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
         .preamble(STREAMING_PREAMBLE)
         .record_effects_with_events()
         .build();
-    let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
+    let mut stream = agent.prompt(STREAMING_PROMPT).stream();
     let drained = drain(&mut stream).await;
     drop(stream);
 
@@ -187,11 +187,7 @@ async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
         .tool(CountedSubtract(invocations.clone()))
         .record_effects_with_events()
         .build();
-    let mut stream = agent
-        .stream_prompt(STREAMING_TOOLS_PROMPT)
-        .max_turns(2)
-        .stream()
-        .await;
+    let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).max_turns(2).stream();
     let drained = drain(&mut stream).await;
     drop(stream);
 
@@ -228,7 +224,7 @@ async fn error_event_after_content_fails_with_the_provider_error() {
         .preamble(STREAMING_PREAMBLE)
         .record_effects_with_events()
         .build();
-    let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
+    let mut stream = agent.prompt(STREAMING_PROMPT).stream();
     let drained = drain(&mut stream).await;
     drop(stream);
 
@@ -275,7 +271,7 @@ async fn dropping_the_stream_at_the_first_delta_records_a_cancel() {
             .record_effects_with_events()
             .build();
         {
-            let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
+            let mut stream = agent.prompt(STREAMING_PROMPT).stream();
             while let Some(item) = stream.next().await {
                 match item {
                     Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {

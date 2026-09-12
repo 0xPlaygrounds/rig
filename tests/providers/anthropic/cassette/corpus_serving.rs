@@ -63,11 +63,10 @@ async fn two_tools(
     };
     let agent = builder.build();
     let mut stream = agent
-        .stream_prompt(TWO_TOOL_STREAM_PROMPT)
+        .prompt(TWO_TOOL_STREAM_PROMPT)
         .max_turns(8)
         .tool_concurrency(concurrency)
-        .stream()
-        .await;
+        .stream();
     let output = tokio::time::timeout(std::time::Duration::from_secs(5), final_output(&mut stream))
         .await
         .expect("two tools never wait on each other");
@@ -341,7 +340,7 @@ async fn over_host_bus(
         .build();
     assert_eq!(agent.bus_config(), None, "the policy is the host's");
     let output = if streamed {
-        let mut stream = agent.stream_prompt(ADD_PROMPT).max_turns(3).stream().await;
+        let mut stream = agent.prompt(ADD_PROMPT).max_turns(3).stream();
         let output = final_output(&mut stream).await;
         drop(stream);
         output

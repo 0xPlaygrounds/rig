@@ -1,5 +1,5 @@
 use super::hook::{HookStack, RequestPatch};
-use super::run::OutputMode;
+use super::run::{AgentRun, OutputMode};
 use super::runner::AgentRunner;
 use super::typed::TypedRun;
 use crate::bus::{BusDriver, Dispatcher, ModelHandle};
@@ -421,13 +421,6 @@ impl Agent {
         self.name().unwrap_or(UNKNOWN_AGENT_NAME)
     }
 
-    /// Build a hook-aware [`AgentRunner`] for this agent, seeded with the
-    /// agent's default hook stack. Attach more hooks with
-    /// [`AgentRunner::add_hook`], then call [`AgentRunner::run`].
-    pub fn runner(&self, prompt: impl Into<Message>) -> AgentRunner {
-        AgentRunner::from_agent(self, prompt)
-    }
-
     /// The key of this agent's default model on its bus (a completion key;
     /// `.raw()` for the wire string).
     pub fn model_key(&self) -> &Key<family::Completion> {
@@ -716,7 +709,7 @@ impl Agent {
     /// Resolve the provider-facing tool definitions available for a prompt.
     ///
     /// This read-only view does not expose tool dispatch. Agent execution and
-    /// tool lifecycle hooks remain owned by [`Self::runner`].
+    /// tool lifecycle hooks remain owned by [`Self::prompt`].
     pub async fn tool_definitions(
         &self,
         prompt: Option<String>,
@@ -726,16 +719,33 @@ impl Agent {
 }
 
 impl Agent {
-    /// Run `prompt` through the agent loop. The returned [`AgentRunner`] is the
-    /// run: configure it (history, turn budget, tool context, hooks, …) and
-    /// `.await` it for the [`PromptResponse`], whose `output` is the accepted
-    /// assistant text.
+    /// Start a run from `prompt`. The returned [`AgentRunner`] is the run:
+    /// configure it (history, turn budget, tool context, hooks, …), then pick
+    /// how to drive it. Nothing happens until it is driven.
+    ///
+    /// - `.await` (or [`run`](AgentRunner::run)) folds the whole loop to a
+    ///   [`PromptResponse`], whose `output` is the accepted assistant text.
+    /// - [`stream`](AgentRunner::stream) yields every provider delta, tool
+    ///   event and the final response as a stream.
+    /// - [`run_channel`](AgentRunner::run_channel) splits the run into a
+    ///   future and an event feed for a host with its own executor or tick.
+    ///
+    /// The medium is chosen by the terminal call alone: an awaited runner asks
+    /// the provider for a complete response, a streamed one for a stream.
+    /// Hooks, tools, memory and the resulting history are the same in each.
     ///
     /// ```rust,no_run
     /// # use rig_agent::Agent;
+    /// # use futures::StreamExt;
     /// # async fn example(agent: Agent) -> Result<(), Box<dyn std::error::Error>> {
     /// let response = agent.prompt("What is 2 + 2?").max_turns(3).await?;
     /// println!("{}", response.output);
+    ///
+    /// let mut stream = agent.prompt("And 3 + 3?").stream();
+    /// while let Some(item) = stream.next().await {
+    ///     let item = item?;
+    ///     // text deltas, tool calls and results, then `FinalResponse`
+    /// }
     /// # Ok(())
     /// # }
     /// ```
@@ -743,9 +753,55 @@ impl Agent {
         AgentRunner::from_agent(self, prompt)
     }
 
-    /// Run one turn against caller-owned history, appending only the messages
-    /// the run committed. Returns the same [`PromptResponse`] as
-    /// [`prompt`](Self::prompt), its `messages` included.
+    /// Continue a persisted run instead of starting one from a prompt.
+    ///
+    /// The state a driver serialized between steps (see [`AgentRun`]) is
+    /// picked up where it stopped — its pending tool calls execute, its next
+    /// model turn is asked for — under this agent's hooks, tools and bus.
+    /// The run is authoritative for what it persisted: its prompt, its
+    /// history, its turn budget and its invalid-tool-call retry budget, so
+    /// [`history`](AgentRunner::history) and [`max_turns`](AgentRunner::max_turns)
+    /// on the returned runner have no effect. Everything else still comes
+    /// from the agent and the runner: the request shape (preamble, documents,
+    /// sampling parameters, additional params, tool choice, output mode),
+    /// [`add_hook`](AgentRunner::add_hook),
+    /// [`tool_context`](AgentRunner::tool_context),
+    /// [`tool_concurrency`](AgentRunner::tool_concurrency), the model
+    /// selection and telemetry settings (inbound tool context is driver
+    /// state, never part of the persisted run). Two run-side values still show
+    /// through: the run's persisted tool choice is what invalid-call hooks
+    /// see and what gates a `Skip`, while the request's tool choice is the
+    /// runner's; and the output tool the run committed stays committed even
+    /// though the schema and mode advertising it are the runner's. The
+    /// unhandled-invalid-tool-call policy is the run's on the blocking path
+    /// and the runner's on the streamed path. Conversation memory is neither
+    /// loaded nor appended: the history is already in the run, and the driver
+    /// that persisted it owns its memory — it appends the finished run's
+    /// `messages` itself, since a suspended run never reached the `Done`
+    /// append, so the response's `memory_append` is `None`. Pending tool
+    /// calls re-execute on resume: a tool that ran before the suspension and
+    /// answered nothing runs again. Drive it like any runner: `.await`,
+    /// [`stream`](AgentRunner::stream) or
+    /// [`run_channel`](AgentRunner::run_channel). The run must have been
+    /// suspended by the same rig version.
+    ///
+    /// ```rust,no_run
+    /// # use rig_agent::{Agent, AgentRun};
+    /// # async fn example(agent: Agent, saved: &str) -> Result<(), Box<dyn std::error::Error>> {
+    /// let run: AgentRun = serde_json::from_str(saved)?;
+    /// let response = agent.resume(run).tool_concurrency(4).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn resume(&self, run: AgentRun) -> AgentRunner {
+        AgentRunner::resuming(self, run)
+    }
+
+    /// Run `prompt` against caller-owned history with the agent's defaults,
+    /// then append the messages the run committed to `chat_history`. This is
+    /// [`prompt`](Self::prompt) with [`history`](AgentRunner::history) plus
+    /// the write-back; the runner form is the one to configure or stream.
+    /// The returned [`PromptResponse`] keeps its `messages`.
     ///
     /// The caller's history is the run's input history, so conversation
     /// memory is bypassed (no load, no append) and the caller owns
@@ -764,21 +820,6 @@ impl Agent {
             chat_history.extend(messages.iter().cloned());
         }
         Ok(response)
-    }
-
-    /// Run `prompt` as a stream: configure the returned runner, then call
-    /// [`AgentRunner::stream`] or [`AgentRunner::run_channel`].
-    pub fn stream_prompt(&self, prompt: impl Into<Message>) -> AgentRunner {
-        AgentRunner::from_agent(self, prompt)
-    }
-
-    /// [`stream_prompt`](Self::stream_prompt) with canonical chat history.
-    pub fn stream_chat<I, T>(&self, prompt: impl Into<Message>, chat_history: I) -> AgentRunner
-    where
-        I: IntoIterator<Item = T>,
-        T: Into<Message>,
-    {
-        AgentRunner::from_agent(self, prompt).history(chat_history)
     }
 
     /// Run `prompt` and deserialize the accepted structured response as `T`.

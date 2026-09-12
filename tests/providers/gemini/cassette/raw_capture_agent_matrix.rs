@@ -18,9 +18,9 @@
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
 //! | 1 | `hooks_observe_raw_blocking` | `agent.prompt` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `responseId` matches fixture | recorded |
-//! | 2 | `hooks_observe_raw_streamed` | `agent.stream_prompt` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `response_id` matches fixture | recorded |
+//! | 2 | `hooks_observe_raw_streamed` | `agent.prompt(..).stream()` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `response_id` matches fixture | recorded |
 //! | 3 | `multi_turn_tool_run_records_distinct_raw_blocking` | tool run, `agent.prompt` | two `completion_calls`, two different `raw["responseId"]`s equal to the interactions' ids in order; the first carries the `functionCall` | recorded |
-//! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.stream_prompt` | two `CompletionCall` items, two different `raw["response_id"]`s equal to the interactions' ids in order; the forwarded last `Final.raw` is the final turn's | recorded |
+//! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.prompt(..).stream()` | two `CompletionCall` items, two different `raw["response_id"]`s equal to the interactions' ids in order; the forwarded last `Final.raw` is the final turn's | recorded |
 //!
 //! Both surfaces fire the same two events per accepted model turn:
 //! `CompletionResponse` — after the unary call returns on the blocking
@@ -388,13 +388,7 @@ async fn hooks_observe_raw_streamed() {
         "raw_capture_agent_matrix/hooks_observe_raw_streamed",
         move |client| async move {
             let agent = client.agent(MODEL).temperature(0.0).add_hook(hook).build();
-            let run = drain(
-                agent
-                    .stream_prompt(Message::user(TEXT_PROMPT))
-                    .stream()
-                    .await,
-            )
-            .await;
+            let run = drain(agent.prompt(Message::user(TEXT_PROMPT)).stream()).await;
             assert!(run.output.is_some(), "the run finished");
             assert_eq!(run.finals.len(), 1, "one text turn, one terminal record");
             assert!(
@@ -535,10 +529,9 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
                 .build();
             let run = drain(
                 agent
-                    .stream_prompt(Message::user(TOOL_PROMPT))
+                    .prompt(Message::user(TOOL_PROMPT))
                     .max_turns(3)
-                    .stream()
-                    .await,
+                    .stream(),
             )
             .await;
             assert!(run.output.is_some(), "the run finished");

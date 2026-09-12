@@ -326,7 +326,7 @@ pub struct Program {
     pub default_max_turns: Option<usize>,
     pub max_turns: Option<usize>,
     pub tool_concurrency: Option<usize>,
-    /// The producer ran `stream_prompt`: the model is asked for a stream.
+    /// The producer streamed (`prompt(..).stream()`): the model is asked for a stream.
     pub streamed: bool,
     /// The producer attached conversation memory under this id.
     pub conversation: Option<&'static str>,
@@ -2645,7 +2645,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
     let mut output = None;
     for prompt in prompts {
         output = if program.streamed {
-            let mut runner = agent.stream_prompt(prompt);
+            let mut runner = agent.prompt(prompt);
             if let Some(history) = program.history {
                 runner = runner.history(history());
             }
@@ -2658,7 +2658,7 @@ pub async fn bus_engine_reproduces(program: &Program) {
             runner = runner
                 .max_invalid_tool_call_retries(program.invalid_retries)
                 .unhandled_invalid_tool_call(unhandled_policy(program));
-            let mut stream = runner.stream().await;
+            let mut stream = runner.stream();
             let mut output = None;
             let mut failed_as_expected = false;
             while let Some(item) = within(stream.next()).await {
@@ -3157,7 +3157,7 @@ async fn resumed_tail(
     }
     let restored: AgentRun = serde_json::from_str(&state).expect("the run state restores");
     let agent = build_agent(replay, program, server, &tail_log);
-    let mut runner = agent.runner("ignored").resume(restored);
+    let mut runner = agent.resume(restored);
     if let Some(max_turns) = program.max_turns {
         runner = runner.max_turns(max_turns);
     }
@@ -3168,7 +3168,7 @@ async fn resumed_tail(
         .max_invalid_tool_call_retries(program.invalid_retries)
         .unhandled_invalid_tool_call(unhandled_policy(program));
     let outcome = if program.streamed {
-        let mut stream = runner.stream().await;
+        let mut stream = runner.stream();
         let mut output = None;
         let mut failure = None;
         while let Some(item) = within(stream.next()).await {

@@ -140,7 +140,7 @@ async fn dynamic_context_two_streamed_effect_log_is_the_golden_fixture() {
                 .dynamic_context(2, index)
                 .record_effects_with_events()
                 .build();
-            let mut stream = agent.stream_prompt(FACT_PROMPT).stream().await;
+            let mut stream = agent.prompt(FACT_PROMPT).stream();
             let output = final_output(&mut stream).await;
             drop(stream);
             assert!(!output.is_empty());

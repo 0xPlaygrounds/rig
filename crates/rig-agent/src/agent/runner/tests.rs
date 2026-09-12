@@ -161,7 +161,7 @@ async fn runner_applies_per_run_request_overrides() {
         .max_tokens(10)
         .additional_params(json!({"baseline": true}))
         .build()
-        .runner("go")
+        .prompt("go")
         .preamble("run preamble")
         .document(Document {
             id: "run-one".into(),
@@ -216,7 +216,7 @@ async fn runner_can_merge_additional_params_into_the_baseline() {
     AgentBuilder::new(model.clone())
         .additional_params(json!({"baseline": true, "winner": "baseline"}))
         .build()
-        .runner("go")
+        .prompt("go")
         .merge_additional_params(
             json!({"override": true, "winner": "runner"})
                 .as_object()
@@ -243,7 +243,7 @@ async fn runner_can_replace_additional_params_wholesale() {
     AgentBuilder::new(model.clone())
         .additional_params(json!({"baseline": true}))
         .build()
-        .runner("go")
+        .prompt("go")
         .replace_additional_params(json!({"replacement": true}))
         .run()
         .await
@@ -267,7 +267,7 @@ async fn runner_can_clear_configured_request_defaults() {
         .additional_params(json!({"baseline": true}))
         .tool_choice(ToolChoice::Required)
         .build()
-        .runner("go")
+        .prompt("go")
         .without_preamble()
         .without_temperature()
         .without_max_tokens()
@@ -334,7 +334,7 @@ async fn blocking_and_streaming_preserve_raw_failure_while_rewriting_presentatio
         .tool(MetadataFailingTool)
         .add_hook(blocking.clone())
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
         .run()
         .await
@@ -357,10 +357,9 @@ async fn blocking_and_streaming_preserve_raw_failure_while_rewriting_presentatio
         .tool(MetadataFailingTool)
         .add_hook(streaming.clone())
         .build()
-        .runner("go")
+        .prompt("go")
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
     while let Some(item) = stream.next().await {
         item.expect("stream item");
     }
@@ -412,7 +411,7 @@ async fn agent_dispatch_snapshot_isolates_tool_mutations() {
     .tool(tool.clone())
     .add_hook(results.clone())
     .build()
-    .runner("go")
+    .prompt("go")
     .tool_context(context)
     .max_turns(4)
     .run()

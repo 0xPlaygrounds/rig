@@ -234,7 +234,7 @@ async fn over_host(
     let agent = agent(builder);
     let output = if streamed {
         use futures::StreamExt;
-        let mut stream = agent.stream_prompt(prompt).max_turns(200).stream().await;
+        let mut stream = agent.prompt(prompt).max_turns(200).stream();
         let mut output = None;
         while let Some(item) = stream.next().await {
             if let rig::agent::MultiTurnStreamItem::FinalResponse(response) =

@@ -35,7 +35,7 @@
 //! |---|------|------|------------------|
 //! | 1 | `two_terminal_stream_keeps_the_text_after_the_first_finish` | recorded | the bug itself |
 //! | 2 | `two_terminal_stream_blocking_twin_has_the_same_answer` | recorded | the blocking yardstick cell 1 is measured against |
-//! | 3 | `two_terminal_stream_agent_prompt_keeps_the_answer` | recorded | `Agent::stream_prompt` |
+//! | 3 | `two_terminal_stream_agent_prompt_keeps_the_answer` | recorded | `Agent::prompt` |
 //! | 4 | `two_terminal_stream_terminal_carries_the_last_usage` | recorded | terminal metadata comes from the last chunk |
 //! | 5 | `two_terminal_stream_with_visible_thoughts` | recorded | reasoning spanning the boundary |
 //! | 6 | `gemini_3_flash_does_not_emit_the_intermediate_finish` | recorded | second model family: control, shape absent |
@@ -285,7 +285,7 @@ async fn two_terminal_stream_agent_prompt_keeps_the_answer() {
                 .additional_params(code_execution_params())
                 .build();
 
-            let mut stream = agent.stream_prompt(TWO_ROUND_PROMPT).stream().await;
+            let mut stream = agent.prompt(TWO_ROUND_PROMPT).stream();
             let mut answer = String::new();
             while let Some(item) = stream.next().await {
                 if let rig::agent::MultiTurnStreamItem::StreamAssistantItem(

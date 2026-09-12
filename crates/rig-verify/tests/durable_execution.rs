@@ -9,7 +9,7 @@
 //!
 //! The interruption is a hand driver of `AgentRun` over the agent's own bus
 //! keys (the sans-IO machine is the only place a run can be suspended
-//! mid-flight today); the resumption goes through `Agent::runner(..).resume`
+//! mid-flight today); the resumption goes through `Agent::resume(run)`
 //! — the bus-driven engine — so the property crosses the two interpreters.
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
@@ -321,9 +321,8 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
             .build();
     let response = within(
         resumed_agent
-            .runner("ignored")
-            .tool_concurrency(scenario.tool_concurrency)
             .resume(restored)
+            .tool_concurrency(scenario.tool_concurrency)
             .run(),
     )
     .await
@@ -484,7 +483,7 @@ async fn a_hooks_decision_is_program_not_record() {
                 builder = builder.add_hook(PatchesTag);
             }
             let agent = builder.build();
-            let result = within(agent.runner("ignored").resume(suspended).run()).await;
+            let result = within(agent.resume(suspended).run()).await;
             drop((agent, dispatcher, registrar));
             within(replay_task).await.expect("replay driver");
             result
@@ -545,7 +544,7 @@ async fn a_resumed_run_loads_nothing_from_memory() {
         ..RunSpec::new()
     };
     let state = AgentRun::from_spec(&spec, "go", None);
-    let response = within(agent.runner("ignored").resume(state).run())
+    let response = within(agent.resume(state).run())
         .await
         .expect("the resumed run");
     assert_eq!(response.output, "done");
@@ -637,9 +636,8 @@ async fn resumes_from_a_checkpoint(
             .build();
     let response = within(
         resumed_agent
-            .runner("ignored")
-            .tool_concurrency(scenario.tool_concurrency)
             .resume(restored)
+            .tool_concurrency(scenario.tool_concurrency)
             .run(),
     )
     .await

@@ -35,19 +35,24 @@ pub(crate) use build_chat_span;
 /// Build (or adopt) the top-level `invoke_agent` span for a run, shared by the
 /// blocking and streaming drivers so the run-level span shape is defined once.
 ///
-/// Returns the span plus whether it was newly created. When the caller is
-/// already inside a span we adopt it and report `false`, so the driver can avoid
-/// recording run-level usage onto a span it does not own (see the
-/// `created_agent_span` guard in both drivers' `Done` handling).
+/// `ambient` is the span the terminal (`run()`, `stream()`, `run_channel()`,
+/// a typed run's `into_future()`) was called in, whatever task later polls
+/// the future. Returns the span plus whether it was newly created. An
+/// enabled ambient span is adopted and reported as `false`, so the driver
+/// can avoid recording run-level usage onto a span it does not own (see the
+/// `created_agent_span` guard in both drivers' `Done` handling); a disabled
+/// one yields a root `invoke_agent`, whatever span the poller happens to be in.
 pub(crate) fn acquire_agent_span(
+    ambient: tracing::Span,
     agent_name: &str,
     preamble: Option<&str>,
     record_content: bool,
 ) -> (tracing::Span, bool) {
-    if tracing::Span::current().is_disabled() {
+    if ambient.is_disabled() {
         let system_instructions =
             rig_core::telemetry::system_instructions_json(preamble, record_content);
         let span = info_span!(
+            parent: None,
             "invoke_agent",
             gen_ai.operation.name = "invoke_agent",
             gen_ai.agent.name = agent_name,
@@ -63,7 +68,7 @@ pub(crate) fn acquire_agent_span(
         );
         (span, true)
     } else {
-        (tracing::Span::current(), false)
+        (ambient, false)
     }
 }
 

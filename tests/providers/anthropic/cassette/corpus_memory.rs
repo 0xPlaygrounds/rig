@@ -82,7 +82,7 @@ async fn run_prompts(agent: &rig::agent::Agent, prompts: &[&str], streamed: bool
     let mut outputs = Vec::new();
     for prompt in prompts {
         let output = if streamed {
-            let mut stream = agent.stream_prompt(*prompt).max_turns(8).stream().await;
+            let mut stream = agent.prompt(*prompt).max_turns(8).stream();
             let output = final_output(&mut stream).await;
             drop(stream);
             output

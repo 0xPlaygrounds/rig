@@ -213,7 +213,7 @@ async fn permission_control_streaming_example() -> Result<()> {
     };
 
     let mut stream = agent
-        .stream_prompt(
+        .prompt(
             "Use the available tools to read test.txt now. \
              Call `read_file_head` first. If it is unavailable, immediately call `read_file_tail` instead. \
              Both tools take zero arguments and return the file content. \
@@ -221,7 +221,7 @@ async fn permission_control_streaming_example() -> Result<()> {
         )
         .max_turns(5)
         .add_hook(hook)
-        .stream().await;
+        .stream();
 
     let final_response = stream_to_stdout(&mut stream).await?;
     let last = last_result.lock().expect("lock last_result").clone();

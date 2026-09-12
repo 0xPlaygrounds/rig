@@ -352,11 +352,10 @@ async fn run_workspace_canary_attempt(
     let repair_hook = DefaultApiRepairHook::default();
 
     let stream = agent
-        .stream_prompt(workspace_canary_prompt(attempt))
+        .prompt(workspace_canary_prompt(attempt))
         .add_hook(repair_hook.clone())
         .history(Vec::<rig::message::Message>::new())
-        .stream()
-        .await;
+        .stream();
 
     let mut observation = consume_workspace_like_stream(stream).await?;
     observation.invalid_tool_names = repair_hook.invalid_tool_names();

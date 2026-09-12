@@ -19,7 +19,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .build();
 
     println!("Calculate 2 + 5");
-    let mut stream = agent.stream_prompt("Calculate 2 + 5").stream().await;
+    let mut stream = agent.prompt("Calculate 2 + 5").stream();
     let _ = stream_to_stdout(&mut stream).await?;
     Ok(())
 }

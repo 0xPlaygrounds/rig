@@ -24,10 +24,10 @@ async fn streaming() {
         .build();
 
     let stream = agent
-        .stream_chat(reasoning::TOOL_USER_PROMPT, Vec::<Message>::new())
+        .prompt(reasoning::TOOL_USER_PROMPT)
+        .history(Vec::<Message>::new())
         .max_turns(3)
-        .stream()
-        .await;
+        .stream();
 
     let stats = reasoning::collect_stream_stats(stream, "chatgpt").await;
     reasoning::assert_universal(&stats, &call_count, "chatgpt");

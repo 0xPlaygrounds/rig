@@ -36,9 +36,8 @@ async fn chat_completions_streaming_surfaces_finish_reason() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt("Write a detailed five paragraph essay about the ocean.")
-                .stream()
-                .await;
+                .prompt("Write a detailed five paragraph essay about the ocean.")
+                .stream();
             let (_response, provider_final): (_, rig::streaming::StreamFinal) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await
@@ -66,7 +65,7 @@ async fn chat_completions_streaming_surfaces_finish_reason() {
                 .max_tokens(512)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
+            let mut stream = agent.prompt(STREAMING_PROMPT).stream();
             let (_response, provider_final): (_, rig::streaming::StreamFinal) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await

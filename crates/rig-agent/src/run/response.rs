@@ -109,7 +109,7 @@ impl CompletionCall {
 
 /// The result of an agent run, returned by **both** the blocking
 /// (`AgentRunner::run`) and streaming (`AgentRunner::stream`) surfaces so a
-/// call site reads identically whether it used `.prompt()` or `.stream_prompt()`.
+/// call site reads identically whether it awaited the runner or streamed it.
 ///
 /// On the streaming surface this is the payload of the terminal
 /// `MultiTurnStreamItem::FinalResponse` item.

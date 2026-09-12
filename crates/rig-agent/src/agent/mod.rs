@@ -41,7 +41,7 @@
 //! let prompt_response = agent.prompt("Prompt").await?;
 //!
 //! // Per-run overrides stay inside the hook-aware runner.
-//! let response = agent.runner("Prompt").temperature(0.9).run().await?;
+//! let response = agent.prompt("Prompt").temperature(0.9).run().await?;
 //! # Ok(())
 //! # }
 //! ```

@@ -178,10 +178,9 @@ async fn main() -> Result<()> {
         .add_hook(GrowCapOnTruncation::new(8, 256))
         .build();
     let mut stream = streaming_agent
-        .stream_prompt("Explain Rig's finish reasons.")
+        .prompt("Explain Rig's finish reasons.")
         .max_turns(8)
-        .stream()
-        .await;
+        .stream();
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(final_response) = item? {
             println!("  => {}", final_response.output);

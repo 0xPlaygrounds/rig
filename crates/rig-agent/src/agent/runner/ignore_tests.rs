@@ -45,10 +45,9 @@ async fn output_under(policy: UnhandledInvalidToolCall) -> Result<String, String
     .tool(Add)
     .build();
     let mut stream = agent
-        .stream_prompt("go")
+        .prompt("go")
         .unhandled_invalid_tool_call(policy)
-        .stream()
-        .await;
+        .stream();
     let mut output = None;
     while let Some(item) = stream.next().await {
         match item {

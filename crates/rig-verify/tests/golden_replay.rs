@@ -7,8 +7,8 @@
 //!
 //! Both interpreters of the agent program reproduce every golden:
 //!
-//! - the bus-driven engine (`AgentBuilder::over_bus` … `prompt` /
-//!   `stream_prompt`), the program it was recorded with — same preamble,
+//! - the bus-driven engine (`AgentBuilder::over_bus` … `prompt(..)` awaited
+//!   or streamed), the program it was recorded with — same preamble,
 //!   prompt, tools, hooks, memory, bus policy and run options — hardcoded
 //!   here per fixture;
 //! - a hand driver of `AgentRun` that steps the run protocol itself and

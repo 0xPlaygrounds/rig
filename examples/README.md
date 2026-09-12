@@ -22,7 +22,7 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `agent_prompt_chaining` | Demonstrates prompt chaining with two agents in sequence. |
 | `agent_routing` | Demonstrates routing one prompt into different follow-up prompts. |
 | `agent_run_stepping` | Drives the agent loop by hand with the sans-IO [`AgentRun`] state machine. |
-| `agent_stream_chat` | Demonstrates `stream_chat` with prior conversation history. |
+| `agent_stream_chat` | Demonstrates a streamed run over prior conversation history (`prompt(..).history(..).stream()`). |
 | `agent_with_agent_tool` | See source. |
 | `agent_with_approval_policy` | Demonstrates a non-interactive, policy-based HITL gate: an `AgentHook` auto-approves an allow-list, denies the rest (fail-closed), and applies an arg-based rule (mirrors `needs_approval`/`interrupt_on` predicates). |
 | `agent_with_context` | Demonstrates adding small context documents directly to an agent. |

@@ -36,10 +36,9 @@ async fn runner_driven_multi_turn_streaming_loop() {
                 .build();
 
             let mut stream = agent
-                .stream_prompt(MULTI_TURN_STREAMING_PROMPT)
+                .prompt(MULTI_TURN_STREAMING_PROMPT)
                 .max_turns(10)
-                .stream()
-                .await;
+                .stream();
             let mut response = None;
             while let Some(item) = stream.next().await {
                 if let MultiTurnStreamItem::FinalResponse(final_response) =

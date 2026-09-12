@@ -1,6 +1,6 @@
 //! End-to-end tool execution through the built-in agent drivers: real
 //! `ToolSet` execution behind `agent.prompt()` / `agent.chat()` /
-//! `agent.stream_prompt()`, pinning the wire contract of the handrolled tool
+//! `agent.prompt()`, pinning the wire contract of the handrolled tool
 //! pipeline ahead of the rmcp migration.
 
 use rig::prelude::*;
@@ -86,11 +86,7 @@ async fn streaming_multi_turn_executes_tools_via_builtin_driver() {
                 .tool(subtract)
                 .build();
 
-            let mut stream = agent
-                .stream_prompt(CHAINED_PROMPT)
-                .max_turns(5)
-                .stream()
-                .await;
+            let mut stream = agent.prompt(CHAINED_PROMPT).max_turns(5).stream();
             let observation = crate::support::collect_stream_observation(&mut stream).await;
 
             assert!(

@@ -25,7 +25,7 @@ async fn streaming_tools_smoke() {
         .tool(Subtract)
         .build();
 
-    let mut stream = agent.stream_prompt(STREAMING_TOOLS_PROMPT).stream().await;
+    let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming tool prompt should succeed");
@@ -48,7 +48,7 @@ async fn example_streaming_with_tools() {
         .tool(Subtract)
         .build();
 
-    let mut stream = agent.stream_prompt("Calculate 2 - 5").stream().await;
+    let mut stream = agent.prompt("Calculate 2 - 5").stream();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("streaming tools prompt should succeed");
@@ -68,10 +68,9 @@ async fn stream_prompt_tool_roundtrip_preserves_streaming_contract() {
         .build();
 
     let mut stream = agent
-        .stream_prompt(ORDERED_TOOL_STREAM_PROMPT)
+        .prompt(ORDERED_TOOL_STREAM_PROMPT)
         .max_turns(5)
-        .stream()
-        .await;
+        .stream();
     let observation = collect_stream_observation(&mut stream).await;
 
     assert_tool_call_precedes_later_text(
@@ -93,10 +92,10 @@ async fn stream_chat_tool_roundtrip_preserves_streaming_contract() {
         .build();
 
     let mut stream = agent
-        .stream_chat(ORDERED_TOOL_STREAM_PROMPT, Vec::<Message>::new())
+        .prompt(ORDERED_TOOL_STREAM_PROMPT)
+        .history(Vec::<Message>::new())
         .max_turns(5)
-        .stream()
-        .await;
+        .stream();
     let observation = collect_stream_observation(&mut stream).await;
 
     assert_tool_call_precedes_later_text(

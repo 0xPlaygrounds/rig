@@ -266,10 +266,10 @@ async fn run_agent(client: mistral::Client, cell: Cell) -> Observation {
         }
         Transport::Streaming => {
             let mut stream = agent
-                .stream_chat(PROMPT, Vec::<rig::completion::Message>::new())
+                .prompt(PROMPT)
+                .history(Vec::<rig::completion::Message>::new())
                 .max_turns(1)
-                .stream()
-                .await;
+                .stream();
             errors = crate::support::collect_stream_observation(&mut stream)
                 .await
                 .errors;

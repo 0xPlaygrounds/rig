@@ -320,10 +320,9 @@ async fn tool_error_retry_reports_distinct_ids_streamed() {
                 .build();
 
             let mut stream = agent
-                .runner(Message::user("What is 2 + 3? Use the tool."))
+                .prompt(Message::user("What is 2 + 3? Use the tool."))
                 .max_turns(5)
-                .stream()
-                .await;
+                .stream();
             while let Some(item) = stream.next().await {
                 item.expect("stream item should succeed");
             }
@@ -391,10 +390,9 @@ async fn streamed_hook_retry_uses_second_connections_id() {
                 .build();
 
             let mut stream = agent
-                .runner(Message::user("Reply with exactly: first probe"))
+                .prompt(Message::user("Reply with exactly: first probe"))
                 .max_turns(3)
-                .stream()
-                .await;
+                .stream();
             while let Some(item) = stream.next().await {
                 item.expect("stream item should succeed");
             }
@@ -615,7 +613,7 @@ async fn history_replay_does_not_leak_prior_run_identity() {
             let run_a_identity = probe.turn_identities()[0].clone();
 
             let second = agent
-                .runner(Message::user("Reply with exactly: run B probe"))
+                .prompt(Message::user("Reply with exactly: run B probe"))
                 .history(history)
                 .run()
                 .await

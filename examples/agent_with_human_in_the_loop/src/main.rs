@@ -16,7 +16,7 @@
 //! Because `AgentHook::on_dispatch` is `async`, the hook can simply `.await` the
 //! human's input inline (here from stdin; in a real app this might be an HTTP
 //! request to an approval UI, a Slack round-trip, or a database poll). The same
-//! hook works unchanged on the streaming driver (`stream_prompt`).
+//! hook works unchanged on the streaming driver (`prompt(..).stream()`).
 //!
 //! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_human_in_the_loop`
 

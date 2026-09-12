@@ -15,6 +15,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend};
+use tracing_futures::Instrument;
 
 use super::{
     Agent,
@@ -346,7 +347,10 @@ where
 
     forward_runner_setters!();
 
-    async fn send(self) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
+    async fn send(
+        self,
+        ambient: tracing::Span,
+    ) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
         let mut usage = Usage::new();
         let mut last_error = None;
 
@@ -357,7 +361,11 @@ where
                     self.retries - attempt
                 );
             }
-            let (result, error_usage) = self.runner.clone().run_with_error_usage().await;
+            let (result, error_usage) = self
+                .runner
+                .clone()
+                .run_with_error_usage(ambient.clone())
+                .await;
             let outcome = match result {
                 Ok(response) => {
                     usage += response.usage;
@@ -452,6 +460,11 @@ where
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
 
     fn into_future(self) -> Self::IntoFuture {
-        Box::pin(self.send())
+        // Captured in the synchronous part of the call, like `run()`: a
+        // typed run belongs to the span it was started in, not to the task
+        // that first polls it.
+        let ambient = tracing::Span::current();
+        let run_under = ambient.clone();
+        Box::pin(self.send(run_under).instrument(ambient))
     }
 }

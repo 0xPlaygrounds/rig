@@ -32,9 +32,8 @@ async fn default_instructions_fill_required_instructions() {
 
     let agent = client.agent(LIVE_MODEL).build();
     let mut stream = agent
-        .stream_prompt("Reply with the exact word from the instructions.")
-        .stream()
-        .await;
+        .prompt("Reply with the exact word from the instructions.")
+        .stream();
     let response = collect_stream_final_response(&mut stream)
         .await
         .expect("default-instructions streaming completion should succeed");

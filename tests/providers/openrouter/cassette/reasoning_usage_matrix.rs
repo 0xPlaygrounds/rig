@@ -251,7 +251,7 @@ async fn streaming_agent_reports_reasoning_tokens() {
                 .additional_params(openai_reasoning("medium"))
                 .build();
 
-            let mut stream = agent.stream_prompt(REASONING_PROMPT).stream().await;
+            let mut stream = agent.prompt(REASONING_PROMPT).stream();
             let (_, provider_final) = collect_stream_final_response_and_provider_final(&mut stream)
                 .await
                 .expect("agent stream should succeed");

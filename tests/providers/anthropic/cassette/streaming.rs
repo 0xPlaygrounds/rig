@@ -17,7 +17,7 @@ async fn streaming_smoke() {
             .preamble(STREAMING_PREAMBLE)
             .build();
 
-        let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
+        let mut stream = agent.prompt(STREAMING_PROMPT).stream();
         let (response, provider_final): (_, rig::streaming::StreamFinal) =
             collect_stream_final_response_and_provider_final(&mut stream)
                 .await
@@ -69,7 +69,7 @@ async fn gateway_reports_input_tokens_on_message_delta() {
                 .max_tokens(16)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
+            let mut stream = agent.prompt(STREAMING_PROMPT).stream();
             let (_response, provider_final): (_, rig::streaming::StreamFinal) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await
@@ -129,7 +129,7 @@ async fn anthropic_proper_agrees_on_input_tokens_across_both_frames() {
                 .max_tokens(64)
                 .build();
 
-            let mut stream = agent.stream_prompt(STREAMING_PROMPT).stream().await;
+            let mut stream = agent.prompt(STREAMING_PROMPT).stream();
             let (_response, provider_final): (_, rig::streaming::StreamFinal) =
                 collect_stream_final_response_and_provider_final(&mut stream)
                     .await
