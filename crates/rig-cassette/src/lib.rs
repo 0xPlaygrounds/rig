@@ -410,10 +410,35 @@ impl ProviderCassette {
         real_base_url: &str,
     ) -> Self {
         let spec = spec.into();
+        let cassette_path = cassette_path(cassette_root, provider, spec.scenario);
+        Self::start_at(
+            transport,
+            provider,
+            spec,
+            real_base_url,
+            CassetteMode::current(),
+            cassette_path,
+        )
+        .await
+    }
+
+    /// Start with an explicit mode and destination instead of the ambient
+    /// environment and fixture layout. Consumers that stage candidates use
+    /// this: a live capture records into a candidate path that is validated
+    /// before promotion, and a verification pass replays an exact path even
+    /// when the environment asks for recording, so a candidate is never
+    /// implicitly promoted to a fixture. `transport` only matters when
+    /// `mode` records.
+    pub async fn start_at(
+        transport: Transport,
+        provider: &'static str,
+        spec: CassetteSpec,
+        real_base_url: &str,
+        mode: CassetteMode,
+        cassette_path: PathBuf,
+    ) -> Self {
         let scenario = spec.scenario;
-        let mode = CassetteMode::current();
         let policy = CassettePolicy::for_scenario(provider, scenario, spec.replay_matching);
-        let cassette_path = cassette_path(cassette_root, provider, scenario);
         let upstream = UpstreamBase::parse(real_base_url);
         let server = if !mode.records() {
             if !cassette_path.exists() {
@@ -464,6 +489,58 @@ impl ProviderCassette {
             mode,
             policy,
         }
+    }
+
+    /// Retain the completed, scrubbed exchanges of a recording that is still
+    /// in progress. This is a best-effort partial snapshot for a consumer
+    /// whose live run may exceed its budget, not finalization: it never
+    /// panics, never replaces an earlier snapshot with an empty document,
+    /// and returns whether `path` was written. Replay sessions return
+    /// `false`.
+    pub async fn checkpoint_recording(&self, path: &Path) -> bool {
+        if !self.mode.records() {
+            return false;
+        }
+        let yaml = match &self.server {
+            CassetteServer::Recording {
+                server,
+                recording_id,
+            } => {
+                let recording = httpmock::Recording::new(*recording_id, server);
+                let Ok(Some(bytes)) = recording.export_async().await else {
+                    return false;
+                };
+                let Ok(yaml) = String::from_utf8(bytes.to_vec()) else {
+                    return false;
+                };
+                yaml
+            }
+            CassetteServer::DirectRecording(server) => {
+                let interactions = server.interactions.lock().await;
+                if interactions.is_empty() {
+                    return false;
+                }
+                serialize_cassette_interactions(&interactions)
+            }
+            CassetteServer::Replay(_) => return false,
+        };
+        // httpmock can export an empty YAML document before the first response.
+        let parsed = serde_yaml::Deserializer::from_str(&yaml)
+            .map(CassetteInteraction::deserialize)
+            .collect::<Result<Vec<_>, _>>();
+        let Ok(interactions) = parsed else {
+            return false;
+        };
+        if interactions.is_empty() {
+            return false;
+        }
+        let redacted = scrub_cassette_contents_with_policy(self.policy, &yaml);
+        if !cassette_safety_failures_with_policy(self.policy, path, &redacted).is_empty() {
+            return false;
+        }
+        write_cassette_atomically(path, redacted.as_bytes())
+            .await
+            .is_ok()
     }
 
     /// Return the direct recorder only for an active direct-recording session.
@@ -3296,6 +3373,8 @@ pub fn owned_headers(headers: &http_client::HeaderMap) -> Vec<(String, String)> 
         .collect()
 }
 
+#[cfg(test)]
+mod explicit_destination_tests;
 #[cfg(test)]
 mod paths;
 #[cfg(test)]

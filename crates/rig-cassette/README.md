@@ -24,9 +24,15 @@ fixtures and failed assertions panic, preserving the original test-support
 behavior.
 
 `RIG_PROVIDER_TEST_MODE` defaults to `replay`. `record` contacts the configured
-upstream and overwrites the selected fixture after scrubbing; the mode is read from
-the environment by every constructor, and a recording reaches the provider through
-the proxy (`start`) or directly (`start_via(Transport::Direct, ..)`).
+upstream and overwrites the selected fixture after scrubbing; `start` and
+`start_via` read the mode from the environment, and a recording reaches the
+provider through the proxy (`start`) or directly (`start_via(Transport::Direct, ..)`).
+Consumers that stage candidates use `ProviderCassette::start_at` with an explicit
+mode and exact path: a live capture records into a candidate path, and a
+verification pass replays with `CassetteMode::Replay` even when the environment
+asks for recording, so a candidate is never implicitly promoted to a fixture.
+While a live run is in progress, `checkpoint_recording` writes the completed,
+scrubbed exchanges to a partial path without finalizing the recording.
 
 `DirectRecorder`, its request/response types and `DirectRecordingHttpClient`
 preserve binary bodies that a text proxy cannot record. SSE and ordinary binary
