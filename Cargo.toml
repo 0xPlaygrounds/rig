@@ -139,7 +139,7 @@ axum = "0.8"
 aws-config = { version = "1", default-features = false }
 # 1.124: `OutputConfig`/`ServiceTier`/citations types rig-bedrock maps.
 aws-sdk-bedrockruntime = { version = "1.124", default-features = false }
-aws-smithy-eventstream = "0.60"
+aws-smithy-eventstream = "0.61"
 aws-smithy-runtime-api = "1"
 aws-smithy-types = "1"
 base64 = "0.22"
