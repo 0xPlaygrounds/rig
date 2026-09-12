@@ -117,7 +117,7 @@ pub mod registry;
 pub mod server;
 
 pub use catalog::{ToolCatalog, ToolLease};
-pub use registry::{RegisteredTool, ToolDispatch, ToolSet, dispatch_tool};
+pub use registry::{RegisteredTool, ToolDispatch, ToolSet, execute_tool};
 pub use rig_core::tool::{
     DynamicTool, ErasedTool, IntoToolOutput, PortableDynamicTool, Tool, ToolEmbedding,
     ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult, tool_definition,

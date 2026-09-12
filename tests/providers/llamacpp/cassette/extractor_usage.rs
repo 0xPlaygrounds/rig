@@ -61,7 +61,7 @@ async fn extract_backward_compatibility() -> Result<()> {
             let model = CASSETTE_MODEL;
             let extractor = client
                 .extractor::<Person>(model)
-                .preamble(EXTRACTOR_PREAMBLE)
+                .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
 
@@ -88,7 +88,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
             let model = CASSETTE_MODEL;
             let extractor = client
                 .extractor::<Person>(model)
-                .preamble(EXTRACTOR_PREAMBLE)
+                .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
 
@@ -119,7 +119,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
             let model = CASSETTE_MODEL;
             let extractor = client
                 .extractor::<Address>(model)
-                .preamble(EXTRACTOR_PREAMBLE)
+                .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
 
@@ -153,7 +153,7 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
             let model = CASSETTE_MODEL;
             let extractor = client
                 .extractor::<Person>(model)
-                .preamble(EXTRACTOR_PREAMBLE)
+                .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
 
@@ -186,7 +186,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
 
             let person_extractor = client
                 .extractor::<Person>(model)
-                .preamble(EXTRACTOR_PREAMBLE)
+                .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
             let person_response = person_extractor
@@ -197,7 +197,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
 
             let address_extractor = client
                 .extractor::<Address>(model)
-                .preamble(EXTRACTOR_PREAMBLE)
+                .append_preamble(EXTRACTOR_PREAMBLE)
                 .additional_params(json!({ "temperature": 0.0 }))
                 .build();
             let address_response = address_extractor

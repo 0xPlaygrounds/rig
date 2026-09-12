@@ -18,7 +18,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let manipulation_agent = openai_client
         .extractor::<DocumentScore>(openai::GPT_4)
-        .preamble(
+        .append_preamble(
             "
             Your role is to score a user's statement on how manipulative it sounds between 0 and 1.
         ",
@@ -27,7 +27,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let depression_agent = openai_client
         .extractor::<DocumentScore>(openai::GPT_4)
-        .preamble(
+        .append_preamble(
             "
             Your role is to score a user's statement on how depressive it sounds between 0 and 1.
         ",
@@ -36,7 +36,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let intelligent_agent = openai_client
         .extractor::<DocumentScore>(openai::GPT_4)
-        .preamble(
+        .append_preamble(
             "
             Your role is to score a user's statement on how intelligent it sounds between 0 and 1.
         ",

@@ -2508,7 +2508,7 @@ impl Replay {
                 }
             };
             if program.retrievable.contains(&name) {
-                retrievable.add_registered(tool);
+                retrievable.add_registered_tool(tool);
             } else {
                 server = server.registered_tool(tool);
             }

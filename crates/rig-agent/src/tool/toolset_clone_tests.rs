@@ -24,6 +24,6 @@ fn clone_shares_implementations_and_diverges_on_mutation() {
     assert!(clone.contains("subtract"));
     assert!(!original.contains("subtract"));
 
-    original.delete_tool("add");
+    original.remove_tool("add");
     assert!(clone.contains("add"));
 }

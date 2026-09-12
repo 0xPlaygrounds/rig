@@ -11,7 +11,7 @@ use rig_core::{
     tool::{ToolContext, ToolResult},
 };
 
-use super::registry::{RegisteredTool, ToolDispatch, dispatch_tool};
+use super::registry::{RegisteredTool, ToolDispatch, execute_tool};
 
 /// An opaque token a catalog keeps alive for as long as it exists: a
 /// registry that retires replaced generations lazily hands one per pinned
@@ -109,7 +109,7 @@ impl ToolCatalog {
         context: &mut ToolContext,
     ) -> ToolResult {
         context.clear_dispatch_result();
-        self.dispatch(tool_name, args, context)
+        self.execute_scoped(tool_name, args, context)
             .await
             .publish_to(context)
     }
@@ -127,14 +127,14 @@ impl ToolCatalog {
     }
 
     /// Run `tool_name` on a dispatch-scoped copy of `context`.
-    pub async fn dispatch(
+    pub async fn execute_scoped(
         &self,
         tool_name: &str,
         args: &str,
         context: &ToolContext,
     ) -> ToolDispatch {
         let tool = self.tools.get(tool_name).cloned();
-        dispatch_tool(tool_name, args.to_string(), tool, context).await
+        execute_tool(tool_name, args.to_string(), tool, context).await
     }
 }
 

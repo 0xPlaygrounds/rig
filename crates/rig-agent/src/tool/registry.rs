@@ -3,7 +3,7 @@
 //!
 //! A typed [`Tool`] erases once (`ErasedTool`) in rig-core; this module is
 //! what a driver does with the erasure: stores it in an ordered [`ToolSet`],
-//! executes it through one structured path ([`dispatch_tool`]), and pins a
+//! executes it through one structured path ([`execute_tool`]), and pins a
 //! per-turn [`ToolCatalog`]. The futures agent's live registry
 //! ([`ToolServer`](super::server::ToolServer)) is layered over these types.
 
@@ -272,7 +272,7 @@ impl ToolDispatch {
 
 /// Run `tool` (or answer `not found`) on a dispatch-scoped copy of
 /// `context`.
-pub async fn dispatch_tool(
+pub async fn execute_tool(
     name: &str,
     args: String,
     tool: Option<RegisteredTool>,
@@ -358,7 +358,7 @@ impl ToolSet {
     }
 
     /// Register an already-built registration; returns its name.
-    pub fn add_registered(&mut self, tool: RegisteredTool) -> String {
+    pub fn add_registered_tool(&mut self, tool: RegisteredTool) -> String {
         self.insert(tool)
     }
 
@@ -379,7 +379,7 @@ impl ToolSet {
     }
 
     /// Remove the tool named `name`.
-    pub fn delete_tool(&mut self, name: &str) {
+    pub fn remove_tool(&mut self, name: &str) {
         self.tools.shift_remove(name);
     }
 
@@ -471,7 +471,7 @@ impl ToolSet {
     ) -> ToolResult {
         context.clear_dispatch_result();
         let tool = self.get(name).cloned();
-        let dispatch = dispatch_tool(name, args.into(), tool, context).await;
+        let dispatch = execute_tool(name, args.into(), tool, context).await;
         dispatch.publish_to(context)
     }
 

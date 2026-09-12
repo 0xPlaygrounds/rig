@@ -130,10 +130,12 @@ pub use plugin::{
 };
 pub use record::{Observed, ObservedState, Recording, WorldObserver};
 pub use scene::{Scene, SceneEffect};
-pub use witness::{AdapterOperation, BUS_EMITTER, SubjectWalk, Subjects, Witnessing, bus_emitter};
+pub use witness::{
+    AdapterOperation, BUS_EMITTER, Despawning, SubjectWalk, Subjects, Witnessing, bus_emitter,
+};
 
 #[cfg(feature = "replay")]
-pub use delivery::ReplayFailure;
+pub use delivery::{ReplayDelivery, ReplayFailure};
 #[cfg(feature = "replay")]
 pub use replay::{EffectLogResource, Replay};
 
