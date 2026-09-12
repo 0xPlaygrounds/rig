@@ -326,7 +326,7 @@ pub struct Program {
     pub default_max_turns: Option<usize>,
     pub max_turns: Option<usize>,
     pub tool_concurrency: Option<usize>,
-    /// The producer ran `stream_prompt`: the model is asked for a stream.
+    /// The producer streamed (`prompt(..).stream()`): the model is asked for a stream.
     pub streamed: bool,
     /// The producer attached conversation memory under this id.
     pub conversation: Option<&'static str>,

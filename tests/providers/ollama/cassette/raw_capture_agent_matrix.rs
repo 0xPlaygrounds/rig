@@ -18,9 +18,9 @@
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
 //! | 1 | `hooks_observe_raw_blocking` | `agent.prompt` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `eval_count`/`done_reason`/durations match the fixture body | recorded |
-//! | 2 | `hooks_observe_raw_streamed` | `agent.stream_prompt` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `eval_count`/`done_reason`/durations match the fixture's `done: true` line | recorded |
+//! | 2 | `hooks_observe_raw_streamed` | `agent.prompt(..).stream()` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `eval_count`/`done_reason`/durations match the fixture's `done: true` line | recorded |
 //! | 3 | `multi_turn_tool_run_records_distinct_raw_blocking` | tool run, `agent.prompt` | two `completion_calls`, two different payloads whose fingerprints equal the interactions' in order; the first carries `message.tool_calls` | recorded |
-//! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.stream_prompt` | two `CompletionCall` items, two different terminal payloads whose fingerprints equal the interactions' in order; the forwarded last `Final.raw` is the final turn's | recorded |
+//! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.prompt(..).stream()` | two `CompletionCall` items, two different terminal payloads whose fingerprints equal the interactions' in order; the forwarded last `Final.raw` is the final turn's | recorded |
 //!
 //! Both surfaces fire the same two events per accepted model turn:
 //! `CompletionResponse` — after the unary call returns on the blocking

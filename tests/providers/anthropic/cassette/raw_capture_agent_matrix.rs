@@ -18,12 +18,12 @@
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
 //! | 1 | `hooks_observe_raw_blocking` | `agent.prompt` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `id` matches fixture | recorded |
-//! | 2 | `hooks_observe_raw_streamed` | `agent.stream_prompt` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `message_id` matches fixture | recorded |
+//! | 2 | `hooks_observe_raw_streamed` | `agent.prompt(..).stream()` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `message_id` matches fixture | recorded |
 //! | 3 | `multi_turn_tool_run_records_distinct_raw_blocking` | tool run, `agent.prompt` | two `completion_calls`, two different `raw["id"]`s equal to the interactions' ids in order | recorded |
-//! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.stream_prompt` | two `CompletionCall` items, two different `raw["message_id"]`s equal to the interactions' ids in order | recorded |
-//! | 5 | `streamed_final_carries_final_turn_raw` | tool run, `agent.stream_prompt` | the last `StreamEvent::Final.raw["message_id"]` is the last interaction's id | recorded |
+//! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.prompt(..).stream()` | two `CompletionCall` items, two different `raw["message_id"]`s equal to the interactions' ids in order | recorded |
+//! | 5 | `streamed_final_carries_final_turn_raw` | tool run, `agent.prompt(..).stream()` | the last `StreamEvent::Final.raw["message_id"]` is the last interaction's id | recorded |
 //! | 6 | `retried_turn_records_retried_attempt_raw_blocking` | `ModelTurnFinished` → `Retry` once, `agent.prompt` | second recorded call / second event carry the second interaction's `id` | recorded |
-//! | 7 | `retried_turn_records_retried_attempt_raw_streamed` | same, `agent.stream_prompt` | same, by `message_id` | recorded |
+//! | 7 | `retried_turn_records_retried_attempt_raw_streamed` | same, `agent.prompt(..).stream()` | same, by `message_id` | recorded |
 //!
 //! Both surfaces fire the same two events per accepted model turn:
 //! `CompletionResponse` — after the unary call returns on the blocking
