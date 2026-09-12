@@ -86,10 +86,15 @@ impl MemoryError {
 ///
 /// Implementors store an ordered list of [`Message`]s per `conversation_id`. Rig
 /// runtimes invoke [`ConversationMemory::load`] before sending a prompt and
-/// [`ConversationMemory::append`] after a successful turn.
+/// [`ConversationMemory::append`] after a successful run.
 ///
 /// Implementations should keep `append` cheap; it runs inline before the agent
-/// returns its response.
+/// returns its response. A load failure fails the run before any model call;
+/// an append failure does not fail the run — the answer stands, the runtime
+/// reports the refused append beside it (rig-agent's `PromptResponse::memory_append`,
+/// the effect log's record) and nothing is retried. Rig promises no
+/// transactional or exactly-once write: a backend that fails after writing
+/// has written.
 pub trait ConversationMemory: WasmCompatSend + WasmCompatSync {
     /// Load the full conversation history for `conversation_id`.
     ///

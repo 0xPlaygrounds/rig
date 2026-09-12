@@ -150,6 +150,20 @@ impl MultiTurnStreamItem {
         Self::StreamAssistantItem(item)
     }
 
+    /// Stamp a `FinalResponse` item with how the run's memory append
+    /// settled; any other item is returned unchanged.
+    pub(crate) fn with_memory_append(
+        self,
+        memory_append: Option<crate::run::MemoryAppend>,
+    ) -> Self {
+        match self {
+            Self::FinalResponse(response) => {
+                Self::FinalResponse(response.with_memory_append(memory_append))
+            }
+            other => other,
+        }
+    }
+
     /// Build a `FinalResponse` item from final-turn content, applying the
     /// run-finalization shaping of `final_response_from_content` (#1928).
     /// The one public entry point to that shaping, for mocks and adapters

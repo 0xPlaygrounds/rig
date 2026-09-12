@@ -745,18 +745,23 @@ impl Agent {
 
     /// Run one turn against caller-owned history, appending only the messages
     /// the run committed. Returns the same [`PromptResponse`] as
-    /// [`prompt`](Self::prompt).
+    /// [`prompt`](Self::prompt), its `messages` included.
+    ///
+    /// The caller's history is the run's input history, so conversation
+    /// memory is bypassed (no load, no append) and the caller owns
+    /// persistence. A run that fails appends nothing: the error carries the
+    /// history the run had, the caller's vector is unchanged.
     #[tracing::instrument(skip(self, prompt, chat_history), fields(agent_name = self.name_or_default()))]
     pub async fn chat(
         &self,
         prompt: impl Into<Message> + WasmCompatSend,
         chat_history: &mut Vec<Message>,
     ) -> Result<PromptResponse, PromptError> {
-        let mut response = AgentRunner::from_agent(self, prompt)
+        let response = AgentRunner::from_agent(self, prompt)
             .history(chat_history.clone())
             .await?;
-        if let Some(messages) = response.messages.take() {
-            chat_history.extend(messages);
+        if let Some(messages) = &response.messages {
+            chat_history.extend(messages.iter().cloned());
         }
         Ok(response)
     }

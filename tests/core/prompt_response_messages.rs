@@ -331,17 +331,27 @@ async fn chat_appends_prompt_and_assistant_to_history() {
     let agent = AgentBuilder::new(simple_text_model(2)).build();
     let mut history = Vec::<Message>::new();
 
-    let output = agent
+    let response = agent
         .chat("hi", &mut history)
         .await
-        .expect("chat should succeed")
-        .output;
+        .expect("chat should succeed");
 
-    assert_eq!(output, "hello from mock");
+    assert_eq!(response.output, "hello from mock");
     assert_eq!(
         history.len(),
         2,
         "expected chat to append [User, Assistant], got: {history:#?}"
+    );
+    // `chat` returns the same response `prompt` does: the run's transcript
+    // is on it, and it is exactly what the caller's history gained.
+    assert_eq!(
+        response.messages.as_deref().map(<[Message]>::len),
+        Some(2),
+        "chat keeps the run's messages on the response"
+    );
+    assert_eq!(
+        response.memory_append, None,
+        "caller-owned history bypasses memory: nothing to acknowledge"
     );
 
     match &history[0] {
@@ -463,4 +473,45 @@ async fn sequential_prompts_have_independent_histories() {
         },
         other => panic!("unexpected: {other:?}"),
     }
+}
+
+/// `memory_append` is absent from a response without memory behind it, and
+/// round-trips through serde in both states when set by the driver.
+#[test]
+fn memory_append_is_absent_without_memory_and_round_trips_through_serde() {
+    use rig::agent::{MemoryAppend, PromptResponse};
+
+    let bare = PromptResponse::new("output", Usage::new());
+    assert_eq!(bare.memory_append, None);
+    let json = serde_json::to_value(&bare).expect("serializes");
+    assert!(
+        json.get("memory_append").is_none(),
+        "no memory, no field: {json}"
+    );
+
+    let acknowledged = bare
+        .clone()
+        .with_memory_append(Some(MemoryAppend::Acknowledged));
+    let json = serde_json::to_value(&acknowledged).expect("serializes");
+    assert_eq!(
+        json["memory_append"],
+        serde_json::json!({"memory_append": "acknowledged"})
+    );
+    let restored: PromptResponse = serde_json::from_value(json).expect("deserializes");
+    assert_eq!(restored.memory_append, Some(MemoryAppend::Acknowledged));
+
+    let failed = bare.with_memory_append(Some(MemoryAppend::Failed {
+        report: rig::error::ErrorReport::new(rig::error::ErrorKind::MemoryBackend, "boom"),
+    }));
+    let json = serde_json::to_value(&failed).expect("serializes");
+    assert_eq!(json["memory_append"]["memory_append"], "failed");
+    let restored: PromptResponse = serde_json::from_value(json).expect("deserializes");
+    assert_eq!(restored.memory_append, failed.memory_append);
+    assert_eq!(
+        restored
+            .memory_append()
+            .and_then(MemoryAppend::failure)
+            .map(|report| report.kind),
+        Some(rig::error::ErrorKind::MemoryBackend)
+    );
 }

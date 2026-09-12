@@ -97,7 +97,7 @@ pub mod response;
 pub mod streamed;
 
 pub use policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
-pub use response::{CompletionCall, PromptError, PromptResponse};
+pub use response::{CompletionCall, MemoryAppend, PromptError, PromptResponse};
 use rig_core::json_utils;
 use transcript::{
     TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, TranscriptError, assistant_text_from_choice,

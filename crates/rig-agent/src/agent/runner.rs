@@ -108,11 +108,17 @@ impl AgentRunner {
     /// the state a driver serialized between steps (see [`AgentRun`]) is
     /// picked up where it stopped — its pending tool calls execute, its
     /// next model turn is asked for — under this agent's hooks, tools,
-    /// bus and settings. The runner's prompt and history are ignored (the
-    /// run carries its own), as is conversation memory (its history is
-    /// already in the run; nothing is loaded, and the run's messages are
-    /// not appended a second time). The run must have been suspended by
-    /// the same rig version.
+    /// bus, settings and [`tool_context`](Self::tool_context) (inbound tool
+    /// context is driver state, never part of the persisted run). The
+    /// runner's prompt and history are ignored (the run carries its own),
+    /// and conversation memory is neither loaded nor appended: the history
+    /// is already in the run, and the driver that persisted the run owns
+    /// its memory — it appends the finished run's `messages` itself, since
+    /// a suspended run never reached the `Done` append. The response's
+    /// `memory_append` is therefore `None`. Pending tool calls re-execute
+    /// on resume: a tool that ran before the suspension and answered
+    /// nothing runs again. The run must have been suspended by the same
+    /// rig version.
     pub fn resume(mut self, run: AgentRun) -> Self {
         self.resume = Some(Box::new(run));
         self
@@ -341,6 +347,15 @@ impl AgentRunner {
     }
 
     /// Set the conversation id used to load and persist memory for this run.
+    ///
+    /// With a memory backend configured, the run loads the conversation
+    /// before its first model call (a load failure fails the run with
+    /// [`PromptError::MemoryError`] before any completion) and appends its
+    /// `messages` once it finishes. The append is acknowledged on the
+    /// response's [`memory_append`](PromptResponse::memory_append): a
+    /// refused append does not fail the run, the answer stands and the
+    /// response says the transcript was not persisted. Explicit
+    /// [`history`](Self::history) bypasses both.
     pub fn conversation(mut self, id: impl Into<rig_core::id::ConversationId>) -> Self {
         self.config.conversation_id = Some(id.into());
         self
@@ -513,7 +528,8 @@ impl AgentRunner {
         // A resumed run brought its history with it: nothing is loaded and
         // nothing is saved — no `Memory` dispatch, no memory hook event, no
         // record in the log — so its continuation is exactly the reference
-        // log's tail and a memory backend that is down cannot fail it.
+        // log's tail and a memory backend that is down cannot fail it. The
+        // driver that persisted the run owns its append (see `resume`).
         let resumed = self.resume.take();
         let (history_override, memory_handle) = match &resumed {
             Some(_) => (None, None),

@@ -5595,12 +5595,14 @@ async fn streaming_appends_to_memory_after_final_response() {
         .await;
 
     let mut history_in_final = None;
+    let mut memory_append = None;
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::FinalResponse(res)) => {
                 history_in_final = res
                     .messages()
                     .map(<[rig_core::completion::Message]>::to_vec);
+                memory_append = res.memory_append.clone();
                 break;
             }
             Ok(_) => {}
@@ -5615,9 +5617,49 @@ async fn streaming_appends_to_memory_after_final_response() {
         2,
         "user prompt + assistant response in final history: {final_history:?}"
     );
+    assert_eq!(
+        memory_append,
+        Some(crate::run::MemoryAppend::Acknowledged),
+        "the final item acknowledges the append, as the blocking response does"
+    );
 
     let stored = memory.load(&"stream-thread".into()).await.unwrap();
     assert_eq!(stored.len(), 2, "memory should contain user + assistant");
+}
+
+/// The streaming twin of the blocking refused-append test: the final item
+/// is still delivered, and it reports the append the backend refused.
+#[tokio::test]
+async fn streaming_reports_a_refused_append_on_the_final_response() {
+    let agent = AgentBuilder::new(streaming_text_then_final_model())
+        .memory(rig_core::test_utils::AppendFailingMemory::default())
+        .build();
+
+    let mut stream = agent
+        .stream_prompt("hi there")
+        .conversation("stream-thread")
+        .stream()
+        .await;
+
+    let mut final_response = None;
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                final_response = Some(res);
+                break;
+            }
+            Ok(_) => {}
+            Err(err) => panic!("unexpected streaming error: {err:?}"),
+        }
+    }
+    let response = final_response.expect("the answer stands when the append is refused");
+    assert_eq!(response.messages().map(<[_]>::len), Some(2));
+    let report = response
+        .memory_append()
+        .and_then(crate::run::MemoryAppend::failure)
+        .expect("the refused append is reported on the final item");
+    assert_eq!(report.kind, rig_core::error::ErrorKind::MemoryBackend);
+    assert!(report.message.contains("append boom"), "{report:?}");
 }
 
 #[tokio::test]

@@ -327,6 +327,80 @@ async fn tool_memory_index_and_embed_handles_call_their_families() {
     assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+struct Session(String);
+
+impl rig_core::tool::ContextValue for Session {
+    const KEY: &'static str = "test.session";
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+struct Stale;
+
+impl rig_core::tool::ContextValue for Stale {
+    const KEY: &'static str = "test.stale";
+}
+
+/// A tool-family handler that is not a tool adapter and publishes nothing.
+struct Silent;
+
+impl rig_core::serve::Serve for Silent {
+    type Family = family::Tool;
+
+    fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+        rig_core::effect::HandlerDescriptor {
+            key: rig_core::effect::tool_key("silent"),
+            family: rig_core::effect::FamilyDescriptor::Tool {
+                name: "silent".into(),
+                description: "answers without publishing".into(),
+                parameters: json!({"type": "object"}),
+                embedding: None,
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(
+        &self,
+        _kind: rig_core::effect::EffectKind,
+        _dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
+        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::ToolResult {
+            result: rig_core::tool::ToolResult::success(rig_core::tool::ToolOutput::text("silent")),
+        }))
+    }
+}
+
+/// The answer's context is the dispatch snapshot the call ran under when
+/// the handler published nothing: the inbound values it ran with, no
+/// result metadata — never an empty context, and never the caller's
+/// stale result metadata.
+#[tokio::test]
+async fn a_tool_answer_keeps_inbound_values_when_the_handler_publishes_nothing() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    driver.register("silent", Silent).expect("register");
+    let task = tokio::spawn(driver);
+
+    let tool: ToolHandle = dispatcher
+        .handle(&HandlerKey::from("silent"))
+        .expect("tool");
+    let mut context = ToolContext::new();
+    context.insert(Session("s-1".into())).expect("inbound");
+    context.insert_result(Stale).expect("stale result metadata");
+    let answer = within(tool.call("silent", "{}", context))
+        .await
+        .expect("called");
+    assert_eq!(answer.result.output().as_text(), Some("silent"));
+    assert_eq!(
+        answer.context.get::<Session>().expect("decodes"),
+        Some(Session("s-1".into()))
+    );
+    assert_eq!(answer.context.result::<Stale>().expect("decodes"), None);
+
+    drop((tool, dispatcher));
+    within(task).await.expect("driver ends");
+}
+
 #[tokio::test]
 async fn handles_fail_closed_when_the_driver_is_gone() {
     let (dispatcher, _registrar, mut driver) = Bus::channel();

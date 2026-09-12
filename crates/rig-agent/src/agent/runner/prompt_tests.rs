@@ -1,6 +1,6 @@
 use crate::agent::ResponseIdentity;
 use crate::agent::typed::{TypedPromptResponse, deserialize_structured_output};
-use crate::run::response::{CompletionCall, PromptResponse};
+use crate::run::response::{CompletionCall, MemoryAppend, PromptResponse};
 use crate::run::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, turn_delivered_no_answer};
 use crate::run::transcript::{assistant_text_from_choice, is_empty_assistant_turn};
 use crate::{
@@ -1916,7 +1916,7 @@ async fn memory_appends_full_turn_after_success() {
     let model = MockCompletionModel::text("ack");
     let agent = AgentBuilder::new(model).memory(memory.clone()).build();
 
-    let _ = agent
+    let response = agent
         .prompt("hello")
         .conversation("t1")
         .await
@@ -1924,6 +1924,16 @@ async fn memory_appends_full_turn_after_success() {
 
     let stored = memory.load(&"t1".into()).await.unwrap();
     assert_eq!(stored.len(), 2, "user prompt + assistant response saved");
+    assert_eq!(
+        response.memory_append,
+        Some(MemoryAppend::Acknowledged),
+        "the response acknowledges the append"
+    );
+    assert_eq!(
+        response.messages.as_deref(),
+        Some(stored.as_slice()),
+        "what was appended is the response's transcript"
+    );
 }
 
 #[tokio::test]
@@ -1939,7 +1949,7 @@ async fn explicit_with_history_overrides_memory() {
     let recorded = model.clone();
 
     let agent = AgentBuilder::new(model).memory(memory.clone()).build();
-    let _ = agent
+    let response = agent
         .prompt("hello")
         .conversation("t1")
         .history(vec![Message::user("from-caller")])
@@ -1949,6 +1959,10 @@ async fn explicit_with_history_overrides_memory() {
     assert_eq!(memory.load_count(), 0, "load skipped");
     let appends = memory.append_count();
     assert_eq!(appends, 0, "append skipped");
+    assert_eq!(
+        response.memory_append, None,
+        "explicit history bypasses memory: nothing to acknowledge"
+    );
 
     let received = recorded.requests()[0].chat_history.clone();
     assert_eq!(received.len(), 2, "caller history (1) + current prompt");
@@ -2220,7 +2234,7 @@ async fn without_memory_disables_for_request() {
         .conversation("t1")
         .build();
 
-    let _ = agent
+    let response = agent
         .prompt("hello")
         .without_memory()
         .await
@@ -2228,6 +2242,7 @@ async fn without_memory_disables_for_request() {
 
     assert_eq!(memory.load_count(), 0);
     assert_eq!(memory.append_count(), 0);
+    assert_eq!(response.memory_append, None);
 }
 
 #[tokio::test]
@@ -2247,20 +2262,35 @@ async fn memory_load_error_surfaces_as_prompt_error() {
     }
 }
 
+/// A refused append does not fail the run: the answer stands, and the
+/// response says the transcript was not persisted — a caller can tell the
+/// two endings apart without a hook or the effect log.
 #[tokio::test]
 async fn memory_append_error_does_not_drop_response() {
     let model = MockCompletionModel::text("ack");
     let agent = AgentBuilder::new(model)
         .memory(AppendFailingMemory::default())
         .build();
-    let response: String = agent
+    let response = agent
         .prompt("hello")
         .conversation("t1")
         .await
-        .expect("append failure must not block successful completion")
-        .output;
+        .expect("append failure must not block successful completion");
 
-    assert!(!response.is_empty());
+    assert_eq!(response.output, "ack");
+    assert_eq!(
+        response.messages.as_ref().map(Vec::len),
+        Some(2),
+        "the transcript the run tried to persist"
+    );
+    let report = response
+        .memory_append
+        .as_ref()
+        .and_then(MemoryAppend::failure)
+        .expect("the refused append is reported on the response");
+    assert_eq!(report.kind, rig_core::error::ErrorKind::MemoryBackend);
+    assert!(report.message.contains("append boom"), "{report:?}");
+    assert!(!response.memory_append.as_ref().unwrap().is_acknowledged());
 }
 
 /// Serde compatibility (rig#2265): run records persisted before the

@@ -250,7 +250,8 @@ pub struct ToolAnswer {
     /// The result.
     pub result: rig_core::tool::ToolResult,
     /// The dispatch context after the tool ran: the inbound values it ran
-    /// with and the result metadata it published.
+    /// with and the result metadata it published. A handler that published
+    /// nothing answers with the inbound values alone.
     pub context: ToolContext,
 }
 
@@ -259,6 +260,10 @@ pub struct ToolAnswer {
 pub struct ToolCall {
     pending: Pending,
     published: Option<std::sync::Arc<rig_core::tool::PublishedContext>>,
+    /// The dispatch snapshot the call was made under: the answer's context
+    /// when the handler published nothing (a handler that is not a tool
+    /// adapter), so the inbound values the tool ran with are never lost.
+    inbound: ToolContext,
 }
 
 impl ToolCall {
@@ -296,7 +301,7 @@ impl Future for ToolCall {
                         .published
                         .as_ref()
                         .and_then(|published| published.take())
-                        .unwrap_or_default(),
+                        .unwrap_or_else(|| this.inbound.for_dispatch()),
                 }
             })),
         }
@@ -431,6 +436,7 @@ impl ToolHandle {
             name: name.into(),
             args: args.into(),
         };
+        let inbound = context.for_dispatch();
         let pending = self.dispatcher.dispatch_tool_with_id(
             self.dispatcher.mint_id(),
             &self.descriptor.key,
@@ -438,7 +444,11 @@ impl ToolHandle {
             context,
         );
         let published = pending.published_context();
-        ToolCall { pending, published }
+        ToolCall {
+            pending,
+            published,
+            inbound,
+        }
     }
 }
 

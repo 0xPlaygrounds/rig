@@ -52,7 +52,7 @@ use super::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     run::{
-        response::PromptResponse,
+        response::{MemoryAppend, PromptResponse},
         transcript::{assistant_text_from_choice, is_empty_assistant_turn, tool_result_output},
     },
     runner::AgentRunner,
@@ -505,13 +505,18 @@ where
                         "Agent run finished"
                     );
                     source.record_run_level_telemetry(&agent_span, &response, created_agent_span);
-                    append_run_messages(
+                    // The answer stands whatever the append says; how the
+                    // append settled rides on the response so a caller can
+                    // tell a persisted transcript from one the backend
+                    // refused without a hook or the effect log.
+                    let memory_append = append_run_messages(
                         &runner,
                         &hook_ctx,
                         memory_handle.as_ref(),
                         response.messages.as_deref().unwrap_or_default(),
                     )
                     .await;
+                    let response = response.with_memory_append(memory_append);
                     // The run has settled successfully: nothing follows this
                     // response — the error endings settle after the loop.
                     if runner.config.hooks.observes(StepEventKind::RunSettled) {
@@ -1467,12 +1472,15 @@ impl TurnSource for StreamingTurnSource {
         // caller supplied input history.
         let final_messages: Option<Vec<Message>> =
             Some(response.messages.clone().unwrap_or_default());
-        Some(MultiTurnStreamItem::final_response_with_completion_calls(
-            final_choice,
-            response.usage,
-            response.completion_calls.clone(),
-            final_messages,
-        ))
+        Some(
+            MultiTurnStreamItem::final_response_with_completion_calls(
+                final_choice,
+                response.usage,
+                response.completion_calls.clone(),
+                final_messages,
+            )
+            .with_memory_append(response.memory_append.clone()),
+        )
     }
 }
 
@@ -1641,18 +1649,17 @@ pub(crate) async fn resolve_completion_call(
 /// Append a finished run's messages to conversation memory, logging and
 /// proceeding on failure. Shared `Done`-arm behavior for both drivers. The
 /// append is a `Memory` dispatch at the boundary: observe-only for hooks
-/// unless one opts into `MemoryDispatch`.
+/// unless one opts into `MemoryDispatch`. Returns how the append settled
+/// for the response, `None` when the run has no memory to append to.
 pub(crate) async fn append_run_messages(
     runner: &AgentRunner,
     ctx: &HookContext,
     memory_handle: Option<&(MemoryHandle, rig_core::id::ConversationId)>,
     messages: &[Message],
-) {
+) -> Option<MemoryAppend> {
     // Clone into an owned vec only when there is a backend to append to — the
     // common no-memory path pays nothing.
-    let Some((memory, id)) = memory_handle else {
-        return;
-    };
+    let (memory, id) = memory_handle?;
     let appended = dispatch_effect(
         &runner.config.hooks,
         ctx,
@@ -1670,13 +1677,17 @@ pub(crate) async fn append_run_messages(
         Outcome::Memory(rig_core::effect::MemoryOutcome::Appended) => Ok(()),
         other => Err(wrong_outcome("appended memory", &other)),
     });
-    if let Err(err) = appended {
-        tracing::warn!(
-            error = %err,
-            conversation_id = %id,
-            "conversation memory append failed; surfacing final response anyway"
-        );
-    }
+    Some(match appended {
+        Ok(()) => MemoryAppend::Acknowledged,
+        Err(report) => {
+            tracing::warn!(
+                error = %report,
+                conversation_id = %id,
+                "conversation memory append failed; surfacing final response anyway"
+            );
+            MemoryAppend::Failed { report }
+        }
+    })
 }
 
 /// Dispatch any effect through the agent's bus at the dispatch boundary:
