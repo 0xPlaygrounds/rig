@@ -1,0 +1,101 @@
+# The two slow lanes: the all-features workspace run (the Docker-backed
+# storage suites, the facade feature-forwarding guard, every root binary
+# under all features) and the declared dependency floors. On a PR a plan job
+# asks the same planner developers use (`cargo xtask verify --lanes`) which
+# lanes the diff selects, so local `--pr` and CI cannot disagree; a planner
+# failure is a red job, never an empty green one. Every other trigger runs
+# both lanes: the merge queue (the squashed batch is not any PR head), the
+# nightly schedule, manual dispatch, and cd.yaml before every release.
+name: Slow lanes
+
+on:
+  pull_request:
+    branches: ["**"]
+  merge_group:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: slow-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: stable / plan slow lanes
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    outputs:
+      full: ${{ steps.lanes.outputs.full }}
+      floors: ${{ steps.lanes.outputs.floors }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/rust-setup
+      # `shell: bash` gives pipefail, so a planner failure fails this step;
+      # the lanes then also refuse to run on a plan that did not succeed.
+      - id: lanes
+        shell: bash
+        run: |
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          cargo xtask verify --lanes --base "origin/${{ github.base_ref }}" | tee lanes.txt
+          line=$(grep -E '^full=(true|false) floors=(true|false)$' lanes.txt)
+          printf '%s\n' $line >> "$GITHUB_OUTPUT"
+
+  # `schedule` fires on forks too; the repository guard keeps a fork from
+  # running a suite it did not ask for. The plan job is skipped on non-PR
+  # events, which would skip its dependents by default, hence the explicit
+  # result check; a failed plan never lets a lane run or skip quietly.
+  test-all-features:
+    name: stable / test all features
+    runs-on: ubuntu-latest
+    needs: plan
+    if: >-
+      (needs.plan.result == 'success' || needs.plan.result == 'skipped') &&
+      github.repository == '0xPlaygrounds/rig' &&
+      (github.event_name != 'pull_request' || needs.plan.outputs.full == 'true')
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/rust-setup
+        with:
+          nextest: "true"
+          protoc: "true"
+          # The repository-repair tests format proposed patches.
+          components: rustfmt
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          shared-key: all-features
+          save-if: "false"
+      - run: cargo xtask verify --check full-tests
+
+  # Declared requirements are floors, not pins; the workspace must build at
+  # the lowest versions it declares (#2195). Selected when a resolver input
+  # changes (any manifest, the lockfile, the toolchain, Cargo configuration,
+  # the checker, the verification tooling); a source-only change that starts
+  # using a newer API is caught here on the queue, the schedule or the
+  # release gate instead of on its own PR.
+  dependency-floors:
+    name: stable / dependency floors
+    runs-on: ubuntu-latest
+    needs: plan
+    if: >-
+      (needs.plan.result == 'success' || needs.plan.result == 'skipped') &&
+      github.repository == '0xPlaygrounds/rig' &&
+      (github.event_name != 'pull_request' || needs.plan.outputs.floors == 'true')
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/rust-setup
+        with:
+          protoc: "true"
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
+      - run: cargo xtask verify --check dependency-floors

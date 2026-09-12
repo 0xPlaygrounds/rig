@@ -67,8 +67,10 @@ pub(super) fn run(root: &Path, plan: &[Check]) -> Result<()> {
                         .split('.')
                         .map(|v| v.parse::<u32>().unwrap_or(0));
                     let (major, minor) = (parts.next().unwrap_or(0), parts.next().unwrap_or(0));
-                    if (major, minor) < (3, 11) {
-                        failures.push(format!("Python >=3.11 required; got {version}"));
+                    // 3.12: `unittest discover` exits non-zero when it finds
+                    // no tests, so a renamed suite cannot pass vacuously.
+                    if (major, minor) < (3, 12) {
+                        failures.push(format!("Python >=3.12 required; got {version}"));
                     }
                 }
                 if program == "rustc" {

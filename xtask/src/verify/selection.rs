@@ -154,6 +154,13 @@ fn provider_check(name: &str, reason: &str) -> Check {
     )
 }
 
+/// Cache-warming aliases: each compiles its source check's artifacts with
+/// nextest `--no-run` and executes nothing. cache-warm.yaml runs exactly these.
+pub(super) const WARMING: [(&str, &str); 2] = [
+    ("default-test-build", "default-tests"),
+    ("full-test-build", "full-tests"),
+];
+
 pub(super) fn plan(
     root: &Path,
     metadata: &Value,
@@ -170,11 +177,7 @@ pub(super) fn plan(
         // Cache warming: compile exactly the artifacts a test check needs,
         // without executing it or claiming its result. Each alias keeps its
         // source check's package/feature graph so rust-cache entries match.
-        let warming = [
-            ("default-test-build", "default-tests"),
-            ("full-test-build", "full-tests"),
-        ];
-        if let Some((_, source)) = warming.iter().find(|(alias, _)| *alias == id) {
+        if let Some((_, source)) = WARMING.iter().find(|(alias, _)| *alias == id) {
             add(
                 &mut out,
                 all,

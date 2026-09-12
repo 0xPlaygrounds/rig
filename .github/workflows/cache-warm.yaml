@@ -1,3 +1,10 @@
+# Populates the two dependency caches PRs restore: the default/bedrock test
+# graph (ci.yaml's `test` job key) on the development base, and the
+# all-features test graph (shared key `all-features`, restored by doctest and
+# test-all-features) on both branches. rust-cache runs at job level so a
+# failed or cancelled warm saves nothing, and a started warm is never
+# cancelled: a partial entry saved under the exact key would be treated as
+# up to date by every later warm.
 name: Development cache warm
 
 on:
@@ -7,57 +14,18 @@ on:
 permissions:
   contents: read
 
-# rust-cache hashes every CARGO*/RUST* variable into its key. ci.yaml and
-# nightly.yaml set this at workflow level; state it here too rather than
-# relying on setup-rust-toolchain's identical default.
 env:
   CARGO_TERM_COLOR: always
 
-# Never cancel a warm in progress. rust-cache's post step runs even when the
-# job is cancelled or fails and saves whatever `target/` holds under the
-# exact key, and a later complete warm then restores that entry as a full
-# match and skips its own save ("Cache up-to-date."). That happened on the
-# first push after this workflow gained the all-features job: a superseding
-# push cancelled it at three minutes, an 831 MB partial entry was published,
-# and the superseding run's own 12-minute build was thrown away. Queuing the
-# newer push behind a started warm removes the cancellation trigger; the
-# all-features job below removes the failure trigger too.
 concurrency:
   group: cache-warm-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  # Two configurations, not every matrix leg. PR merge refs can restore
-  # their base's cache but cannot warm other PRs themselves. The default
-  # graph is warmed for the development base only: on main, cd.yaml's own
-  # `test` job already saves it.
-  #
-  # Both jobs invoke rust-cache at job level rather than through the
-  # composite. The runner registers an embedded action's post step with the
-  # embedded step's own `if:` and discards its `post-if`, so nested
-  # rust-cache saves after a cancellation (the 831 MB incident); the
-  # composite's nested call also fixes `cache-on-failure: true`, which
-  # saves after a failed compile. At job level rust-cache's
-  # `post-if: success()` is honoured and a cancelled or failed warm saves
-  # nothing. `save-if` restates the composite's trusted-push gate, which a
-  # job-level call cannot reach. Every other saving job still uses the
-  # nested cache; a failed push to main can therefore still publish a
-  # partial entry under its own job key, and a later warm that restores it
-  # as an exact match will not replace it. That is a known gap, not closed
-  # here.
-  #
-  # This job's key must equal ci.yaml's `test` job's, whose nested rust-cache
-  # runs before the composite exports RUSTC_WRAPPER for sccache. So the
-  # composite runs twice: once without sccache so rust-cache computes the key
-  # from the same environment (job id `test` is the automatic key), then
-  # again to enable sccache for the build. Neither the toolchain install nor
-  # nextest exports a CARGO*/RUST* variable, so the order is otherwise moot.
+  # main's own ci.yaml run saves this key, so only the development base.
   test:
-    if: github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' && github.ref == 'refs/heads/feat/effect-bus'
+    if: github.repository == '0xPlaygrounds/rig' && github.ref == 'refs/heads/feat/effect-bus'
     runs-on: ubuntu-latest
-    # A warm is never cancelled, so a hung build must not hold this ref's
-    # concurrency group for the runner's six-hour default (queue time is not
-    # counted; only the running job is bounded).
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
@@ -65,56 +33,21 @@ jobs:
         with:
           nextest: "true"
           components: rustfmt
-          cache: "false"
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-        with:
-          save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' && github.ref == 'refs/heads/feat/effect-bus' }}
-      - uses: ./.github/actions/rust-setup
-        with:
-          sccache: "true"
-          cache: "false"
-          cache-development: "true"
-      # Populate the same artifacts without repeating the required CI test run.
+      # Compile the default/bedrock test artifacts; execute nothing.
       - run: cargo xtask verify --check default-test-build
 
-  # The all-features test graph, shared through one rust-cache key by the two
-  # jobs that build it verbatim — ci.yaml's `doctest` (`cargo test --doc
-  # --workspace --all-features`) and nightly.yaml's `test-all-features`
-  # (`nextest run --workspace --all-features`): same profile, same feature
-  # set, same environment. No sccache, for the quota reason on the
-  # rust-setup input. This job is the key's only writer — both restoring
-  # jobs pass `cache-save-if: "false"` — so the saved entry is always the
-  # complete nextest graph (the doctest build is a subset: bin-only members
-  # have no doctests). It runs on main as well; nothing else writes the key
-  # there, so without it every PR and merge-queue restore would miss.
-  # Before this job every doctest run compiled the whole graph cold: nine of
-  # its ten minutes were dependencies, sixteen seconds were doctests.
-  # rust-cache keeps dependency artifacts only, so workspace crates still
-  # rebuild in every run.
   all-features:
-    if: github.repository == '0xPlaygrounds/rig' && github.event_name == 'push'
+    if: github.repository == '0xPlaygrounds/rig'
     runs-on: ubuntu-latest
-    # Actions cache entries are branch-scoped, so the main and feat/effect-bus
-    # warms write separate entries under this one key and need no
-    # cross-ref serialization; the per-ref workflow group above suffices.
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
-      # Job-level rust-cache, see the note above `test`. This job uses no
-      # sccache, so the key matches the two restoring jobs (ci.yaml doctest,
-      # nightly.yaml test-all-features), which have no RUSTC_WRAPPER either;
-      # the protoc install exports nothing rust-cache hashes.
       - uses: ./.github/actions/rust-setup
         with:
           nextest: "true"
           protoc: "true"
-          cache: "false"
-      # Same pinned rust-cache the composite reaches through its pinned
-      # setup-rust-toolchain, so the key layout is identical. This job is the
-      # key's only writer; both restorers pass `cache-save-if: "false"`.
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           shared-key: all-features
-          save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/effect-bus') }}
-      # Compile the all-features test artifacts; execute nothing.
       - run: cargo xtask verify --check full-test-build

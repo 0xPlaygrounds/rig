@@ -1,4 +1,7 @@
 //! Check definitions shared by local plans and CI's independently scheduled jobs.
+//! `tests/core/streaming_conformance_registry.rs` includes this file by path
+//! into the facade's test binary, so it must stay std-only and free of
+//! `crate::` references.
 use std::collections::BTreeMap;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Step {
@@ -46,7 +49,6 @@ pub(super) fn all() -> Vec<Check> {
                     "bash",
                     &[".github/scripts/check-migrating-guide-preamble.sh"],
                 ),
-                Step::new("bash", &[".github/scripts/check-toolchain-pin.sh"]),
                 Step::new("@fixture-paths", &[]),
                 Step::new(
                     "node",

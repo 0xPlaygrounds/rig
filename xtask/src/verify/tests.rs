@@ -676,3 +676,77 @@ fn tool_versions_require_the_exact_pinned_version() {
         "0.2.118"
     ));
 }
+
+/// Every `cargo xtask verify --check <id>` a workflow step runs, by line
+/// scan of the `run:` values (the workflows are plain YAML lists).
+fn workflow_check_ids(workflow: &str) -> BTreeSet<String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    std::fs::read_to_string(root.join(workflow))
+        .unwrap()
+        .lines()
+        .filter_map(|line| {
+            line.trim()
+                .trim_start_matches("- ")
+                .strip_prefix("run: cargo xtask verify --check ")
+        })
+        .map(|id| id.trim().to_string())
+        .collect()
+}
+#[test]
+fn every_check_is_run_by_a_workflow_step() {
+    // A check that exists only in `checks::all()` would pass `--full`
+    // locally and run nowhere in CI. This asserts presence in a step, not
+    // reachability: the slow lanes' steps sit behind the plan job's answer
+    // and the repository guard by design.
+    let defined: BTreeSet<String> = checks::all().into_iter().map(|c| c.id).collect();
+    let mut invoked = workflow_check_ids(".github/workflows/ci.yaml");
+    invoked.extend(workflow_check_ids(".github/workflows/slow.yaml"));
+    let missing: Vec<_> = defined.difference(&invoked).collect();
+    assert!(missing.is_empty(), "checks no workflow runs: {missing:?}");
+    let unknown: Vec<_> = invoked.difference(&defined).collect();
+    assert!(
+        unknown.is_empty(),
+        "workflows run undefined checks: {unknown:?}"
+    );
+    let warm = workflow_check_ids(".github/workflows/cache-warm.yaml");
+    assert_eq!(
+        warm,
+        selection::WARMING
+            .iter()
+            .map(|(alias, _)| (*alias).to_string())
+            .collect()
+    );
+}
+
+#[test]
+fn workflows_carry_no_toolchain_copy() {
+    // rust-toolchain.toml is the single toolchain source. A literal
+    // `toolchain:` or a RUST_VERSION copy in any workflow or action would
+    // build one job on a stale compiler; jobs that run no check (release-plz,
+    // the plan job) never reach the planner's rustc probe, so scan the text.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let mut files: Vec<_> = std::fs::read_dir(root.join(".github/workflows"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    files.push(root.join(".github/actions/rust-setup/action.yml"));
+    for file in files {
+        let text = std::fs::read_to_string(&file).unwrap();
+        for line in text.lines() {
+            let trimmed = line.trim();
+            assert!(
+                !trimmed.starts_with("RUST_VERSION:"),
+                "{}: RUST_VERSION copy",
+                file.display()
+            );
+            if let Some(value) = trimmed.strip_prefix("toolchain:") {
+                assert!(
+                    value.contains("${{"),
+                    "{}: literal toolchain pin {value:?}",
+                    file.display()
+                );
+            }
+        }
+    }
+}
