@@ -76,7 +76,7 @@ fn run_for(world: &World, effect: Entity) -> Entity {
 }
 fn emit(world: &World, run: Entity, tag: &'static str) {
     let streamed = world
-        .get::<rig_ecs::agent::Streamed>(run)
+        .get::<rig_ecs::agent::StreamRequested>(run)
         .expect("actual stream mode")
         .0;
     for tap in &world.get::<Taps>(run).expect("actual run taps").0 {

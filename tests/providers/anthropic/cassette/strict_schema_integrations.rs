@@ -392,7 +392,7 @@ async fn structured_output_and_strict_tool_use_coexist() {
             let model = client
                 .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
                 .with_strict_tools();
-            let output_schema = serde_json::from_value(json!({
+            let output_schema: schemars::Schema = serde_json::from_value(json!({
                 "type": "object",
                 "properties": { "summary": { "type": "string" } },
                 "required": ["summary"]

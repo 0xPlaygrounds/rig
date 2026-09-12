@@ -264,14 +264,15 @@ impl EcsAgent {
     pub async fn wait_for_outcome(&mut self, run: Entity) -> Result<String, Failure> {
         if self.golden_identity {
             let bus = self.app.world().resource::<rig_ecs::bus::Policy>().0;
-            rig_ecs::replay::stamp_header(
+            rig_ecs::replay::stamp_legacy_builder_header(
                 self.app.world_mut(),
                 self.agent,
                 &self.recorder,
                 self.declare_bus_policy.then_some(bus),
                 self.declared_policies.clone(),
             );
-            rig_ecs::replay::stamp_run(self.app.world_mut(), run, &self.recorder);
+            rig_ecs::replay::stamp_run(self.app.world_mut(), run, &self.recorder)
+                .expect("the run stamps its program identity");
         }
         tokio::time::timeout(Duration::from_secs(30), async {
             loop {

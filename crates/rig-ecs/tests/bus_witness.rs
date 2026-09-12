@@ -416,11 +416,9 @@ fn hold_lifecycle_despawn_does_not_emit_uncorrelated_transitions() {
         .add_observer(|event: On<Add, Held>, mut commands: Commands| {
             commands.entity(event.entity).despawn();
         });
-    assert!(rig_ecs::bus::acquire_hold(
-        app.world_mut(),
-        entity,
-        Emitter::named("policy/a")
-    ));
+    assert!(
+        rig_ecs::bus::acquire_hold(app.world_mut(), entity, Emitter::named("policy/a")).is_ok()
+    );
     assert!(app.world().get_entity(entity).is_err());
     assert!(
         !log.trace()
@@ -443,14 +441,10 @@ fn ownership_component_observers_preserve_fact_order() {
         .add_observer(|event: On<Add, HoldOwners>, mut commands: Commands| {
             let entity = event.entity;
             commands.queue(move |world: &mut World| {
-                release_hold(world, entity, "policy/a");
+                let _ = release_hold(world, entity, "policy/a");
             });
         });
-    assert!(acquire_hold(
-        app.world_mut(),
-        entity,
-        Emitter::named("policy/a")
-    ));
+    assert!(acquire_hold(app.world_mut(), entity, Emitter::named("policy/a")).is_ok());
     assert!(app.world().get::<Held>(entity).is_none());
     assert!(app.world().get::<HoldOwners>(entity).is_none());
     let trace = log.trace();
@@ -479,21 +473,17 @@ fn hold_lifecycle_observers_preserve_owners_and_fact_order() {
         .add_observer(|event: On<Add, Held>, mut commands: Commands| {
             let entity = event.entity;
             commands.queue(move |world: &mut World| {
-                release_hold(world, entity, "policy/a");
+                let _ = release_hold(world, entity, "policy/a");
             });
         });
     app.world_mut()
         .add_observer(|event: On<Remove, Held>, mut commands: Commands| {
             let entity = event.entity;
             commands.queue(move |world: &mut World| {
-                acquire_hold(world, entity, Emitter::named("policy/b"));
+                let _ = acquire_hold(world, entity, Emitter::named("policy/b"));
             });
         });
-    assert!(acquire_hold(
-        app.world_mut(),
-        entity,
-        Emitter::named("policy/a")
-    ));
+    assert!(acquire_hold(app.world_mut(), entity, Emitter::named("policy/a")).is_ok());
     assert!(app.world().get::<Held>(entity).is_some());
     let owners = app.world().get::<HoldOwners>(entity).unwrap();
     assert_eq!(
@@ -517,7 +507,7 @@ fn hold_lifecycle_observers_preserve_owners_and_fact_order() {
         transitions,
         [("policy/a", true), ("policy/a", false), ("policy/b", true)]
     );
-    assert!(release_hold(app.world_mut(), entity, "policy/b"));
+    assert!(release_hold(app.world_mut(), entity, "policy/b").is_ok());
     assert!(app.world().get::<Held>(entity).is_some());
     assert_eq!(
         app.world()
@@ -568,25 +558,20 @@ fn restored_hold_is_unknown_until_the_host_reevaluates_it() {
     assert!(restored.world().get::<Held>(effect).is_some());
     assert!(restored.world().get::<HoldOwners>(effect).is_none());
     assert!(restored.world().get::<Issued>(effect).is_none());
-    assert!(!release_hold(
-        restored.world_mut(),
-        effect,
-        "policy/original"
-    ));
-    assert!(acquire_hold(
-        restored.world_mut(),
-        effect,
-        Emitter::named("policy/current")
-    ));
-    assert!(release_hold(
-        restored.world_mut(),
-        effect,
-        &Emitter::unknown().name
-    ));
+    assert!(release_hold(restored.world_mut(), effect, "policy/original").is_err());
+    assert!(
+        acquire_hold(
+            restored.world_mut(),
+            effect,
+            Emitter::named("policy/current")
+        )
+        .is_ok()
+    );
+    assert!(release_hold(restored.world_mut(), effect, &Emitter::unknown().name).is_ok());
     tick(&mut restored, 2);
     assert!(restored.world().get::<Held>(effect).is_some());
     assert!(restored.world().get::<Issued>(effect).is_none());
-    assert!(release_hold(restored.world_mut(), effect, "policy/current"));
+    assert!(release_hold(restored.world_mut(), effect, "policy/current").is_ok());
     tick_until(&mut restored, "restored effect answered", |world| {
         world.get::<EffectOutcome>(effect).is_some()
     });
@@ -603,7 +588,7 @@ fn restored_hold_is_unknown_until_the_host_reevaluates_it() {
 
 #[test]
 fn named_owners_release_independently_without_changing_dispatch() {
-    use rig_ecs::bus::{HoldOwners, acquire_hold, release_hold};
+    use rig_ecs::bus::{HoldOwners, HoldRefused, acquire_hold, release_hold};
     for enabled in [false, true] {
         for first in ["policy/a", "policy/b"] {
             let counters = Arc::new(Counters::default());
@@ -615,17 +600,27 @@ fn named_owners_release_independently_without_changing_dispatch() {
                 .spawn(PendingEffect::new("model", completion()))
                 .id();
             for owner in ["policy/a", "policy/b"] {
-                assert!(acquire_hold(app.world_mut(), entity, Emitter::named(owner)));
-                assert!(!acquire_hold(
-                    app.world_mut(),
-                    entity,
-                    Emitter::named(owner)
-                ));
+                assert!(acquire_hold(app.world_mut(), entity, Emitter::named(owner)).is_ok());
+                assert_eq!(
+                    acquire_hold(app.world_mut(), entity, Emitter::named(owner)),
+                    Err(HoldRefused::AlreadyHeld)
+                );
             }
             tick(&mut app, 2);
             assert!(app.world().get::<Issued>(entity).is_none());
-            assert!(release_hold(app.world_mut(), entity, first));
-            assert!(!release_hold(app.world_mut(), entity, first));
+            assert!(release_hold(app.world_mut(), entity, first).is_ok());
+            assert_eq!(
+                release_hold(app.world_mut(), entity, first),
+                Err(HoldRefused::NotHeld)
+            );
+            assert_eq!(
+                acquire_hold(
+                    app.world_mut(),
+                    Entity::PLACEHOLDER,
+                    Emitter::named("policy/none")
+                ),
+                Err(HoldRefused::Missing)
+            );
             tick(&mut app, 2);
             assert!(app.world().get::<Held>(entity).is_some());
             assert!(app.world().get::<Issued>(entity).is_none());
@@ -642,7 +637,7 @@ fn named_owners_release_independently_without_changing_dispatch() {
             } else {
                 "policy/a"
             };
-            assert!(release_hold(app.world_mut(), entity, last));
+            assert!(release_hold(app.world_mut(), entity, last).is_ok());
             assert!(app.world().get::<Held>(entity).is_none());
             assert!(app.world().get::<HoldOwners>(entity).is_none());
             tick_until(&mut app, "answered", |world| {
@@ -685,7 +680,7 @@ fn named_holds_do_not_emit_releases_for_denial_or_despawn() {
             .spawn(PendingEffect::new("model", completion()))
             .id();
         for owner in ["policy/a", "policy/b"] {
-            acquire_hold(app.world_mut(), entity, Emitter::named(owner));
+            let _ = acquire_hold(app.world_mut(), entity, Emitter::named(owner));
         }
         if despawn {
             app.world_mut().despawn(entity);
@@ -696,8 +691,8 @@ fn named_holds_do_not_emit_releases_for_denial_or_despawn() {
                     ErrorKind::Denied,
                     "denied",
                 ))));
-            release_hold(app.world_mut(), entity, "policy/a");
-            release_hold(app.world_mut(), entity, "policy/b");
+            let _ = release_hold(app.world_mut(), entity, "policy/a");
+            let _ = release_hold(app.world_mut(), entity, "policy/b");
         }
     }
     assert!(

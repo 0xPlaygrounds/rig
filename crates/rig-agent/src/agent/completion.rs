@@ -151,6 +151,9 @@ pub(crate) async fn build_prepared_completion_request(
     // The agent records the input itself, so the request the provider sees
     // carries the flag off: one span, no double recording.
     let request = builder.record_content_telemetry(false).build();
+    // The same guard the builder's own `send`/`stream` apply: an empty
+    // history or content block is a local, named error, not a remote 400.
+    request.validate_message_content()?;
 
     Ok(PreparedCompletionRequest {
         request,

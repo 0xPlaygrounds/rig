@@ -35,7 +35,7 @@ use rig_ecs::{
         Cancelled, Conversation, Failed, Failure, InvalidCall, LoadingMemory,
         MemoryAppendScheduled, MessageParts, Remembered, Remembering, Reprompt, RequestPatch,
         Resolution, Retrievable, Retrieval, RetrievalKind, Retrieves, Retrieving, Retry, Route,
-        Streamed as RunStreamed, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Utterance,
+        StreamRequested, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Utterance,
     },
     bus::{EffectOutcome, Held, IdCounter, PendingEffect, Reserved, Streamed},
     systems::spawn_run,
@@ -148,7 +148,7 @@ fn populated() -> bevy_app::App {
         Route(model),
         rig_ecs::agent::Remembers(model),
         rig_ecs::agent::Attachment(document),
-        RunStreamed(true),
+        StreamRequested(true),
     ));
     app.world_mut().spawn((
         Utterance,

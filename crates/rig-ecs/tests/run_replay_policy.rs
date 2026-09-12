@@ -27,7 +27,7 @@ fn setup() -> (bevy_app::App, Entity, Entity, EffectLog) {
     let run = spawn_run(app.world_mut(), agent, &[], "go", false, None);
     let recorder = EffectLogRecorder::new();
     EffectLogResource::install(app.world_mut(), recorder.clone());
-    stamp_run(app.world_mut(), run, &recorder);
+    stamp_run(app.world_mut(), run, &recorder).expect("the run stamps its program identity");
     (app, agent, run, recorder.log())
 }
 
@@ -121,7 +121,7 @@ fn custom_policy_requires_an_explicit_version_and_detects_changes() {
     app.world_mut().entity_mut(agent).remove::<PolicyVersion>();
     let recorder = EffectLogRecorder::new();
     EffectLogResource::install(app.world_mut(), recorder.clone());
-    stamp_run(app.world_mut(), run, &recorder);
+    stamp_run(app.world_mut(), run, &recorder).expect("the run stamps its program identity");
     assert!(
         check_replayable(app.world_mut(), run, &recorder.log())
             .unwrap_err()

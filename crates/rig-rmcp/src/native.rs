@@ -463,17 +463,16 @@ pub enum McpClientError {
 }
 
 /// Wrap every tool of an MCP server's list as an [`McpTool`] sharing one
-/// [`ServerSink`](rmcp::service::ServerSink), each with the given per-call
-/// timeout (`None` = unbounded).
+/// [`ServerSink`](rmcp::service::ServerSink). Each tool carries the same
+/// [`DEFAULT_MCP_TOOL_TIMEOUT`] as [`McpTool::from_mcp_server`]; override it
+/// per tool with [`McpTool::with_timeout`].
 pub fn tools_from_server(
     tools: impl IntoIterator<Item = rmcp::model::Tool>,
     client: &rmcp::service::ServerSink,
-    timeout: impl Into<Option<Duration>>,
 ) -> Vec<McpTool> {
-    let timeout = timeout.into();
     tools
         .into_iter()
-        .map(|tool| McpTool::from_mcp_server(tool, client.clone()).with_timeout(timeout))
+        .map(|tool| McpTool::from_mcp_server(tool, client.clone()))
         .collect()
 }
 

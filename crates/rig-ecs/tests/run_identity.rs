@@ -21,7 +21,7 @@ use rig_core::effect::{EffectFamily, HandlerKey};
 use rig_ecs::{
     agent::{Grant, Order, PolicyVersion, Preamble},
     bus::{EffectLogResource, Scope},
-    replay::{check_replayable, required_row, spec_hash, stamp_header, stamp_run},
+    replay::{check_replayable, required_row, spec_hash, stamp_legacy_builder_header, stamp_run},
     systems::spawn_run,
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder};
@@ -47,8 +47,8 @@ fn a_worlds_log_names_its_program_by_scope() {
     let agent = spawn_agent(app.world_mut(), "t", model);
     let run = spawn_run(app.world_mut(), agent, &[], "go", false, None);
     let recorder = app.world().resource::<EffectLogResource>().0.clone();
-    stamp_header(app.world_mut(), agent, &recorder, None, Vec::new());
-    stamp_run(app.world_mut(), run, &recorder);
+    stamp_legacy_builder_header(app.world_mut(), agent, &recorder, None, Vec::new());
+    stamp_run(app.world_mut(), run, &recorder).expect("the run stamps its program identity");
     let scope = app.world().get::<Scope>(run).expect("scoped").0.clone();
     let header = recorder.header();
     let identity = header.programs.get(&scope).expect("the run's identity");
@@ -90,7 +90,7 @@ fn check_replayable_refuses_a_foreign_log_by_name() {
     );
     let recorder = EffectLogRecorder::new();
     EffectLogResource::install(app.world_mut(), recorder.clone());
-    stamp_run(app.world_mut(), run, &recorder);
+    stamp_run(app.world_mut(), run, &recorder).expect("the run stamps its program identity");
     let smoke = recorder.log();
     check_replayable(app.world_mut(), run, &smoke).expect("the run's own program");
 
@@ -162,4 +162,19 @@ fn check_replayable_refuses_a_foreign_log_by_name() {
         refused.message
     );
     let _ = (HandlerKey::from(MODEL), EffectFamily::Completion);
+}
+
+/// Stamping an agent (or anything without a `Scope`) is refused up front,
+/// with the wording `check_replayable` would otherwise use much later.
+#[test]
+fn stamp_run_refuses_an_entity_that_is_not_a_scoped_run() {
+    let mut app = app();
+    EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
+    let (model, _) = Capturing::new(MODEL, "ok");
+    let model = register(&mut app, MODEL, model);
+    let agent = spawn_agent(app.world_mut(), "t", model);
+    let recorder = app.world().resource::<EffectLogResource>().0.clone();
+    let error = stamp_run(app.world_mut(), agent, &recorder).expect_err("an agent is not a run");
+    assert!(error.to_string().contains("not an agent"), "{error}");
+    assert!(recorder.header().programs.is_empty());
 }

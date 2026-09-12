@@ -2320,3 +2320,29 @@ fn completion_call_identity_round_trips() {
     let restored: CompletionCall = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(restored, call);
 }
+
+/// The agent driver validates the request it builds the way the builder's
+/// own `send`/`stream` do: an empty user content block is a local, named
+/// error and never reaches the provider.
+#[tokio::test]
+async fn an_empty_content_block_is_rejected_before_the_provider() {
+    let model = MockCompletionModel::text("unreachable");
+    let recorded = model.clone();
+    let agent = AgentBuilder::new(model).build();
+
+    let error = agent
+        .prompt(Message::User {
+            content: Vec::new(),
+        })
+        .await
+        .expect_err("an empty content block is refused");
+
+    assert!(
+        error.to_string().contains("content"),
+        "the error names the empty content: {error}"
+    );
+    assert!(
+        recorded.requests().is_empty(),
+        "the provider was never asked"
+    );
+}

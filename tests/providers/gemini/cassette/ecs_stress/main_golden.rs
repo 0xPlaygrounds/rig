@@ -78,8 +78,15 @@ pub(super) async fn run(
     tool(&mut app, agent, subtract, 1);
     let run = spawn_run(app.world_mut(), agent, &[], prompt, true, Some(6));
     let bus = app.world().resource::<rig_ecs::bus::Policy>().0;
-    rig_ecs::replay::stamp_header(app.world_mut(), agent, &recorder, Some(bus), vec![]);
-    rig_ecs::replay::stamp_run(app.world_mut(), run, &recorder);
+    rig_ecs::replay::stamp_legacy_builder_header(
+        app.world_mut(),
+        agent,
+        &recorder,
+        Some(bus),
+        vec![],
+    );
+    rig_ecs::replay::stamp_run(app.world_mut(), run, &recorder)
+        .expect("the run stamps its program identity");
     let saw_final = tokio::time::timeout(Duration::from_secs(30), async {
         loop {
             app.update();

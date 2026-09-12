@@ -1284,7 +1284,7 @@ async fn compacting_composes_with_token_window() {
     // TokenWindowMemory just as well as a SlidingWindowMemory.
     let mem = CompactingMemory::new(
         InMemoryConversationMemory::new(),
-        TokenWindowMemory::new(30, HeuristicTokenCounter::openai()),
+        TokenWindowMemory::new(30, HeuristicTokenCounter::default()),
         TemplateCompactor::new(),
     );
     mem.append(

@@ -426,7 +426,10 @@ where
                             break 'outer;
                         }
                     };
-                    run.set_output_tool_name(prepared.output_tool_name.clone());
+                    if let Some(name) = &prepared.output_tool_name {
+                        // Refused after the first turn by design: the name is pinned.
+                        let _ = run.commit_output_tool_name(name.clone());
+                    }
                     let turn_tool_snapshot = prepared.tool_snapshot.clone();
                     // What this request advertises becomes run data, so a
                     // resumed run or another driver can re-pair the calls

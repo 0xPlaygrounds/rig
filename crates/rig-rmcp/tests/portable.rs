@@ -83,7 +83,7 @@ async fn mcp_tool_runs_as_a_portable_dynamic_tool_without_rig_agent() {
 
     // A tool the server reports as an error becomes a failed call that still
     // carries the tool's output.
-    let mut many = tools_from_server([tool("greet"), tool("missing")], &peer, None)
+    let mut many = tools_from_server([tool("greet"), tool("missing")], &peer)
         .into_iter()
         .map(PortableDynamicTool::from);
     let _greet_again = many.next().expect("two tools");

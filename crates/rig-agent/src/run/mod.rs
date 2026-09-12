@@ -764,16 +764,19 @@ impl AgentRun {
         self
     }
 
-    /// Set (or clear) the output-tool name in place. The driver resolves the
-    /// name from the prepared request inside the run loop, where the agent's
-    /// tool set (and thus the resolved output mode) is known.
-    pub fn set_output_tool_name(&mut self, name: Option<String>) {
-        // The name is committed once and pinned for the whole run, so the
-        // request the driver builds each turn stays consistent with the
-        // intercept (and a tool set that shifts mid-run cannot flip the mode).
-        if self.output_tool_name.is_none() {
-            self.output_tool_name = name;
+    /// Commit the output-tool name once the driver has resolved it from the
+    /// prepared request inside the run loop, where the agent's tool set (and
+    /// thus the resolved output mode) is known. Returns whether this call
+    /// committed it: the name is pinned for the whole run, so the request
+    /// the driver builds each turn stays consistent with the intercept (and
+    /// a tool set that shifts mid-run cannot flip the mode); a later call
+    /// with a different name is refused, not applied.
+    pub fn commit_output_tool_name(&mut self, name: impl Into<String>) -> bool {
+        if self.output_tool_name.is_some() {
+            return false;
         }
+        self.output_tool_name = Some(name.into());
+        true
     }
 
     /// The synthetic output-tool name committed for this run, if any. The driver

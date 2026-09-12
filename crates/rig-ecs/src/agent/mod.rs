@@ -568,7 +568,7 @@ pub struct RunCounter(pub u64);
 /// Whether the model is asked for a stream.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
-pub struct Streamed(pub bool);
+pub struct StreamRequested(pub bool);
 
 /// Where the run is: the turn it is on.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

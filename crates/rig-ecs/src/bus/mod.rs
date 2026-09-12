@@ -124,7 +124,7 @@ pub use effect::{
 pub use handlers::{
     Bound, HandlerTable, Handlers, Served, WorldHandler, WorldServe, answered, unbound,
 };
-pub use hold::{HoldOwners, acquire_hold, release_hold};
+pub use hold::{HoldOwners, HoldRefused, acquire_hold, release_hold};
 pub use plugin::{
     Bus, BusSet, Intake, Policy, Progress, QUIESCENCE_CAP, RigSchedule, install_bus,
     run_to_quiescence,
