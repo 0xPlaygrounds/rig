@@ -131,7 +131,7 @@ rig-rmcp = { path = "crates/rig-rmcp", version = "0.42.0" }
 rig-core = { path = "crates/rig-core", version = "0.42.0" }
 rig-effect-log = { path = "crates/rig-effect-log", version = "0.42.0" }
 anyhow = "1"
-arrow-array = "58"
+arrow-array = "59"
 as-any = "0.3"
 assert_fs = "1"
 async-stream = "0.3"
