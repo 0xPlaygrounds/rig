@@ -137,17 +137,14 @@ impl Scenario {
     }
 
     fn builder(self) -> rig_agent::agent::AgentBuilder<rig_agent::agent::WithBuilderTools> {
-        AgentBuilder::with_bus_config(
-            rig_core::serve::ServingPolicy {
+        AgentBuilder::named_model("default", self.model())
+            .configure_bus(rig_core::serve::ServingPolicy {
                 serial_per_handler: self.serial_per_handler,
                 ..rig_core::serve::ServingPolicy::default()
-            },
-            "default",
-            self.model(),
-        )
-        .owner(OWNER)
-        .tool(Tag::default())
-        .record_effects()
+            })
+            .owner(OWNER)
+            .tool(Tag::default())
+            .record_effects()
     }
 }
 

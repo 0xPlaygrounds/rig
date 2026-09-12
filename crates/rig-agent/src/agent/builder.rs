@@ -572,27 +572,15 @@ impl AgentBuilder<NoToolConfig> {
     }
 
     /// An agent over its own bus, with `model` registered under `label`.
+    /// Size the bus with [`configure_bus`](Self::configure_bus).
     pub fn named_model<M>(label: impl Into<ModelRef>, model: M) -> Self
-    where
-        M: CompletionModel + 'static,
-    {
-        Self::with_bus_config(ServingPolicy::default(), label, model)
-    }
-
-    /// An agent over its own bus created with `bus_config`, with `model`
-    /// registered under `label`.
-    pub fn with_bus_config<M>(
-        bus_config: ServingPolicy,
-        label: impl Into<ModelRef>,
-        model: M,
-    ) -> Self
     where
         M: CompletionModel + 'static,
     {
         let label = label.into();
         let handler = ErasedHandler::new(CompletionAdapter::new(label.clone(), model));
         Self::start(
-            BusSource::Owned(bus_config),
+            BusSource::Owned(ServingPolicy::default()),
             None,
             DefaultModel::Labelled(label, handler),
         )

@@ -24,7 +24,7 @@ use rig_ecs::{
         DefaultMaxTurns, Failed, Failure, Grant, MaxTurns, Order, Owner, Preamble, RunResult,
         Settled, UsesModel,
     },
-    bus::{Handlers, Recording, install_bus, run_to_quiescence},
+    bus::{Handlers, Recording, run_to_quiescence},
     systems::{install_agent, spawn_run},
 };
 use rig_effect_log::EffectLogRecorder;
@@ -110,7 +110,7 @@ impl EcsAgent {
         setup: impl FnOnce(&mut World),
     ) -> Self {
         let mut app = App::new();
-        install_bus(app.world_mut(), ServingPolicy::default());
+        rig_ecs::bus::Bus::with_policy(ServingPolicy::default()).install(app.world_mut());
         install_agent(app.world_mut());
         app.add_systems(Update, run_to_quiescence);
         app.finish();

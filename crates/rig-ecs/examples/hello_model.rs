@@ -24,13 +24,13 @@ use rig_core::{
     message::AssistantContent,
     serve::{Serve, ServingPolicy},
 };
-use rig_ecs::bus::{EffectOutcome, Handlers, PendingEffect, install_bus, run_to_quiescence};
+use rig_ecs::bus::{EffectOutcome, Handlers, PendingEffect, run_to_quiescence};
 
 // ---- the user's program: the next thirty lines ----
 
 fn main() {
     let mut app = App::new();
-    install_bus(app.world_mut(), ServingPolicy::default());
+    rig_ecs::bus::Bus::with_policy(ServingPolicy::default()).install(app.world_mut());
     app.add_plugins(ScheduleRunnerPlugin::default())
         .add_systems(Update, run_to_quiescence)
         .add_systems(Startup, (register_the_model, ask).chain())

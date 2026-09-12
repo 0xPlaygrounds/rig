@@ -104,16 +104,13 @@ async fn serial_per_handler_is_proven_under_the_agents_inline_driver() {
     // With serial serving, the second call to the same handler waits for the
     // first even though the runner dispatches both concurrently.
     let serial = Slow::default();
-    let agent = AgentBuilder::with_bus_config(
-        ServingPolicy {
+    let agent = AgentBuilder::named_model("default", two_tool_calls_then_done())
+        .configure_bus(ServingPolicy {
             serial_per_handler: true,
             ..ServingPolicy::default()
-        },
-        "default",
-        two_tool_calls_then_done(),
-    )
-    .tool(serial.clone())
-    .build();
+        })
+        .tool(serial.clone())
+        .build();
     let response = within(agent.prompt("go").max_turns(3).tool_concurrency(2).run())
         .await
         .expect("run");
@@ -760,11 +757,7 @@ async fn a_nested_call_to_the_in_flight_tool_under_serial_serving_fails_fast() {
             ),
         )])
     };
-    let agent = AgentBuilder::with_bus_config(
-        ServingPolicy {
-            serial_per_handler: true,
-            ..ServingPolicy::default()
-        },
+    let agent = AgentBuilder::named_model(
         "default",
         MockCompletionModel::from_turns([
             call_same(),
@@ -773,6 +766,10 @@ async fn a_nested_call_to_the_in_flight_tool_under_serial_serving_fails_fast() {
             MockTurn::text("done"),
         ]),
     )
+    .configure_bus(ServingPolicy {
+        serial_per_handler: true,
+        ..ServingPolicy::default()
+    })
     .tool(tool.clone())
     .build();
     tool.agent.set(agent.clone()).ok().expect("unset");

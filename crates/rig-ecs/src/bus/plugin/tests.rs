@@ -12,13 +12,11 @@ fn custom() -> EffectKind {
 
 fn world_with_capacity(command_capacity: usize, pending: usize) -> World {
     let mut world = World::new();
-    install_bus(
-        &mut world,
-        ServingPolicy {
-            command_capacity,
-            ..ServingPolicy::default()
-        },
-    );
+    crate::bus::Bus::with_policy(ServingPolicy {
+        command_capacity,
+        ..ServingPolicy::default()
+    })
+    .install(&mut world);
     Handlers::with(&mut world, |handlers| {
         handlers.register_open(
             "open",

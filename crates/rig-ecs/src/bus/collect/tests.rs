@@ -39,7 +39,7 @@ fn tracked_stream(
 
 fn world() -> World {
     let mut world = World::new();
-    super::super::plugin::install_bus(&mut world, Default::default());
+    crate::bus::Bus::with_policy(Default::default()).install(&mut world);
     world
 }
 

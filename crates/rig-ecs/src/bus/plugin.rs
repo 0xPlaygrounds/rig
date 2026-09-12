@@ -174,12 +174,6 @@ impl Bus {
     }
 }
 
-/// Install the bus under `policy` with default ambiguity detection: the
-/// one-call form of [`Bus::install`].
-pub fn install_bus(world: &mut World, policy: ServingPolicy) {
-    Bus::with_policy(policy).install(world);
-}
-
 /// The runner: reset the tick's intake, then run [`RigSchedule`] while a
 /// plugin system reports [`Progress`], at most [`QUIESCENCE_CAP`] passes.
 pub fn run_to_quiescence(world: &mut World) {

@@ -126,8 +126,7 @@ pub use handlers::{
 };
 pub use hold::{HoldOwners, HoldRefused, acquire_hold, release_hold};
 pub use plugin::{
-    Bus, BusSet, Intake, Policy, Progress, QUIESCENCE_CAP, RigSchedule, install_bus,
-    run_to_quiescence,
+    Bus, BusSet, Intake, Policy, Progress, QUIESCENCE_CAP, RigSchedule, run_to_quiescence,
 };
 pub use record::{Observed, ObservedState, Recording, WorldObserver};
 pub use scene::{Scene, SceneEffect};

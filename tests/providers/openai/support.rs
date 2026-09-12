@@ -354,7 +354,8 @@ where
     F: FnOnce(openai::Client<DirectRecordingHttpClient>) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start_direct_recording(
+    let cassette = ProviderCassette::start_via(
+        rig_cassette::Transport::Direct,
         &crate::cassettes::cassette_root(),
         "openai",
         spec,

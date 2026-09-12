@@ -30,7 +30,8 @@ async fn bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, C
 }
 
 async fn replay_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Client) {
-    let cassette = ProviderCassette::start_direct_recording(
+    let cassette = ProviderCassette::start_via(
+        rig_cassette::Transport::Direct,
         &crate::cassettes::cassette_root(),
         "bedrock",
         spec,
@@ -56,7 +57,8 @@ async fn replay_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCass
 }
 
 async fn record_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Client) {
-    let cassette = ProviderCassette::start_direct_recording(
+    let cassette = ProviderCassette::start_via(
+        rig_cassette::Transport::Direct,
         &crate::cassettes::cassette_root(),
         "bedrock",
         spec,

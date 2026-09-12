@@ -59,7 +59,7 @@ fn a_despawn_from_the_outcome_observer_still_closes_the_record() {
     use rig_core::effect::FamilyDescriptor;
 
     let mut world = World::new();
-    crate::bus::install_bus(&mut world, Default::default());
+    crate::bus::Bus::with_policy(Default::default()).install(&mut world);
     let recorder = rig_effect_log::EffectLogRecorder::new();
     Recording::install(&mut world, recorder.clone());
     Handlers::with(&mut world, |handlers| {
