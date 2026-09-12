@@ -43,11 +43,11 @@ use super::UNKNOWN_AGENT_NAME;
 
 /// A hook-aware driver over [`AgentRun`].
 ///
-/// Construct one from an [`Agent`] with [`Agent::prompt`], attach hooks with
-/// [`add_hook`](Self::add_hook), then call
-/// [`run`](Self::run) (blocking) or
-/// [`stream`](Self::stream)
-/// (incremental). Hooks are held in a [`HookStack`](super::hook::HookStack), an ordered,
+/// Construct one with [`Agent::prompt`] (a fresh run) or [`Agent::resume`]
+/// (a persisted one), attach hooks with [`add_hook`](Self::add_hook), then
+/// call [`run`](Self::run) (blocking), [`stream`](Self::stream)
+/// (incremental) or [`run_channel`](Self::run_channel) (a future plus an
+/// event feed). Hooks are held in a [`HookStack`](super::hook::HookStack), an ordered,
 /// runtime-composable list; `run()` and `stream()` share the same loop and fire
 /// the same events, so they behave identically apart from the streamed delta
 /// events the medium adds.
@@ -58,7 +58,9 @@ pub struct AgentRunner {
     /// never the source [`Agent`]. `description` rides along unused during
     /// execution — an accepted tradeoff for a single shared config type.
     pub(crate) config: AgentConfig,
-    pub(crate) prompt: Message,
+    /// Where the run starts: a prompt ([`Agent::prompt`]) or a persisted
+    /// run to continue ([`Agent::resume`]).
+    pub(crate) origin: RunOrigin,
     pub(crate) chat_history: Option<Vec<Message>>,
     pub(crate) max_invalid_tool_call_retries: usize,
     pub(crate) tool_server_handle: ToolServerHandle,
@@ -70,9 +72,15 @@ pub struct AgentRunner {
     pub(crate) unhandled_invalid_tool_call: UnhandledInvalidToolCall,
     pub(crate) concurrency: usize,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
-    /// A persisted run to continue instead of a fresh one from `prompt`
-    /// ([`resume`](Self::resume)).
-    pub(crate) resume: Option<Box<AgentRun>>,
+}
+
+/// Where a run starts. A prompt builds a fresh [`AgentRun`] (after any
+/// memory load); a persisted run is continued as it is, so neither a prompt
+/// nor a history nor a memory load applies to it.
+#[derive(Clone)]
+pub(crate) enum RunOrigin {
+    Prompt(Message),
+    Resume(Box<AgentRun>),
 }
 
 /// The `(history_override, memory_handle)` pair resolved for one run by
@@ -87,9 +95,18 @@ impl AgentRunner {
     /// stack. The one construction site behind [`Agent::prompt`] and the
     /// typed and extractor runs.
     pub(crate) fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
+        Self::new(agent, RunOrigin::Prompt(prompt.into()))
+    }
+
+    /// Build a runner that continues `run` ([`Agent::resume`]).
+    pub(crate) fn resuming(agent: &Agent, run: AgentRun) -> Self {
+        Self::new(agent, RunOrigin::Resume(Box::new(run)))
+    }
+
+    fn new(agent: &Agent, origin: RunOrigin) -> Self {
         Self {
             config: agent.config.clone(),
-            prompt: prompt.into(),
+            origin,
             chat_history: None,
             max_invalid_tool_call_retries: 0,
             tool_server_handle: agent.tool_server_handle.clone(),
@@ -100,22 +117,7 @@ impl AgentRunner {
             unhandled_invalid_tool_call: UnhandledInvalidToolCall::Fail,
             concurrency: 1,
             error_usage: None,
-            resume: None,
         }
-    }
-
-    /// Continue a persisted run instead of starting one from the prompt:
-    /// the state a driver serialized between steps (see [`AgentRun`]) is
-    /// picked up where it stopped — its pending tool calls execute, its
-    /// next model turn is asked for — under this agent's hooks, tools,
-    /// bus and settings. The runner's prompt and history are ignored (the
-    /// run carries its own), as is conversation memory (its history is
-    /// already in the run; nothing is loaded, and the run's messages are
-    /// not appended a second time). The run must have been suspended by
-    /// the same rig version.
-    pub fn resume(mut self, run: AgentRun) -> Self {
-        self.resume = Some(Box::new(run));
-        self
     }
 
     /// Append a hook to the stack (on top of any the agent already carries).
@@ -364,13 +366,21 @@ impl AgentRunner {
         self.config.name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
     }
 
-    /// Build the sans-IO [`AgentRun`] for this runner's configuration.
-    /// `history_override` replaces the configured chat history (e.g. with
-    /// memory-loaded history). Delegates to [`build_agent_run`] — the single
-    /// construction site shared with the streaming driver.
+    /// The [`AgentRun`] this runner drives: the persisted run it continues,
+    /// or a fresh one from its prompt and configuration. `history_override`
+    /// replaces the configured chat history (e.g. with memory-loaded
+    /// history) and applies only to a fresh run. Delegates to
+    /// [`build_agent_run`] — the single construction site shared with the
+    /// streaming driver.
     pub(crate) fn build_run(&self, history_override: Option<Vec<Message>>) -> AgentRun {
+        let prompt = match &self.origin {
+            // Cloned, not moved: the runner stays whole for the driver that
+            // takes it next.
+            RunOrigin::Resume(run) => return (**run).clone(),
+            RunOrigin::Prompt(prompt) => prompt.clone(),
+        };
         let run = build_agent_run(
-            self.prompt.clone(),
+            prompt,
             self.config.max_turns,
             self.max_invalid_tool_call_retries,
             self.unhandled_invalid_tool_call,
@@ -429,18 +439,16 @@ impl AgentRunner {
     /// Open the per-run agent span, recording the prompt when content
     /// telemetry is enabled. Shared by the blocking and streaming surfaces.
     pub(crate) fn open_agent_span(&self) -> (tracing::Span, bool) {
-        // A resumed run ignores the prompt it was built with (its state
-        // carries the real one): the span records none.
-        let prompt_recorded = self.resume.is_none();
         let (agent_span, created_agent_span) = acquire_agent_span(
             self.agent_name_or_default(),
             self.config.preamble.as_deref(),
             self.config.record_telemetry_content,
         );
 
-        if prompt_recorded
-            && self.config.record_telemetry_content
-            && let Some(text) = self.prompt.rag_text()
+        // A resumed run's prompt is inside its state: the span records none.
+        if self.config.record_telemetry_content
+            && let RunOrigin::Prompt(prompt) = &self.origin
+            && let Some(text) = prompt.rag_text()
         {
             agent_span.record("gen_ai.prompt", text);
         }
@@ -506,7 +514,7 @@ impl AgentRunner {
     /// Drive the agent loop to completion, returning the aggregated
     /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
     /// to terminate cancels the run.
-    pub async fn run(mut self) -> Result<PromptResponse, PromptError> {
+    pub async fn run(self) -> Result<PromptResponse, PromptError> {
         let (agent_span, created_agent_span) = self.open_agent_span();
         let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(false);
@@ -514,10 +522,9 @@ impl AgentRunner {
         // nothing is saved — no `Memory` dispatch, no memory hook event, no
         // record in the log — so its continuation is exactly the reference
         // log's tail and a memory backend that is down cannot fail it.
-        let resumed = self.resume.take();
-        let (history_override, memory_handle) = match &resumed {
-            Some(_) => (None, None),
-            None => {
+        let (history_override, memory_handle) = match &self.origin {
+            RunOrigin::Resume(_) => (None, None),
+            RunOrigin::Prompt(_) => {
                 // A memory load is a dispatch too: drive the bus while resolving.
                 let resolve = self.resolve_history_and_memory(&hook_ctx);
                 futures::pin_mut!(resolve);
@@ -528,10 +535,7 @@ impl AgentRunner {
                 }
             }
         };
-        let run = match resumed {
-            Some(run) => *run,
-            None => self.build_run(history_override),
-        };
+        let run = self.build_run(history_override);
 
         // Fold the shared engine to its final response. The blocking surface
         // uses a unary model transport and ignores the intermediate items the

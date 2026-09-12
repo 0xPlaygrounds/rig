@@ -3,7 +3,7 @@ use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
 
 use crate::{
     agent::engine::{DriveItem, StreamingTurnSource, drive_agent, streaming_error_into_prompt},
-    agent::runner::AgentRunner,
+    agent::runner::{AgentRunner, RunOrigin},
     streaming::{BlockClose, Delta, StreamEvent, StreamedUserContent},
 };
 use futures::{SinkExt, Stream, StreamExt, channel::mpsc, stream::FusedStream};
@@ -262,16 +262,15 @@ impl AgentRunner {
     /// hook handling with the blocking [`run`](AgentRunner::run) via
     /// `drive_agent`, so the two behave identically apart from the streamed
     /// delta events.
-    pub async fn stream(mut self) -> StreamingResult {
+    pub async fn stream(self) -> StreamingResult {
         let (agent_span, created_agent_span) = self.open_agent_span();
 
         let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(true);
         // A resumed run loads nothing and saves nothing (see `run`).
-        let resumed = self.resume.take();
-        let resolved = match &resumed {
-            Some(_) => Ok((None, None)),
-            None => {
+        let resolved = match &self.origin {
+            RunOrigin::Resume(_) => Ok((None, None)),
+            RunOrigin::Prompt(_) => {
                 let resolve = self.resolve_history_and_memory(&hook_ctx);
                 futures::pin_mut!(resolve);
                 let mut driven = bus.drive(futures::stream::once(resolve));
@@ -290,10 +289,7 @@ impl AgentRunner {
             }
         };
 
-        let run = match resumed {
-            Some(run) => *run,
-            None => self.build_run(history_override),
-        };
+        let run = self.build_run(history_override);
         let source = StreamingTurnSource::new(
             &self.config.hooks,
             self.agent_name_or_default().to_string(),

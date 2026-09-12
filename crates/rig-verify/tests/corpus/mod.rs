@@ -3157,7 +3157,7 @@ async fn resumed_tail(
     }
     let restored: AgentRun = serde_json::from_str(&state).expect("the run state restores");
     let agent = build_agent(replay, program, server, &tail_log);
-    let mut runner = agent.prompt("ignored").resume(restored);
+    let mut runner = agent.resume(restored);
     if let Some(max_turns) = program.max_turns {
         runner = runner.max_turns(max_turns);
     }

@@ -1,5 +1,5 @@
 use super::hook::{HookStack, RequestPatch};
-use super::run::OutputMode;
+use super::run::{AgentRun, OutputMode};
 use super::runner::AgentRunner;
 use super::typed::TypedRun;
 use crate::bus::{BusDriver, Dispatcher, ModelHandle};
@@ -751,6 +751,31 @@ impl Agent {
     /// ```
     pub fn prompt(&self, prompt: impl Into<Message>) -> AgentRunner {
         AgentRunner::from_agent(self, prompt)
+    }
+
+    /// Continue a persisted run instead of starting one from a prompt.
+    ///
+    /// The state a driver serialized between steps (see [`AgentRun`]) is
+    /// picked up where it stopped — its pending tool calls execute, its next
+    /// model turn is asked for — under this agent's hooks, tools, bus and
+    /// settings, plus whatever the returned runner is configured with. The
+    /// run carries its own prompt and history, so neither
+    /// [`history`](AgentRunner::history) nor conversation memory applies:
+    /// nothing is loaded, and the run's messages are not appended a second
+    /// time. Drive it like any runner: `.await`, [`stream`](AgentRunner::stream)
+    /// or [`run_channel`](AgentRunner::run_channel). The run must have been
+    /// suspended by the same rig version.
+    ///
+    /// ```rust,no_run
+    /// # use rig_agent::{Agent, AgentRun};
+    /// # async fn example(agent: Agent, saved: &str) -> Result<(), Box<dyn std::error::Error>> {
+    /// let run: AgentRun = serde_json::from_str(saved)?;
+    /// let response = agent.resume(run).tool_concurrency(4).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn resume(&self, run: AgentRun) -> AgentRunner {
+        AgentRunner::resuming(self, run)
     }
 
     /// Run `prompt` against caller-owned history with the agent's defaults,
