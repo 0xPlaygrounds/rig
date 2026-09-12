@@ -15,8 +15,13 @@ Pass a fixture root containing provider directories to `ProviderCassette::start`
 
 `CassetteSpec::new` preserves strict interaction order; `.unordered()` permits
 matching any unused interaction. `finish` checks complete consumption and shuts
-down the replay server. Invalid fixtures and failed assertions panic, preserving
-the original test-support behavior.
+down the replay server. A replay session dropped without `finish` panics when
+it still holds an unplayed interaction or a refused request, so a test that
+returns early cannot pass on a recording it never played to the end. The guard
+stays silent while the thread is already panicking, for a fully played session,
+and after `finish_after_test_result` returns a test's own error. Invalid
+fixtures and failed assertions panic, preserving the original test-support
+behavior.
 
 `RIG_PROVIDER_TEST_MODE` defaults to `replay`. `record` contacts the configured
 upstream and overwrites the selected fixture after scrubbing. Controlled offline
