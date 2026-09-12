@@ -382,10 +382,8 @@ impl ProviderCassette {
         .await
     }
 
-    /// Explicit mode and destination for consumers that stage candidates.
-    /// Verification callers pass Replay even if the ambient environment asks
-    /// for recording; a candidate is never implicitly promoted to a fixture.
-    pub async fn start_at(
+    /// Explicit mode and destination, behind [`start`](Self::start).
+    async fn start_at(
         provider: &'static str,
         spec: CassetteSpec,
         real_base_url: &str,
@@ -523,55 +521,6 @@ impl ProviderCassette {
         } else {
             DUMMY_API_KEY.to_string()
         }
-    }
-
-    /// Retain completed, scrubbed exchanges while a live consumer is still
-    /// running. This is an unaccepted partial recording, not finalization.
-    pub async fn checkpoint_recording(&self, path: &Path) -> bool {
-        if !self.mode.records() {
-            return false;
-        }
-        let yaml = match &self.server {
-            CassetteServer::Recording(server) => {
-                let Some(id) = self.recording_id else {
-                    return false;
-                };
-                let recording = httpmock::Recording::new(id, server);
-                let Ok(Some(bytes)) = recording.export_async().await else {
-                    return false;
-                };
-                let Ok(yaml) = String::from_utf8(bytes.to_vec()) else {
-                    return false;
-                };
-                yaml
-            }
-            CassetteServer::DirectRecording(server) => {
-                let interactions = server.interactions.lock().await;
-                if interactions.is_empty() {
-                    return false;
-                }
-                serialize_cassette_interactions(&interactions)
-            }
-            CassetteServer::Replay(_) => return false,
-        };
-        // httpmock can export an empty YAML document before the first response.
-        // A best-effort snapshot must not panic or replace a previous snapshot.
-        let parsed = serde_yaml::Deserializer::from_str(&yaml)
-            .map(CassetteInteraction::deserialize)
-            .collect::<Result<Vec<_>, _>>();
-        let Ok(interactions) = parsed else {
-            return false;
-        };
-        if interactions.is_empty() {
-            return false;
-        }
-        let redacted = scrub_cassette_contents_with_policy(self.policy, &yaml);
-        if !cassette_safety_failures_with_policy(self.policy, path, &redacted).is_empty() {
-            return false;
-        }
-        write_cassette_atomically(path, redacted.as_bytes())
-            .await
-            .is_ok()
     }
 
     /// Finalize a recording or assert complete replay consumption and shut down.

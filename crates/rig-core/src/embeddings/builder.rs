@@ -146,7 +146,7 @@ where
     ///
     /// Ordering is guaranteed at both levels, and the same two errors originate
     /// here; both are described on [`Self::build`].
-    pub async fn build_with_usage(
+    pub(crate) async fn build_with_usage(
         self,
     ) -> Result<(Vec<(T, Vec<Embedding>)>, Usage), EmbeddingError> {
         use stream::TryStreamExt;

@@ -58,11 +58,14 @@ async fn execute_owned_matches_execute_and_is_static() {
     let mut context = ToolContext::new();
     let borrowed = catalog.execute("alpha", "{}", &mut context).await;
 
-    let (owned, owned_context) = assert_send_static(catalog.clone().execute_owned(
-        "alpha".to_string(),
-        "{}".to_string(),
-        ToolContext::new(),
-    ))
+    // An owned execution — the catalog, arguments and context all moved into
+    // the future — is `Send + 'static`, so a host can spawn it.
+    let owned_catalog = catalog.clone();
+    let (owned, owned_context) = assert_send_static(async move {
+        let mut context = ToolContext::new();
+        let result = owned_catalog.execute("alpha", "{}", &mut context).await;
+        (result, context)
+    })
     .await;
     assert_eq!(owned.output().as_text(), borrowed.output().as_text());
     assert_eq!(

@@ -42,7 +42,7 @@ pub struct ToolCatalog {
 
 impl ToolCatalog {
     /// A catalog over `tools`, advertised under their map names.
-    pub fn from_registered(tools: IndexMap<String, RegisteredTool>) -> Self {
+    pub(crate) fn from_registered(tools: IndexMap<String, RegisteredTool>) -> Self {
         let definitions = tools
             .iter()
             .map(|(name, tool)| tool.definition_with_name(name.clone()))
@@ -55,7 +55,7 @@ impl ToolCatalog {
     }
 
     /// Attach the registry's generation leases (see the field).
-    pub fn with_leases(mut self, leases: Vec<ToolLease>) -> Self {
+    pub(crate) fn with_leases(mut self, leases: Vec<ToolLease>) -> Self {
         self.leases = leases;
         self
     }
@@ -114,24 +114,13 @@ impl ToolCatalog {
             .publish_to(context)
     }
 
-    /// [`Self::execute`] by value.
-    pub async fn execute_owned(
-        self,
-        tool_name: String,
-        args: String,
-        mut context: ToolContext,
-    ) -> (ToolResult, ToolContext) {
-        let result = self.execute(&tool_name, &args, &mut context).await;
-        (result, context)
-    }
-
     /// Take the definitions out, leaving the registrations.
     pub fn take_definitions(&mut self) -> Vec<ToolDefinition> {
         std::mem::take(&mut self.definitions)
     }
 
     /// Keep only `names`.
-    pub fn retain_names(&mut self, names: &BTreeSet<String>) {
+    pub(crate) fn retain_names(&mut self, names: &BTreeSet<String>) {
         self.definitions
             .retain(|definition| names.contains(&definition.name));
         self.tools.retain(|name, _| names.contains(name));

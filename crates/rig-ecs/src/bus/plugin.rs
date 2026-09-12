@@ -62,7 +62,7 @@ impl Progress {
 /// the runner at the start of every tick, and at the start of every pass a
 /// host runs itself (each such pass is that host's tick).
 #[derive(Resource, Debug, Default, Clone, Copy)]
-pub struct Intake(pub usize);
+pub struct Intake(pub(crate) usize);
 
 /// Passes of [`RigSchedule`] one tick may run before the runner stops and
 /// warns: a diagnostic, never a hang.

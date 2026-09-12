@@ -126,7 +126,7 @@ impl RegisteredTool {
 
     /// Whether this registration is served under the default `tool:<name>`
     /// key (a registry that pins generations re-keys only those).
-    pub fn has_default_key(&self) -> bool {
+    pub(crate) fn has_default_key(&self) -> bool {
         *self.key.raw() == tool_key(&self.definition.name)
     }
 
@@ -170,7 +170,7 @@ impl RegisteredTool {
     }
 
     /// The definition, advertised under `name`.
-    pub fn definition_with_name(&self, name: impl Into<String>) -> ToolDefinition {
+    pub(crate) fn definition_with_name(&self, name: impl Into<String>) -> ToolDefinition {
         ToolDefinition {
             name: name.into(),
             description: self.definition.description.clone(),
@@ -433,7 +433,7 @@ impl ToolSet {
     }
 
     /// Move `name` to the end of the insertion order.
-    pub fn move_to_end(&mut self, name: &str) -> bool {
+    pub(crate) fn move_to_end(&mut self, name: &str) -> bool {
         self.tools
             .shift_remove_entry(name)
             .is_some_and(|(name, registration)| {

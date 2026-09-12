@@ -104,13 +104,13 @@ impl Recording {
 /// The current delivery batch. Advances once per schedule pass, including
 /// passes run directly by a host rather than through the Update runner.
 #[derive(Resource, Default)]
-pub struct DeliveryBatch(pub u64);
+pub struct DeliveryBatch(pub(crate) u64);
 
 /// Begin the next pass's observation group. A pass the host runs itself
 /// (outside [`run_to_quiescence`](super::run_to_quiescence)) is that
 /// host's tick: its stream budget and its intake bound start afresh here,
 /// as the runner starts them at the top of each of its ticks.
-pub fn begin_delivery_pass(
+pub(crate) fn begin_delivery_pass(
     mut batch: ResMut<DeliveryBatch>,
     mut budget: ResMut<super::collect::CollectionBudget>,
     mut intake: ResMut<super::plugin::Intake>,
@@ -124,7 +124,7 @@ pub fn begin_delivery_pass(
 
 /// Record visibility when the outcome is inserted, not later when a query
 /// happens to visit it. This also captures answers from world-served handlers.
-pub fn record_outcome(
+pub(crate) fn record_outcome(
     added: On<Add, EffectOutcome>,
     issued: Query<(&Issued, Has<super::collect::CollectedOutcome>), With<InFlight>>,
     recording: Option<Res<Recording>>,
@@ -360,7 +360,7 @@ pub type CancellationView = (
 /// readiness signal, before `settle` ran — is an answered dispatch whose
 /// settlement will never happen: the record closes here with the answer
 /// the handler gave, as `settle` would have closed it.
-pub fn record_cancelled(
+pub(crate) fn record_cancelled(
     removed: On<Remove, InFlight>,
     effects: Query<CancellationView>,
     recording: Option<Res<Recording>>,
@@ -443,7 +443,7 @@ pub fn witness_cancelled(
 /// A handler bound (or re-bound) while recording: described to the
 /// recorder, as a driver describes each handler installed after recording
 /// started.
-pub fn record_bound(
+pub(crate) fn record_bound(
     inserted: On<Insert, Bound>,
     bound: Query<&Bound>,
     recording: Option<Res<Recording>>,

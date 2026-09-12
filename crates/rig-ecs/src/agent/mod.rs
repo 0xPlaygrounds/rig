@@ -563,7 +563,7 @@ pub struct RunSeq(pub u64);
 /// The world's one run counter.
 #[derive(Resource, Debug, Default)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Resource))]
-pub struct RunCounter(pub u64);
+pub struct RunCounter(pub(crate) u64);
 
 /// Whether the model is asked for a stream.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

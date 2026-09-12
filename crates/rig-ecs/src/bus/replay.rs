@@ -50,14 +50,6 @@ pub struct Replay {
 }
 
 impl Replay {
-    /// A replay comparing requests as `check` says.
-    pub fn checking(check: RequestCheck) -> Self {
-        Self {
-            check,
-            ..Self::default()
-        }
-    }
-
     /// Replay policies that observe answer order or partial stream state.
     /// Refuses recordings without the delivery boundaries or kept stream
     /// events that guarantee needs. The same policy must reproduce recorded

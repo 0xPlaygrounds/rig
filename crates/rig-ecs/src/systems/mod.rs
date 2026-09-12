@@ -318,14 +318,14 @@ pub fn spawn_utterance(world: &mut World, run: Entity, parts: MessageParts) -> E
 }
 
 /// The next [`Order`].
-pub fn next_order(world: &mut World) -> Order {
+pub(crate) fn next_order(world: &mut World) -> Order {
     let mut counter = world.resource_mut::<OrderCounter>();
     let order = Order(counter.0);
     counter.0 += 1;
     order
 }
 
-pub fn next_order_in(counter: &mut OrderCounter) -> Order {
+pub(crate) fn next_order_in(counter: &mut OrderCounter) -> Order {
     let order = Order(counter.0);
     counter.0 += 1;
     order

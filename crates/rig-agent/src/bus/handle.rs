@@ -690,17 +690,10 @@ impl RerankHandle {
     }
 }
 
-impl<E: CustomEffect> Handle<family::Custom<E>> {
-    /// Dispatch the host's own effect.
-    pub fn custom(&self, effect: E) -> Typed<family::Custom<E>> {
-        self.dispatch(effect)
-    }
-}
-
 /// Wrap an [`EffectStream`] back into a [`StreamingCompletionResponse`]:
 /// the B2 accumulator folds the events on this side of the bus, and errors
 /// that crossed it are the stream's own error half, [`ErrorReport`].
-pub fn wrap_stream(
+pub(crate) fn wrap_stream(
     provider: impl Into<String>,
     stream: EffectStream,
 ) -> StreamingCompletionResponse {

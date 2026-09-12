@@ -593,7 +593,7 @@ impl AgentRun {
     /// [`initial_prompt`](Self::initial_prompt) is `Some`; once the first
     /// [`AgentRunStep::CallModel`] has been emitted the prompt is committed
     /// and rewriting returns [`PromptError::PromptCancelled`].
-    pub fn rewrite_initial_prompt(
+    pub(crate) fn rewrite_initial_prompt(
         &mut self,
         prompt: impl Into<Message>,
     ) -> Result<(), PromptError> {

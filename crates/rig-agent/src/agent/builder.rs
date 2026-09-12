@@ -293,15 +293,6 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
-    /// Apply a run spec's settings.
-    pub fn apply_spec(
-        mut self,
-        spec: &crate::run::spec::RunSpec,
-    ) -> Result<Self, serde_json::Error> {
-        self.config.apply_run_spec(spec)?;
-        Ok(self)
-    }
-
     /// Set the structured-output mode.
     pub fn output_mode(mut self, mode: OutputMode) -> Self {
         self.config.output_mode = mode;
