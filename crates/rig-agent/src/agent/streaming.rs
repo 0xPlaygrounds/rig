@@ -265,6 +265,14 @@ impl AgentRunner {
     /// native targets, so it can be built in synchronous code and handed to
     /// whatever polls it.
     ///
+    /// ```rust,no_run
+    /// # use rig_agent::{Agent, agent::StreamingResult};
+    /// fn start(agent: &Agent, prompt: &str) -> StreamingResult {
+    ///     // Nothing runs until whoever holds this polls it.
+    ///     agent.prompt(prompt).stream()
+    /// }
+    /// ```
+    ///
     /// Shares the drive loop, run construction, tool execution and fail-closed
     /// hook handling with the blocking [`run`](AgentRunner::run) via
     /// `drive_agent`, so the two behave identically apart from the streamed
