@@ -1,0 +1,33 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","type":"text"}],"role":"system"},{"content":"Use the add tool to add 17 and 25, then reply with just the number.","role":"user"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","reasoning_effort":"low","temperature":0.0,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"reasoning_content":"The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n","reasoning_details":[{"format":"unknown","index":0,"text":"The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n","type":"reasoning.text"}],"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 17, \"y\": 25}","name":"add"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"resp_REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":84,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":46},"prompt_tokens":354,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":438}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","type":"text"}],"role":"system"},{"content":"Use the add tool to add 17 and 25, then reply with just the number.","role":"user"},{"reasoning_content":"The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":17,\"y\":25}","name":"add"},"id":"call_REDACTED_1","type":"function"}]},{"content":"42","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","reasoning_effort":"low","temperature":0.0,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"\n\n42","reasoning_content":"The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n","reasoning_details":[{"format":"unknown","index":0,"text":"The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n","type":"reasoning.text"}],"refusal":null,"role":"assistant"}}],"created":0,"id":"resp_REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":48,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":43},"prompt_tokens":445,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":493}}'

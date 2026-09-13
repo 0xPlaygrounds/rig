@@ -1,0 +1,440 @@
+{
+  "header": {
+    "run_spec": 15306360863444318362,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      },
+      {
+        "key": "golden/tool:add#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "Add x and y together",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The first number to add"
+              },
+              "y": {
+                "type": "number",
+                "description": "The second number to add"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/tool:add#0": "tool"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/tool:add#0": "tool"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25, then reply with just the number."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 4096,
+          "tool_choice": null,
+          "additional_params": {
+            "reasoning_effort": "low"
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 354,
+            "output_tokens": 84,
+            "total_tokens": 438,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 46
+          },
+          "message_id": null,
+          "response_id": "resp_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "doubleword",
+          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+          "raw": {
+            "id": "resp_REDACTED_1",
+            "object": "chat.completion",
+            "created": 0,
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "system_fingerprint": null,
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
+                  "tool_calls": [
+                    {
+                      "id": "call_REDACTED_1",
+                      "type": "function",
+                      "function": {
+                        "name": "add",
+                        "arguments": "{\"x\":17,\"y\":25}"
+                      }
+                    }
+                  ],
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "id": null,
+                      "format": "unknown",
+                      "index": 0,
+                      "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
+                      "signature": null
+                    }
+                  ]
+                },
+                "logprobs": null,
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 354,
+              "completion_tokens": 84,
+              "total_tokens": 438,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 46
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 2,
+      "key": "golden/tool:add#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "add",
+        "args": "{\"x\":17,\"y\":25}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": 42
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 3,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25, then reply with just the number."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": null,
+                  "content": [
+                    {
+                      "type": "text",
+                      "content": {
+                        "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 17,
+                      "y": 25
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 42
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 4096,
+          "tool_choice": null,
+          "additional_params": {
+            "reasoning_effort": "low"
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "\n\n42"
+            }
+          ],
+          "usage": {
+            "input_tokens": 445,
+            "output_tokens": 48,
+            "total_tokens": 493,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 43
+          },
+          "message_id": null,
+          "response_id": "resp_REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "doubleword",
+          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+          "raw": {
+            "id": "resp_REDACTED_2",
+            "object": "chat.completion",
+            "created": 0,
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "system_fingerprint": null,
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "\n\n42"
+                    }
+                  ],
+                  "reasoning_content": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n",
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "id": null,
+                      "format": "unknown",
+                      "index": 0,
+                      "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n",
+                      "signature": null
+                    }
+                  ]
+                },
+                "logprobs": null,
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 445,
+              "completion_tokens": 48,
+              "total_tokens": 493,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 43
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
