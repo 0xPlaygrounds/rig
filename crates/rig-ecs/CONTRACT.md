@@ -26,6 +26,16 @@ explained in [the test guide](../../tests/ecs_parity/README.md).
 
 The fold is the only constructor of a `CompletionRequest` in the crate (`tests/core/rig_ecs_bus_module.rs::the_agent_modules_hold_the_discipline`).
 
+A user utterance's content is the caller's, verbatim: `spawn_run` takes a
+`Prompt` (a user message's parts), and those parts — text and image, in the order given, each
+image's bytes or URL, media type and options unchanged — are what every
+request of the run carries, what memory appends and loads (§11), and what a
+scene saves and restores (§13); the assistant's canonical part order (§4)
+does not apply to user content. Pinned by the `*_image_*` goldens
+(`inline_mixed_order`: text, image, text, the same image, text; `inline_tool_unary`:
+the image in the second request and after a scene load; `inline_followup`: the
+image loaded from memory, once, before a text-only prompt).
+
 ## 2. The verbatim strings
 
 | string | value | pinned by |

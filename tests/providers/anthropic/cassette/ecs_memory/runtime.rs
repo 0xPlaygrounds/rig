@@ -180,7 +180,7 @@ pub(super) async fn run_prompts(
     clears: Clears,
 ) -> Vec<String> {
     let mut outputs = vec![];
-    for prompt in prompts {
+    for &prompt in prompts {
         let run = spawn_run(
             ecs.app.world_mut(),
             ecs.agent,
