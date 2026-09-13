@@ -146,7 +146,9 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
 
 /// EOF after content through the native runtime: the run fails as a
 /// truncation, the stream keeps the prefix, history keeps only the prompt,
-/// and the bus witnesses the truncation with what was delivered.
+/// and the bus witnesses the truncation with what was delivered. A
+/// truncation is retryable, so the run declines its provider-retry budget
+/// (CONTRACT §5): this pins the failure, `rig-ecs` pins the retry.
 #[tokio::test]
 async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
     let frames = text_prefix_frames();
@@ -158,7 +160,13 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
             STREAMING_PREAMBLE,
             STREAMING_PROMPT,
             witness,
-            |_| {},
+            |ecs| {
+                let agent = ecs.agent;
+                ecs.app
+                    .world_mut()
+                    .entity_mut(agent)
+                    .insert(rig_ecs::agent::ProviderRetries(0));
+            },
         )
         .await;
         let report = run.provider_report();
@@ -193,7 +201,8 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
 
 /// EOF after a complete tool call through the native runtime: the call is
 /// never dispatched, the tool never runs, no assistant turn is committed,
-/// and the run fails as a truncation.
+/// and the run fails as a truncation. The run declines its provider-retry
+/// budget (CONTRACT §5) so the failure, not the retry, is what is pinned.
 #[tokio::test]
 async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
     let frames = tool_call_prefix_frames();
@@ -209,6 +218,11 @@ async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
             move |ecs| {
                 ecs.tool(Adder);
                 ecs.tool(CountedSubtract(counted));
+                let agent = ecs.agent;
+                ecs.app
+                    .world_mut()
+                    .entity_mut(agent)
+                    .insert(rig_ecs::agent::ProviderRetries(0));
             },
         )
         .await;
