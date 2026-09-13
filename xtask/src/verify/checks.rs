@@ -120,6 +120,48 @@ pub(super) fn all() -> Vec<Check> {
                 "not binary(macro_hygiene)",
             ])],
         ),
+        // The ECS parity goldens as their own lane: every producer and world
+        // cell of the agent/ECS matrices (`corpus_*` / `ecs_*` on the root
+        // provider targets), the golden pairing guard, and rig-verify's
+        // replay of every golden through a world. A subset of default-tests
+        // by construction, named so the merge queue can require it and a
+        // failure reads as what it is: the two runtimes disagree, or a golden
+        // is stale (a field added to `rig_ecs::replay::spec_json` invalidates
+        // every native golden's policy hash).
+        check(
+            "ecs-parity",
+            vec![
+                cargo(&[
+                    "nextest",
+                    "run",
+                    "--locked",
+                    "-p",
+                    "rig",
+                    "--features",
+                    "bedrock",
+                    // The same retries as `test`: a divergence or a stale
+                    // golden is deterministic and fails every attempt, while
+                    // a handful of cells carry wall-clock deadlines (a 30 s
+                    // session budget, a stream drained at the replay's pace)
+                    // that a loaded machine can miss once. Without retries
+                    // one such miss cancels the lane mid-run.
+                    "--retries",
+                    "2",
+                    "-E",
+                    "test(/(^|::)(ecs|corpus)_/) | test(golden_pairing)",
+                ]),
+                cargo(&[
+                    "nextest",
+                    "run",
+                    "--locked",
+                    "-p",
+                    "rig-verify",
+                    "--all-features",
+                    "-E",
+                    "binary(world_replay)",
+                ]),
+            ],
+        ),
         check(
             "scenario-registrations",
             // Match default-tests' package/feature graph; narrowing to -p rig

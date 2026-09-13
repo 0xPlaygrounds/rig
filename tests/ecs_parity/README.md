@@ -14,6 +14,25 @@ not a result archive or a proof of exhaustive behavioral equivalence. Models,
 prompts, budgets, tool definitions and expected values belong in the tests and
 their shared helpers, not a second handwritten inventory.
 
+## The policy hash
+
+Every native golden's header carries, per run, the hash of the agent's
+effective policy (`rig_ecs::replay::spec_json`: preamble, budgets, tool
+choice, output mode, the provider-retry budget, the bound descriptors, …).
+A field added to that JSON changes the hash of every native golden at once,
+and the world cells then diverge from their goldens with nothing else
+different. A PR that touches `spec_json` regenerates every `ecs_parity`
+golden in the same PR (`RIG_REGENERATE_GOLDEN=1` in replay mode over the
+`ecs_*` cells; the `policy` line is the only change) — and a PR based before
+such a change must rebase and regenerate before it merges: #2500 added
+`provider_retries`, #2501 was based before it and merged green on its own
+base, and `main` failed 491 world cells until #2503 regenerated them. The
+hash is a run-time value (it needs a bound world), so no static check can
+recompute it from a golden's header; the `ecs-parity` verify check and CI
+job (required on the merge queue once the `Protect main` ruleset requires
+it) is what catches it, and a local `cargo xtask verify --changed` selects
+it for any edit to rig-ecs, rig-agent or rig-core.
+
 ## Execution and comparison boundaries
 
 Native cases use the actual ECS schedule and provider/tool adapters, with the
