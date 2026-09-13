@@ -32,7 +32,7 @@
         "required": {
           "golden/model:default": "completion"
         },
-        "policy": 14239698725334171366
+        "policy": 14026224155153638631
       }
     }
   },
