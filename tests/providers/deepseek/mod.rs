@@ -1,7 +1,11 @@
+#[path = "cassette/corpus_faults.rs"]
+mod corpus_faults;
 #[path = "cassette/corpus_matrix.rs"]
 mod corpus_matrix;
 #[path = "cassette/ecs_completion.rs"]
 mod ecs_completion;
+#[path = "cassette/ecs_faults.rs"]
+mod ecs_faults;
 #[path = "cassette/ecs_matrix.rs"]
 mod ecs_matrix;
 #[path = "cassette/ecs_matrix_extra.rs"]
