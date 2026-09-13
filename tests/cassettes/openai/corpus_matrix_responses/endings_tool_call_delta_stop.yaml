@@ -1,0 +1,1497 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Save a note titled ''Rust'' whose body is a 400-word essay on the history of the Rust programming language, then reply with just the word saved.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a note-taking assistant. Use the write_note tool to save notes.","model":"gpt-5-mini","stream":true,"tools":[{"description":"writes a note with a title and a body","name":"write_note","parameters":{"properties":{"body":{"type":"string"},"title":{"type":"string"}},"required":["title","body"],"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You are a note-taking assistant. Use the write_note tool to save notes.","max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"medium","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"writes a note with a title and a body","name":"write_note","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"body":{"type":"string"},"title":{"type":"string"}},"required":["title","body"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You are a note-taking assistant. Use the write_note tool to save notes.","max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"medium","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"writes a note with a title and a body","name":"write_note","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"body":{"type":"string"},"title":{"type":"string"}},"required":["title","body"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"encrypted_content":"encrypted_content_REDACTED_1","id":"rs_REDACTED_1","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[],"encrypted_content":"encrypted_content_REDACTED_2","id":"rs_REDACTED_1","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":3,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"write_note","status":"in_progress","type":"function_call"},"output_index":1,"sequence_number":4,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_1","output_index":1,"sequence_number":5,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"title","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_2","output_index":1,"sequence_number":6,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\":\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_3","output_index":1,"sequence_number":7,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_4","output_index":1,"sequence_number":8,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\",\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_5","output_index":1,"sequence_number":9,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"body","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_6","output_index":1,"sequence_number":10,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\":\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_7","output_index":1,"sequence_number":11,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"The","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_8","output_index":1,"sequence_number":12,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_9","output_index":1,"sequence_number":13,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" programming","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_10","output_index":1,"sequence_number":14,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" language","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_11","output_index":1,"sequence_number":15,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" began","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_12","output_index":1,"sequence_number":16,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" as","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_13","output_index":1,"sequence_number":17,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" a","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_14","output_index":1,"sequence_number":18,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" personal","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_15","output_index":1,"sequence_number":19,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" project","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_16","output_index":1,"sequence_number":20,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" by","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_17","output_index":1,"sequence_number":21,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Gray","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_18","output_index":1,"sequence_number":22,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"don","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_19","output_index":1,"sequence_number":23,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Ho","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_20","output_index":1,"sequence_number":24,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"are","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_21","output_index":1,"sequence_number":25,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" in","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_22","output_index":1,"sequence_number":26,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" ","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_23","output_index":1,"sequence_number":27,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"200","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_24","output_index":1,"sequence_number":28,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"6","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_25","output_index":1,"sequence_number":29,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_26","output_index":1,"sequence_number":30,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Ho","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_27","output_index":1,"sequence_number":31,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"are","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_28","output_index":1,"sequence_number":32,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" wanted","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_29","output_index":1,"sequence_number":33,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" a","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_30","output_index":1,"sequence_number":34,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" systems","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_31","output_index":1,"sequence_number":35,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" programming","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_32","output_index":1,"sequence_number":36,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" language","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_33","output_index":1,"sequence_number":37,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" that","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_34","output_index":1,"sequence_number":38,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" combined","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_35","output_index":1,"sequence_number":39,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" low","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_36","output_index":1,"sequence_number":40,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"-level","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_37","output_index":1,"sequence_number":41,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" control","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_38","output_index":1,"sequence_number":42,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_39","output_index":1,"sequence_number":43,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" performance","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_40","output_index":1,"sequence_number":44,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" with","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_41","output_index":1,"sequence_number":45,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" stronger","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_42","output_index":1,"sequence_number":46,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" safety","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_43","output_index":1,"sequence_number":47,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" guarantees","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_44","output_index":1,"sequence_number":48,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" than","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_45","output_index":1,"sequence_number":49,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" C","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_46","output_index":1,"sequence_number":50,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_47","output_index":1,"sequence_number":51,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" C","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_48","output_index":1,"sequence_number":52,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"++.","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_49","output_index":1,"sequence_number":53,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Early","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_50","output_index":1,"sequence_number":54,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" design","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_51","output_index":1,"sequence_number":55,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" drew","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_52","output_index":1,"sequence_number":56,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" inspiration","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_53","output_index":1,"sequence_number":57,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" from","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_54","output_index":1,"sequence_number":58,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" languages","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_55","output_index":1,"sequence_number":59,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_56","output_index":1,"sequence_number":60,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" research","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_57","output_index":1,"sequence_number":61,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" such","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_58","output_index":1,"sequence_number":62,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" as","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_59","output_index":1,"sequence_number":63,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Cycl","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_60","output_index":1,"sequence_number":64,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"one","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_61","output_index":1,"sequence_number":65,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_62","output_index":1,"sequence_number":66,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" OC","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_63","output_index":1,"sequence_number":67,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"aml","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_64","output_index":1,"sequence_number":68,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_65","output_index":1,"sequence_number":69,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_66","output_index":1,"sequence_number":70,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" functional","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_67","output_index":1,"sequence_number":71,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" programming","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_68","output_index":1,"sequence_number":72,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" ideas","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_69","output_index":1,"sequence_number":73,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" that","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_70","output_index":1,"sequence_number":74,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" emphasize","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_71","output_index":1,"sequence_number":75,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" imm","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_72","output_index":1,"sequence_number":76,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"ut","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_73","output_index":1,"sequence_number":77,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"ability","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_74","output_index":1,"sequence_number":78,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_75","output_index":1,"sequence_number":79,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" expressive","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_76","output_index":1,"sequence_number":80,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" type","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_77","output_index":1,"sequence_number":81,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" systems","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_78","output_index":1,"sequence_number":82,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_79","output_index":1,"sequence_number":83,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Development","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_80","output_index":1,"sequence_number":84,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" remained","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_81","output_index":1,"sequence_number":85,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" informal","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_82","output_index":1,"sequence_number":86,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" until","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_83","output_index":1,"sequence_number":87,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Mozilla","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_84","output_index":1,"sequence_number":88,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" began","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_85","output_index":1,"sequence_number":89,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" sponsoring","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_86","output_index":1,"sequence_number":90,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" the","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_87","output_index":1,"sequence_number":91,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" project","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_88","output_index":1,"sequence_number":92,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" in","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_89","output_index":1,"sequence_number":93,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" ","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_90","output_index":1,"sequence_number":94,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"200","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_91","output_index":1,"sequence_number":95,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"9","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_92","output_index":1,"sequence_number":96,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_93","output_index":1,"sequence_number":97,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" giving","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_94","output_index":1,"sequence_number":98,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" it","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_95","output_index":1,"sequence_number":99,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" resources","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_96","output_index":1,"sequence_number":100,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_97","output_index":1,"sequence_number":101,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" a","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_98","output_index":1,"sequence_number":102,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" community","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_99","output_index":1,"sequence_number":103,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" of","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_100","output_index":1,"sequence_number":104,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" engineers","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_101","output_index":1,"sequence_number":105,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" to","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_102","output_index":1,"sequence_number":106,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" accelerate","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_103","output_index":1,"sequence_number":107,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" design","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_104","output_index":1,"sequence_number":108,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_105","output_index":1,"sequence_number":109,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" implementation","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_106","output_index":1,"sequence_number":110,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".\\","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_107","output_index":1,"sequence_number":111,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"n","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_108","output_index":1,"sequence_number":112,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\\n","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_109","output_index":1,"sequence_number":113,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"During","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_110","output_index":1,"sequence_number":114,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" the","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_111","output_index":1,"sequence_number":115,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" early","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_112","output_index":1,"sequence_number":116,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" ","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_113","output_index":1,"sequence_number":117,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"201","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_114","output_index":1,"sequence_number":118,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"0","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_115","output_index":1,"sequence_number":119,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"s","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_116","output_index":1,"sequence_number":120,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_117","output_index":1,"sequence_number":121,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" evolved","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_118","output_index":1,"sequence_number":122,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" quickly","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_119","output_index":1,"sequence_number":123,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_120","output_index":1,"sequence_number":124,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" The","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_121","output_index":1,"sequence_number":125,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" language","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_122","output_index":1,"sequence_number":126,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"’s","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_123","output_index":1,"sequence_number":127,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" unique","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_124","output_index":1,"sequence_number":128,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" ownership","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_125","output_index":1,"sequence_number":129,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_126","output_index":1,"sequence_number":130,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" borrowing","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_127","output_index":1,"sequence_number":131,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" model","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_128","output_index":1,"sequence_number":132,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"—","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_129","output_index":1,"sequence_number":133,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"implemented","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_130","output_index":1,"sequence_number":134,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" in","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_131","output_index":1,"sequence_number":135,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" the","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_132","output_index":1,"sequence_number":136,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" type","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_133","output_index":1,"sequence_number":137,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" system","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_134","output_index":1,"sequence_number":138,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_135","output_index":1,"sequence_number":139,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" enforced","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_136","output_index":1,"sequence_number":140,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" by","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_137","output_index":1,"sequence_number":141,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" the","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_138","output_index":1,"sequence_number":142,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" borrow","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_139","output_index":1,"sequence_number":143,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" checker","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_140","output_index":1,"sequence_number":144,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"—","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_141","output_index":1,"sequence_number":145,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"was","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_142","output_index":1,"sequence_number":146,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" designed","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_143","output_index":1,"sequence_number":147,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" to","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_144","output_index":1,"sequence_number":148,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" prevent","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_145","output_index":1,"sequence_number":149,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" common","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_146","output_index":1,"sequence_number":150,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" memory","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_147","output_index":1,"sequence_number":151,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"-","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_148","output_index":1,"sequence_number":152,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_149","output_index":1,"sequence_number":153,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" concurrency","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_150","output_index":1,"sequence_number":154,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"-related","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_151","output_index":1,"sequence_number":155,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" bugs","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_152","output_index":1,"sequence_number":156,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" without","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_153","output_index":1,"sequence_number":157,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" a","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_154","output_index":1,"sequence_number":158,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" garbage","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_155","output_index":1,"sequence_number":159,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" collector","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_156","output_index":1,"sequence_number":160,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_157","output_index":1,"sequence_number":161,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_158","output_index":1,"sequence_number":162,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"’s","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_159","output_index":1,"sequence_number":163,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" syntax","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_160","output_index":1,"sequence_number":164,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_161","output_index":1,"sequence_number":165,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" features","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_162","output_index":1,"sequence_number":166,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" co","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_163","output_index":1,"sequence_number":167,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"ales","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_164","output_index":1,"sequence_number":168,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"ced","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_165","output_index":1,"sequence_number":169,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" through","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_166","output_index":1,"sequence_number":170,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" community","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_167","output_index":1,"sequence_number":171,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" feedback","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_168","output_index":1,"sequence_number":172,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_169","output_index":1,"sequence_number":173,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" research","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_170","output_index":1,"sequence_number":174,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_171","output_index":1,"sequence_number":175,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_172","output_index":1,"sequence_number":176,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" experimentation","item_id":"fc_REDACTED_1","obfuscation":"","output_index":1,"sequence_number":177,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" led","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_173","output_index":1,"sequence_number":178,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" by","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_174","output_index":1,"sequence_number":179,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" a","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_175","output_index":1,"sequence_number":180,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" small","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_176","output_index":1,"sequence_number":181,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" core","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_177","output_index":1,"sequence_number":182,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" team","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_178","output_index":1,"sequence_number":183,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" including","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_179","output_index":1,"sequence_number":184,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Ho","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_180","output_index":1,"sequence_number":185,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"are","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_181","output_index":1,"sequence_number":186,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_182","output_index":1,"sequence_number":187,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" subsequent","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_183","output_index":1,"sequence_number":188,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" contributors","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_184","output_index":1,"sequence_number":189,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" like","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_185","output_index":1,"sequence_number":190,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" N","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_186","output_index":1,"sequence_number":191,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"iko","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_187","output_index":1,"sequence_number":192,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Mats","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_188","output_index":1,"sequence_number":193,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"akis","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_189","output_index":1,"sequence_number":194,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_190","output_index":1,"sequence_number":195,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Aaron","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_191","output_index":1,"sequence_number":196,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Tur","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_192","output_index":1,"sequence_number":197,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"on","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_193","output_index":1,"sequence_number":198,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_194","output_index":1,"sequence_number":199,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" The","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_195","output_index":1,"sequence_number":200,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" project","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_196","output_index":1,"sequence_number":201,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" adopted","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_197","output_index":1,"sequence_number":202,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" open","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_198","output_index":1,"sequence_number":203,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" governance","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_199","output_index":1,"sequence_number":204,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_200","output_index":1,"sequence_number":205,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" encouraging","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_201","output_index":1,"sequence_number":206,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" RFC","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_202","output_index":1,"sequence_number":207,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"s","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_203","output_index":1,"sequence_number":208,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" (","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_204","output_index":1,"sequence_number":209,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"request","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_205","output_index":1,"sequence_number":210,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" for","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_206","output_index":1,"sequence_number":211,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" comments","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_207","output_index":1,"sequence_number":212,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":")","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_208","output_index":1,"sequence_number":213,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_209","output_index":1,"sequence_number":214,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" widespread","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_210","output_index":1,"sequence_number":215,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" community","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_211","output_index":1,"sequence_number":216,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" involvement","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_212","output_index":1,"sequence_number":217,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" in","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_213","output_index":1,"sequence_number":218,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" language","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_214","output_index":1,"sequence_number":219,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" evolution","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_215","output_index":1,"sequence_number":220,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".\\","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_216","output_index":1,"sequence_number":221,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"n","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_217","output_index":1,"sequence_number":222,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\\n","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_218","output_index":1,"sequence_number":223,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_219","output_index":1,"sequence_number":224,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" reached","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_220","output_index":1,"sequence_number":225,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" an","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_221","output_index":1,"sequence_number":226,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" important","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_222","output_index":1,"sequence_number":227,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" milestone","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_223","output_index":1,"sequence_number":228,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" on","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_224","output_index":1,"sequence_number":229,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" May","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_225","output_index":1,"sequence_number":230,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" ","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_226","output_index":1,"sequence_number":231,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"15","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_227","output_index":1,"sequence_number":232,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_228","output_index":1,"sequence_number":233,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" ","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_229","output_index":1,"sequence_number":234,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"201","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_230","output_index":1,"sequence_number":235,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"5","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_231","output_index":1,"sequence_number":236,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_232","output_index":1,"sequence_number":237,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" with","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_233","output_index":1,"sequence_number":238,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" the","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_234","output_index":1,"sequence_number":239,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" stable","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_235","output_index":1,"sequence_number":240,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" release","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_236","output_index":1,"sequence_number":241,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" of","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_237","output_index":1,"sequence_number":242,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_238","output_index":1,"sequence_number":243,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" ","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_239","output_index":1,"sequence_number":244,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"1","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_240","output_index":1,"sequence_number":245,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_241","output_index":1,"sequence_number":246,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"0","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_242","output_index":1,"sequence_number":247,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_243","output_index":1,"sequence_number":248,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" This","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_244","output_index":1,"sequence_number":249,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" release","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_245","output_index":1,"sequence_number":250,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" marked","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_246","output_index":1,"sequence_number":251,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" the","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_247","output_index":1,"sequence_number":252,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" start","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_248","output_index":1,"sequence_number":253,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" of","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_249","output_index":1,"sequence_number":254,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" a","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_250","output_index":1,"sequence_number":255,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" stable","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_251","output_index":1,"sequence_number":256,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_252","output_index":1,"sequence_number":257,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" production","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_253","output_index":1,"sequence_number":258,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"-ready","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_254","output_index":1,"sequence_number":259,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" language","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_255","output_index":1,"sequence_number":260,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" with","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_256","output_index":1,"sequence_number":261,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" a","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_257","output_index":1,"sequence_number":262,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" guarantee","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_258","output_index":1,"sequence_number":263,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" of","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_259","output_index":1,"sequence_number":264,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" backward","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_260","output_index":1,"sequence_number":265,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" compatibility","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_261","output_index":1,"sequence_number":266,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" across","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_262","output_index":1,"sequence_number":267,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" the","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_263","output_index":1,"sequence_number":268,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" ","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_264","output_index":1,"sequence_number":269,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"1","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_265","output_index":1,"sequence_number":270,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".x","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_266","output_index":1,"sequence_number":271,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" series","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_267","output_index":1,"sequence_number":272,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_268","output_index":1,"sequence_number":273,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Around","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_269","output_index":1,"sequence_number":274,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" this","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_270","output_index":1,"sequence_number":275,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" time","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_271","output_index":1,"sequence_number":276,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_272","output_index":1,"sequence_number":277,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_273","output_index":1,"sequence_number":278,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" also","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_274","output_index":1,"sequence_number":279,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" settled","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_275","output_index":1,"sequence_number":280,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" on","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_276","output_index":1,"sequence_number":281,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" tooling","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_277","output_index":1,"sequence_number":282,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" that","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_278","output_index":1,"sequence_number":283,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" would","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_279","output_index":1,"sequence_number":284,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" become","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_280","output_index":1,"sequence_number":285,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" central","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_281","output_index":1,"sequence_number":286,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" to","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_282","output_index":1,"sequence_number":287,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" its","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_283","output_index":1,"sequence_number":288,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" ecosystem","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_284","output_index":1,"sequence_number":289,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":":","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_285","output_index":1,"sequence_number":290,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Cargo","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_286","output_index":1,"sequence_number":291,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" (","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_287","output_index":1,"sequence_number":292,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"the","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_288","output_index":1,"sequence_number":293,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" package","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_289","output_index":1,"sequence_number":294,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" manager","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_290","output_index":1,"sequence_number":295,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_291","output_index":1,"sequence_number":296,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" build","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_292","output_index":1,"sequence_number":297,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" tool","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_293","output_index":1,"sequence_number":298,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":")","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_294","output_index":1,"sequence_number":299,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_295","output_index":1,"sequence_number":300,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" crates","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_296","output_index":1,"sequence_number":301,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".io","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_297","output_index":1,"sequence_number":302,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" (","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_298","output_index":1,"sequence_number":303,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"the","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_299","output_index":1,"sequence_number":304,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" package","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_300","output_index":1,"sequence_number":305,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" registry","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_301","output_index":1,"sequence_number":306,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":")","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_302","output_index":1,"sequence_number":307,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" helped","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_303","output_index":1,"sequence_number":308,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" create","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_304","output_index":1,"sequence_number":309,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" a","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_305","output_index":1,"sequence_number":310,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" cohesive","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_306","output_index":1,"sequence_number":311,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" developer","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_307","output_index":1,"sequence_number":312,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" experience","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_308","output_index":1,"sequence_number":313,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_309","output_index":1,"sequence_number":314,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" made","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_310","output_index":1,"sequence_number":315,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" dependency","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_311","output_index":1,"sequence_number":316,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" management","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_312","output_index":1,"sequence_number":317,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" straightforward","item_id":"fc_REDACTED_1","obfuscation":"","output_index":1,"sequence_number":318,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" for","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_313","output_index":1,"sequence_number":319,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_314","output_index":1,"sequence_number":320,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" projects","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_315","output_index":1,"sequence_number":321,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".\\","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_316","output_index":1,"sequence_number":322,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"n","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_317","output_index":1,"sequence_number":323,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\\n","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_318","output_index":1,"sequence_number":324,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"The","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_319","output_index":1,"sequence_number":325,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" language","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_320","output_index":1,"sequence_number":326,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" gained","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_321","output_index":1,"sequence_number":327,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" traction","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_322","output_index":1,"sequence_number":328,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" in","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_323","output_index":1,"sequence_number":329,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" both","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_324","output_index":1,"sequence_number":330,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" open","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_325","output_index":1,"sequence_number":331,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"-source","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_326","output_index":1,"sequence_number":332,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_327","output_index":1,"sequence_number":333,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" commercial","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_328","output_index":1,"sequence_number":334,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" settings","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_329","output_index":1,"sequence_number":335,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_330","output_index":1,"sequence_number":336,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Mozilla","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_331","output_index":1,"sequence_number":337,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" used","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_332","output_index":1,"sequence_number":338,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_333","output_index":1,"sequence_number":339,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" for","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_334","output_index":1,"sequence_number":340,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" parts","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_335","output_index":1,"sequence_number":341,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" of","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_336","output_index":1,"sequence_number":342,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" its","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_337","output_index":1,"sequence_number":343,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" browser","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_338","output_index":1,"sequence_number":344,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" engine","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_339","output_index":1,"sequence_number":345,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" research","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_340","output_index":1,"sequence_number":346,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" project","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_341","output_index":1,"sequence_number":347,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Servo","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_342","output_index":1,"sequence_number":348,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_343","output_index":1,"sequence_number":349,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" demonstrating","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_344","output_index":1,"sequence_number":350,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_345","output_index":1,"sequence_number":351,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"’s","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_346","output_index":1,"sequence_number":352,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" potential","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_347","output_index":1,"sequence_number":353,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" for","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_348","output_index":1,"sequence_number":354,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" safe","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_349","output_index":1,"sequence_number":355,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_350","output_index":1,"sequence_number":356,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" high","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_351","output_index":1,"sequence_number":357,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"-performance","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_352","output_index":1,"sequence_number":358,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" systems","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_353","output_index":1,"sequence_number":359,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" work","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_354","output_index":1,"sequence_number":360,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_355","output_index":1,"sequence_number":361,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Other","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_356","output_index":1,"sequence_number":362,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" organizations","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_357","output_index":1,"sequence_number":363,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" began","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_358","output_index":1,"sequence_number":364,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" adopting","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_359","output_index":1,"sequence_number":365,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_360","output_index":1,"sequence_number":366,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" for","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_361","output_index":1,"sequence_number":367,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" networking","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_362","output_index":1,"sequence_number":368,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_363","output_index":1,"sequence_number":369,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" embedded","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_364","output_index":1,"sequence_number":370,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" systems","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_365","output_index":1,"sequence_number":371,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_366","output_index":1,"sequence_number":372,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" command","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_367","output_index":1,"sequence_number":373,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"-line","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_368","output_index":1,"sequence_number":374,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" tools","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_369","output_index":1,"sequence_number":375,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_370","output_index":1,"sequence_number":376,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_371","output_index":1,"sequence_number":377,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" cloud","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_372","output_index":1,"sequence_number":378,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" infrastructure","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_373","output_index":1,"sequence_number":379,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"—","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_374","output_index":1,"sequence_number":380,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"areas","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_375","output_index":1,"sequence_number":381,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" where","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_376","output_index":1,"sequence_number":382,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" performance","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_377","output_index":1,"sequence_number":383,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_378","output_index":1,"sequence_number":384,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" reliability","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_379","output_index":1,"sequence_number":385,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" are","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_380","output_index":1,"sequence_number":386,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" critical","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_381","output_index":1,"sequence_number":387,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_382","output_index":1,"sequence_number":388,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Projects","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_383","output_index":1,"sequence_number":389,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" like","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_384","output_index":1,"sequence_number":390,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" rip","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_385","output_index":1,"sequence_number":391,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"grep","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_386","output_index":1,"sequence_number":392,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_387","output_index":1,"sequence_number":393,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" production","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_388","output_index":1,"sequence_number":394,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" services","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_389","output_index":1,"sequence_number":395,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" such","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_390","output_index":1,"sequence_number":396,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" as","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_391","output_index":1,"sequence_number":397,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" AWS","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_392","output_index":1,"sequence_number":398,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Fire","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_393","output_index":1,"sequence_number":399,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"cracker","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_394","output_index":1,"sequence_number":400,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" showcased","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_395","output_index":1,"sequence_number":401,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_396","output_index":1,"sequence_number":402,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"’s","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_397","output_index":1,"sequence_number":403,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" practical","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_398","output_index":1,"sequence_number":404,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" benefits","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_399","output_index":1,"sequence_number":405,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".\\","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_400","output_index":1,"sequence_number":406,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"n","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_401","output_index":1,"sequence_number":407,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\\n","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_402","output_index":1,"sequence_number":408,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_403","output_index":1,"sequence_number":409,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" continued","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_404","output_index":1,"sequence_number":410,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" to","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_405","output_index":1,"sequence_number":411,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" mature","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_406","output_index":1,"sequence_number":412,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" with","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_407","output_index":1,"sequence_number":413,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" a","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_408","output_index":1,"sequence_number":414,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" rigorous","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_409","output_index":1,"sequence_number":415,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" release","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_410","output_index":1,"sequence_number":416,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" process","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_411","output_index":1,"sequence_number":417,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_412","output_index":1,"sequence_number":418,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" strong","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_413","output_index":1,"sequence_number":419,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" emphasis","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_414","output_index":1,"sequence_number":420,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" on","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_415","output_index":1,"sequence_number":421,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" documentation","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_416","output_index":1,"sequence_number":422,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_417","output_index":1,"sequence_number":423,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" tooling","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_418","output_index":1,"sequence_number":424,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_419","output_index":1,"sequence_number":425,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_420","output_index":1,"sequence_number":426,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" an","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_421","output_index":1,"sequence_number":427,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" active","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_422","output_index":1,"sequence_number":428,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" community","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_423","output_index":1,"sequence_number":429,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" that","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_424","output_index":1,"sequence_number":430,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" shaped","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_425","output_index":1,"sequence_number":431,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" its","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_426","output_index":1,"sequence_number":432,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" roadmap","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_427","output_index":1,"sequence_number":433,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_428","output_index":1,"sequence_number":434,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" To","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_429","output_index":1,"sequence_number":435,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" ensure","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_430","output_index":1,"sequence_number":436,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" long","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_431","output_index":1,"sequence_number":437,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"-term","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_432","output_index":1,"sequence_number":438,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" stewardship","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_433","output_index":1,"sequence_number":439,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_434","output_index":1,"sequence_number":440,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" the","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_435","output_index":1,"sequence_number":441,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_436","output_index":1,"sequence_number":442,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Foundation","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_437","output_index":1,"sequence_number":443,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" was","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_438","output_index":1,"sequence_number":444,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" established","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_439","output_index":1,"sequence_number":445,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" in","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_440","output_index":1,"sequence_number":446,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" ","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_441","output_index":1,"sequence_number":447,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"202","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_442","output_index":1,"sequence_number":448,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"1","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_443","output_index":1,"sequence_number":449,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" to","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_444","output_index":1,"sequence_number":450,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" support","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_445","output_index":1,"sequence_number":451,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" project","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_446","output_index":1,"sequence_number":452,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" governance","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_447","output_index":1,"sequence_number":453,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_448","output_index":1,"sequence_number":454,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" infrastructure","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_449","output_index":1,"sequence_number":455,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_450","output_index":1,"sequence_number":456,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Today","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_451","output_index":1,"sequence_number":457,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" Rust","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_452","output_index":1,"sequence_number":458,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" is","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_453","output_index":1,"sequence_number":459,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" recognized","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_454","output_index":1,"sequence_number":460,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" for","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_455","output_index":1,"sequence_number":461,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" its","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_456","output_index":1,"sequence_number":462,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" combination","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_457","output_index":1,"sequence_number":463,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" of","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_458","output_index":1,"sequence_number":464,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" memory","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_459","output_index":1,"sequence_number":465,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" safety","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_460","output_index":1,"sequence_number":466,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_461","output_index":1,"sequence_number":467,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" concurrency","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_462","output_index":1,"sequence_number":468,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" features","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_463","output_index":1,"sequence_number":469,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_464","output_index":1,"sequence_number":470,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_465","output_index":1,"sequence_number":471,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" performance","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_466","output_index":1,"sequence_number":472,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":",","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_467","output_index":1,"sequence_number":473,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_468","output_index":1,"sequence_number":474,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" it","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_469","output_index":1,"sequence_number":475,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" remains","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_470","output_index":1,"sequence_number":476,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" a","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_471","output_index":1,"sequence_number":477,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" rapidly","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_472","output_index":1,"sequence_number":478,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" growing","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_473","output_index":1,"sequence_number":479,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" language","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_474","output_index":1,"sequence_number":480,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" used","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_475","output_index":1,"sequence_number":481,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" across","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_476","output_index":1,"sequence_number":482,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" industry","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_477","output_index":1,"sequence_number":483,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" and","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_478","output_index":1,"sequence_number":484,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" open","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_479","output_index":1,"sequence_number":485,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"-source","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_480","output_index":1,"sequence_number":486,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":" ecosystems","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_481","output_index":1,"sequence_number":487,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":".\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_482","output_index":1,"sequence_number":488,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"}","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_483","output_index":1,"sequence_number":489,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{\"title\":\"Rust\",\"body\":\"The Rust programming language began as a personal project by Graydon Hoare in 2006. Hoare wanted a systems programming language that combined low-level control and performance with stronger safety guarantees than C and C++. Early design drew inspiration from languages and research such as Cyclone, OCaml, and functional programming ideas that emphasize immutability and expressive type systems. Development remained informal until Mozilla began sponsoring the project in 2009, giving it resources and a community of engineers to accelerate design and implementation.\\n\\nDuring the early 2010s Rust evolved quickly. The language’s unique ownership and borrowing model—implemented in the type system and enforced by the borrow checker—was designed to prevent common memory- and concurrency-related bugs without a garbage collector. Rust’s syntax and features coalesced through community feedback, research, and experimentation led by a small core team including Hoare and subsequent contributors like Niko Matsakis and Aaron Turon. The project adopted open governance, encouraging RFCs (request for comments) and widespread community involvement in language evolution.\\n\\nRust reached an important milestone on May 15, 2015, with the stable release of Rust 1.0. This release marked the start of a stable, production-ready language with a guarantee of backward compatibility across the 1.x series. Around this time, Rust also settled on tooling that would become central to its ecosystem: Cargo (the package manager and build tool) and crates.io (the package registry) helped create a cohesive developer experience and made dependency management straightforward for Rust projects.\\n\\nThe language gained traction in both open-source and commercial settings. Mozilla used Rust for parts of its browser engine research project Servo, demonstrating Rust’s potential for safe, high-performance systems work. Other organizations began adopting Rust for networking, embedded systems, command-line tools, and cloud infrastructure—areas where performance and reliability are critical. Projects like ripgrep and production services such as AWS Firecracker showcased Rust’s practical benefits.\\n\\nRust continued to mature with a rigorous release process, strong emphasis on documentation and tooling, and an active community that shaped its roadmap. To ensure long-term stewardship, the Rust Foundation was established in 2021 to support project governance and infrastructure. Today Rust is recognized for its combination of memory safety, concurrency features, and performance, and it remains a rapidly growing language used across industry and open-source ecosystems.\"}","item_id":"fc_REDACTED_1","output_index":1,"sequence_number":490,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{\"title\":\"Rust\",\"body\":\"The Rust programming language began as a personal project by Graydon Hoare in 2006. Hoare wanted a systems programming language that combined low-level control and performance with stronger safety guarantees than C and C++. Early design drew inspiration from languages and research such as Cyclone, OCaml, and functional programming ideas that emphasize immutability and expressive type systems. Development remained informal until Mozilla began sponsoring the project in 2009, giving it resources and a community of engineers to accelerate design and implementation.\\n\\nDuring the early 2010s Rust evolved quickly. The language’s unique ownership and borrowing model—implemented in the type system and enforced by the borrow checker—was designed to prevent common memory- and concurrency-related bugs without a garbage collector. Rust’s syntax and features coalesced through community feedback, research, and experimentation led by a small core team including Hoare and subsequent contributors like Niko Matsakis and Aaron Turon. The project adopted open governance, encouraging RFCs (request for comments) and widespread community involvement in language evolution.\\n\\nRust reached an important milestone on May 15, 2015, with the stable release of Rust 1.0. This release marked the start of a stable, production-ready language with a guarantee of backward compatibility across the 1.x series. Around this time, Rust also settled on tooling that would become central to its ecosystem: Cargo (the package manager and build tool) and crates.io (the package registry) helped create a cohesive developer experience and made dependency management straightforward for Rust projects.\\n\\nThe language gained traction in both open-source and commercial settings. Mozilla used Rust for parts of its browser engine research project Servo, demonstrating Rust’s potential for safe, high-performance systems work. Other organizations began adopting Rust for networking, embedded systems, command-line tools, and cloud infrastructure—areas where performance and reliability are critical. Projects like ripgrep and production services such as AWS Firecracker showcased Rust’s practical benefits.\\n\\nRust continued to mature with a rigorous release process, strong emphasis on documentation and tooling, and an active community that shaped its roadmap. To ensure long-term stewardship, the Rust Foundation was established in 2021 to support project governance and infrastructure. Today Rust is recognized for its combination of memory safety, concurrency features, and performance, and it remains a rapidly growing language used across industry and open-source ecosystems.\"}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"write_note","status":"completed","type":"function_call"},"output_index":1,"sequence_number":491,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"You are a note-taking assistant. Use the write_note tool to save notes.","max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-5-mini-2025-08-07","moderation":null,"object":"response","output":[{"content":[],"encrypted_content":"encrypted_content_REDACTED_3","id":"rs_REDACTED_1","summary":[],"type":"reasoning"},{"arguments":"{\"title\":\"Rust\",\"body\":\"The Rust programming language began as a personal project by Graydon Hoare in 2006. Hoare wanted a systems programming language that combined low-level control and performance with stronger safety guarantees than C and C++. Early design drew inspiration from languages and research such as Cyclone, OCaml, and functional programming ideas that emphasize immutability and expressive type systems. Development remained informal until Mozilla began sponsoring the project in 2009, giving it resources and a community of engineers to accelerate design and implementation.\\n\\nDuring the early 2010s Rust evolved quickly. The language’s unique ownership and borrowing model—implemented in the type system and enforced by the borrow checker—was designed to prevent common memory- and concurrency-related bugs without a garbage collector. Rust’s syntax and features coalesced through community feedback, research, and experimentation led by a small core team including Hoare and subsequent contributors like Niko Matsakis and Aaron Turon. The project adopted open governance, encouraging RFCs (request for comments) and widespread community involvement in language evolution.\\n\\nRust reached an important milestone on May 15, 2015, with the stable release of Rust 1.0. This release marked the start of a stable, production-ready language with a guarantee of backward compatibility across the 1.x series. Around this time, Rust also settled on tooling that would become central to its ecosystem: Cargo (the package manager and build tool) and crates.io (the package registry) helped create a cohesive developer experience and made dependency management straightforward for Rust projects.\\n\\nThe language gained traction in both open-source and commercial settings. Mozilla used Rust for parts of its browser engine research project Servo, demonstrating Rust’s potential for safe, high-performance systems work. Other organizations began adopting Rust for networking, embedded systems, command-line tools, and cloud infrastructure—areas where performance and reliability are critical. Projects like ripgrep and production services such as AWS Firecracker showcased Rust’s practical benefits.\\n\\nRust continued to mature with a rigorous release process, strong emphasis on documentation and tooling, and an active community that shaped its roadmap. To ensure long-term stewardship, the Rust Foundation was established in 2021 to support project governance and infrastructure. Today Rust is recognized for its combination of memory safety, concurrency features, and performance, and it remains a rapidly growing language used across industry and open-source ecosystems.\"}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"write_note","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"medium","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"writes a note with a title and a body","name":"write_note","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"body":{"type":"string"},"title":{"type":"string"}},"required":["title","body"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":102,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":1295,"output_tokens_details":{"reasoning_tokens":768},"total_tokens":1397},"user":null},"sequence_number":492,"type":"response.completed"}
+

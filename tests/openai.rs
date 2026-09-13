@@ -38,3 +38,10 @@ mod openai;
 
 #[path = "common/ecs_cache.rs"]
 mod ecs_cache;
+
+#[allow(dead_code)]
+#[path = "common/ecs_goldens.rs"]
+mod ecs_goldens;
+
+#[path = "common/ecs_matrix.rs"]
+mod ecs_matrix;
