@@ -1,8 +1,13 @@
 //! Truncated provider tool calls never dispatch through native agent execution.
 use super::truncation_matrix::*;
 use crate::{ecs_agent::EcsAgent, ecs_observation};
+use rig::completion::FinishReason;
+use rig::error::ErrorKind;
 use rig::prelude::*;
-use rig_ecs::agent::{AdditionalParams, DefaultMaxTurns, MaxTokens};
+use rig_ecs::{
+    agent::{AdditionalParams, DefaultMaxTurns, Failure, MaxTokens},
+    systems::spawn_run,
+};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -25,8 +30,29 @@ async fn agent_blocking_truncated_call_is_not_invoked() {
                 invocations: invocations.clone(),
             });
             ecs_observation::install_observers(&mut ecs);
-            ecs.prompt_with_max_turns(INCIDENT_PROMPT, false, None)
-                .await;
+            let run = spawn_run(
+                ecs.app.world_mut(),
+                ecs.agent,
+                &[],
+                INCIDENT_PROMPT,
+                false,
+                None,
+            );
+            // The truncated turn reaches the loop and, answerless under
+            // `Length`, fails as rig-agent's does (CONTRACT §4): a response
+            // error naming the reason, never the provider's reply.
+            match ecs.wait_for_outcome(run).await {
+                Err(Failure::Provider(report)) => {
+                    assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
+                    assert!(
+                        report
+                            .message
+                            .contains(&FinishReason::Length.no_answer_message()),
+                        "{report:?}"
+                    );
+                }
+                other => panic!("the answerless truncated turn fails the run: {other:?}"),
+            }
             assert!(
                 ecs_observation::observation(&ecs).tool_calls.is_empty(),
                 "truncated calls must not materialise"
@@ -61,8 +87,29 @@ async fn agent_streaming_truncated_call_is_not_invoked() {
                 invocations: invocations.clone(),
             });
             ecs_observation::install_observers(&mut ecs);
-            ecs.prompt_with_max_turns(INCIDENT_PROMPT, true, Some(1))
-                .await;
+            let run = spawn_run(
+                ecs.app.world_mut(),
+                ecs.agent,
+                &[],
+                INCIDENT_PROMPT,
+                true,
+                Some(1),
+            );
+            // The truncated turn reaches the loop and, answerless under
+            // `Length`, fails as rig-agent's does (CONTRACT §4): a response
+            // error naming the reason, never the provider's reply.
+            match ecs.wait_for_outcome(run).await {
+                Err(Failure::Provider(report)) => {
+                    assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
+                    assert!(
+                        report
+                            .message
+                            .contains(&FinishReason::Length.no_answer_message()),
+                        "{report:?}"
+                    );
+                }
+                other => panic!("the answerless truncated turn fails the run: {other:?}"),
+            }
             assert!(
                 ecs_observation::observation(&ecs).tool_calls.is_empty(),
                 "truncated calls must not materialise"
@@ -98,8 +145,29 @@ async fn agent_blocking_empty_arguments_on_length_are_not_invoked() {
                 invocations: invocations.clone(),
             });
             ecs_observation::install_observers(&mut ecs);
-            ecs.prompt_with_max_turns(INCIDENT_PROMPT, false, None)
-                .await;
+            let run = spawn_run(
+                ecs.app.world_mut(),
+                ecs.agent,
+                &[],
+                INCIDENT_PROMPT,
+                false,
+                None,
+            );
+            // The truncated turn reaches the loop and, answerless under
+            // `Length`, fails as rig-agent's does (CONTRACT §4): a response
+            // error naming the reason, never the provider's reply.
+            match ecs.wait_for_outcome(run).await {
+                Err(Failure::Provider(report)) => {
+                    assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
+                    assert!(
+                        report
+                            .message
+                            .contains(&FinishReason::Length.no_answer_message()),
+                        "{report:?}"
+                    );
+                }
+                other => panic!("the answerless truncated turn fails the run: {other:?}"),
+            }
             assert!(
                 ecs_observation::observation(&ecs).tool_calls.is_empty(),
                 "truncated calls must not materialise"
@@ -136,8 +204,29 @@ async fn agent_streaming_empty_arguments_on_length_are_not_invoked() {
                 invocations: invocations.clone(),
             });
             ecs_observation::install_observers(&mut ecs);
-            ecs.prompt_with_max_turns(INCIDENT_PROMPT, true, Some(1))
-                .await;
+            let run = spawn_run(
+                ecs.app.world_mut(),
+                ecs.agent,
+                &[],
+                INCIDENT_PROMPT,
+                true,
+                Some(1),
+            );
+            // The truncated turn reaches the loop and, answerless under
+            // `Length`, fails as rig-agent's does (CONTRACT §4): a response
+            // error naming the reason, never the provider's reply.
+            match ecs.wait_for_outcome(run).await {
+                Err(Failure::Provider(report)) => {
+                    assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
+                    assert!(
+                        report
+                            .message
+                            .contains(&FinishReason::Length.no_answer_message()),
+                        "{report:?}"
+                    );
+                }
+                other => panic!("the answerless truncated turn fails the run: {other:?}"),
+            }
             assert!(
                 ecs_observation::observation(&ecs).tool_calls.is_empty(),
                 "truncated calls must not materialise"

@@ -98,11 +98,12 @@ pub mod streamed;
 
 pub use policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
 pub use response::{CompletionCall, MemoryAppend, PromptError, PromptResponse};
+use rig_core::completion::message::turn_delivered_no_answer;
 use rig_core::json_utils;
 use transcript::{
     TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, TranscriptError, assistant_text_from_choice,
     build_full_history, build_history_for_request, invalid_tool_retry_user_message,
-    is_empty_assistant_turn, tool_result_message, turn_delivered_no_answer, validate_canonical,
+    is_empty_assistant_turn, tool_result_message, validate_canonical,
 };
 
 pub use streamed::{
@@ -1134,33 +1135,13 @@ impl AgentRun {
                 if turn_delivered_no_answer(&items)
                     && let Some(reason) = self.truncating_finish_reason()
                 {
-                    // The remedy differs by reason, and giving the wrong one is
-                    // worse than giving none: telling someone to raise
-                    // `max_tokens` after a safety block sends them to change a
-                    // setting that cannot possibly help.
+                    // The wording is rig-core's (`FinishReason::no_answer_message`),
+                    // shared with rig-ecs so both runtimes fail the same way.
                     //
                     // No `PromptResponse` is built on this path — the run ends
                     // in `Err` — so the message must not send the caller to
-                    // `completion_calls` for the reason. It is named here
-                    // because here is the only place it appears.
-                    let remedy = match reason {
-                        FinishReason::Length => {
-                            "the turn ran out of output budget before producing one — \
-                             raise max_tokens for this request"
-                        }
-                        FinishReason::ContentFilter => {
-                            "the provider filtered the response — the content, not the \
-                             budget, is what it objected to"
-                        }
-                        // `truncating_finish_reason` admits only the two above;
-                        // this arm keeps the match total without inventing advice.
-                        _ => "the turn ended before producing one",
-                    };
-                    return Err(CompletionError::ResponseError(format!(
-                        "the model produced no answer and stopped with \
-                         finish_reason={reason:?}; {remedy}"
-                    ))
-                    .into());
+                    // `completion_calls` for the reason.
+                    return Err(CompletionError::ResponseError(reason.no_answer_message()).into());
                 }
 
                 if has_tool_calls {

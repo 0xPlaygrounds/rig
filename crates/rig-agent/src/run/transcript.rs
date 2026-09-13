@@ -102,56 +102,6 @@ pub fn is_empty_assistant_turn(choice: &[AssistantContent]) -> bool {
         )
 }
 
-/// Whether a turn delivered **no answer**: no tool call, and no non-empty text
-/// block.
-///
-/// Deliberately *not* [`is_empty_assistant_turn`], which answers a different
-/// question — "does this turn belong in history". They diverge on the shapes
-/// that are **worth recording yet answer nothing**, of which there are two:
-///
-/// 1. a turn carrying only [`AssistantContent::Reasoning`] — the reasoning is
-///    real content worth replaying, but it is not an answer;
-/// 2. a turn carrying only an **empty text block with `additional_params`** —
-///    the annotation (citations, encrypted reasoning references, and other
-///    provider metadata some wires require on replay) is worth recording, but
-///    the caller still receives no text.
-///
-/// Metadata-only text therefore does **not** count as an answer. That follows
-/// from what the caller actually gets: [`assistant_text_from_choice`]
-/// concatenates `text.text` alone, so such a turn yields `""` — the annotation
-/// is metadata *about* an answer, never the answer itself.
-///
-/// Reasoning is not an answer. It is the model's scratch work, it is often not
-/// even replayable across turns, and a caller asked a question rather than for
-/// the thinking. Treating it as output is how a thinking model that burned its
-/// whole budget mid-thought used to report success with an empty string
-/// (rig#2322): Gemini counts thinking tokens against `maxOutputTokens`, so a
-/// truncated thinking turn *typically* carries reasoning and no text — the
-/// common case, not a corner one.
-///
-/// Tool calls count as delivered: they are an answer in progress, and a
-/// truncated tool-call turn must still route to execution. So do images —
-/// ten providers emit assistant images, and an image *is* the answer for an
-/// image-generation turn.
-///
-/// The match is **exhaustive on purpose**: no `_` arm. Every content variant
-/// must be classified explicitly, so adding one to [`AssistantContent`] breaks
-/// this build and forces a decision instead of silently inheriting a default.
-/// The first version of this predicate had a `_ => false` catch-all and so
-/// classified image-only turns as "no answer" — a truncated image-generation
-/// turn would have errored despite delivering an image, which matters because
-/// image tokens count against the same output budget.
-pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
-    !choice.iter().any(|content| match content {
-        // Real text is an answer; an empty block delivers nothing.
-        AssistantContent::Text(text) => !text.text.is_empty(),
-        AssistantContent::ToolCall(_) => true,
-        AssistantContent::Image(_) => true,
-        // The one exclusion: scratch work, not an answer.
-        AssistantContent::Reasoning(_) => false,
-    })
-}
-
 /// The concatenated text of a choice.
 pub fn assistant_text_from_choice(choice: &[AssistantContent]) -> String {
     choice

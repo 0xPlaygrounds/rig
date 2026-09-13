@@ -299,6 +299,29 @@ impl FinishReason {
     pub fn truncated_output(&self) -> bool {
         matches!(self, Self::Length | Self::ContentFilter)
     }
+
+    /// The failure a turn that delivered no answer and stopped for this
+    /// reason surfaces as: the reason and its remedy, one wording for
+    /// every runtime (rig-agent's run, rig-ecs's `Materialise`). Only a
+    /// [`truncated_output`](Self::truncated_output) reason has a remedy;
+    /// the last arm keeps the match total without inventing advice.
+    pub fn no_answer_message(&self) -> String {
+        let remedy = match self {
+            Self::Length => {
+                "the turn ran out of output budget before producing one — \
+                 raise max_tokens for this request"
+            }
+            Self::ContentFilter => {
+                "the provider filtered the response — the content, not the \
+                 budget, is what it objected to"
+            }
+            _ => "the turn ended before producing one",
+        };
+        format!(
+            "the model produced no answer and stopped with \
+             finish_reason={self:?}; {remedy}"
+        )
+    }
 }
 
 /// General completion response struct: the completion choice plus normalized
