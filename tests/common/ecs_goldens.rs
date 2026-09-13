@@ -93,9 +93,27 @@ fn compare_original(
     for record in &mut comparable.records {
         record.scope = None;
     }
+    let native = serde_json::to_value(&comparable).expect("native log");
+    let expected = serde_json::to_value(original).expect("original log");
+    if native != expected
+        && let Ok(dir) = std::env::var("RIG_ECS_PARITY_DUMP")
+    {
+        // A diverging cell writes both logs beside each other for a diff.
+        let dir = std::path::Path::new(&dir);
+        std::fs::create_dir_all(dir).expect("dump dir");
+        std::fs::write(
+            dir.join(format!("{name}.native.json")),
+            serde_json::to_string_pretty(&native).expect("json"),
+        )
+        .expect("dump");
+        std::fs::write(
+            dir.join(format!("{name}.original.json")),
+            serde_json::to_string_pretty(&expected).expect("json"),
+        )
+        .expect("dump");
+    }
     assert_eq!(
-        serde_json::to_value(&comparable).expect("native log"),
-        serde_json::to_value(original).expect("original log"),
+        native, expected,
         "native effects diverged from original golden {name}"
     );
 }

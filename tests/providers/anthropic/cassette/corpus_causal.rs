@@ -73,6 +73,7 @@ async fn over_host(
                     child: NestedChild::Completion,
                     from_thread: false,
                     detached: false,
+                    no_temperature: false,
                 },
                 model_key: model_key.clone(),
             })

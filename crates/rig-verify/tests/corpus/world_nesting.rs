@@ -88,10 +88,12 @@ fn serve_lookup(
         };
         match spec.nesting.child {
             NestedChild::Completion => {
-                let request = CompletionRequestBuilder::unbound(args.q.as_str())
-                    .preamble(NESTED_PREAMBLE.to_owned())
-                    .temperature(0.0)
-                    .build();
+                let mut request = CompletionRequestBuilder::unbound(args.q.as_str())
+                    .preamble(NESTED_PREAMBLE.to_owned());
+                if !spec.nesting.no_temperature {
+                    request = request.temperature(0.0);
+                }
+                let request = request.build();
                 spawn(PendingEffect::new(
                     spec.model_key,
                     EffectKind::Completion {
