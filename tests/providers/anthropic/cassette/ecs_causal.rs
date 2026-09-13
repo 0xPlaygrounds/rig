@@ -19,8 +19,10 @@ use rig_ecs::{
 };
 // Reuse the existing native graph-producing systems, not recorded leaf handlers.
 // Here their model child is served by the real provider adapter through cassettes.
+// The matrix's corpus (`crate::ecs_matrix::corpus`) includes the same file
+// under its own `super`; this copy resolves to the goldens' nesting types.
 #[path = "../../../../crates/rig-verify/tests/corpus/world_nesting.rs"]
-#[allow(dead_code)]
+#[allow(dead_code, clippy::duplicate_mod)]
 mod nesting;
 struct Host {
     serial: bool,
