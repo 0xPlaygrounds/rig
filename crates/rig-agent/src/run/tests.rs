@@ -1732,3 +1732,38 @@ fn serde_round_trip_keeps_the_previous_model() {
         Some("fast")
     );
 }
+
+/// rig#2322, CONTRACT §4: a reasoning-only turn the provider cut short fails
+/// the run *before* anything is committed — the reasoning is not history,
+/// on this runtime as on rig-ecs.
+#[test]
+fn a_truncated_reasoning_only_turn_commits_nothing() {
+    let mut run = AgentRun::new("solve this");
+    let _ = expect_call_model(&mut run);
+    let turn = ModelTurn::new(
+        None,
+        vec![AssistantContent::Reasoning(
+            rig_core::message::Reasoning::new("thinking, never answering"),
+        )],
+        Usage::new(),
+        tool_names(&["add"]),
+        tool_names(&["add"]),
+    )
+    .with_finish_reason(Some(FinishReason::Length));
+    // The turn is accepted into resolution; the run fails when it is read.
+    expect_continue(
+        run.model_response(turn)
+            .expect("the turn is taken into resolution"),
+    );
+    let error = run
+        .next_step()
+        .expect_err("an answerless truncated turn fails the run");
+    assert!(format!("{error:?}").contains("Length"), "{error:?}");
+    assert!(
+        run.new_messages
+            .iter()
+            .all(|message| !matches!(message, Message::Assistant { .. })),
+        "the reasoning-only turn is not history: {:?}",
+        run.new_messages
+    );
+}
