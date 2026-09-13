@@ -33,3 +33,21 @@ mod ecs_observation;
 
 #[path = "common/ecs_session.rs"]
 mod ecs_session;
+
+#[allow(dead_code)]
+#[path = "common/goldens.rs"]
+mod goldens;
+
+#[allow(dead_code)]
+#[path = "common/ecs_goldens.rs"]
+mod ecs_goldens;
+
+#[allow(dead_code)]
+#[path = "common/ecs_termination.rs"]
+mod ecs_termination;
+
+#[path = "common/stream_faults.rs"]
+mod stream_faults;
+
+#[path = "common/ecs_matrix.rs"]
+mod ecs_matrix;

@@ -1,0 +1,33 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":16,"messages":[{"content":"You are a concise assistant. Answer directly in plain text.","role":"system"},{"content":"Write two sentences about maple trees.","role":"user"}],"model":"deepseek-chat","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":null,"message":{"content":"Maple trees are known for their distinctive lobed leaves and winged seeds called sam","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":16,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":24,"prompt_tokens":24,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":40}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":512,"messages":[{"content":"You are a concise assistant. Answer directly in plain text.","role":"system"},{"content":"Write two sentences about maple trees.","role":"user"}],"model":"deepseek-chat","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Maple trees are known for their distinctive lobed leaves and winged seeds called samaras. In autumn, many maple species display brilliant red, orange, and yellow foliage.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":34,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":24,"prompt_tokens":24,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":58}}'
