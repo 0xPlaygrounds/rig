@@ -675,19 +675,26 @@ pub(crate) fn blocked_prompt_error(
         reason.as_wire_str()
     );
     // A block on the prompt's content (`SAFETY`, `BLOCKLIST`,
-    // `PROHIBITED_CONTENT`) is the provider's verdict: a refusal, final. A
-    // block for `OTHER` ("blocked due to unknown reasons" in Google's
-    // reference) is not a verdict on the content — the same prompt is
-    // answered on the next call — and a reason this crate does not know
-    // yet is by definition unknown too. Those travel as a provider
-    // response with the transport's own transient verdict, so
-    // `is_retryable` says so without any caller reading the message.
+    // `PROHIBITED_CONTENT`) is the provider's verdict: a refusal, final —
+    // the provider's reply with `refusal` set, the block reason as its
+    // code, no status and no transient verdict, so `is_retryable` is false
+    // and `ErrorReport::refusal` is true. A block for `OTHER` ("blocked due
+    // to unknown reasons" in Google's reference) is not a verdict on the
+    // content — the same prompt is answered on the next call — and a
+    // reason this crate does not know yet is by definition unknown too.
+    // Those travel as a provider response with the transport's own
+    // transient verdict, so `is_retryable` says so without any caller
+    // reading the message.
     Some(match reason {
         gemini_api_types::BlockReason::Safety
         | gemini_api_types::BlockReason::Blocklist
         | gemini_api_types::BlockReason::ProhibitedContent
         | gemini_api_types::BlockReason::BlockReasonUnspecified => {
-            CompletionError::ProviderError(message)
+            CompletionError::ProviderResponse(
+                crate::provider_response::ProviderResponseError::without_status(message)
+                    .with_code(Some(reason.as_wire_str().to_owned()))
+                    .with_refusal(true),
+            )
         }
         gemini_api_types::BlockReason::Other | gemini_api_types::BlockReason::Unknown(_) => {
             CompletionError::ProviderResponse(

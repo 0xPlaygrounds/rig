@@ -152,12 +152,14 @@ pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
     })
 }
 
-/// [`ordered_assistant_content`] over one delivered streamed choice, by
-/// rig-agent's rule (`StreamedTurnAssembler::canonical_choice_with`): a
-/// turn with a reasoning block or a tool call is regrouped by kind, each
-/// group in arrival order; a turn with neither keeps the provider's order.
-/// Image parts stay after the calls here (rig-agent's assembler does not
-/// carry them through its regrouped branch).
+/// [`ordered_assistant_content`] over one delivered streamed choice: a
+/// turn with a reasoning block or a tool call is regrouped by kind —
+/// reasoning, text, the calls, then the images, each group in arrival
+/// order; a turn with neither keeps the provider's order. rig-agent's
+/// assembler (`StreamedTurnAssembler::canonical_choice_with`) applies this
+/// function to its own inputs — the calls it accepted, the text items it
+/// reports — so the two runtimes share the rule; rig-ecs's fold applies it
+/// to the delivered choice as is.
 pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<AssistantContent> {
     let regroup = choice.iter().any(|part| {
         matches!(
@@ -170,15 +172,17 @@ pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<Assistant
     }
     let mut reasoning = Vec::new();
     let mut text = Vec::new();
-    let mut trailing = Vec::new();
+    let mut calls = Vec::new();
+    let mut images = Vec::new();
     for part in choice {
         match part {
             AssistantContent::Reasoning(block) => reasoning.push(block),
             AssistantContent::Text(_) => text.push(part),
-            AssistantContent::ToolCall(_) | AssistantContent::Image(_) => trailing.push(part),
+            AssistantContent::ToolCall(_) => calls.push(part),
+            AssistantContent::Image(_) => images.push(part),
         }
     }
-    ordered_assistant_content(reasoning, text, trailing)
+    ordered_assistant_content(reasoning, text, calls.into_iter().chain(images))
 }
 
 /// Describes the content of a message, which can be text, a tool result, an image, audio, or

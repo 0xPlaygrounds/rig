@@ -163,11 +163,17 @@ async fn blocked_prompt_is_a_provider_refusal_not_a_truncation() {
         )
         .await;
         let report = run.provider_report();
-        assert_eq!(report.kind, ErrorKind::Provider, "{report:?}");
+        assert_eq!(report.kind, ErrorKind::ProviderResponse, "{report:?}");
+        assert!(
+            report.refusal,
+            "the block is a refusal on the report: {report:?}"
+        );
+        assert_eq!(report.code.as_deref(), Some("SAFETY"), "{report:?}");
         assert!(!report.is_retryable(), "{report:?}");
         assert!(report.message.contains("block_reason=SAFETY"), "{report:?}");
         let recorded = sole_failed_completion(&run.log);
-        assert_eq!(recorded.kind, ErrorKind::Provider, "{recorded:?}");
+        assert_eq!(recorded.kind, ErrorKind::ProviderResponse, "{recorded:?}");
+        assert!(recorded.refusal, "{recorded:?}");
         assert!(
             recorded.message.contains("block_reason=SAFETY"),
             "the record holds the refusal: {recorded:?}"
