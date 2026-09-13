@@ -39,14 +39,14 @@
           "golden/memory": "memory",
           "golden/model:default": "completion"
         },
-        "policy": 9355779620256034016
+        "policy": 71023267133010561
       },
       "golden/run#1": {
         "required": {
           "golden/memory": "memory",
           "golden/model:default": "completion"
         },
-        "policy": 9355779620256034016
+        "policy": 71023267133010561
       }
     }
   },

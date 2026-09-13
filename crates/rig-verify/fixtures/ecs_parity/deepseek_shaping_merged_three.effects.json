@@ -62,7 +62,7 @@
           "golden/model:default": "completion",
           "golden/tool:add#0": "tool"
         },
-        "policy": 799958228983849027
+        "policy": 999985904436225608
       }
     }
   },

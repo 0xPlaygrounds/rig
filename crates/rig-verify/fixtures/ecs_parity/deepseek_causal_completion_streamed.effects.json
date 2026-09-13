@@ -52,7 +52,7 @@
           "golden/model:default": "completion",
           "golden/tool:lookup#0": "tool"
         },
-        "policy": 18049072202754809907
+        "policy": 13422463523277499424
       }
     }
   },
