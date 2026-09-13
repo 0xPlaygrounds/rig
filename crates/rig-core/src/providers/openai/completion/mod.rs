@@ -2360,6 +2360,11 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             additional_params
         };
 
+        // The wire rejects a `tool_choice` beside an empty `tools` ("'tool_choice'
+        // is only allowed when 'tools' are specified"): a turn that advertises no
+        // tool — an output tool degraded to native output under `none`, an
+        // `active_tools: []` patch — carries no choice either.
+        let tool_choice = tool_choice.filter(|_| !tools.is_empty());
         let res = Self {
             model: request_model.unwrap_or(model),
             messages: full_history,

@@ -1968,6 +1968,39 @@ fn assistant_text_without_idless_reasoning_replays_as_output_text() {
     ));
 }
 
+/// A turn the wire delivered as several text parts (two `output_text`
+/// contents, or two message items folded under the first's id) replays as
+/// one message item: the wire refuses two input items with one id.
+#[test]
+fn assistant_turn_with_several_text_parts_replays_as_one_message_item() {
+    let assistant = completion::Message::Assistant {
+        id: Some("msg_turn".to_string()),
+        content: vec![
+            message::AssistantContent::Text(Text::new("first part")),
+            message::AssistantContent::Text(Text::new("second part")),
+        ],
+    };
+
+    let converted =
+        Vec::<InputItem>::try_from(assistant).expect("assistant history should convert");
+
+    assert_eq!(converted.len(), 1, "{converted:?}");
+    let InputContent::Message(Message::Assistant { content, id, .. }) = &converted[0].input else {
+        panic!("expected assistant message input item");
+    };
+    assert_eq!(id, "msg_turn");
+    let texts: Vec<&str> = content
+        .iter()
+        .map(|part| match part {
+            AssistantContentType::Text(AssistantContent::OutputText(OutputText {
+                text, ..
+            })) => text.as_str(),
+            other => panic!("an output text, not {other:?}"),
+        })
+        .collect();
+    assert_eq!(texts, ["first part", "second part"]);
+}
+
 #[test]
 fn idless_completion_assistant_text_replays_as_easy_input_message() {
     let assistant = completion::Message::Assistant {

@@ -388,6 +388,53 @@ fn test_openai_request_uses_request_model_override() {
     assert_eq!(serialized["model"], "gpt-4.1");
 }
 
+/// The wire refuses a `tool_choice` beside an empty `tools`: a turn that
+/// advertises none (an output tool degraded to native output under
+/// `tool_choice: none`, an `active_tools: []` patch) carries no choice.
+#[test]
+fn tool_choice_is_dropped_when_no_tool_is_advertised() {
+    let request =
+        |tools: Vec<crate::completion::ToolDefinition>| crate::completion::CompletionRequest {
+            model: None,
+            chat_history: vec!["Hello".into()],
+            documents: vec![],
+            tools,
+            temperature: None,
+            max_tokens: None,
+            tool_choice: Some(crate::message::ToolChoice::None),
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+    let convert = |request| {
+        CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+            supports_image_tool_results: false,
+            supports_tools: true,
+        })
+        .expect("request conversion should succeed")
+    };
+
+    let without_tools = serde_json::to_value(convert(request(vec![]))).expect("serializes");
+    assert!(
+        without_tools.get("tool_choice").is_none(),
+        "no tool, no choice: {without_tools}"
+    );
+
+    let with_tool =
+        serde_json::to_value(convert(request(vec![crate::completion::ToolDefinition {
+            name: "add".to_string(),
+            description: "add two numbers".to_string(),
+            parameters: json!({"type": "object", "properties": {}}),
+        }])))
+        .expect("serializes");
+    assert_eq!(with_tool["tool_choice"], json!("none"), "{with_tool}");
+}
+
 #[test]
 fn test_openai_request_uses_default_model_when_override_unset() {
     let request = crate::completion::CompletionRequest {
