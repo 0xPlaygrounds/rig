@@ -5310,13 +5310,15 @@ async fn reasoning_only_turn_that_stopped_naturally_still_finalizes() {
 /// rig#2322 — what happens to the partial reasoning when the turn errors.
 ///
 /// A caller debugging a truncated thinking turn wants to see how far the
-/// model got, so the reasoning must not vanish: the history push runs on
-/// `is_empty_assistant_turn` (false for a reasoning-only turn) *before* the
-/// truncation guard, so the turn is recorded and then the error is raised.
-/// This pins that ordering — swapping the two would trade one invisible
-/// failure for another.
+/// model got. The reasoning reaches them because it was *streamed*: every
+/// block end is delivered before the run reads the finish reason. History
+/// keeps nothing — the truncation guard runs before the push, so a
+/// reasoning-only turn nobody can answer around is not committed on either
+/// runtime (CONTRACT §4; `run::tests::a_truncated_reasoning_only_turn_commits_nothing`).
+/// This test once pinned the opposite ordering (push, then guard); the
+/// stream is the surface that keeps the partial reasoning debuggable.
 #[tokio::test]
-async fn reasoning_survives_into_history_when_the_truncated_turn_errors() {
+async fn partial_reasoning_reaches_the_consumer_when_the_truncated_turn_errors() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("partial thinking worth keeping"),
         MockStreamEvent::FinalResponse(
