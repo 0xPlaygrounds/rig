@@ -24,6 +24,35 @@ pub(crate) fn golden_effects(name: &str, log: &rig_effect_log::EffectLog) {
     crate::goldens::golden_effects(&format!("ecs_parity/{name}"), &stable);
 }
 
+/// Compare the world's log to a committed original golden and write no
+/// native golden of its own: for a world cell that reuses another cell's
+/// recording and golden (the pairing guard allows one producer per
+/// golden, and that cell is it).
+#[allow(dead_code)] // the failure rows' targets alone read it
+pub(crate) fn compare_to_original(original_name: &str, log: &rig_effect_log::EffectLog) {
+    let original: rig_effect_log::EffectLog = serde_json::from_str(
+        &std::fs::read_to_string(crate::goldens::golden_path(original_name))
+            .expect("original golden"),
+    )
+    .expect("original effect log");
+    compare_original(original_name, log, &original);
+}
+
+/// The world's log equals the rig-agent runner's over the same bytes, by
+/// the golden comparison's own normalisation (nominal ids, scopes and
+/// program identities mapped, delivery batches excluded): the oracle of a
+/// scripted cell, which has no golden.
+#[allow(dead_code)] // the failure rows' targets alone read it
+pub(crate) fn assert_parity(
+    name: &str,
+    native: &rig_effect_log::EffectLog,
+    original: &rig_effect_log::EffectLog,
+) {
+    let mut original = original.clone();
+    original.header.deliveries = None;
+    compare_original(name, native, &original);
+}
+
 fn compare_original(
     name: &str,
     log: &rig_effect_log::EffectLog,

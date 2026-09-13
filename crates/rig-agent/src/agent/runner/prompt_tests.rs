@@ -1,7 +1,7 @@
 use crate::agent::ResponseIdentity;
 use crate::agent::typed::{TypedPromptResponse, deserialize_structured_output};
 use crate::run::response::{CompletionCall, MemoryAppend, PromptResponse};
-use crate::run::transcript::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, turn_delivered_no_answer};
+use crate::run::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
 use crate::run::transcript::{assistant_text_from_choice, is_empty_assistant_turn};
 use crate::{
     agent::{
@@ -22,6 +22,7 @@ use crate::{
     },
     tool::{Tool, ToolContext},
 };
+use rig_core::completion::message::turn_delivered_no_answer;
 use rig_core::message::ProviderCallId;
 use rig_core::message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent};
 use schemars::JsonSchema;

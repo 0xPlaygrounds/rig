@@ -21,8 +21,8 @@ use super::super::support::with_openai_cassette;
 use crate::{
     goldens::families,
     stream_faults::{
-        CountedSubtract, Invocations, assert_setup_failure, drain, frame_data, frames_before,
-        recorded_sse_frames, recorded_stream_errors, scripted, sole_failed_completion, sse_bytes,
+        CountedSubtract, Invocations, SseShape, assert_setup_failure, drain, recorded_sse_frames,
+        recorded_stream_errors, scripted, sole_failed_completion, sse_bytes,
     },
     support::{
         Adder, STREAMING_PREAMBLE, STREAMING_PROMPT, STREAMING_TOOLS_PREAMBLE,
@@ -45,48 +45,25 @@ pub(super) const TEXT_STREAM: &str = "streaming/streaming_smoke";
 pub(super) const TOOL_STREAM: &str = "streaming_tools/streaming_tools_smoke";
 /// An error event, the shape the adapter's unit tests pin
 /// (`streaming_error_event_preserves_full_payload`).
-pub(super) const ERROR_EVENT: &str = r#"event: error
-data: {"type":"error","error":{"message":"boom","code":"server_error","type":"server_error"}}"#;
+pub(super) const ERROR_EVENT: &str = crate::stream_faults::RESPONSES_ERROR_EVENT;
 /// A key the scripted cells send: it must never reach a trace.
 pub(super) const SCRIPTED_KEY: &str = "sk-scripted-fault-key-7f3a9c";
 
 /// The frames of the recorded text stream up to, not including, the text
 /// item's completion: content deltas, then nothing.
 pub(super) fn text_prefix_frames() -> Vec<String> {
-    let frames = recorded_sse_frames("openai", TEXT_STREAM, 0);
-    frames_before(&frames, |frame| {
-        frame.starts_with("event: response.output_text.done")
-    })
+    SseShape::Responses.text_prefix(&recorded_sse_frames("openai", TEXT_STREAM, 0))
 }
 
 /// The text the deltas of `frames` carry.
 pub(super) fn delta_text(frames: &[String]) -> String {
-    frames
-        .iter()
-        .filter(|frame| frame.starts_with("event: response.output_text.delta"))
-        .map(|frame| {
-            frame_data(frame)["delta"]
-                .as_str()
-                .expect("a text delta")
-                .to_owned()
-        })
-        .collect()
+    SseShape::Responses.delta_text(frames)
 }
 
 /// The frames of the recorded tool-call turn up to, not including, the
 /// response's completion: the whole `subtract` call, then nothing.
 pub(super) fn tool_call_prefix_frames() -> Vec<String> {
-    let frames = recorded_sse_frames("openai", TOOL_STREAM, 0);
-    let prefix = frames_before(&frames, |frame| {
-        frame.starts_with("event: response.completed")
-    });
-    assert!(
-        prefix
-            .iter()
-            .any(|frame| frame.starts_with("event: response.output_item.done")),
-        "the cut keeps the completed call: {prefix:?}"
-    );
-    prefix
+    SseShape::Responses.tool_prefix(&recorded_sse_frames("openai", TOOL_STREAM, 0))
 }
 
 /// A client over a transport that answers one streaming request with

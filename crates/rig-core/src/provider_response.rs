@@ -102,6 +102,14 @@ impl ProviderResponseError {
         }
     }
 
+    /// The provider's own machine code for the failure: the one the
+    /// transport reported apart from the body ([`Self::code`]), else the
+    /// one the body names (`body_code`). `None` when neither names one —
+    /// a reply that is a status and prose (Venice's `{"error":"…"}`).
+    pub fn machine_code(&self) -> Option<String> {
+        self.code.clone().or_else(|| body_code(&self.body))
+    }
+
     /// Attach the transport request id the failed response reported.
     pub fn with_provider_request_id(mut self, request_id: Option<String>) -> Self {
         self.provider_request_id = request_id.filter(|id| !id.is_empty());
@@ -183,6 +191,26 @@ impl<'de> serde::Deserialize<'de> for ProviderResponseError {
             transient: wire.transient,
         })
     }
+}
+
+/// The machine code a provider's error body names, when it names one as a
+/// string under its `error` envelope: `error.code` (OpenAI and every
+/// OpenAI-shaped wire: `model_not_found`, `invalid_request_error`), else
+/// `error.status` (Google's `NOT_FOUND`, `UNAVAILABLE`), else `error.type`
+/// (Anthropic's `authentication_error`, an OpenAI reply whose `code` is
+/// `null`). A number under `code` is the HTTP status said again, not a
+/// code, and is skipped; an envelope that is prose (`{"error":"…"}`), a
+/// body that is not JSON, and an empty string name none.
+pub fn body_code(body: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    let error = value.get("error")?;
+    ["code", "status", "type"].iter().find_map(|field| {
+        error
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            .filter(|code| !code.is_empty())
+            .map(str::to_owned)
+    })
 }
 
 /// Parses an optional response body as JSON.

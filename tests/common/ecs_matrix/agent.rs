@@ -9,13 +9,15 @@ use rig::agent::{
 };
 use rig::completion::{CompletionModel, PromptError};
 use rig::effect::HandlerKey;
+use rig::error::{ErrorKind, ErrorReport};
 use rig::serve::{ErasedHandler, adapters::CompletionAdapter};
 
 use super::cells::{Bus, Cell, Memory, ToolKind};
 use super::corpus::{self, Ending, LayerAt, Lookup, Nesting, Program};
+use super::faults::FailingOrchard;
 use super::{OWNER, Wire};
 use crate::goldens::{
-    Adder, CONVERSATION, FailingMemory, NoteTaker, WriteNote, add_tool_under, families,
+    Adder, CONVERSATION, FailingAdd, FailingMemory, NoteTaker, WriteNote, add_tool_under, families,
 };
 use crate::support::{AlphaSignal, BetaSignal};
 
@@ -33,22 +35,69 @@ pub(crate) fn record_summary(log: &rig::effect_log::EffectLog) -> Vec<String> {
         .collect()
 }
 
-/// What a streamed run ended in: the final answer, or the reason a hook
-/// stopped it.
-async fn final_output(stream: &mut rig::agent::StreamingResult) -> Result<String, String> {
+/// How a run failed, as the runner reported it.
+#[derive(Debug)]
+enum RunFailure {
+    Cancelled(String),
+    MaxTurns,
+    MemoryError,
+    Report(ErrorReport),
+}
+
+fn classify_prompt(error: PromptError) -> RunFailure {
+    match error {
+        PromptError::PromptCancelled { reason, .. } => RunFailure::Cancelled(reason),
+        PromptError::MaxTurnsError { .. } => RunFailure::MaxTurns,
+        PromptError::MemoryError(_) => RunFailure::MemoryError,
+        PromptError::Report(report) => RunFailure::Report(report),
+        PromptError::CompletionError(error) => RunFailure::Report(ErrorReport::from(&error)),
+        other => panic!("the run fails as one of the program's endings, not {other:?}"),
+    }
+}
+
+fn classify_stream(error: StreamingError) -> RunFailure {
+    match error {
+        StreamingError::Prompt(error) => classify_prompt(*error),
+        StreamingError::Report(report) => RunFailure::Report(report),
+        StreamingError::Completion(error) => RunFailure::Report(ErrorReport::from(&error)),
+    }
+}
+
+/// What a streamed run ended in: the final answer, or how it failed (the
+/// first error item; a fault ends the stream).
+async fn final_output(stream: &mut rig::agent::StreamingResult) -> Result<String, RunFailure> {
     let mut output = None;
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output),
             Ok(_) => {}
-            Err(StreamingError::Prompt(error)) => match *error {
-                PromptError::PromptCancelled { reason, .. } => return Err(reason),
-                other => panic!("the stream yields: {other:?}"),
-            },
-            Err(other) => panic!("the stream yields: {other:?}"),
+            Err(error) => return Err(classify_stream(error)),
         }
     }
     Ok(output.expect("a final response"))
+}
+
+/// The run ended as the program says; an answer is returned, a failure
+/// yields an empty output.
+fn expect_ending(result: Result<String, RunFailure>, ending: Ending, fixture: &str) -> String {
+    match (result, ending) {
+        (Ok(output), Ending::Answer) => output,
+        (Err(RunFailure::Cancelled(reason)), Ending::Cancelled(expected)) => {
+            assert_eq!(reason, expected, "{fixture}: the hook's reason");
+            String::new()
+        }
+        (Err(RunFailure::MaxTurns), Ending::MaxTurns)
+        | (Err(RunFailure::MemoryError), Ending::MemoryError) => String::new(),
+        (Err(RunFailure::Report(report)), Ending::ProviderError)
+            if report.kind == ErrorKind::ProviderResponse =>
+        {
+            String::new()
+        }
+        (Err(RunFailure::Report(report)), Ending::Failed(kind)) if report.kind == kind => {
+            String::new()
+        }
+        (other, ending) => panic!("{fixture}: ends in {ending:?}, got {other:?}"),
+    }
 }
 
 /// The program's builder settings, as the corpus's `build_agent` applies
@@ -128,6 +177,7 @@ where
         )),
         Memory::InMemory => builder.memory(rig::memory::InMemoryConversationMemory::new()),
         Memory::FailingAppend => builder.memory(FailingMemory::append_fails()),
+        Memory::FailingLoad => builder.memory(FailingMemory::load_fails()),
     };
     if let Some(conversation) = program.conversation {
         assert_eq!(conversation, CONVERSATION);
@@ -155,6 +205,8 @@ fn typed_tool(
         ToolKind::Alpha => builder.tool(AlphaSignal),
         ToolKind::Beta => builder.tool(BetaSignal),
         ToolKind::WriteNote => builder.tool(WriteNote),
+        ToolKind::BrokenAdder => builder.tool(FailingAdd),
+        ToolKind::BrokenBeta => builder.tool(FailingOrchard),
         ToolKind::Lookup => unreachable!("the nesting tool is a tool server's"),
     }
 }
@@ -194,6 +246,8 @@ fn grant<M: CompletionModel + Clone + 'static>(
                 ToolKind::Alpha => builder.tool(AlphaSignal),
                 ToolKind::Beta => builder.tool(BetaSignal),
                 ToolKind::WriteNote => builder.tool(WriteNote),
+                ToolKind::BrokenAdder => builder.tool(FailingAdd),
+                ToolKind::BrokenBeta => builder.tool(FailingOrchard),
                 ToolKind::Lookup => unreachable!("the nesting tool is granted alone"),
             };
             for tool in rest {
@@ -236,29 +290,22 @@ async fn run_prompts(agent: &rig::agent::Agent, program: &Program) -> Vec<String
             .await
             .expect("the stream ends");
             drop(stream);
-            match (result, ending) {
-                (Ok(output), Ending::Answer) => output,
-                (Err(reason), Ending::Cancelled(expected)) => {
-                    assert_eq!(reason, expected, "{}: the hook's reason", program.fixture);
-                    // The engine settles an in-flight cancel after the
-                    // consumer saw the stop: give it the window the corpus
-                    // producers do before reading the log.
-                    for _ in 0..64 {
-                        tokio::task::yield_now().await;
-                    }
-                    String::new()
+            let output = expect_ending(result, ending, program.fixture);
+            if ending != Ending::Answer {
+                // The engine settles an in-flight cancel or fault after the
+                // consumer saw it: give it the window the corpus producers
+                // do before reading the log.
+                for _ in 0..64 {
+                    tokio::task::yield_now().await;
                 }
-                (other, ending) => panic!("{}: ends in {ending:?}, got {other:?}", program.fixture),
             }
+            output
         } else {
-            match (runner.await, ending) {
-                (Ok(response), Ending::Answer) => response.output,
-                (Err(PromptError::PromptCancelled { reason, .. }), Ending::Cancelled(expected)) => {
-                    assert_eq!(reason, expected, "{}: the hook's reason", program.fixture);
-                    String::new()
-                }
-                (other, ending) => panic!("{}: ends in {ending:?}, got {other:?}", program.fixture),
-            }
+            let result = runner
+                .await
+                .map(|response| response.output)
+                .map_err(classify_prompt);
+            expect_ending(result, ending, program.fixture)
         };
         if let (Ending::Answer, Some(expected)) = (ending, program.expected_output) {
             assert_eq!(output, expected, "{}: the replaced answer", program.fixture);

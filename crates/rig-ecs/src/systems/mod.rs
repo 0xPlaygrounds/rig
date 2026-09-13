@@ -21,6 +21,7 @@ use bevy_ecs::prelude::*;
 use rig_core::{
     completion::message::{
         AssistantContent, ToolChoice, ToolResultContent, UserContent, canonical_streamed_choice,
+        turn_delivered_no_answer,
     },
     effect::{EffectKind, FamilyDescriptor, Outcome},
     error::ErrorKind,
@@ -1827,6 +1828,26 @@ pub fn materialise(
             }
         };
         let content = outs.content.clone();
+
+        // An answerless turn the provider cut short is a lost turn, not an
+        // empty answer (rig#2322; rig-agent's rule, CONTRACT §4): the run
+        // fails as a response error naming the finish reason. A turn that
+        // delivered text or a call, however it stopped, is read as usual.
+        if turn_delivered_no_answer(&content)
+            && let Some(reason) = response
+                .finish_reason()
+                .filter(|reason| reason.truncated_output())
+        {
+            let report = rig_core::error::ErrorReport::from(
+                &rig_core::completion::CompletionError::ResponseError(reason.no_answer_message()),
+            );
+            commands
+                .entity(run)
+                .remove::<AwaitingModel>()
+                .insert(Failed(Failure::Provider(report)));
+            progress.mark();
+            continue;
+        }
 
         // An empty turn is not history, and answers nothing.
         if policy::turn_is_empty(&content) {

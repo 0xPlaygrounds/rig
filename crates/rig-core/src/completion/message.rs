@@ -124,6 +124,34 @@ pub fn ordered_assistant_content(
     content_items
 }
 
+/// Whether a model turn delivered no answer: no real text, no tool call,
+/// no image. Reasoning is scratch work, not an answer, so a reasoning-only
+/// turn delivers none (it still belongs in history). The predicate both
+/// runtimes read before deciding that a turn the provider cut short is a
+/// lost turn (rig#2322), so they cannot disagree about which turns those
+/// are; it is deliberately not "the turn is empty", which diverges on a
+/// reasoning-only turn — the common case, since Gemini counts thinking
+/// tokens against `maxOutputTokens`, so a truncated thinking turn carries
+/// reasoning and no text.
+///
+/// The match is **exhaustive on purpose**: no `_` arm. Every content
+/// variant is classified explicitly, so adding one to [`AssistantContent`]
+/// breaks this build and forces a decision instead of inheriting a
+/// default. The first version had a `_ => false` catch-all and classified
+/// image-only turns as "no answer" — a truncated image-generation turn
+/// would have errored despite delivering an image, which matters because
+/// image tokens count against the same output budget.
+pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
+    !choice.iter().any(|content| match content {
+        // Real text is an answer; an empty block delivers nothing.
+        AssistantContent::Text(text) => !text.text.is_empty(),
+        AssistantContent::ToolCall(_) => true,
+        AssistantContent::Image(_) => true,
+        // The one exclusion: scratch work, not an answer.
+        AssistantContent::Reasoning(_) => false,
+    })
+}
+
 /// [`ordered_assistant_content`] over one delivered streamed choice, by
 /// rig-agent's rule (`StreamedTurnAssembler::canonical_choice_with`): a
 /// turn with a reasoning block or a tool call is regrouped by kind, each

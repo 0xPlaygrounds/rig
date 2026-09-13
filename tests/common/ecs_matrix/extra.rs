@@ -24,7 +24,7 @@ use rig_ecs::{
 use rig_effect_log::RequestCheck;
 
 use super::cells::{self, Cell};
-use super::world::{one_pass, open, tool_outputs};
+use super::world::{one_pass, open, open_gated, tool_outputs};
 use super::{Wire, corpus};
 use crate::ecs_agent::EcsAgent;
 use crate::goldens::families;
@@ -40,13 +40,11 @@ pub(crate) struct ErrorProbe {
     pub streamed: bool,
     /// The recorded status.
     pub status: u16,
-    /// The report's `code`: the provider's own machine-readable code when
-    /// the transport reported one apart from the body (a gRPC code, an AWS
-    /// exception type — `ProviderResponseError::code`); `None` on every
-    /// HTTP wire here, whose reply is a status and a body kept verbatim on
-    /// the report's `provider_response.body` (the body's own `error.code`
-    /// or Gemini's `status` is read off it; the witness projects Gemini's
-    /// into its envelope fact). A contract gap the ledger records.
+    /// The report's `code`: the transport's own machine code when it gave
+    /// one apart from the body (a gRPC code, an AWS exception type), else
+    /// the string the body names under `error.code`, `error.status` or
+    /// `error.type` (`ProviderResponseError::machine_code`, CONTRACT §5);
+    /// `None` on a wire whose envelope is prose (Venice's `{"error":"…"}`).
     pub code: Option<&'static str>,
 }
 
@@ -155,7 +153,7 @@ pub(crate) async fn batch_hold<M: CompletionModel + Clone + 'static>(
     let cell = &cells::SERVING_CONCURRENT_CONCURRENCY_ONE;
     let mut program = wire.program(cell);
     program.fixture = cell.name;
-    let (mut app, agent, recorder) = open(wire, cell, &program);
+    let (mut app, agent, recorder, _gates) = open(wire, cell, &program);
     let run = spawn_run(
         app.world_mut(),
         agent,
@@ -255,7 +253,7 @@ pub(crate) async fn minted_ids<M: CompletionModel + Clone + 'static>(
 ) -> Vec<String> {
     let cell = &cells::SERVING_CONCURRENT_CONCURRENCY_TWO;
     let program = wire.program(cell);
-    let (mut app, agent, recorder) = open(wire, cell, &program);
+    let (mut app, agent, recorder, _gates) = open(wire, cell, &program);
     let run = spawn_run(
         app.world_mut(),
         agent,
@@ -348,31 +346,53 @@ async fn settle(app: &mut App, run: Entity) {
     }
 }
 
-#[derive(Resource, Default)]
-struct CancelledOnce(bool);
+/// Where a bare `Cancelled` lands on a streaming run (row 11: every cut
+/// of a stream).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Cut {
+    /// The first non-empty text delta.
+    FirstTextDelta,
+    /// The first tool-call delta (a name or arguments).
+    FirstToolCallDelta,
+    /// The terminal record has landed in `Collect`; `Fold` has not run.
+    AfterTerminal,
+}
 
-/// `Cancelled` on the first text delta, and nothing else: the stream is
-/// left to its handler (CONTRACT §9.1).
-fn cancel_on_text_delta(
-    streams: Query<(&ChildOf, &Streamed), Without<EffectOutcome>>,
+#[derive(Resource)]
+struct CancelAt {
+    cut: Cut,
+    done: bool,
+}
+
+/// `Cancelled` at the cut, and nothing else: the stream is left to its
+/// handler (CONTRACT §9.1).
+fn cancel_at_cut(
+    streams: Query<(&ChildOf, &Streamed)>,
     turns: Query<&ChildOf, With<Turn>>,
-    mut once: ResMut<CancelledOnce>,
+    mut at: ResMut<CancelAt>,
     mut commands: Commands,
 ) {
-    if once.0 {
+    if at.done {
         return;
     }
     for (parent, stream) in &streams {
-        let text = stream.events.iter().any(|event| {
-            matches!(
-                event,
-                StreamEvent::BlockDelta {
-                    delta: Delta::Text { text },
-                    ..
-                } if !text.is_empty()
-            )
-        });
-        if text {
+        let reached = match at.cut {
+            Cut::FirstTextDelta => stream.events.iter().any(|event| {
+                matches!(
+                    event,
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text },
+                        ..
+                    } if !text.is_empty()
+                )
+            }),
+            Cut::FirstToolCallDelta => stream
+                .events
+                .iter()
+                .any(super::world::is_tool_call_progress),
+            Cut::AfterTerminal => stream.outcome.is_some(),
+        };
+        if reached {
             let run = turns
                 .get(parent.parent())
                 .expect("the stream's turn")
@@ -380,7 +400,7 @@ fn cancel_on_text_delta(
             commands
                 .entity(run)
                 .insert(Cancelled(corpus::STOP_ON_TEXT_DELTA.to_owned()));
-            once.0 = true;
+            at.done = true;
         }
     }
 }
@@ -392,18 +412,35 @@ pub(crate) async fn despawn_waits_for_the_stream<M: CompletionModel + Clone + 's
     wire: &Wire<M>,
     cell: &Cell,
 ) {
+    cancel_at(wire, cell, Cut::FirstTextDelta).await;
+}
+
+/// Row 11 of the failure rows: a bare `Cancelled` at `cut` of a streaming
+/// run. The stream is left to its handler: where the handler had not
+/// finished, `despawn_run` is `InFlight` until it drains and the record is
+/// the handler's; where the terminal had landed, the record is a whole
+/// completion and the run despawns at once. Nothing is committed either
+/// way, and no tool the turn called is dispatched.
+pub(crate) async fn cancel_at<M: CompletionModel + Clone + 'static>(
+    wire: &Wire<M>,
+    cell: &Cell,
+    cut: Cut,
+) {
     // The delta hook's cell without the hook: no delta gate on the model,
     // no despawn of the stream — a bare `Cancelled`.
     let mut cell = *cell;
     cell.program.hooks = &[];
     let program = wire.program(&cell);
-    let (mut app, agent, _recorder) = open(wire, &cell, &program);
-    app.init_resource::<CancelledOnce>().add_systems(
-        RigSchedule,
-        cancel_on_text_delta
-            .after(BusSet::Collect)
-            .before(RigSet::Fold),
-    );
+    // The tool-call cut parks the stream at its first tool delta: a
+    // scripted stream would otherwise finish within the pass that
+    // published it, leaving nothing in flight to refuse the despawn.
+    let gate = (cut == Cut::FirstToolCallDelta).then_some(true);
+    let (mut app, agent, recorder, gates) = open_gated(wire, &cell, &program, gate);
+    app.insert_resource(CancelAt { cut, done: false })
+        .add_systems(
+            RigSchedule,
+            cancel_at_cut.after(BusSet::Collect).before(RigSet::Fold),
+        );
     let run = spawn_run(
         app.world_mut(),
         agent,
@@ -420,9 +457,12 @@ pub(crate) async fn despawn_waits_for_the_stream<M: CompletionModel + Clone + 's
         }
         assert!(
             app.world().get::<Settled>(run).is_none(),
-            "the run is cancelled before it answers"
+            "{cut:?}: the run is cancelled before it answers"
         );
-        assert!(start.elapsed() < GUARD, "the run was not cancelled");
+        assert!(
+            start.elapsed() < GUARD,
+            "{cut:?}: the run was not cancelled"
+        );
         tokio::task::yield_now().await;
     }
     assert!(
@@ -438,8 +478,16 @@ pub(crate) async fn despawn_waits_for_the_stream<M: CompletionModel + Clone + 's
         .query_filtered::<(), (With<PendingEffect>, Without<EffectOutcome>)>()
         .iter(app.world())
         .count();
-    assert_eq!(in_flight, 1, "the stream is left to its handler");
-    assert_eq!(despawn_run(app.world_mut(), run), Err(RunBusy::InFlight));
+    match cut {
+        Cut::FirstTextDelta | Cut::FirstToolCallDelta => {
+            assert_eq!(in_flight, 1, "{cut:?}: the stream is left to its handler");
+            assert_eq!(despawn_run(app.world_mut(), run), Err(RunBusy::InFlight));
+            gates.stream.add_permits(1);
+        }
+        Cut::AfterTerminal => {
+            assert_eq!(in_flight, 0, "{cut:?}: the terminal had landed");
+        }
+    }
     loop {
         app.update();
         let open = app
@@ -450,13 +498,33 @@ pub(crate) async fn despawn_waits_for_the_stream<M: CompletionModel + Clone + 's
         if open == 0 {
             break;
         }
-        assert!(start.elapsed() < GUARD, "the stream did not drain");
+        assert!(start.elapsed() < GUARD, "{cut:?}: the stream did not drain");
         tokio::task::yield_now().await;
     }
     for _ in 0..8 {
         app.update();
         tokio::task::yield_now().await;
     }
+    // The record is the handler's: the one completion, whole where the
+    // handler finished it; no tool was dispatched, nothing committed.
+    let log = recorder.log();
+    assert_eq!(
+        families(&log),
+        [rig::effect::EffectFamily::Completion],
+        "{cut:?}: the one completion, no tool"
+    );
+    if cut == Cut::AfterTerminal {
+        assert!(
+            log.records[0].outcome.is_ok(),
+            "{cut:?}: a whole completion: {:?}",
+            log.records[0].outcome
+        );
+    }
+    assert_eq!(
+        crate::stream_faults::utterance_roles(app.world_mut(), run),
+        [rig_ecs::agent::Role::User],
+        "{cut:?}: nothing is committed"
+    );
     despawn_run(app.world_mut(), run).expect("a drained run despawns");
     assert!(app.world().get_entity(run).is_err(), "the run is gone");
 }

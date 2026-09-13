@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_completion_tokens":16,"messages":[{"content":"Say hi.","role":"user"}],"model":"gpt-5-mini-nonexistent-rig-test"}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"error":{"code":"model_not_found","message":"The model `gpt-5-mini-nonexistent-rig-test` does not exist or you do not have access to it.","param":null,"type":"invalid_request_error"}}'

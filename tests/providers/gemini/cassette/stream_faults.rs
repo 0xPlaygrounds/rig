@@ -32,13 +32,10 @@ pub(super) const SETUP_MAX_TOKENS: u64 = 16;
 pub(super) const CONTENT_FRAME: &str = r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"index":0}],"modelVersion":"gemini-3.8-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":795,"promptTokensDetails":[{"modality":"TEXT","tokenCount":795}],"serviceTier":"standard","thoughtsTokenCount":60,"totalTokenCount":856}}"#;
 /// The text [`CONTENT_FRAME`] carries.
 pub(super) const CONTENT_TEXT: &str = "pong";
-/// The whole body Gemini answered a refused prompt with, same capture: one
-/// feedback chunk, no candidates, then the stream closes (#2475).
-pub(super) const BLOCKED_FRAME: &str = r#"{"promptFeedback":{"blockReason":"SAFETY"},"usageMetadata":{"promptTokenCount":795,"totalTokenCount":795}}"#;
-/// An error envelope in band under HTTP 200: the envelope Gemini returned
-/// for an overloaded model in the same capture, in the frame position the
-/// adapter's unit tests pin (`in_band_http_errors_match_unary_classification`).
-pub(super) const IN_BAND_ERROR_FRAME: &str = r#"{"error":{"code":503,"message":"The model is overloaded. Please try again later.","status":"UNAVAILABLE"}}"#;
+/// The whole body Gemini answered a refused prompt with (`crate::stream_faults::GEMINI_BLOCKED_FRAME`).
+pub(super) const BLOCKED_FRAME: &str = crate::stream_faults::GEMINI_BLOCKED_FRAME;
+/// An error envelope in band under HTTP 200 (`crate::stream_faults::GEMINI_IN_BAND_ERROR`).
+pub(super) const IN_BAND_ERROR_FRAME: &str = crate::stream_faults::GEMINI_IN_BAND_ERROR;
 /// A key the scripted cells send: it must never reach a trace.
 pub(super) const SCRIPTED_KEY: &str = "scripted-fault-key-7f3a9c";
 

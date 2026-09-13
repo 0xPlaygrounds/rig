@@ -9,6 +9,12 @@
 //! tail and finishes to the same answer. Every settled run is then
 //! despawned (`despawn_run`, CONTRACT: the world keeps nothing of a run by
 //! itself).
+//!
+//! A failure-row cell (`super::faults`) takes the same path: the fault it
+//! names decides what the driver does mid-run (parks a tool, saves a scene
+//! at a cut the happy paths have no name for) and what it asserts beside
+//! the record (the failure's facts, the stream's fold, the history that
+//! was never committed, `despawn_run` refusing until the fault drained).
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -26,13 +32,14 @@ use rig::serve::{
     adapters::{CompletionAdapter, MemoryAdapter, ToolAdapter},
 };
 use rig::streaming::{Delta, StreamEvent, StreamEvents, StreamingCompletionResponse};
+use rig::tool::{Tool, ToolContext};
 use rig_ecs::{
     agent::{
         AdditionalParams, Assembling, Cancelled, Conversation, Cursor, DefaultMaxTurns, Failed,
         Failure, Grant, InvalidCalls, MaxTokens, MaxTurns, MessageParts, Order, Output, OutputKind,
-        Owner, PolicyVersion, Preamble, Remembers, Route, Run, RunOf, RunResult, Runs, Settled,
-        Temperature, ToolChoiceSpec, ToolPolicy, Turn, Unhandled as WorldUnhandled, UsesModel,
-        Utterance,
+        Owner, PolicyVersion, Preamble, ProviderRetried, ProviderRetries, Remembers, Role, Route,
+        Run, RunOf, RunResult, Runs, Settled, Temperature, ToolChoiceSpec, ToolPolicy, Turn,
+        Unhandled as WorldUnhandled, UsesModel, Utterance,
         scene::{WorldScene, load_world, save_world},
     },
     bus::{
@@ -40,17 +47,21 @@ use rig_ecs::{
         PendingEffect, Policy, Progress, RigSchedule, Streamed, run_to_quiescence,
     },
     replay::{stamp_legacy_builder_header, stamp_run},
-    systems::{Fresh, RigSet, despawn_run, install_agent, spawn_run},
+    systems::{Fresh, RigSet, RunBusy, despawn_run, install_agent, spawn_run},
 };
 use rig_effect_log::{Checkpoint, EffectLog, EffectLogRecorder, RequestCheck};
 use tokio::sync::Semaphore;
 
 use super::cells::{Cell, Memory, ToolKind};
-use super::corpus::{self, Ending, Hook, LayerAt, Program, Unhandled};
+use super::corpus::{self, CANCEL_ADD_OUTCOME, Ending, Hook, LayerAt, Program, Unhandled};
+use super::faults::{BROKEN_ORCHARD, FailingOrchard, Fault, Scene};
 use super::{OWNER, Wire};
 use crate::ecs_agent::RuntimeHandler;
-use crate::goldens::{Adder, FailingMemory, NoteTaker, WriteNote, families};
-use crate::support::{AlphaSignal, BetaSignal};
+use crate::goldens::{
+    Adder, BROKEN_ADD, FailingAdd, FailingMemory, NoteTaker, WriteNote, families,
+};
+use crate::stream_faults::{sole_stream, utterance_roles};
+use crate::support::{ALPHA_SIGNAL_OUTPUT, AlphaSignal, BetaSignal};
 
 const GUARD: Duration = Duration::from_secs(180);
 
@@ -67,13 +78,26 @@ fn one_thread_pool() {
     });
 }
 
+/// The gates a driver holds over a cell's handlers: a parked tool answers
+/// once `tool` has a permit; a gated stream goes on past its first delta
+/// once `stream` has one. A cell that names neither never touches them.
+pub(crate) struct Gates {
+    pub tool: Arc<Semaphore>,
+    pub stream: Arc<Semaphore>,
+    /// The witness's log, installed for every failure-row cell: the ending
+    /// it names is asserted beside the run's.
+    pub witness: Option<Arc<rig::observe::ObservationLog>>,
+}
+
 /// A model whose stream parks after the first delta of the given kind:
 /// the run's stop must land on that delta, before transport scheduling
 /// can publish more of the stream (the anthropic `FirstToolDelta` gate,
-/// for both delta hooks).
+/// for both delta hooks); a driver that saves a scene mid-stream releases
+/// the gate afterwards.
 struct FirstDelta<M> {
     inner: M,
     tool: bool,
+    release: Arc<Semaphore>,
 }
 
 impl<M: CompletionModel> CompletionModel for FirstDelta<M> {
@@ -94,7 +118,7 @@ impl<M: CompletionModel> CompletionModel for FirstDelta<M> {
         let tool = self.tool;
         let mut gated = StreamingCompletionResponse::from_events(
             provider,
-            gate_events(Box::pin(stream), tool, Arc::new(Semaphore::new(0))),
+            gate_events(Box::pin(stream), tool, self.release.clone()),
         );
         gated.message_id = message_id;
         Ok(gated)
@@ -111,22 +135,70 @@ fn gate_events(mut events: StreamEvents, tool: bool, release: Arc<Semaphore>) ->
         while let Some(item) = events.next().await {
             let boundary = !crossed
                 && item.as_ref().is_ok_and(|event| match event {
-                    StreamEvent::BlockDelta { delta, .. } => match delta {
-                        Delta::ToolName { .. } | Delta::ToolArguments { .. } => tool,
-                        Delta::Text { text } => !tool && !text.is_empty(),
-                        _ => false,
-                    },
-                    _ => false,
+                    StreamEvent::BlockDelta {
+                        delta: Delta::Text { text },
+                        ..
+                    } => !tool && !text.is_empty(),
+                    event => tool && is_tool_call_progress(event),
                 });
             yield item;
             if boundary {
                 crossed = true;
                 // Keep the provider stream while the run observes the
-                // published delta and despawns its dispatch.
+                // published delta and despawns its dispatch, or saves its
+                // scene.
                 release.acquire().await.expect("delivery gate open").forget();
             }
         }
     })
+}
+
+/// Whether a stream event is a tool call arriving: a name or arguments
+/// delta on the wires that stream calls piecewise (the first of them is the
+/// delta the hooks stop on), the call's close on a wire that streams it
+/// whole (Gemini: a block start, then its end, no delta between).
+pub(crate) fn is_tool_call_progress(event: &StreamEvent) -> bool {
+    matches!(
+        event,
+        StreamEvent::BlockDelta {
+            delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+            ..
+        } | StreamEvent::BlockEnd {
+            end: rig::streaming::BlockClose::ToolCall(_),
+            ..
+        }
+    )
+}
+
+/// A tool that answers only once the driver's gate has a permit: the
+/// window in which a run is stopped, or saved, with the tool in flight.
+struct Parked<T> {
+    inner: T,
+    gate: Arc<Semaphore>,
+}
+
+impl<T: Tool> Tool for Parked<T> {
+    const NAME: &'static str = T::NAME;
+    type Error = T::Error;
+    type Args = T::Args;
+    type Output = T::Output;
+
+    fn description(&self) -> String {
+        self.inner.description()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        self.inner.parameters()
+    }
+
+    async fn call(
+        &self,
+        context: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        self.gate.acquire().await.expect("tool gate open").forget();
+        self.inner.call(context, args).await
+    }
 }
 
 /// The delta-stop hooks despawn the stopped stream's effect: `Cancelled`
@@ -233,6 +305,22 @@ fn at_cut(world: &mut World, run: Entity, tool_turns: usize) -> bool {
     open == 0
 }
 
+/// A tool adapter as an erased handler over the test's runtime.
+fn tool_handler<S>(adapter: S, runtime: &tokio::runtime::Handle) -> ErasedHandler
+where
+    S: rig::serve::Serve<Family = rig::effect::family::Tool> + Send + Sync + 'static,
+{
+    ErasedHandler::new(RuntimeHandler {
+        inner: Arc::new(adapter),
+        runtime: runtime.clone(),
+    })
+}
+
+/// Whether the cell's adder answers only on the driver's word.
+fn parks_tool(cell: &Cell) -> bool {
+    matches!(cell.fault, Some(Fault::StopWhileToolRuns)) || cell.scene == Scene::WithToolInFlight
+}
+
 /// The world over `wire`, with the cell's handlers registered in the
 /// producer's order (memory, model, route, the host's note taker, tools,
 /// a late route) and the program's agent graph spawned.
@@ -240,7 +328,29 @@ pub(crate) fn open<M: CompletionModel + Clone + 'static>(
     wire: &Wire<M>,
     cell: &Cell,
     program: &Program,
-) -> (App, Entity, EffectLogRecorder) {
+) -> (App, Entity, EffectLogRecorder, Gates) {
+    let gate = program
+        .hooks
+        .iter()
+        .find_map(|hook| match hook {
+            Hook::StopOnTextDelta => Some(false),
+            Hook::StopOnToolCallDelta => Some(true),
+            _ => None,
+        })
+        .or((cell.scene == Scene::MidStream).then_some(false));
+    open_gated(wire, cell, program, gate)
+}
+
+/// [`open`] with the model's stream gated at its first delta (`Some(false)`
+/// text, `Some(true)` tool call) or not (`None`), whatever the cell says:
+/// for a driver that needs the stream parked at a cut the cell has no
+/// hook for.
+pub(crate) fn open_gated<M: CompletionModel + Clone + 'static>(
+    wire: &Wire<M>,
+    cell: &Cell,
+    program: &Program,
+    gate: Option<bool>,
+) -> (App, Entity, EffectLogRecorder, Gates) {
     one_thread_pool();
     let policy = cell.bus.policy();
     let mut app = App::new();
@@ -249,6 +359,14 @@ pub(crate) fn open<M: CompletionModel + Clone + 'static>(
     app.add_systems(Update, run_to_quiescence);
     app.finish();
     app.cleanup();
+    let gates = Gates {
+        tool: Arc::new(Semaphore::new(0)),
+        stream: Arc::new(Semaphore::new(0)),
+        witness: cell
+            .fault
+            .is_some()
+            .then(|| crate::stream_faults::witnessed(&mut app)),
+    };
     let recorder = if cell.events {
         EffectLogRecorder::keeping_stream_events()
     } else {
@@ -272,6 +390,10 @@ pub(crate) fn open<M: CompletionModel + Clone + 'static>(
             }),
             Memory::FailingAppend => ErasedHandler::new(RuntimeHandler {
                 inner: Arc::new(MemoryAdapter::new(FailingMemory::append_fails())),
+                runtime: runtime.clone(),
+            }),
+            Memory::FailingLoad => ErasedHandler::new(RuntimeHandler {
+                inner: Arc::new(MemoryAdapter::new(FailingMemory::load_fails())),
                 runtime: runtime.clone(),
             }),
             Memory::None => unreachable!(),
@@ -299,18 +421,14 @@ pub(crate) fn open<M: CompletionModel + Clone + 'static>(
             runtime: runtime.clone(),
         })
     };
-    let delta_gate = program.hooks.iter().find_map(|hook| match hook {
-        Hook::StopOnTextDelta => Some(false),
-        Hook::StopOnToolCallDelta => Some(true),
-        _ => None,
-    });
-    let model = match delta_gate {
+    let model = match gate {
         Some(tool) => ErasedHandler::new(RuntimeHandler {
             inner: Arc::new(CompletionAdapter::new(
                 "default",
                 FirstDelta {
                     inner: wire.model.clone(),
                     tool,
+                    release: gates.stream.clone(),
                 },
             )),
             runtime: runtime.clone(),
@@ -352,33 +470,33 @@ pub(crate) fn open<M: CompletionModel + Clone + 'static>(
     let mut tools = Vec::new();
     for (order, tool) in cell.tools.iter().enumerate() {
         let (name, adapter): (&str, ErasedHandler) = match tool {
-            ToolKind::Adder => (
+            ToolKind::Adder if parks_tool(cell) => (
                 "add",
-                ErasedHandler::new(RuntimeHandler {
-                    inner: Arc::new(ToolAdapter::new(Adder)),
-                    runtime: runtime.clone(),
-                }),
+                tool_handler(
+                    ToolAdapter::new(Parked {
+                        inner: Adder,
+                        gate: gates.tool.clone(),
+                    }),
+                    &runtime,
+                ),
             ),
+            ToolKind::Adder => ("add", tool_handler(ToolAdapter::new(Adder), &runtime)),
+            ToolKind::BrokenAdder => ("add", tool_handler(ToolAdapter::new(FailingAdd), &runtime)),
             ToolKind::Alpha => (
                 "lookup_harbor_label",
-                ErasedHandler::new(RuntimeHandler {
-                    inner: Arc::new(ToolAdapter::new(AlphaSignal)),
-                    runtime: runtime.clone(),
-                }),
+                tool_handler(ToolAdapter::new(AlphaSignal), &runtime),
             ),
             ToolKind::Beta => (
                 "lookup_orchard_label",
-                ErasedHandler::new(RuntimeHandler {
-                    inner: Arc::new(ToolAdapter::new(BetaSignal)),
-                    runtime: runtime.clone(),
-                }),
+                tool_handler(ToolAdapter::new(BetaSignal), &runtime),
+            ),
+            ToolKind::BrokenBeta => (
+                "lookup_orchard_label",
+                tool_handler(ToolAdapter::new(FailingOrchard), &runtime),
             ),
             ToolKind::WriteNote => (
                 "write_note",
-                ErasedHandler::new(RuntimeHandler {
-                    inner: Arc::new(ToolAdapter::new(WriteNote)),
-                    runtime: runtime.clone(),
-                }),
+                tool_handler(ToolAdapter::new(WriteNote), &runtime),
             ),
             ToolKind::Lookup => {
                 // The nesting tool is a key the world serves itself
@@ -449,6 +567,9 @@ pub(crate) fn open<M: CompletionModel + Clone + 'static>(
             UsesModel(model),
         ))
         .id();
+    if let Some(retries) = cell.provider_retries {
+        world.entity_mut(agent).insert(ProviderRetries(retries));
+    }
     let mut order = 0u64;
     for (_, tool) in &tools {
         world.spawn((Grant(*tool), Order(order), ChildOf(agent)));
@@ -495,7 +616,7 @@ pub(crate) fn open<M: CompletionModel + Clone + 'static>(
             RigSet::Materialise.run_if(direct_dispatches_landed),
         ),
     );
-    (app, agent, recorder)
+    (app, agent, recorder, gates)
 }
 
 /// The run ended as the program says (the corpus's `assert_ending`, over
@@ -518,9 +639,15 @@ fn assert_ending(world: &World, program: &Program, run: Entity, log: &EffectLog)
                 program.fixture
             );
         }
-        ((None, Some(Failed(Failure::MaxTurns { .. }))), Ending::MaxTurns) => {}
+        ((None, Some(Failed(Failure::MaxTurns { .. }))), Ending::MaxTurns)
+        | ((None, Some(Failed(Failure::UnknownToolCall { .. }))), Ending::UnknownToolCall)
+        | ((None, Some(Failed(Failure::Memory(_)))), Ending::MemoryError) => {}
         ((None, Some(Failed(Failure::Provider(report)))), Ending::ProviderError)
             if report.kind == ErrorKind::ProviderResponse => {}
+        ((None, Some(Failed(Failure::Provider(report)))), Ending::Failed(kind))
+        | ((None, Some(Failed(Failure::Tool(report)))), Ending::Failed(kind))
+        | ((None, Some(Failed(Failure::Cancelled(report)))), Ending::Failed(kind))
+            if report.kind == kind => {}
         (other, ending) => panic!(
             "{}: the run ends in {ending:?}, the world says {other:?}",
             program.fixture
@@ -582,6 +709,11 @@ pub(crate) async fn drive_run(
         );
         tokio::task::yield_now().await;
     }
+    settle_open_effects(app, start).await;
+}
+
+/// Tick until no effect is open, then let the observer settle deliveries.
+async fn settle_open_effects(app: &mut App, start: Instant) {
     loop {
         app.update();
         let world = app.world_mut();
@@ -625,6 +757,71 @@ fn append_landed(world: &mut World, run: Entity) -> bool {
             )
             && outcome.is_some()
     })
+}
+
+/// Pass by pass until a tool of `run` is in flight and unanswered: the
+/// parked tool waiting on the driver's gate.
+async fn drive_to_parked_tool(app: &mut App, run: Entity) {
+    let start = Instant::now();
+    loop {
+        one_pass(app.world_mut());
+        let world = app.world_mut();
+        let turns: Vec<Entity> = world
+            .query_filtered::<(Entity, &ChildOf), With<Turn>>()
+            .iter(world)
+            .filter(|(_, parent)| parent.parent() == run)
+            .map(|(turn, _)| turn)
+            .collect();
+        let parked = world
+            .query_filtered::<(&ChildOf, &PendingEffect), (With<InFlight>, Without<EffectOutcome>)>(
+            )
+            .iter(world)
+            .any(|(parent, pending)| {
+                turns.contains(&parent.parent()) && pending.kind.family() == EffectFamily::Tool
+            });
+        if parked {
+            // Let the handler task reach its gate before the driver acts.
+            for _ in 0..4 {
+                tokio::task::yield_now().await;
+            }
+            return;
+        }
+        assert!(
+            world.get::<Settled>(run).is_none() && world.get::<Failed>(run).is_none(),
+            "the run ended before its tool was in flight"
+        );
+        assert!(
+            start.elapsed() < GUARD,
+            "the tool was not in flight within {GUARD:?}"
+        );
+        tokio::task::yield_now().await;
+    }
+}
+
+/// Pass by pass until the gated stream has published text: the parked
+/// stream waiting on the driver's gate.
+async fn drive_to_first_text(app: &mut App, run: Entity) {
+    let start = Instant::now();
+    loop {
+        one_pass(app.world_mut());
+        let world = app.world_mut();
+        let published = world
+            .query_filtered::<&Streamed, Without<EffectOutcome>>()
+            .iter(world)
+            .any(|stream| !stream.text.is_empty());
+        if published {
+            return;
+        }
+        assert!(
+            world.get::<Settled>(run).is_none() && world.get::<Failed>(run).is_none(),
+            "the run ended before its stream published text"
+        );
+        assert!(
+            start.elapsed() < GUARD,
+            "the stream published no text within {GUARD:?}"
+        );
+        tokio::task::yield_now().await;
+    }
 }
 
 /// The run's graph has the shape the section states: one turn per
@@ -703,6 +900,23 @@ fn assert_graph(app: &mut App, runs: &[Entity], program: &Program, log: &EffectL
     }
 }
 
+/// The live entities that are the run's to despawn: every entity but the
+/// world's own — its resources (entities in this Bevy; the bus inserts
+/// `hold::Transitions` on a run's first hold), its observers and its
+/// registered systems. `Entities::len` is not this count: it also counts
+/// ids the observers' triggers reserved and freed, and does not return to
+/// its pre-spawn value once a witness is installed.
+pub(crate) fn live_entities(world: &mut World) -> usize {
+    world
+        .query_filtered::<Entity, (
+            Without<bevy_ecs::resource::IsResource>,
+            Without<bevy_ecs::system::SystemIdMarker>,
+            Without<bevy_ecs::observer::Observer>,
+        )>()
+        .iter(world)
+        .count()
+}
+
 /// Every settled run is the world's to despawn: `despawn_run` returns
 /// `Ok`, the live entities return to their count before the spawn, and
 /// the agent's `Runs` no longer lists it.
@@ -721,7 +935,7 @@ fn assert_despawn(app: &mut App, agent: Entity, run: Entity, before: usize) {
             .is_some_and(|runs| runs.runs().contains(&run)),
         "the agent no longer lists the run"
     );
-    let after = world.entities().len() as usize;
+    let after = live_entities(world);
     assert_eq!(
         after, before,
         "the live entities return to the pre-spawn count"
@@ -795,7 +1009,7 @@ fn assert_batch(app: &mut App, cell: &Cell) {
         .iter()
         .map(|tool| match tool {
             ToolKind::Alpha => "lookup_harbor_label",
-            ToolKind::Beta => "lookup_orchard_label",
+            ToolKind::Beta | ToolKind::BrokenBeta => "lookup_orchard_label",
             other => panic!("a two-signal cell, not {other:?}"),
         })
         .collect();
@@ -812,6 +1026,416 @@ fn assert_batch(app: &mut App, cell: &Cell) {
     );
 }
 
+/// Whether the cell is a two-signal batch cell (both tools of §8.1).
+fn two_signals(cell: &Cell) -> bool {
+    matches!(
+        cell.tools,
+        [ToolKind::Alpha, ToolKind::Beta] | [ToolKind::Alpha, ToolKind::BrokenBeta]
+    )
+}
+
+/// The provider report a failed run carries.
+fn provider_report(world: &World, run: Entity, what: &str) -> rig::error::ErrorReport {
+    match world.get::<Failed>(run).map(|failed| &failed.0) {
+        Some(Failure::Provider(report)) => report.clone(),
+        other => panic!("{what}: a provider failure, not {other:?}"),
+    }
+}
+
+/// The world's word on the fault beside the record (the oracle's): the
+/// failure's facts, the stream's fold, the history that was never
+/// committed.
+fn assert_fault(app: &mut App, cell: &Cell, run: Entity, log: &EffectLog, gates: &Gates) {
+    let Some(fault) = cell.fault else {
+        return;
+    };
+    // The witness names the same ending the run has (§9.1, the #2495
+    // funnel): `settled`, `cancelled`, `provider`, `memory`.
+    let trace = gates
+        .witness
+        .as_deref()
+        .expect("a failure-row cell is witnessed");
+    let expected = match cell.program.ending {
+        Ending::Answer => "settled",
+        Ending::Cancelled(_) => "cancelled",
+        Ending::MemoryError => "memory",
+        Ending::ProviderError | Ending::Failed(_) => "provider",
+        other => panic!("{}: no witness ending for {other:?}", cell.name),
+    };
+    let endings = crate::stream_faults::endings(trace);
+    assert_eq!(
+        endings.last().map(String::as_str),
+        Some(expected),
+        "{}: the witness's ending: {endings:?}",
+        cell.name
+    );
+    let world = app.world_mut();
+    let roles = utterance_roles(world, run);
+    match fault {
+        Fault::Setup { status, code }
+        | Fault::Status {
+            status,
+            code,
+            retry_after: _,
+        } => {
+            let report = provider_report(world, run, cell.name);
+            assert_eq!(report.kind, ErrorKind::ProviderResponse, "{report:?}");
+            assert_eq!(report.http_status, Some(status), "{report:?}");
+            assert_eq!(
+                report.retryable,
+                rig::error::retryable_status(Some(status)),
+                "the status table's verdict on a {status}: {report:?}"
+            );
+            assert_eq!(report.code.as_deref(), code, "{}: {report:?}", cell.name);
+            let response = report
+                .provider_response
+                .as_ref()
+                .expect("the reply is kept on the report");
+            assert_eq!(response.status.map(|status| status.as_u16()), Some(status));
+            assert!(!response.body.is_empty(), "the body is kept");
+            if let Fault::Status {
+                retry_after: true, ..
+            } = fault
+            {
+                let headers = response
+                    .headers
+                    .as_deref()
+                    .expect("the reply's headers are kept");
+                assert_eq!(
+                    headers
+                        .get("retry-after")
+                        .and_then(|value| value.to_str().ok()),
+                    Some("1"),
+                    "the retry hint survives onto the report: {headers:?}"
+                );
+            }
+            // Every attempt is its own record, each the same failure.
+            for record in &log.records {
+                let recorded = record
+                    .outcome
+                    .as_ref()
+                    .expect_err("the record's outcome is the provider's error");
+                assert_eq!(recorded.kind, report.kind);
+                assert_eq!(recorded.http_status, report.http_status);
+                assert_eq!(recorded.retryable, report.retryable);
+                assert_eq!(recorded.code, report.code);
+            }
+            let retries = cell
+                .provider_retries
+                .unwrap_or(rig_ecs::agent::DEFAULT_PROVIDER_RETRIES);
+            let spent = if report.retryable { retries } else { 0 };
+            assert_eq!(
+                world
+                    .get::<ProviderRetried>(run)
+                    .map_or(0, |retried| retried.0),
+                spent,
+                "{}: the retries spent (CONTRACT §5)",
+                cell.name
+            );
+            assert_eq!(
+                log.records.len(),
+                spent + 1,
+                "{}: one record per attempt",
+                cell.name
+            );
+            assert_eq!(roles, [Role::User], "only the prompt is history");
+        }
+        Fault::TruncatedAfterText | Fault::TruncatedAfterToolCall => {
+            let report = provider_report(world, run, cell.name);
+            assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
+            assert_eq!(report.message, rig::serve::stream_truncated().message);
+            let stream = sole_stream(world).expect("the stream's effect survived the run");
+            assert!(
+                stream.errors.is_empty(),
+                "EOF is not an item: {:?}",
+                stream.errors
+            );
+            assert!(stream.outcome.is_none(), "{:?}", stream.outcome);
+            if fault == Fault::TruncatedAfterText {
+                assert!(!stream.text.is_empty(), "the prefix is kept");
+            } else {
+                assert!(
+                    stream.events.iter().any(is_tool_call_progress),
+                    "the call streamed before the cut: {:?}",
+                    stream.events
+                );
+            }
+            assert_eq!(roles, [Role::User], "the cut turn is not history");
+        }
+        Fault::ErrorAfterText {
+            code,
+            message,
+            status,
+        } => {
+            let report = provider_report(world, run, cell.name);
+            assert_eq!(report.kind, ErrorKind::ProviderResponse, "{report:?}");
+            assert_eq!(report.code.as_deref(), code, "the frame's code: {report:?}");
+            assert!(
+                report.message.contains(message),
+                "the frame's message: {report:?}"
+            );
+            assert_eq!(report.http_status, status, "the frame's status: {report:?}");
+            assert_eq!(
+                report.retryable,
+                rig::error::retryable_status(status),
+                "the status table's verdict: {report:?}"
+            );
+            let recorded = log.records[0]
+                .outcome
+                .as_ref()
+                .expect_err("the record holds the frame's error");
+            assert_eq!(
+                (recorded.code.as_deref(), recorded.http_status),
+                (code, status)
+            );
+            let stream = sole_stream(world).expect("the stream's effect survived the run");
+            assert!(!stream.text.is_empty(), "the prefix is kept");
+            assert_eq!(stream.errors.len(), 1, "{:?}", stream.errors);
+            assert_eq!(
+                stream.errors[0].0,
+                stream.events.len(),
+                "the error item follows the delivered content"
+            );
+            assert_eq!(roles, [Role::User]);
+        }
+        Fault::Refusal | Fault::Filtered { with_text: true } => match cell.program.ending {
+            Ending::Answer => {
+                let answer = world
+                    .get::<RunResult>(run)
+                    .expect("the refusal is the answer")
+                    .0
+                    .clone();
+                let stream = sole_stream(world).expect("the stream's effect survived the run");
+                assert!(!answer.is_empty(), "the refusal text is the answer");
+                assert_eq!(
+                    answer, stream.text,
+                    "the answer is the text the stream carried, whole"
+                );
+                assert_eq!(roles, [Role::User, Role::Assistant], "the turn is history");
+                if matches!(fault, Fault::Filtered { .. }) {
+                    let finish = match &log.records[0].outcome {
+                        Ok(Outcome::Completion(response)) => response.finish_reason(),
+                        other => panic!("{}: a completion record, not {other:?}", cell.name),
+                    };
+                    assert_eq!(
+                        finish,
+                        Some(rig::completion::FinishReason::ContentFilter),
+                        "the reason is on the record"
+                    );
+                }
+            }
+            Ending::Failed(kind) => {
+                let report = provider_report(world, run, cell.name);
+                assert_eq!(report.kind, kind, "{report:?}");
+                assert!(!report.retryable, "a refusal is not retried: {report:?}");
+                assert!(
+                    report.message.contains("block_reason=SAFETY"),
+                    "the block is named: {report:?}"
+                );
+                // No completion wire sets the report's `refusal` flag today
+                // (only a tool's refusal does): pinned as it is, ledgered.
+                assert!(!report.refusal, "{report:?}");
+                assert_eq!(roles, [Role::User]);
+            }
+            other => panic!(
+                "{}: a refusal ends in Answer or Failed, not {other:?}",
+                cell.name
+            ),
+        },
+        Fault::Filtered { with_text: false } => {
+            let report = provider_report(world, run, cell.name);
+            assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
+            assert!(
+                report
+                    .message
+                    .contains(&rig::completion::FinishReason::ContentFilter.no_answer_message()),
+                "the answerless turn's reason and remedy: {report:?}"
+            );
+            assert!(
+                log.records[0].outcome.is_ok(),
+                "the provider answered; the run failed on what it answered"
+            );
+            assert_eq!(roles, [Role::User], "nothing is committed");
+        }
+        Fault::ToolError => {
+            let outputs = tool_outputs(log);
+            assert_eq!(
+                outputs.len(),
+                1,
+                "{}: one tool record: {outputs:?}",
+                cell.name
+            );
+            assert!(
+                outputs[0].contains(BROKEN_ADD),
+                "{}: the part is the error's model output: {outputs:?}",
+                cell.name
+            );
+            let result = tool_result(log, 0);
+            assert!(result.is_error(), "{result:?}");
+            assert!(
+                world.get::<RunResult>(run).is_some(),
+                "the run answers around it"
+            );
+        }
+        Fault::BatchSecondFails => {
+            let outputs = tool_outputs(log);
+            assert_eq!(
+                outputs.len(),
+                2,
+                "{}: two tool records: {outputs:?}",
+                cell.name
+            );
+            assert_eq!(
+                outputs[0], ALPHA_SIGNAL_OUTPUT,
+                "the first call's answer, in call order"
+            );
+            assert!(
+                outputs[1].contains(BROKEN_ORCHARD),
+                "the second call's part is the error's output: {outputs:?}"
+            );
+            assert!(!tool_result(log, 0).is_error());
+            assert!(tool_result(log, 1).is_error());
+            assert!(
+                world.get::<RunResult>(run).is_some(),
+                "the run answers around it"
+            );
+        }
+        Fault::StopWhileToolRuns => {
+            assert!(
+                matches!(
+                    world.get::<Failed>(run).map(|failed| &failed.0),
+                    Some(Failure::Cancelled(report)) if report.message == CANCEL_ADD_OUTCOME
+                ),
+                "{:?}",
+                world.get::<Failed>(run)
+            );
+            let outputs = tool_outputs(log);
+            assert_eq!(outputs, ["42"], "the tool's record holds its real answer");
+            // The call turn was history when the batch was issued; the
+            // result never becomes history (CONTRACT §8.1).
+            assert_eq!(
+                roles,
+                [Role::User, Role::Assistant],
+                "the tool's result is not committed"
+            );
+        }
+        Fault::FailingLoad => {
+            let report = match world.get::<Failed>(run).map(|failed| &failed.0) {
+                Some(Failure::Memory(report)) => report.clone(),
+                other => panic!("{}: a memory failure, not {other:?}", cell.name),
+            };
+            assert_eq!(report.kind, ErrorKind::MemoryBackend, "{report:?}");
+            let recorded = log.records[0]
+                .outcome
+                .as_ref()
+                .expect_err("the memory record holds the refusal");
+            assert_eq!(recorded.kind, report.kind);
+            assert_eq!(recorded.message, report.message);
+        }
+    }
+}
+
+/// The `n`th tool record's result.
+fn tool_result(log: &EffectLog, n: usize) -> &rig::tool::ToolResult {
+    log.records
+        .iter()
+        .filter_map(|record| match &record.outcome {
+            Ok(Outcome::ToolResult { result }) => Some(result),
+            _ => None,
+        })
+        .nth(n)
+        .expect("a tool record")
+}
+
+/// A scene saved after the run failed loads in a fresh world served by the
+/// log's replayers: the failure, the report and the history survive.
+fn assert_failed_scene(
+    app: &mut App,
+    cell: &Cell,
+    program: &Program,
+    run: Entity,
+    log: &EffectLog,
+) {
+    let world = app.world_mut();
+    let failed = world.get::<Failed>(run).expect("the run failed").0.clone();
+    let utterances = utterance_roles(world, run);
+    let saved = save_world(world).expect("a failed run's scene saves");
+    let mut program = *program;
+    program.fixture = cell.name;
+    let corpus::world::Opened { mut app, .. } =
+        corpus::world::open(&program, log, RequestCheck::Payload);
+    let world = app.world_mut();
+    let loaded = load_world(&saved, world)
+        .unwrap_or_else(|error| panic!("{}: a failed run's scene loads: {error}", cell.name));
+    let run = loaded
+        .graph
+        .iter()
+        .copied()
+        .find(|entity| world.get::<Run>(*entity).is_some())
+        .expect("the scene holds the run");
+    let reloaded = world
+        .get::<Failed>(run)
+        .unwrap_or_else(|| panic!("{}: the loaded run stays failed", cell.name))
+        .0
+        .clone();
+    // The scene holds the report's wire form, which carries no headers
+    // (`ProviderResponseErrorWire`): compare what the scene can hold.
+    let headerless = |failure: &Failure| {
+        let mut failure = failure.clone();
+        if let Failure::Provider(report) = &mut failure
+            && let Some(response) = report.provider_response.as_mut()
+        {
+            response.headers = None;
+        }
+        failure
+    };
+    assert_eq!(
+        headerless(&reloaded),
+        headerless(&failed),
+        "{}: the failure survives the scene",
+        cell.name
+    );
+    assert_eq!(
+        utterance_roles(world, run),
+        utterances,
+        "{}: the history survives the scene",
+        cell.name
+    );
+    assert!(world.get::<RunResult>(run).is_none(), "no answer appears");
+}
+
+/// A scene saved while the stream is unfinished with observed progress is
+/// refused before anything is spawned (CONTRACT §13).
+fn assert_mid_stream_scene_refused(app: &mut App, cell: &Cell, program: &Program, log: &EffectLog) {
+    let saved = save_world(app.world_mut()).expect("an in-flight stream's scene still saves");
+    let mut program = *program;
+    program.fixture = cell.name;
+    let corpus::world::Opened { mut app, .. } =
+        corpus::world::open(&program, log, RequestCheck::Payload);
+    let error = load_world(&saved, app.world_mut())
+        .err()
+        .unwrap_or_else(|| {
+            panic!(
+                "{}: a scene with an unfinished stream is refused",
+                cell.name
+            )
+        });
+    assert!(
+        error.message.contains("delivered progress"),
+        "{}: refused for its progress, not another reason: {error:?}",
+        cell.name
+    );
+    assert!(
+        app.world_mut()
+            .query::<&Run>()
+            .iter(app.world())
+            .next()
+            .is_none(),
+        "{}: nothing was spawned before the refusal",
+        cell.name
+    );
+}
+
 /// The world cell: the program over `wire` through `spawn_run`, its log
 /// compared to the golden `golden`, its graph and its despawn asserted,
 /// and its cut resumed where the cell names one.
@@ -821,8 +1445,8 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     golden: impl FnOnce(&EffectLog),
 ) -> EffectLog {
     let program = wire.program(cell);
-    let (mut app, agent, recorder) = open(wire, cell, &program);
-    let two_signals = cell.tools == [ToolKind::Alpha, ToolKind::Beta];
+    let (mut app, agent, recorder, gates) = open(wire, cell, &program);
+    let two_signals = two_signals(cell);
     if two_signals {
         app.init_resource::<Published>().add_systems(
             RigSchedule,
@@ -849,7 +1473,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     let mut cut = None;
     let mut before = Vec::new();
     for (n, prompt) in prompts.into_iter().enumerate() {
-        before.push(app.world().entities().len() as usize);
+        before.push(live_entities(app.world_mut()));
         let world = app.world_mut();
         let run = spawn_run(
             world,
@@ -872,8 +1496,58 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             );
         }
         stamp_run(world, run, &recorder).expect("the run stamps its program identity");
+        if std::env::var("RIG_SPEC_DUMP").is_ok() {
+            eprintln!(
+                "SPECDUMP {}",
+                serde_json::to_string(&rig_ecs::replay::spec_json(world, run)).unwrap()
+            );
+        }
         let cut_after = (n == last).then_some(cell.resume_after).flatten();
-        drive_run(&mut app, run, cut_after, &mut cut, &recorder).await;
+        if n == last && matches!(cell.fault, Some(Fault::StopWhileToolRuns)) {
+            // The stop lands while the parked tool is in flight; the tool
+            // is left to its handler and the run cannot despawn until it
+            // lands.
+            drive_to_parked_tool(&mut app, run).await;
+            let world = app.world_mut();
+            world
+                .entity_mut(run)
+                .insert(Cancelled(CANCEL_ADD_OUTCOME.to_owned()));
+            world.flush();
+            assert!(
+                matches!(
+                    world.get::<Failed>(run).map(|failed| &failed.0),
+                    Some(Failure::Cancelled(report)) if report.message == CANCEL_ADD_OUTCOME
+                ),
+                "{}: the run is cancelled at once: {:?}",
+                cell.name,
+                world.get::<Failed>(run)
+            );
+            assert_eq!(
+                despawn_run(world, run),
+                Err(RunBusy::InFlight),
+                "{}: the tool is still in flight",
+                cell.name
+            );
+            gates.tool.add_permits(1);
+            drive_run(&mut app, run, None, &mut cut, &recorder).await;
+        } else if n == last && cell.scene == Scene::WithToolInFlight {
+            // The scene is saved with the tool in flight and no stream
+            // progress: an unanswered intent that restarts under its id.
+            drive_to_parked_tool(&mut app, run).await;
+            let next_id = app.world().resource::<IdCounter>().0;
+            let scene = save_world(app.world_mut()).expect("an in-flight tool's scene saves");
+            let at = recorder.log().records.len();
+            cut = Some((scene, at, next_id));
+            gates.tool.add_permits(1);
+            drive_run(&mut app, run, None, &mut cut, &recorder).await;
+        } else if n == last && cell.scene == Scene::MidStream {
+            drive_to_first_text(&mut app, run).await;
+            assert_mid_stream_scene_refused(&mut app, cell, &program, &recorder.log());
+            gates.stream.add_permits(1);
+            drive_run(&mut app, run, None, &mut cut, &recorder).await;
+        } else {
+            drive_run(&mut app, run, cut_after, &mut cut, &recorder).await;
+        }
         if n < last {
             assert!(
                 app.world().get::<RunResult>(run).is_some(),
@@ -890,8 +1564,10 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
         assert_eq!(
             families(&log),
             cell.families,
-            "{}: the record's families",
-            cell.name
+            "{}: the record's families; the records: {:?}; the run: {:?}",
+            cell.name,
+            super::agent::record_summary(&log),
+            app.world().get::<Failed>(run)
         );
     }
     assert_eq!(
@@ -901,21 +1577,41 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     // (1) the record is the producer's: the caller names the golden at its
     // call site (`crate::ecs_goldens::golden_effects("…", log)`).
     golden(&log);
-    // (2) the graph.
+    // (2) the graph, and the fault's facts.
     assert_ending(app.world(), &program, run, &log);
     assert_graph(&mut app, &runs, &program, &log);
     if two_signals {
         assert_batch(&mut app, cell);
     }
-    // (3) the cut, resumed.
+    assert_fault(&mut app, cell, run, &log, &gates);
+    // (3) the cut, resumed; the failed run's scene, loaded.
     if let Some((scene, at, next_id)) = cut.take() {
         resume(cell, &program, &log, scene, at, next_id);
+    }
+    if cell.scene == Scene::AfterFailure {
+        assert_failed_scene(&mut app, cell, &program, run, &log);
     }
     // Every settled run despawns; the world keeps nothing of it.
     for (run, before) in runs.iter().rev().zip(before.iter().rev()) {
         assert_despawn(&mut app, agent, *run, *before);
     }
     log
+}
+
+/// A scripted cell: the rig-agent runner over one scripted transport, the
+/// world over another built the same way, and the world's log compared to
+/// the runner's by the golden comparison's own normalisation
+/// (`crate::ecs_goldens::assert_parity`). No golden: the frames are the
+/// cell's, not a recording's.
+pub(crate) async fn run_scripted<M: CompletionModel + Clone + 'static>(
+    cell: &Cell,
+    wire: impl Fn() -> Wire<M>,
+) -> EffectLog {
+    let original = super::agent::run_agent(&wire(), cell, |_| {}).await;
+    run_world(&wire(), cell, |log| {
+        crate::ecs_goldens::assert_parity(cell.name, log, &original)
+    })
+    .await
 }
 
 /// The tail: a fresh world over replayers of the log from the cut, the
