@@ -1705,8 +1705,11 @@ fn tolerant_tool_arguments_leave_complete_payloads_alone() {
     );
 }
 
+/// The Doubleword reasoning tool-loop cassette exposed text-before-reasoning
+/// in this shared unary converter. A controlled reply pins both fields even
+/// when a live model chooses not to produce reasoning for a simple prompt.
 #[test]
-fn deserialize_llama_cpp_response_with_reasoning_content() {
+fn deserialize_compatible_response_orders_reasoning_before_text() {
     let request = r#"
         {
             "choices": [
@@ -1715,7 +1718,7 @@ fn deserialize_llama_cpp_response_with_reasoning_content() {
                     "index": 0,
                     "message": {
                         "role": "assistant",
-                        "content": "",
+                        "content": "The answer.",
                         "reasoning_content": "Now I understand the structure better. I need to: ..."
                     }
                 }
@@ -1754,7 +1757,7 @@ fn deserialize_llama_cpp_response_with_reasoning_content() {
             .normalize(<crate::providers::openai::OpenAICompletions as OpenAICompatibleProvider>::PROVIDER_NAME)
             .unwrap();
 
-    assert_eq!(response.choice.len(), 1);
+    assert_eq!(response.choice.len(), 2);
 
     let Some(completion::message::AssistantContent::Reasoning(reasoning)) = response.choice.first()
     else {
@@ -1763,6 +1766,9 @@ fn deserialize_llama_cpp_response_with_reasoning_content() {
     assert_eq!(
         reasoning.first_text(),
         Some("Now I understand the structure better. I need to: ...")
+    );
+    assert!(
+        matches!(&response.choice[1], completion::AssistantContent::Text(text) if text.text == "The answer.")
     );
 }
 
