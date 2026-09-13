@@ -1,0 +1,77 @@
+{
+  "header": {
+    "run_spec": 9849231127452309701,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reply with error-probe."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 8,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Err": {
+          "kind": "provider_response",
+          "retryable": false,
+          "message": "ProviderResponseError: status 404 Not Found: {\"error\":{\"code\":\"model_not_found\",\"message\":\"The model `rig/definitely-not-a-doubleword-model` does not exist or you do not have access to it.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+          "code": "model_not_found",
+          "http_status": 404,
+          "refusal": false,
+          "source_chain": [],
+          "provider_response": {
+            "status": 404,
+            "body": "{\"error\":{\"code\":\"model_not_found\",\"message\":\"The model `rig/definitely-not-a-doubleword-model` does not exist or you do not have access to it.\",\"param\":null,\"type\":\"invalid_request_error\"}}",
+            "provider_request_id": null
+          }
+        }
+      }
+    }
+  ]
+}
