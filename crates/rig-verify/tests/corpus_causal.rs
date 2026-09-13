@@ -145,6 +145,7 @@ const SAME_KEY_FROM_THREAD_REFUSED: Program = Program {
         child: NestedChild::Same,
         from_thread: true,
         detached: false,
+        no_temperature: false,
     }),
     host_serial: true,
     ..MOCK
@@ -168,6 +169,7 @@ const DETACHED_RESOLVER: Program = Program {
         child: NestedChild::Note,
         from_thread: false,
         detached: true,
+        no_temperature: false,
     }),
     ..MOCK
 };

@@ -1,0 +1,476 @@
+{
+  "header": {
+    "run_spec": 171082663332529849,
+    "handlers": [
+      {
+        "key": "golden/memory",
+        "family": {
+          "family": "memory"
+        }
+      },
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/memory": "memory",
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/memory": "memory",
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/memory",
+      "kind": {
+        "effect": "memory",
+        "op": {
+          "op": "load",
+          "conversation": "golden-conversation"
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "memory",
+          "memory": "loaded",
+          "messages": []
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reply with the single word: ready."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "ready"
+            }
+          ],
+          "usage": {
+            "input_tokens": 27,
+            "output_tokens": 10,
+            "total_tokens": 37,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 27,
+              "completion_tokens": 10,
+              "total_tokens": 37,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              }
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "gpt-5-mini-2025-08-07",
+            "additional_params": {
+              "created": 0,
+              "obfuscation": "obfuscation_REDACTED_4",
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "system_fingerprint": null
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "ready"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 27,
+            "output_tokens": 10,
+            "total_tokens": 37,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "stop",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 27,
+              "completion_tokens": 10,
+              "total_tokens": 37,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              }
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "gpt-5-mini-2025-08-07",
+            "additional_params": {
+              "created": 0,
+              "obfuscation": "obfuscation_REDACTED_4",
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "system_fingerprint": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tool_output": null,
+      "id": 3,
+      "key": "golden/memory",
+      "kind": {
+        "effect": "memory",
+        "op": {
+          "op": "append",
+          "conversation": "golden-conversation",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reply with the single word: ready."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "ready"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "memory",
+          "memory": "appended"
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 4,
+      "key": "golden/memory",
+      "kind": {
+        "effect": "memory",
+        "op": {
+          "op": "load",
+          "conversation": "golden-conversation"
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "memory",
+          "memory": "loaded",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reply with the single word: ready."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "ready"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 5,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reply with the single word: ready."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "ready"
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Now reply with the single word: again."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "again"
+            }
+          ],
+          "usage": {
+            "input_tokens": 47,
+            "output_tokens": 10,
+            "total_tokens": 57,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_2",
+          "provider_request_id": "req_REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 47,
+              "completion_tokens": 10,
+              "total_tokens": 57,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              }
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-REDACTED_2",
+            "model": "gpt-5-mini-2025-08-07",
+            "additional_params": {
+              "created": 0,
+              "obfuscation": "obfuscation_REDACTED_8",
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "system_fingerprint": null
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "again"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 47,
+            "output_tokens": 10,
+            "total_tokens": 57,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "stop",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_2",
+          "provider_request_id": "req_REDACTED_2",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 47,
+              "completion_tokens": 10,
+              "total_tokens": 57,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              }
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-REDACTED_2",
+            "model": "gpt-5-mini-2025-08-07",
+            "additional_params": {
+              "created": 0,
+              "obfuscation": "obfuscation_REDACTED_8",
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "system_fingerprint": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tool_output": null,
+      "id": 6,
+      "key": "golden/memory",
+      "kind": {
+        "effect": "memory",
+        "op": {
+          "op": "append",
+          "conversation": "golden-conversation",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Now reply with the single word: again."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "again"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "memory",
+          "memory": "appended"
+        }
+      }
+    }
+  ]
+}

@@ -10372,6 +10372,7 @@ dependencies = [
  "base64 0.22.1",
  "bevy_app",
  "bevy_ecs",
+ "bevy_tasks",
  "bytes",
  "futures",
  "httpmock",

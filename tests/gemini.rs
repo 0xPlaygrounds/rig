@@ -40,3 +40,6 @@ mod gemini;
 
 #[path = "common/ecs_cache.rs"]
 mod ecs_cache;
+
+#[path = "common/ecs_matrix.rs"]
+mod ecs_matrix;

@@ -15,6 +15,7 @@ mod cassette {
     mod code_execution_matrix;
     mod corpus_breadth;
     mod corpus_delta;
+    mod corpus_matrix;
     mod corpus_retrieval;
     mod corpus_serving;
     mod document_ordering;
@@ -23,6 +24,8 @@ mod cassette {
     mod ecs_code_execution;
     mod ecs_extractor;
     mod ecs_lifecycle;
+    mod ecs_matrix;
+    mod ecs_matrix_extra;
     mod ecs_ordering;
     mod ecs_parity;
     mod ecs_prompt_caching;

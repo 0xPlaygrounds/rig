@@ -303,6 +303,7 @@ impl Choice {
 }
 
 /// One golden's program: what the producing root test built, verbatim.
+#[derive(Clone, Copy)]
 pub struct Program {
     pub fixture: &'static str,
     pub owner: &'static str,
@@ -455,6 +456,10 @@ pub struct Nesting {
     /// The tool detaches its sink and a spawned task answers, dispatching
     /// the child through the detached sink's dispatcher.
     pub detached: bool,
+    /// The nested completion carries no temperature: a wire whose model
+    /// takes only its default temperature (the gpt-5 family) asks without
+    /// one; the corpus's own cells ask at 0.
+    pub no_temperature: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -481,6 +486,7 @@ pub const NESTING: Nesting = Nesting {
     child: NestedChild::Completion,
     from_thread: false,
     detached: false,
+    no_temperature: false,
 };
 
 impl Program {
@@ -1564,10 +1570,12 @@ impl Lookup {
         match self.nesting.child {
             NestedChild::Completion => {
                 let model: ModelHandle = dispatcher.handle(&self.model_key).expect("the model");
-                let request = CompletionRequestBuilder::unbound(args.q.as_str())
-                    .preamble(NESTED_PREAMBLE.to_owned())
-                    .temperature(0.0)
-                    .build();
+                let mut request = CompletionRequestBuilder::unbound(args.q.as_str())
+                    .preamble(NESTED_PREAMBLE.to_owned());
+                if !self.nesting.no_temperature {
+                    request = request.temperature(0.0);
+                }
+                let request = request.build();
                 let response = model
                     .complete(request)
                     .await

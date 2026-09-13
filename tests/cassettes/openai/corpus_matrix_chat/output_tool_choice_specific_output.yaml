@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a concise assistant. Answer directly.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.","type":"text"}],"role":"system"},{"content":"Return a concise event object for a local Rust meetup in Seattle.","role":"user"}],"model":"gpt-5-mini","tool_choice":{"function":{"name":"final_result"},"type":"function"},"tools":[{"function":{"description":"Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.","name":"final_result","parameters":{"properties":{"category":{"type":"string"},"summary":{"type":"string"},"title":{"type":"string"}},"required":["title","category","summary"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"annotations":[],"content":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"Monthly Seattle Rust meetup (3rd Wednesday, 6:30–8:30 PM). Venue: central Seattle (venue announced per event). Format: 2–3 lightning talks, one 30–45 min technical talk, open Q&A and networking. Audience: Rust developers and learners of all levels. Organizer: Seattle Rust (contact: organizers@seattlerust.org). RSVP: https://www.meetup.com/seattle-rust. Cost: free. Tags: Rust, systems, WebAssembly, embedded, beginners.\"}","name":"final_result"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":1870,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":1728,"rejected_prediction_tokens":0},"prompt_tokens":224,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":2094}}'

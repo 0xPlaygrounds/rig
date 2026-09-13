@@ -48,6 +48,7 @@ async fn over_host(
         child: NestedChild::Completion,
         from_thread: false,
         detached: false,
+        no_temperature: false,
     };
     // Only the neutral descriptor is shared with the original Lookup; its
     // async sink-dispatch implementation never executes in this producer.

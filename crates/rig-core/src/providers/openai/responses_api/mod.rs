@@ -560,7 +560,14 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
             }
             crate::completion::Message::Assistant { id, content } => {
                 let mut reasoning_items = Vec::new();
-                let mut other_items = Vec::new();
+                let mut other_items: Vec<InputItem> = Vec::new();
+                // The turn's one message item under its id: the wire refuses
+                // two input items with one id ("Duplicate item found with id
+                // msg_…"), and a turn the provider delivered as several
+                // `output_text` parts — or as several message items, folded
+                // under the first's id — is one assistant turn, so every text
+                // block of the turn rides that item as one more content part.
+                let mut message_item: Option<usize> = None;
 
                 for assistant_content in content {
                     match assistant_content {
@@ -576,11 +583,30 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             else {
                                 continue;
                             };
-
-                            other_items.push(InputItem {
-                                role: Some(Role::Assistant),
-                                input: InputContent::Message(message),
-                            });
+                            match (message, message_item) {
+                                (Message::Assistant { content: more, .. }, Some(at)) => {
+                                    if let Some(InputItem {
+                                        input:
+                                            InputContent::Message(Message::Assistant {
+                                                content, ..
+                                            }),
+                                        ..
+                                    }) = other_items.get_mut(at)
+                                    {
+                                        content.extend(more);
+                                    }
+                                }
+                                (message, _) => {
+                                    let with_id = matches!(message, Message::Assistant { .. });
+                                    other_items.push(InputItem {
+                                        role: Some(Role::Assistant),
+                                        input: InputContent::Message(message),
+                                    });
+                                    if with_id {
+                                        message_item = Some(other_items.len() - 1);
+                                    }
+                                }
+                            }
                         }
                         crate::message::AssistantContent::ToolCall(crate::message::ToolCall {
                             id,

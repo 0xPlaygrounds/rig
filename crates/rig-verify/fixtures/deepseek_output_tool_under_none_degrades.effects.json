@@ -1,0 +1,135 @@
+{
+  "header": {
+    "run_spec": 4057248294585460433,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Return a concise event object for a local Rust meetup in Seattle."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": "none",
+          "additional_params": null,
+          "output_schema": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "category",
+              "summary"
+            ]
+          }
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "```json\n{\n  \"name\": \"Seattle Rust Meetup\",\n  \"location\": \"Seattle, WA\",\n  \"date\": \"2025-06-12\",\n  \"time\": \"18:30\",\n  \"topic\": \"Rust in Production\"\n}\n```"
+            }
+          ],
+          "usage": {
+            "input_tokens": 28,
+            "output_tokens": 58,
+            "total_tokens": 86,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "raw": {
+            "id": "chatcmpl-REDACTED_1",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "```json\n{\n  \"name\": \"Seattle Rust Meetup\",\n  \"location\": \"Seattle, WA\",\n  \"date\": \"2025-06-12\",\n  \"time\": \"18:30\",\n  \"topic\": \"Rust in Production\"\n}\n```"
+                },
+                "logprobs": null,
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "completion_tokens": 58,
+              "prompt_tokens": 28,
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 28,
+              "total_tokens": 86,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

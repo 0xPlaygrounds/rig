@@ -121,7 +121,13 @@ fn moonshot_specific_tool_choice_is_rejected() {
         model: Some("kimi-k2.5".to_string()),
         chat_history: vec![Message::user("Use a tool.")],
         documents: vec![],
-        tools: vec![],
+        // A choice rides only beside an advertised tool: the Chat wire
+        // drops it otherwise.
+        tools: vec![crate::completion::ToolDefinition {
+            name: "lookup".to_string(),
+            description: "look something up".to_string(),
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+        }],
         temperature: None,
         max_tokens: None,
         tool_choice: Some(ToolChoice::Specific {
@@ -155,7 +161,13 @@ fn moonshot_required_tool_choice_is_coerced() {
         model: Some("kimi-k2.5".to_string()),
         chat_history: vec![Message::user("Use a tool.")],
         documents: vec![],
-        tools: vec![],
+        // A choice rides only beside an advertised tool: the Chat wire
+        // drops it otherwise.
+        tools: vec![crate::completion::ToolDefinition {
+            name: "lookup".to_string(),
+            description: "look something up".to_string(),
+            parameters: serde_json::json!({"type": "object", "properties": {}}),
+        }],
         temperature: None,
         max_tokens: None,
         tool_choice: Some(ToolChoice::Required),

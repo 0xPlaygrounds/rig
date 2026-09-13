@@ -1,0 +1,252 @@
+{
+  "header": {
+    "run_spec": 171082663332529849,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      },
+      {
+        "key": "host/note",
+        "family": {
+          "family": "custom",
+          "kind": "corpus:note"
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "host/note": "custom"
+    },
+    "hooks": [
+      "NoteAtStart"
+    ],
+    "required": {
+      "golden/model:default": "completion"
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "host/note",
+      "kind": {
+        "effect": "custom",
+        "kind": "corpus:note",
+        "payload": {
+          "at": "start"
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "custom",
+          "payload": {
+            "accepted": true,
+            "at": "start"
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reply with the single word: ready."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_1",
+              "content": [
+                {
+                  "type": "encrypted",
+                  "content": "encrypted_content_REDACTED_2"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "ready"
+            }
+          ],
+          "usage": {
+            "input_tokens": 27,
+            "output_tokens": 65,
+            "total_tokens": 92,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": "resp_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "usage": {
+              "input_tokens": 27,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 65,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 92
+            },
+            "reasoning_metadata": {
+              "context": "current_turn",
+              "effort": "medium",
+              "mode": "standard",
+              "summary": null
+            },
+            "reasoning_context": "current_turn",
+            "status": "completed",
+            "message_id": "msg_REDACTED_1",
+            "response_id": "resp_REDACTED_1",
+            "model": "gpt-5-mini-2025-08-07"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "wire:rs_REDACTED_1",
+          "kind": {
+            "kind": "reasoning",
+            "provider_id": "rs_REDACTED_1"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:rs_REDACTED_1",
+          "end": {
+            "close": "reasoning",
+            "reasoning": {
+              "id": "rs_REDACTED_1",
+              "content": [
+                {
+                  "type": "encrypted",
+                  "content": "encrypted_content_REDACTED_2"
+                }
+              ]
+            },
+            "wire_sent": true
+          },
+          "block": {
+            "type": "reasoning",
+            "id": "rs_REDACTED_1",
+            "content": [
+              {
+                "type": "encrypted",
+                "content": "encrypted_content_REDACTED_2"
+              }
+            ]
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "wire:msg_REDACTED_1",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "ready"
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "wire:msg_REDACTED_1",
+          "kind": {
+            "kind": "message"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 27,
+            "output_tokens": 65,
+            "total_tokens": 92,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "stop",
+          "message_id": "msg_REDACTED_1",
+          "response_id": "resp_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "usage": {
+              "input_tokens": 27,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 65,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 92
+            },
+            "reasoning_metadata": {
+              "context": "current_turn",
+              "effort": "medium",
+              "mode": "standard",
+              "summary": null
+            },
+            "reasoning_context": "current_turn",
+            "status": "completed",
+            "message_id": "msg_REDACTED_1",
+            "response_id": "resp_REDACTED_1",
+            "model": "gpt-5-mini-2025-08-07"
+          }
+        }
+      ]
+    }
+  ]
+}

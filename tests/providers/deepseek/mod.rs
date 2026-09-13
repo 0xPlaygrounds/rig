@@ -1,8 +1,18 @@
+#[path = "cassette/corpus_matrix.rs"]
+mod corpus_matrix;
 #[path = "cassette/ecs_completion.rs"]
 mod ecs_completion;
+#[path = "cassette/ecs_matrix.rs"]
+mod ecs_matrix;
+#[path = "cassette/ecs_matrix_extra.rs"]
+mod ecs_matrix_extra;
+#[path = "cassette/ecs_termination.rs"]
+mod ecs_termination;
 mod prompt_caching;
 mod response_identity_edge;
 mod support;
+#[path = "cassette/turn_termination_matrix.rs"]
+mod turn_termination_matrix;
 
 mod agent;
 mod agent_tool_sessions;

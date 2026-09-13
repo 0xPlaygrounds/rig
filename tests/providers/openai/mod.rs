@@ -18,6 +18,8 @@ mod cassette {
     mod corpus_breadth;
     mod corpus_delta;
     mod corpus_host;
+    mod corpus_matrix_chat;
+    mod corpus_matrix_responses;
     mod corpus_output;
     mod corpus_retrieval;
     mod corpus_serving;
@@ -26,6 +28,10 @@ mod cassette {
     mod ecs_extractor;
     mod ecs_extractor_usage;
     mod ecs_lifecycle;
+    mod ecs_matrix_chat;
+    mod ecs_matrix_extra_chat;
+    mod ecs_matrix_extra_responses;
+    mod ecs_matrix_responses;
     mod ecs_ordering;
     mod ecs_parity;
     mod ecs_prompt_caching;

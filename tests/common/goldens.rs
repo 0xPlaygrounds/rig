@@ -1450,6 +1450,9 @@ pub(crate) struct Nesting {
     /// The tool detaches its sink; a spawned task answers, dispatching the
     /// child through the detached sink's dispatcher.
     pub detached: bool,
+    /// The nested completion carries no temperature (the gpt-5 family
+    /// takes only its default).
+    pub no_temperature: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1548,11 +1551,13 @@ impl Lookup {
             NestedChild::Completion => {
                 let model: rig::bus::ModelHandle =
                     dispatcher.handle(&self.model_key).expect("the model");
-                let request =
+                let mut request =
                     rig::core::completion::CompletionRequestBuilder::unbound(args.q.as_str())
-                        .preamble(NESTED_PREAMBLE.to_owned())
-                        .temperature(0.0)
-                        .build();
+                        .preamble(NESTED_PREAMBLE.to_owned());
+                if !self.nesting.no_temperature {
+                    request = request.temperature(0.0);
+                }
+                let request = request.build();
                 let response = model
                     .complete(request)
                     .await

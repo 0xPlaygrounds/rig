@@ -40,7 +40,7 @@ use super::{
     keeps_events, run_spec,
 };
 
-pub(super) const GUARD: Duration = Duration::from_secs(30);
+pub const GUARD: Duration = Duration::from_secs(30);
 
 /// A world over `log`'s replayers, as the interpreter opens one: the
 /// plugins, the one-thread pool, the golden's replayers registered by
@@ -48,17 +48,13 @@ pub(super) const GUARD: Duration = Duration::from_secs(30);
 /// says), the nesting program's systems, the recorder. The hooks and the
 /// agent are the caller's: a resumed world loads its agent, and installs
 /// its hooks after the load so no run-start observer fires.
-pub(super) struct Opened {
+pub struct Opened {
     pub app: App,
     pub handlers: Vec<(HandlerKey, Entity)>,
     pub reached: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
-pub(super) fn open(
-    program: &Program,
-    log: &rig_effect_log::EffectLog,
-    check: RequestCheck,
-) -> Opened {
+pub fn open(program: &Program, log: &rig_effect_log::EffectLog, check: RequestCheck) -> Opened {
     EffectLogReplayer::check_header(log).expect("a current format");
     // A host-bus golden names no policy: the replay's host runs the
     // producer's where the program names it, as `Replay::open` does.
@@ -253,7 +249,7 @@ pub fn world_agent_reproduces(program: &Program) {
 /// Tick the app until `run` ends and the world is quiescent. `false` when
 /// the program's cancel-when-reached dropped the run (the records were
 /// asserted; nothing more runs).
-pub(super) fn drive(
+pub fn drive(
     app: &mut App,
     program: &Program,
     run: Entity,
@@ -312,12 +308,7 @@ pub(super) fn drive(
 }
 
 /// The run ended as the program says.
-pub(super) fn assert_ending(
-    app: &App,
-    program: &Program,
-    run: Entity,
-    log: &rig_effect_log::EffectLog,
-) {
+pub fn assert_ending(app: &App, program: &Program, run: Entity, log: &rig_effect_log::EffectLog) {
     let world = app.world();
     let ending = (
         world.get::<RunResult>(run).cloned(),
@@ -359,7 +350,7 @@ pub(super) fn assert_ending(
 
 /// The replayed header is the golden's: spec hash, hooks, required row,
 /// signature; and the world's identity computation agrees with the harness.
-pub(super) fn assert_header(
+pub fn assert_header(
     replayed: &rig_effect_log::EffectLog,
     log: &rig_effect_log::EffectLog,
     program: &Program,
@@ -406,7 +397,7 @@ pub(super) fn assert_header(
 /// setting, `UsesModel` to the golden's model handler entity, a grant per
 /// advertised tool (the required row's tool keys, in key order), a context
 /// link per static document.
-pub(super) fn spawn_agent(
+pub fn spawn_agent(
     world: &mut World,
     program: &Program,
     handlers: &[(HandlerKey, Entity)],

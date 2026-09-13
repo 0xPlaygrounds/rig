@@ -1,0 +1,408 @@
+{
+  "header": {
+    "run_spec": 18413898460084818763,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      },
+      {
+        "key": "golden/tool:lookup_harbor_label#0",
+        "family": {
+          "family": "tool",
+          "name": "lookup_harbor_label",
+          "description": "Return the alpha signal marker.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+          }
+        }
+      },
+      {
+        "key": "golden/tool:lookup_orchard_label#1",
+        "family": {
+          "family": "tool",
+          "name": "lookup_orchard_label",
+          "description": "Return the beta signal marker.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/tool:lookup_harbor_label#0": "tool",
+      "golden/tool:lookup_orchard_label#1": "tool"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/tool:lookup_harbor_label#0": "tool",
+      "golden/tool:lookup_orchard_label#1": "tool"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "lookup_harbor_label",
+              "description": "Return the alpha signal marker.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "lookup_orchard_label",
+              "description": "Return the beta signal marker.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "lookup_harbor_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_2"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_2"
+              },
+              "function": {
+                "name": "lookup_orchard_label",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 1154,
+            "output_tokens": 16,
+            "total_tokens": 1170,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "venice",
+          "model": "mistral-small-3-2-24b-instruct",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 1154,
+              "completion_tokens": 16,
+              "total_tokens": 1170
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "mistral-small-3-2-24b-instruct",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "cost": {
+                "diem": 0,
+                "usd": 0.0001121875
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 2,
+      "key": "golden/tool:lookup_harbor_label#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "lookup_harbor_label",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "crimson-harbor"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 3,
+      "key": "golden/tool:lookup_orchard_label#1",
+      "kind": {
+        "effect": "tool_call",
+        "name": "lookup_orchard_label",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "silver-orchard"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 4,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "lookup_harbor_label",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "lookup_orchard_label",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "lookup_harbor_label",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "crimson-harbor"
+                    }
+                  ]
+                },
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "lookup_orchard_label",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "silver-orchard"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "lookup_harbor_label",
+              "description": "Return the alpha signal marker.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            },
+            {
+              "name": "lookup_orchard_label",
+              "description": "Return the beta signal marker.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+              }
+            }
+          ],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "The harbor label is crimson-harbor and the orchard label is silver-orchard."
+            }
+          ],
+          "usage": {
+            "input_tokens": 1212,
+            "output_tokens": 20,
+            "total_tokens": 1232,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "venice",
+          "model": "mistral-small-3-2-24b-instruct",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 1212,
+              "completion_tokens": 20,
+              "total_tokens": 1232
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-REDACTED_2",
+            "model": "mistral-small-3-2-24b-instruct",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "cost": {
+                "diem": 0,
+                "usd": 0.000118625
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
