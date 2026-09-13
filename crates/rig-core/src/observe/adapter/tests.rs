@@ -1255,3 +1255,22 @@ async fn ordinary_only_provider_uses_observed_defaults_through_arc_without_facts
     );
     assert!(log.trace().observations.is_empty());
 }
+
+#[test]
+fn a_host_scrubs_its_own_diagnostics_with_the_adapter_rules() {
+    // The public wrappers apply the adapter's scrubbing to text a host
+    // persists itself: a URL's credentials are secrets, and a message
+    // carrying one is redacted whole.
+    let secrets = crate::observe::diagnostic_url_secrets(
+        "https://user:hunter2@example.invalid/v1?key=abc123&search=fine",
+    );
+    assert!(secrets.iter().any(|s| s == "hunter2"), "{secrets:?}");
+    assert!(secrets.iter().any(|s| s == "abc123"), "{secrets:?}");
+    assert!(!secrets.iter().any(|s| s == "fine"), "{secrets:?}");
+    let scrubbed = crate::observe::scrub_diagnostic("request to key=abc123 failed", &secrets);
+    assert!(!scrubbed.contains("abc123"), "{scrubbed}");
+    assert_eq!(
+        crate::observe::scrub_diagnostic("plain failure", &secrets),
+        "plain failure"
+    );
+}

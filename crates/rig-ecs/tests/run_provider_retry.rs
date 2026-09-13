@@ -11,6 +11,7 @@
 //! | `ProviderRetries(0)` is the old behaviour | `a_zero_budget_never_retries` |
 //! | a backoff is a host hold on the re-issued effect; a cancel during it ends the run `Cancelled` with no further request | `a_host_hold_is_where_a_backoff_goes_and_a_cancel_during_it_ends_the_run` |
 //! | a scene saved during that hold resumes into the retry, not a fresh prompt | `a_scene_saved_during_the_hold_resumes_into_the_retry` |
+//! | a stream cut before its terminal record is a transport fault: retryable, re-issued, answered | `a_truncated_stream_is_reissued` |
 
 #![allow(
     clippy::expect_used,
@@ -35,6 +36,7 @@ use rig_core::{
     message::AssistantContent,
     observe::{Action, ObservationLog},
     serve::{Dispatch, Reply, Serve},
+    streaming::{BlockId, BlockKind, Delta, StreamEvent},
 };
 use rig_ecs::{
     agent::{
@@ -466,4 +468,96 @@ fn a_scene_saved_during_the_hold_resumes_into_the_retry() {
         "the saved tool result is in the retried request"
     );
     assert_eq!(retried(app.world(), run), 1);
+}
+
+/// A model whose first stream closes before its terminal record and whose
+/// second call answers.
+struct Truncating {
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl Serve for Truncating {
+    type Family = rig_core::effect::family::Completion;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from(MODEL),
+            family: FamilyDescriptor::Completion {
+                model: ModelRef::new(MODEL),
+                capabilities: ProviderCapabilities::default(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if call == 0 {
+            return Reply::written(move |mut writer| async move {
+                let id = BlockId::Wire("cut".into());
+                writer
+                    .event(StreamEvent::BlockStart {
+                        id: id.clone(),
+                        kind: BlockKind::Text {
+                            additional_params: None,
+                        },
+                    })
+                    .await
+                    .expect("open stream");
+                writer
+                    .event(StreamEvent::BlockDelta {
+                        id,
+                        delta: Delta::Text { text: "par".into() },
+                    })
+                    .await
+                    .expect("open stream");
+                // The connection drops here: no terminal record.
+            });
+        }
+        Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
+            done(),
+            Usage::new(),
+            "whole",
+        ))))
+    }
+}
+
+#[test]
+fn a_truncated_stream_is_reissued() {
+    assert!(
+        rig_core::serve::stream_truncated().is_retryable(),
+        "a truncation is a transport fault"
+    );
+    let mut app = run_support::app();
+    let recorder = EffectLogRecorder::new();
+    EffectLogResource::install(app.world_mut(), recorder.clone());
+    let witness = Arc::new(ObservationLog::default());
+    Witnessing::install(app.world_mut(), witness.clone());
+    let model = register(
+        &mut app,
+        MODEL,
+        Truncating {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        },
+    );
+    let agent = spawn_agent(app.world_mut(), "t", model);
+    app.world_mut().entity_mut(agent).insert(MaxTurns(4));
+    let run = spawn_run(app.world_mut(), agent, &[], "hi", true, None);
+    ended(&mut app, run, "the retried stream");
+    assert_eq!(
+        app.world().get::<RunResult>(run).map(|r| r.0.clone()),
+        Some("done".into()),
+        "{:?}",
+        app.world().get::<Failed>(run)
+    );
+    assert_eq!(retried(app.world(), run), 1);
+    assert_eq!(retry_facts(&witness).len(), 1);
+    let log: EffectLog =
+        serde_json::from_str(&serde_json::to_string(&recorder.log()).unwrap()).unwrap();
+    let completions: Vec<bool> = log
+        .iter()
+        .filter(|r| matches!(r.kind, EffectKind::Completion { .. }))
+        .map(|r| r.outcome.is_ok())
+        .collect();
+    assert_eq!(completions, [false, true]);
 }

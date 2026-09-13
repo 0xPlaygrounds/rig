@@ -46,7 +46,8 @@ mod adapter;
 pub(crate) use adapter::AdapterSlot;
 pub use adapter::{
     AdapterAnalysis, AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterErrorEnvelope,
-    AdapterEvent, AdapterObservation, AdapterUsage, AdapterVerdict,
+    AdapterEvent, AdapterObservation, AdapterUsage, AdapterVerdict, diagnostic_url_secrets,
+    scrub_diagnostic,
 };
 pub(crate) use adapter::{AdapterAttempt, PayloadObserver};
 

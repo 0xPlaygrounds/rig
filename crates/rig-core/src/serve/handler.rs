@@ -358,11 +358,17 @@ impl StreamTap {
 }
 
 /// The report a stream that ended before its terminal record resolves to.
+/// A truncation is a transport fault, not a provider verdict: the same
+/// request is served whole on the next call, as a reset connection is, so
+/// the report is retryable and a run with budget re-issues it (rig-ecs
+/// CONTRACT §5). What was delivered stays in the stream's fold for the
+/// record; the retry starts over.
 pub fn stream_truncated() -> ErrorReport {
     ErrorReport::new(
         ErrorKind::Response,
         "the stream ended before its terminal record",
     )
+    .with_retryable(true)
 }
 
 /// An answer, or an owned stream whose execution belongs to the driver.

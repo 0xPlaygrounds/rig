@@ -203,7 +203,9 @@ async fn blocked_prompt_is_a_provider_refusal_not_a_truncation() {
 /// EOF after content through the native runtime: the run fails as a
 /// truncation, the stream keeps the prefix and no error item (the wire sent
 /// none), history keeps only the prompt, and the bus witnesses the
-/// truncation with what was delivered.
+/// truncation with what was delivered. A truncation is retryable, so the
+/// run declines its provider-retry budget (CONTRACT §5): this pins the
+/// failure, `rig-ecs` pins the retry.
 #[tokio::test]
 async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
     let mut runs = Vec::new();
@@ -213,7 +215,13 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
             "",
             "pong?",
             witness,
-            |_| {},
+            |ecs| {
+                let agent = ecs.agent;
+                ecs.app
+                    .world_mut()
+                    .entity_mut(agent)
+                    .insert(rig_ecs::agent::ProviderRetries(0));
+            },
         )
         .await;
         let report = run.provider_report();
