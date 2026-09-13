@@ -1,0 +1,182 @@
+{
+  "header": {
+    "run_spec": 15991439691162022817,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 4096,
+          "tool_choice": null,
+          "additional_params": {
+            "reasoning": {
+              "effort": "low",
+              "summary": "auto"
+            },
+            "include": [
+              "reasoning.encrypted_content"
+            ]
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_1",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "**Defining Rust and Memory Safety**\n\nRust is a systems programming language that prioritizes performance, concurrency, and safety through ownership and borrowing, all while offering zero-cost abstractions. Memory safety is crucial as it prevents issues like null or dangling pointers and data races, which can lead to crashes and security vulnerabilities."
+                },
+                {
+                  "type": "encrypted",
+                  "content": "encrypted_content_REDACTED_1"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "Rust is a systems programming language that provides high performance and control like C/C++ while enforcing memory- and thread-safety through its ownership and borrowing rules and zero-cost abstractions. Memory safety matters because it prevents crashes, data corruption, and security vulnerabilities (e.g., buffer overflows, use-after-free, and data races), making software more reliable and secure."
+            }
+          ],
+          "usage": {
+            "input_tokens": 37,
+            "output_tokens": 164,
+            "total_tokens": 201,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 64
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": "resp_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "id": "resp_REDACTED_1",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You are a concise assistant. Answer directly.",
+            "max_output_tokens": 4096,
+            "model": "gpt-5-mini-2025-08-07",
+            "reasoning": {
+              "context": "current_turn",
+              "effort": "low",
+              "mode": "standard",
+              "summary": "detailed"
+            },
+            "usage": {
+              "input_tokens": 37,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 164,
+              "output_tokens_details": {
+                "reasoning_tokens": 64
+              },
+              "total_tokens": 201
+            },
+            "output": [
+              {
+                "type": "reasoning",
+                "id": "rs_REDACTED_1",
+                "summary": [
+                  {
+                    "type": "summary_text",
+                    "text": "**Defining Rust and Memory Safety**\n\nRust is a systems programming language that prioritizes performance, concurrency, and safety through ownership and borrowing, all while offering zero-cost abstractions. Memory safety is crucial as it prevents issues like null or dangling pointers and data races, which can lead to crashes and security vulnerabilities."
+                  }
+                ],
+                "encrypted_content": "encrypted_content_REDACTED_1",
+                "status": null
+              },
+              {
+                "id": "msg_REDACTED_1",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "Rust is a systems programming language that provides high performance and control like C/C++ while enforcing memory- and thread-safety through its ownership and borrowing rules and zero-cost abstractions. Memory safety matters because it prevents crashes, data corruption, and security vulnerabilities (e.g., buffer overflows, use-after-free, and data races), making software more reliable and secure.",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
+          }
+        }
+      }
+    }
+  ]
+}
