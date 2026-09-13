@@ -8,6 +8,7 @@ mod cassette {
     mod corpus_hooks;
     mod corpus_host;
     mod corpus_layers;
+    mod corpus_matrix_image;
     mod corpus_memory;
     mod corpus_oracle;
     mod corpus_outcome;
@@ -25,6 +26,7 @@ mod cassette {
     mod ecs_host;
     mod ecs_layers;
     mod ecs_lifecycle;
+    mod ecs_matrix_image;
     mod ecs_memory;
     mod ecs_ordering;
     mod ecs_outcome;

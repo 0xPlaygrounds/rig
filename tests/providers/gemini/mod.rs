@@ -17,6 +17,7 @@ mod cassette {
     mod corpus_delta;
     mod corpus_faults;
     mod corpus_matrix;
+    mod corpus_matrix_image;
     mod corpus_retrieval;
     mod corpus_serving;
     mod document_ordering;
@@ -28,6 +29,7 @@ mod cassette {
     mod ecs_lifecycle;
     mod ecs_matrix;
     mod ecs_matrix_extra;
+    mod ecs_matrix_image;
     mod ecs_ordering;
     mod ecs_parity;
     mod ecs_prompt_caching;

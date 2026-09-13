@@ -272,10 +272,15 @@ fn grant<M: CompletionModel + Clone + 'static>(
 /// Run the program's prompts on `agent`, ending as the program says.
 async fn run_prompts(
     agent: &rig::agent::Agent,
+    cell: &Cell,
     program: &Program,
 ) -> Vec<rig::agent::PromptResponse> {
-    let prompts: Vec<&str> = std::iter::once(program.prompt)
-        .chain(program.second_prompt)
+    let first = match cell.image {
+        Some(image) => super::image::prompt_message(image, program.prompt),
+        None => rig::message::Message::user(program.prompt),
+    };
+    let prompts: Vec<rig::message::Message> = std::iter::once(first)
+        .chain(program.second_prompt.map(rig::message::Message::user))
         .collect();
     let last = prompts.len() - 1;
     let mut outputs = Vec::new();
@@ -361,7 +366,7 @@ pub(crate) async fn run_agent<M: CompletionModel + Clone + 'static>(
         if let Some(label) = program.late_route {
             agent.register_model(label, wire.route());
         }
-        let responses = run_prompts(&agent, &program).await;
+        let responses = run_prompts(&agent, cell, &program).await;
         (agent.take_effect_log().expect("recording"), responses)
     } else {
         // A host's bus: the host registers the model under the agent's key
@@ -394,7 +399,7 @@ pub(crate) async fn run_agent<M: CompletionModel + Clone + 'static>(
             AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), OWNER, model_key);
         let builder = configure(builder, &program, settlement.as_ref());
         let agent = grant(builder, wire, cell, &program);
-        let responses = run_prompts(&agent, &program).await;
+        let responses = run_prompts(&agent, cell, &program).await;
         let log = agent.stamp(recorder.take());
         drop((agent, dispatcher, registrar));
         driver.await.expect("the host's driver");
@@ -437,6 +442,22 @@ pub(crate) async fn run_agent<M: CompletionModel + Clone + 'static>(
                 "the reasoning is not the answer"
             );
         }
+    }
+    if cell.image.is_some() {
+        super::image::assert_log(cell, &log);
+        for (n, response) in responses.iter().enumerate() {
+            super::image::assert_history(
+                cell,
+                response
+                    .messages
+                    .as_deref()
+                    .expect("a run has a transcript"),
+                &format!("{}: run {n} history", cell.name),
+            );
+        }
+        let answer = &responses.last().expect("a run").output;
+        super::image::assert_answer(cell, answer);
+        assert_eq!(*answer, corpus::golden_answer(&log));
     }
     if !cell.families.is_empty() {
         assert_eq!(

@@ -21,6 +21,8 @@ mod cassette {
     mod corpus_faults_responses;
     mod corpus_host;
     mod corpus_matrix_chat;
+    mod corpus_matrix_image_chat;
+    mod corpus_matrix_image_responses;
     mod corpus_matrix_responses;
     mod corpus_output;
     mod corpus_retrieval;
@@ -35,6 +37,8 @@ mod cassette {
     mod ecs_matrix_chat;
     mod ecs_matrix_extra_chat;
     mod ecs_matrix_extra_responses;
+    mod ecs_matrix_image_chat;
+    mod ecs_matrix_image_responses;
     mod ecs_matrix_responses;
     mod ecs_ordering;
     mod ecs_parity;

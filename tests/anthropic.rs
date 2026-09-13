@@ -38,3 +38,9 @@ mod anthropic;
 
 #[path = "common/ecs_cache.rs"]
 mod ecs_cache;
+
+// The wire runs the image matrix only; the matrix's other rows and
+// drivers are the six other wires'.
+#[allow(dead_code)]
+#[path = "common/ecs_matrix.rs"]
+mod ecs_matrix;

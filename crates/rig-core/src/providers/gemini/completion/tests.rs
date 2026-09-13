@@ -1581,6 +1581,38 @@ fn test_markdown_url_document_conversion_to_file_data_part() {
 }
 
 #[test]
+fn test_user_image_url_renders_as_file_data() {
+    // A URL-sourced user image is a Files API / Cloud Storage reference on
+    // this wire (`fileData`), never fetched inline: an arbitrary HTTPS image
+    // is not a Gemini capability, and the adapter does not convert it.
+    use crate::message::{DocumentSourceKind, Image, ImageMediaType, UserContent};
+
+    let image = UserContent::Image(Image {
+        data: DocumentSourceKind::Url("https://example.com/red_square.png".to_string()),
+        media_type: Some(ImageMediaType::PNG),
+        detail: None,
+        additional_params: None,
+    });
+
+    let content: Content = message::Message::User {
+        content: vec![image],
+    }
+    .try_into()
+    .unwrap();
+
+    match &content.parts[0] {
+        Part {
+            part: PartKind::FileData(file_data),
+            ..
+        } => {
+            assert_eq!(file_data.file_uri, "https://example.com/red_square.png");
+            assert_eq!(file_data.mime_type.as_deref(), Some("image/png"));
+        }
+        other => panic!("Expected file_data part for a URL image, got: {other:?}"),
+    }
+}
+
+#[test]
 fn test_tool_result_with_url_image_is_rejected() {
     use crate::message::{
         DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent,

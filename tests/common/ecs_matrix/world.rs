@@ -1521,8 +1521,16 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
                 .collect()
         })
         .unwrap_or_default();
-    let prompts: Vec<&str> = std::iter::once(program.prompt)
-        .chain(program.second_prompt)
+    let first = match cell.image {
+        Some(image) => super::image::user_content(image, program.prompt),
+        None => vec![rig::message::UserContent::text(program.prompt)],
+    };
+    let prompts: Vec<Vec<rig::message::UserContent>> = std::iter::once(first)
+        .chain(
+            program
+                .second_prompt
+                .map(|prompt| vec![rig::message::UserContent::text(prompt)]),
+        )
         .collect();
     let last = prompts.len() - 1;
     let mut runs = Vec::new();
@@ -1602,15 +1610,17 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             assert_mid_stream_scene_refused(&mut app, cell, &program, &recorder.log());
             gates.stream.add_permits(1);
             drive_run(&mut app, run, None, &mut cut, &recorder).await;
-        } else if cut_after.is_some()
-            && cell.reasoning == Some(super::cells::ReasoningCase::Tool)
-            && cell.thinking == super::cells::Thinking::On
-            && !program.streamed
-        {
-            // Row 7 consumes row 2's recording once: the first world sends
-            // its head, and only the restored world can send the tail. The
-            // cassette's strict HTTP match therefore checks the resumed
-            // provider request, beyond normalized effect-log replay.
+        } else if cell.live_resume {
+            // The live resume consumes the cell's recording once: the first
+            // world sends its head, and only the restored world can send
+            // the tail. The cassette's strict HTTP match therefore checks
+            // the resumed provider request (its history, images included),
+            // beyond normalized effect-log replay.
+            assert!(
+                cut_after.is_some(),
+                "{}: a live resume names its cut",
+                cell.name
+            );
             assert_eq!(n, 0);
             assert_eq!(last, 0);
             drive_until(&mut app, run, cut_after, &mut cut, &recorder, true).await;
@@ -1696,6 +1706,24 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             &log,
             gates.witness.as_deref().expect("reasoning is witnessed"),
         );
+    }
+    if cell.image.is_some() {
+        super::image::assert_log(cell, &log);
+        for run in &runs {
+            let history = super::reasoning::assistant_history(app.world_mut(), *run);
+            super::image::assert_history(
+                cell,
+                &history,
+                &format!("{}: run {run:?} history", cell.name),
+            );
+        }
+        let answer = &app
+            .world()
+            .get::<RunResult>(run)
+            .expect("the run answered")
+            .0;
+        super::image::assert_answer(cell, answer);
+        assert_eq!(*answer, corpus::golden_answer(&log));
     }
     if two_signals {
         assert_batch(&mut app, cell);

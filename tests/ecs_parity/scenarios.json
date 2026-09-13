@@ -55,6 +55,14 @@
     "crates/rig-verify/fixtures/anthropic_host_custom_twice_concurrent.effects.json",
     "crates/rig-verify/fixtures/anthropic_host_custom_twice_serial.effects.json",
     "crates/rig-verify/fixtures/anthropic_host_custom_unserved.effects.json",
+    "crates/rig-verify/fixtures/anthropic_image_inline_followup.effects.json",
+    "crates/rig-verify/fixtures/anthropic_image_inline_mixed_order.effects.json",
+    "crates/rig-verify/fixtures/anthropic_image_inline_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/anthropic_image_inline_text_unary.effects.json",
+    "crates/rig-verify/fixtures/anthropic_image_inline_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/anthropic_image_inline_tool_unary.effects.json",
+    "crates/rig-verify/fixtures/anthropic_image_url_text_unary.effects.json",
+    "crates/rig-verify/fixtures/anthropic_image_url_tool_unary.effects.json",
     "crates/rig-verify/fixtures/anthropic_layers_deny_tool.effects.json",
     "crates/rig-verify/fixtures/anthropic_layers_host_deny_over_host_bus.effects.json",
     "crates/rig-verify/fixtures/anthropic_layers_memory_load_replaced.effects.json",
@@ -358,6 +366,14 @@
     "crates/rig-verify/fixtures/ecs_parity/anthropic_host_custom_twice_concurrent.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/anthropic_host_custom_twice_serial.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/anthropic_host_custom_unserved.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/anthropic_image_inline_followup.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/anthropic_image_inline_mixed_order.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/anthropic_image_inline_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/anthropic_image_inline_text_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/anthropic_image_inline_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/anthropic_image_inline_tool_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/anthropic_image_url_text_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/anthropic_image_url_tool_unary.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/anthropic_layers_deny_tool.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/anthropic_layers_host_deny_over_host_bus.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/anthropic_layers_memory_load_replaced.effects.json",
@@ -663,6 +679,12 @@
     "crates/rig-verify/fixtures/ecs_parity/gemini_host_custom_twice_concurrent.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_host_custom_twice_serial.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_host_custom_unserved.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_image_inline_followup.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_image_inline_mixed_order.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_image_inline_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_image_inline_text_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_image_inline_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_image_inline_tool_unary.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_layers_deny_tool.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_layers_host_deny_over_host_bus.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_layers_memory_load_replaced.effects.json",
@@ -760,6 +782,14 @@
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_host_custom_twice_concurrent.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_host_custom_twice_serial.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_host_custom_unserved.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_image_inline_followup.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_image_inline_mixed_order.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_image_inline_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_image_inline_text_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_image_inline_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_image_inline_tool_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_image_url_text_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_image_url_tool_unary.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_layers_deny_tool.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_layers_host_deny_over_host_bus.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_layers_memory_load_replaced.effects.json",
@@ -849,6 +879,14 @@
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_host_custom_twice_concurrent.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_host_custom_twice_serial.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_host_custom_unserved.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_image_inline_followup.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_image_inline_mixed_order.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_image_inline_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_image_inline_text_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_image_inline_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_image_inline_tool_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_image_url_text_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_image_url_tool_unary.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_layers_deny_tool.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_layers_host_deny_over_host_bus.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_layers_memory_load_replaced.effects.json",
@@ -1036,6 +1074,12 @@
     "crates/rig-verify/fixtures/gemini_host_custom_twice_concurrent.effects.json",
     "crates/rig-verify/fixtures/gemini_host_custom_twice_serial.effects.json",
     "crates/rig-verify/fixtures/gemini_host_custom_unserved.effects.json",
+    "crates/rig-verify/fixtures/gemini_image_inline_followup.effects.json",
+    "crates/rig-verify/fixtures/gemini_image_inline_mixed_order.effects.json",
+    "crates/rig-verify/fixtures/gemini_image_inline_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/gemini_image_inline_text_unary.effects.json",
+    "crates/rig-verify/fixtures/gemini_image_inline_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/gemini_image_inline_tool_unary.effects.json",
     "crates/rig-verify/fixtures/gemini_layers_deny_tool.effects.json",
     "crates/rig-verify/fixtures/gemini_layers_host_deny_over_host_bus.effects.json",
     "crates/rig-verify/fixtures/gemini_layers_memory_load_replaced.effects.json",
@@ -1201,6 +1245,14 @@
     "crates/rig-verify/fixtures/openai_chat_host_custom_twice_concurrent.effects.json",
     "crates/rig-verify/fixtures/openai_chat_host_custom_twice_serial.effects.json",
     "crates/rig-verify/fixtures/openai_chat_host_custom_unserved.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_image_inline_followup.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_image_inline_mixed_order.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_image_inline_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_image_inline_text_unary.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_image_inline_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_image_inline_tool_unary.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_image_url_text_unary.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_image_url_tool_unary.effects.json",
     "crates/rig-verify/fixtures/openai_chat_layers_deny_tool.effects.json",
     "crates/rig-verify/fixtures/openai_chat_layers_host_deny_over_host_bus.effects.json",
     "crates/rig-verify/fixtures/openai_chat_layers_memory_load_replaced.effects.json",
@@ -1293,6 +1345,14 @@
     "crates/rig-verify/fixtures/openai_responses_host_custom_twice_concurrent.effects.json",
     "crates/rig-verify/fixtures/openai_responses_host_custom_twice_serial.effects.json",
     "crates/rig-verify/fixtures/openai_responses_host_custom_unserved.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_image_inline_followup.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_image_inline_mixed_order.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_image_inline_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_image_inline_text_unary.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_image_inline_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_image_inline_tool_unary.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_image_url_text_unary.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_image_url_tool_unary.effects.json",
     "crates/rig-verify/fixtures/openai_responses_layers_deny_tool.effects.json",
     "crates/rig-verify/fixtures/openai_responses_layers_host_deny_over_host_bus.effects.json",
     "crates/rig-verify/fixtures/openai_responses_layers_memory_load_replaced.effects.json",
@@ -1539,6 +1599,14 @@
     "tests/cassettes/anthropic/effect_corpus/tool_call_turn.yaml",
     "tests/cassettes/anthropic/empty_stop_sequence_matrix/agent_prompt_empty_stop_sequence.yaml",
     "tests/cassettes/anthropic/empty_stop_sequence_matrix/agent_stream_empty_stop_sequence.yaml",
+    "tests/cassettes/anthropic/image_matrix/inline_followup.yaml",
+    "tests/cassettes/anthropic/image_matrix/inline_mixed_order.yaml",
+    "tests/cassettes/anthropic/image_matrix/inline_text_streamed.yaml",
+    "tests/cassettes/anthropic/image_matrix/inline_text_unary.yaml",
+    "tests/cassettes/anthropic/image_matrix/inline_tool_streamed.yaml",
+    "tests/cassettes/anthropic/image_matrix/inline_tool_unary.yaml",
+    "tests/cassettes/anthropic/image_matrix/url_text_unary.yaml",
+    "tests/cassettes/anthropic/image_matrix/url_tool_unary.yaml",
     "tests/cassettes/anthropic/lifecycle_matrix/entry_log_order.yaml",
     "tests/cassettes/anthropic/lifecycle_matrix/middleware_streaming.yaml",
     "tests/cassettes/anthropic/lifecycle_matrix/middleware_unary.yaml",
@@ -1717,6 +1785,12 @@
     "tests/cassettes/gemini/hook_stress_tools/tool_error_guidance_drives_model_retry_blocking.yaml",
     "tests/cassettes/gemini/hook_stress_tools/two_arg_rewrites_chain_blocking.yaml",
     "tests/cassettes/gemini/hook_stress_tools/two_result_rewrites_chain_redact_then_wrap_blocking.yaml",
+    "tests/cassettes/gemini/image_matrix/inline_followup.yaml",
+    "tests/cassettes/gemini/image_matrix/inline_mixed_order.yaml",
+    "tests/cassettes/gemini/image_matrix/inline_text_streamed.yaml",
+    "tests/cassettes/gemini/image_matrix/inline_text_unary.yaml",
+    "tests/cassettes/gemini/image_matrix/inline_tool_streamed.yaml",
+    "tests/cassettes/gemini/image_matrix/inline_tool_unary.yaml",
     "tests/cassettes/gemini/lifecycle_matrix/entry_log_order.yaml",
     "tests/cassettes/gemini/lifecycle_matrix/middleware_streaming.yaml",
     "tests/cassettes/gemini/lifecycle_matrix/middleware_unary.yaml",
@@ -1784,6 +1858,22 @@
     "tests/cassettes/openai/extractor_usage/extract_with_chat_history_with_usage_works.yaml",
     "tests/cassettes/openai/extractor_usage/extract_with_usage_returns_data_and_usage.yaml",
     "tests/cassettes/openai/extractor_usage/usage_tracking_works_for_different_schemas.yaml",
+    "tests/cassettes/openai/image_matrix_chat/inline_followup.yaml",
+    "tests/cassettes/openai/image_matrix_chat/inline_mixed_order.yaml",
+    "tests/cassettes/openai/image_matrix_chat/inline_text_streamed.yaml",
+    "tests/cassettes/openai/image_matrix_chat/inline_text_unary.yaml",
+    "tests/cassettes/openai/image_matrix_chat/inline_tool_streamed.yaml",
+    "tests/cassettes/openai/image_matrix_chat/inline_tool_unary.yaml",
+    "tests/cassettes/openai/image_matrix_chat/url_text_unary.yaml",
+    "tests/cassettes/openai/image_matrix_chat/url_tool_unary.yaml",
+    "tests/cassettes/openai/image_matrix_responses/inline_followup.yaml",
+    "tests/cassettes/openai/image_matrix_responses/inline_mixed_order.yaml",
+    "tests/cassettes/openai/image_matrix_responses/inline_text_streamed.yaml",
+    "tests/cassettes/openai/image_matrix_responses/inline_text_unary.yaml",
+    "tests/cassettes/openai/image_matrix_responses/inline_tool_streamed.yaml",
+    "tests/cassettes/openai/image_matrix_responses/inline_tool_unary.yaml",
+    "tests/cassettes/openai/image_matrix_responses/url_text_unary.yaml",
+    "tests/cassettes/openai/image_matrix_responses/url_tool_unary.yaml",
     "tests/cassettes/openai/lifecycle_matrix/entry_log_order.yaml",
     "tests/cassettes/openai/lifecycle_matrix/middleware_streaming.yaml",
     "tests/cassettes/openai/lifecycle_matrix/middleware_unary.yaml",
@@ -1864,12 +1954,14 @@
     "tests/common/ecs_matrix/cells.rs",
     "tests/common/ecs_matrix/extra.rs",
     "tests/common/ecs_matrix/faults.rs",
+    "tests/common/ecs_matrix/image.rs",
     "tests/common/ecs_matrix/reasoning.rs",
     "tests/common/ecs_matrix/world.rs",
     "tests/common/goldens.rs",
     "tests/common/stream_faults.rs",
     "tests/common/support.rs",
     "tests/data/camponotus_flavomarginatus_ant.jpg",
+    "tests/data/red_square.png",
     "tests/ecs_parity/README.md",
     "tests/providers/anthropic/cassette/agent.rs",
     "tests/providers/anthropic/cassette/boxed_transport.rs",
@@ -1878,6 +1970,7 @@
     "tests/providers/anthropic/cassette/corpus_hooks.rs",
     "tests/providers/anthropic/cassette/corpus_host.rs",
     "tests/providers/anthropic/cassette/corpus_layers.rs",
+    "tests/providers/anthropic/cassette/corpus_matrix_image.rs",
     "tests/providers/anthropic/cassette/corpus_memory.rs",
     "tests/providers/anthropic/cassette/corpus_oracle.rs",
     "tests/providers/anthropic/cassette/corpus_outcome.rs",
@@ -1896,6 +1989,7 @@
     "tests/providers/anthropic/cassette/ecs_host.rs",
     "tests/providers/anthropic/cassette/ecs_layers.rs",
     "tests/providers/anthropic/cassette/ecs_lifecycle.rs",
+    "tests/providers/anthropic/cassette/ecs_matrix_image.rs",
     "tests/providers/anthropic/cassette/ecs_memory.rs",
     "tests/providers/anthropic/cassette/ecs_ordering.rs",
     "tests/providers/anthropic/cassette/ecs_outcome.rs",
@@ -2120,6 +2214,7 @@
     "tests/providers/gemini/cassette/corpus_delta.rs",
     "tests/providers/gemini/cassette/corpus_faults.rs",
     "tests/providers/gemini/cassette/corpus_matrix.rs",
+    "tests/providers/gemini/cassette/corpus_matrix_image.rs",
     "tests/providers/gemini/cassette/corpus_retrieval.rs",
     "tests/providers/gemini/cassette/corpus_serving.rs",
     "tests/providers/gemini/cassette/document_ordering.rs",
@@ -2131,6 +2226,7 @@
     "tests/providers/gemini/cassette/ecs_lifecycle.rs",
     "tests/providers/gemini/cassette/ecs_matrix.rs",
     "tests/providers/gemini/cassette/ecs_matrix_extra.rs",
+    "tests/providers/gemini/cassette/ecs_matrix_image.rs",
     "tests/providers/gemini/cassette/ecs_ordering.rs",
     "tests/providers/gemini/cassette/ecs_parity.rs",
     "tests/providers/gemini/cassette/ecs_prompt_caching.rs",
@@ -2343,6 +2439,8 @@
     "tests/providers/openai/cassette/corpus_faults_responses.rs",
     "tests/providers/openai/cassette/corpus_host.rs",
     "tests/providers/openai/cassette/corpus_matrix_chat.rs",
+    "tests/providers/openai/cassette/corpus_matrix_image_chat.rs",
+    "tests/providers/openai/cassette/corpus_matrix_image_responses.rs",
     "tests/providers/openai/cassette/corpus_matrix_responses.rs",
     "tests/providers/openai/cassette/corpus_output.rs",
     "tests/providers/openai/cassette/corpus_retrieval.rs",
@@ -2357,6 +2455,8 @@
     "tests/providers/openai/cassette/ecs_matrix_chat.rs",
     "tests/providers/openai/cassette/ecs_matrix_extra_chat.rs",
     "tests/providers/openai/cassette/ecs_matrix_extra_responses.rs",
+    "tests/providers/openai/cassette/ecs_matrix_image_chat.rs",
+    "tests/providers/openai/cassette/ecs_matrix_image_responses.rs",
     "tests/providers/openai/cassette/ecs_matrix_responses.rs",
     "tests/providers/openai/cassette/ecs_ordering.rs",
     "tests/providers/openai/cassette/ecs_parity.rs",
@@ -3041,6 +3141,94 @@
         "binary": "anthropic",
         "test": "anthropic::cassette::ecs_layers::two_layers_effect_log_is_the_golden_fixture",
         "source": "tests/providers/anthropic/cassette/ecs_layers.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_image::inline_followup",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_image.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_image::inline_followup",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_image.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_image::inline_mixed_order",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_image.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_image::inline_mixed_order",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_image.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_image::inline_text_streamed",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_image.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_image::inline_text_streamed",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_image.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_image::inline_text_unary",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_image.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_image::inline_text_unary",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_image.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_image::inline_tool_streamed",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_image.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_image::inline_tool_streamed",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_image.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_image::inline_tool_unary",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_image.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_image::inline_tool_unary",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_image.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_image::url_text_unary",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_image.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_image::url_text_unary",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_image.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_image::url_tool_unary",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_image.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_image::url_tool_unary",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_image.rs"
       }
     },
     {
@@ -16617,6 +16805,94 @@
       }
     },
     {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_image::inline_followup",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_image.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_image::inline_followup",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_image.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_image::inline_mixed_order",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_image.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_image::inline_mixed_order",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_image.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_image::inline_text_streamed",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_image.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_image::inline_text_streamed",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_image.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_image::inline_text_unary",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_image.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_image::inline_text_unary",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_image.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_image::inline_tool_streamed",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_image.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_image::inline_tool_streamed",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_image.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_image::inline_tool_unary",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_image.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_image::inline_tool_unary",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_image.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_image::url_text_unary",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_image.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_image::url_text_unary",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_image.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_image::url_tool_unary",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_image.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_image::url_tool_unary",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_image.rs"
+      }
+    },
+    {
       "id": "rig::gemini::gemini::cassette::corpus_retrieval::context_and_tools_effect_log_is_the_golden_fixture",
       "classification": "unclassified",
       "source": "tests/providers/gemini/cassette/corpus_retrieval.rs",
@@ -26516,6 +26792,182 @@
         "binary": "openai",
         "test": "openai::cassette::ecs_matrix_chat::shaping_tool_choice_required_first",
         "source": "tests/providers/openai/cassette/ecs_matrix_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_image_chat::inline_followup",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_image_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_image_chat::inline_followup",
+        "source": "tests/providers/openai/cassette/ecs_matrix_image_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_image_chat::inline_mixed_order",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_image_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_image_chat::inline_mixed_order",
+        "source": "tests/providers/openai/cassette/ecs_matrix_image_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_image_chat::inline_text_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_image_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_image_chat::inline_text_streamed",
+        "source": "tests/providers/openai/cassette/ecs_matrix_image_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_image_chat::inline_text_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_image_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_image_chat::inline_text_unary",
+        "source": "tests/providers/openai/cassette/ecs_matrix_image_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_image_chat::inline_tool_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_image_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_image_chat::inline_tool_streamed",
+        "source": "tests/providers/openai/cassette/ecs_matrix_image_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_image_chat::inline_tool_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_image_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_image_chat::inline_tool_unary",
+        "source": "tests/providers/openai/cassette/ecs_matrix_image_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_image_chat::url_text_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_image_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_image_chat::url_text_unary",
+        "source": "tests/providers/openai/cassette/ecs_matrix_image_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_image_chat::url_tool_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_image_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_image_chat::url_tool_unary",
+        "source": "tests/providers/openai/cassette/ecs_matrix_image_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_image_responses::inline_followup",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_image_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_image_responses::inline_followup",
+        "source": "tests/providers/openai/cassette/ecs_matrix_image_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_image_responses::inline_mixed_order",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_image_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_image_responses::inline_mixed_order",
+        "source": "tests/providers/openai/cassette/ecs_matrix_image_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_image_responses::inline_text_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_image_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_image_responses::inline_text_streamed",
+        "source": "tests/providers/openai/cassette/ecs_matrix_image_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_image_responses::inline_text_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_image_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_image_responses::inline_text_unary",
+        "source": "tests/providers/openai/cassette/ecs_matrix_image_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_image_responses::inline_tool_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_image_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_image_responses::inline_tool_streamed",
+        "source": "tests/providers/openai/cassette/ecs_matrix_image_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_image_responses::inline_tool_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_image_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_image_responses::inline_tool_unary",
+        "source": "tests/providers/openai/cassette/ecs_matrix_image_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_image_responses::url_text_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_image_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_image_responses::url_text_unary",
+        "source": "tests/providers/openai/cassette/ecs_matrix_image_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_image_responses::url_tool_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_image_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_image_responses::url_tool_unary",
+        "source": "tests/providers/openai/cassette/ecs_matrix_image_responses.rs"
       }
     },
     {

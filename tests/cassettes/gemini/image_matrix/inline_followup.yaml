@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"inlineData":{"data":"iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC","mimeType":"image/png"},"thought":false},{"text":"Describe the dominant non-background color of this image in one short sentence.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2048,"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"The dominant non-background color is red.","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":9,"promptTokenCount":1115,"promptTokensDetails":[{"modality":"TEXT","tokenCount":26},{"modality":"IMAGE","tokenCount":1089}],"serviceTier":"standard","thoughtsTokenCount":106,"totalTokenCount":1230}}'
+---
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"inlineData":{"data":"iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC","mimeType":"image/png"},"thought":false},{"text":"Describe the dominant non-background color of this image in one short sentence.","thought":false}],"role":"user"},{"parts":[{"text":"The dominant non-background color is red.","thought":false},{"text":"","thought":true,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"text":"What shape did the image I sent earlier contain? Answer in one short sentence.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2048,"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"The image contained a red square.","thoughtSignature":"signature_REDACTED_2"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":7,"promptTokenCount":1142,"promptTokensDetails":[{"modality":"TEXT","tokenCount":53},{"modality":"IMAGE","tokenCount":1089}],"serviceTier":"standard","thoughtsTokenCount":65,"totalTokenCount":1214}}'
