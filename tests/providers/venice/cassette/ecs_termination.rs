@@ -157,7 +157,7 @@ async fn streaming_completed_turn_reports_stop_and_cap() {
     }
 }
 
-#[ignore = "Venice reports finish_reason `stop` on a tool-call turn, and the model-turn hook sees `Stop`, not `ToolCalls`: a dialect the matrix records, not a cell it can pin"]
+#[ignore = "no recording: the cell's cassette was removed as an orphan in #2501 (its Venice model then reported `stop` on tool turns); `mistral-small-3-2-24b-instruct` reports `tool_calls` on every #2501/#2503 tool turn, and a `stop` beside a call is upgraded to `ToolCalls` at the response (`FinishReason::reconcile_with_output`), so recording `turn_termination_matrix/{blocking,streaming}_tool_turn_reports_tool_calls` with VENICE_API_KEY un-ignores this cell as written"]
 #[tokio::test]
 async fn blocking_tool_turn_reports_tool_calls() {
     {
@@ -196,7 +196,7 @@ async fn blocking_tool_turn_reports_tool_calls() {
     }
 }
 
-#[ignore = "Venice reports finish_reason `stop` on a tool-call turn, and the model-turn hook sees `Stop`, not `ToolCalls`: a dialect the matrix records, not a cell it can pin"]
+#[ignore = "no recording: the cell's cassette was removed as an orphan in #2501 (its Venice model then reported `stop` on tool turns); `mistral-small-3-2-24b-instruct` reports `tool_calls` on every #2501/#2503 tool turn, and a `stop` beside a call is upgraded to `ToolCalls` at the response (`FinishReason::reconcile_with_output`), so recording `turn_termination_matrix/{blocking,streaming}_tool_turn_reports_tool_calls` with VENICE_API_KEY un-ignores this cell as written"]
 #[tokio::test]
 async fn streaming_tool_turn_reports_tool_calls() {
     {

@@ -2347,3 +2347,57 @@ async fn an_empty_content_block_is_rejected_before_the_provider() {
         "the provider was never asked"
     );
 }
+
+/// The model-turn hook reads the reconciled finish reason: a wire that
+/// reports `stop` on a turn that carried a tool call (Venice's Mistral
+/// dialect did) reaches the hook as `ToolCalls`, the same value the
+/// response and the record carry (`FinishReason::reconcile_with_output`).
+#[derive(Clone, Default)]
+struct FinishReasonHook(Arc<Mutex<Vec<Option<FinishReason>>>>);
+
+impl AgentHook for FinishReasonHook {
+    async fn on_model_turn_finished(
+        &self,
+        _: &HookContext,
+        event: crate::agent::hook::ModelTurnFinished<'_>,
+    ) -> crate::agent::hook::ModelTurnAction {
+        self.0
+            .lock()
+            .expect("finish reasons")
+            .push(event.finish_reason.cloned());
+        crate::agent::hook::ModelTurnAction::continue_run()
+    }
+}
+
+#[tokio::test]
+async fn the_model_turn_hook_reads_the_reconciled_finish_reason() {
+    let hook = FinishReasonHook::default();
+    let agent = AgentBuilder::new(MockCompletionModel::from_turns([
+        MockTurn::tool_call("call_1", "add", json!({"x": 1, "y": 2}))
+            .with_finish_reason(FinishReason::Stop),
+        MockTurn::text("3").with_finish_reason(FinishReason::Stop),
+    ]))
+    .tool(MockAddTool)
+    .add_hook(hook.clone())
+    .build();
+    let response = agent
+        .prompt("add 1 and 2")
+        .max_turns(2)
+        .await
+        .expect("the run answers");
+    assert_eq!(response.output, "3");
+    let reasons = hook.0.lock().expect("finish reasons").clone();
+    assert_eq!(
+        reasons,
+        [Some(FinishReason::ToolCalls), Some(FinishReason::Stop)],
+        "the tool turn reads as ToolCalls whatever the wire said"
+    );
+    assert_eq!(
+        response
+            .completion_calls
+            .first()
+            .and_then(|call| call.finish_reason.clone()),
+        Some(FinishReason::ToolCalls),
+        "the record agrees with the hook"
+    );
+}
