@@ -639,6 +639,7 @@ impl ToolServerHandle {
             .collect()
     }
 
+    /// The retrieval effects the server would dispatch for a request.
     pub fn retrieval_effects(
         &self,
         prompt: Option<String>,

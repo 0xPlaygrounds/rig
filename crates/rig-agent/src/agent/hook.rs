@@ -287,15 +287,20 @@ impl Scratchpad {
         self.lock().remove::<T>()
     }
 
-    /// Atomically update a value, starting at `Default`.
+    /// Update a value, starting at `Default`: the value is taken out under
+    /// the lock, `update` runs with the lock released, and the result is
+    /// written back. So `update` may read or write the scratchpad itself
+    /// (a hook that inserts a sibling value from inside the closure does
+    /// not deadlock the run), and two concurrent updates of one type are
+    /// last-writer-wins, not serialized — a per-run hook stack is polled
+    /// from one task, where that never arises.
     pub fn update<T, R>(&self, update: impl FnOnce(&mut T) -> R) -> R
     where
         T: Clone + Default + WasmCompatSend + WasmCompatSync + 'static,
     {
-        let mut guard = self.lock();
-        let mut value = guard.remove::<T>().unwrap_or_default();
+        let mut value = self.lock().remove::<T>().unwrap_or_default();
         let result = update(&mut value);
-        guard.insert(value);
+        self.lock().insert(value);
         result
     }
 }
@@ -861,13 +866,21 @@ pub enum SettledOutcome<'a> {
 /// Hook event kind used only as an observation performance hint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StepEventKind {
+    /// `on_run_start`.
     RunStart,
+    /// `on_run_settled`.
     RunSettled,
+    /// `on_completion_call`.
     CompletionCall,
+    /// `on_model_turn_finished`.
     ModelTurnFinished,
+    /// `on_invalid_tool_call`.
     InvalidToolCall,
+    /// `on_text_delta`.
     TextDelta,
+    /// `on_reasoning_delta`.
     ReasoningDelta,
+    /// `on_tool_call_delta`.
     ToolCallDelta,
     /// `on_dispatch`/`on_outcome` for a completion effect.
     CompletionDispatch,

@@ -108,3 +108,14 @@ fn a_prompt_and_tool_definitions_become_the_preamble_and_the_grants() {
     assert_eq!(texts(&requests[0])[0], "system:Be brief.");
     assert_eq!(requests[0].tools.len(), 1);
 }
+
+/// The plugin's grants take the agent's order counter, which only
+/// `install_agent` creates: a plugin built without it says so at build,
+/// not on the first `Update` with a missing-resource panic from inside a
+/// system.
+#[test]
+#[should_panic(expected = "AssetsPlugin needs install_agent first")]
+fn the_plugin_refuses_a_world_without_the_agent_installed() {
+    let mut app = App::new();
+    app.add_plugins((AssetPlugin::default(), AssetsPlugin));
+}

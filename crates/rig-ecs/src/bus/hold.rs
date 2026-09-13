@@ -41,6 +41,35 @@ struct Transitions {
     pending: VecDeque<HoldTransition>,
 }
 
+/// Drop `owner`'s hold on `entity` after `Held` already went (a host removed
+/// the marker directly, bypassing every owner): the owner's release is still
+/// published as a transition, so the witness sees why the call left the
+/// barrier. A no-op when the owner holds nothing. The runtime uses it for
+/// its own batch owner; a policy whose marker a host removed may use it to
+/// close its books the same way.
+pub fn forget_owner(world: &mut World, entity: Entity, owner: &str) {
+    let Some(mut owners) = world.get::<HoldOwners>(entity).cloned() else {
+        return;
+    };
+    let Some(emitter) = owners.0.remove(owner) else {
+        return;
+    };
+    begin(
+        world,
+        HoldTransition {
+            entity,
+            owner: emitter,
+            acquired: false,
+        },
+    );
+    if owners.0.is_empty() {
+        world.entity_mut(entity).remove::<HoldOwners>();
+    } else {
+        world.entity_mut(entity).insert(owners);
+    }
+    finish(world);
+}
+
 fn begin(world: &mut World, event: HoldTransition) {
     let mut transitions = world.get_resource_or_init::<Transitions>();
     transitions.depth += 1;

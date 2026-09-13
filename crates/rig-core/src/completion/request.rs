@@ -1149,8 +1149,8 @@ impl<M> CompletionRequestBuilder<M> {
     }
 
     /// Overrides the model used for this request.
-    pub fn model(mut self, model: impl Into<String>) -> Self {
-        self.request_model = Some(model.into());
+    pub fn model<S: Into<String>>(mut self, model: impl Into<Option<S>>) -> Self {
+        self.request_model = model.into().map(Into::into);
         self
     }
 
@@ -1226,7 +1226,12 @@ impl<M> CompletionRequestBuilder<M> {
         mut self,
         additional_params: impl Into<Option<serde_json::Value>>,
     ) -> Self {
+        // Like every folded setter, `None` clears. `Some(value)` merges into
+        // what is set (a second call adds keys rather than replacing the
+        // first), so a caller composing params from several sources never
+        // has to hold the running object itself.
         let Some(additional_params) = additional_params.into() else {
+            self.additional_params = None;
             return self;
         };
         self.additional_params = Some(match self.additional_params.take() {

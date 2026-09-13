@@ -9,6 +9,8 @@ pub use rig_core::transcript::{
     TranscriptError, tool_result_message, tool_result_output, validate_canonical,
 };
 
+/// The result text for a valid call skipped because a sibling call in the
+/// same assistant turn was invalid.
 pub const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
     "Tool not executed because another tool call in the same assistant turn was invalid.";
 
@@ -30,6 +32,8 @@ pub fn build_full_history(
     input.iter().cloned().chain(new_messages).collect()
 }
 
+/// The user message that asks the model to retry after an invalid tool
+/// call, naming what was wrong.
 pub fn invalid_tool_retry_user_message(
     assistant_content: &[AssistantContent],
     invalid_tool_call_id: &ToolCallId,
@@ -148,6 +152,7 @@ pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
     })
 }
 
+/// The concatenated text of a choice.
 pub fn assistant_text_from_choice(choice: &[AssistantContent]) -> String {
     choice
         .iter()

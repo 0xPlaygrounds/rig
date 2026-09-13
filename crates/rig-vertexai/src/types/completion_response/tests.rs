@@ -428,3 +428,51 @@ fn multiple_missing_call_ids_are_distinct_and_repeatable() {
         assert_eq!(call.function.arguments, serde_json::json!({"n":i}));
     }
 }
+
+/// Vertex never issues call ids (its `FunctionCall` has no id field). The
+/// `index`-th call of a response mints its own handle at the converter, so
+/// two same-tool calls in one turn stay distinct, a text part between them
+/// does not shift the count, and a re-run yields the same ids.
+#[test]
+fn id_less_calls_in_one_turn_mint_distinct_handles_by_position() {
+    use rig_core::message::ToolCallId;
+    let call = || {
+        let function_call = vertexai::model::FunctionCall::new()
+            .set_name("same".to_string())
+            .set_args(serde_json::Map::new());
+        vertexai::model::Part::new().set_function_call(function_call)
+    };
+    let build = || {
+        let content = vertexai::model::Content::new()
+            .set_role("model")
+            .set_parts([
+                call(),
+                vertexai::model::Part::new().set_text("between".to_string()),
+                call(),
+                call(),
+            ]);
+        let candidate = vertexai::model::Candidate::new().set_content(content);
+        VertexGenerateContentOutput(
+            vertexai::model::GenerateContentResponse::new().set_candidates([candidate]),
+        )
+    };
+    let first = CompletionResponse::try_from(build()).expect("converts");
+    let again = CompletionResponse::try_from(build()).expect("converts");
+    assert_eq!(first.choice, again.choice, "a re-run yields the same ids");
+    let ids: Vec<_> = first
+        .choice
+        .iter()
+        .filter_map(|item| match item {
+            AssistantContent::ToolCall(call) => Some(call.id.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            ToolCallId::minted(0),
+            ToolCallId::minted(1),
+            ToolCallId::minted(2),
+        ]
+    );
+}

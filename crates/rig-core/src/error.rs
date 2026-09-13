@@ -294,25 +294,6 @@ fn source_chain(error: &(dyn std::error::Error + 'static)) -> Vec<String> {
 }
 
 impl CompletionError {
-    /// Whether the same request may reasonably be retried: a provider's
-    /// reply classifies by status ([`retryable_status`]), a response-less
-    /// transport failure by what it is ([`transient_transport`]), and
-    /// everything else is a fault in the request or the response and is not
-    /// retried.
-    pub fn is_retryable(&self) -> bool {
-        match self {
-            Self::HttpError(error) => transient_transport(error),
-            Self::ProviderResponse(response) => {
-                retryable_status(response.status.map(|s| s.as_u16()))
-            }
-            Self::JsonError(_)
-            | Self::UrlError(_)
-            | Self::RequestError(_)
-            | Self::ResponseError(_)
-            | Self::ProviderError(_) => false,
-        }
-    }
-
     /// The wire form of this error.
     pub fn report(&self) -> ErrorReport {
         ErrorReport::from(self)
@@ -354,11 +335,15 @@ impl From<&CompletionError> for ErrorReport {
             | CompletionError::ResponseError(_)
             | CompletionError::ProviderError(_) => None,
         };
+        let code = match error {
+            CompletionError::ProviderResponse(response) => response.code.clone(),
+            _ => None,
+        };
         ErrorReport {
             kind,
             retryable: error.is_retryable(),
             message: error.to_string(),
-            code: None,
+            code,
             http_status,
             refusal: false,
             source_chain: source_chain(error),
@@ -451,12 +436,8 @@ impl From<MemoryError> for ErrorReport {
 
 impl From<&EmbeddingError> for ErrorReport {
     fn from(error: &EmbeddingError) -> Self {
-        let mut transport_retryable = false;
         let (kind, http_status) = match error {
-            EmbeddingError::HttpError(inner) => {
-                transport_retryable = transient_transport(inner);
-                (ErrorKind::Http, None)
-            }
+            EmbeddingError::HttpError(_) => (ErrorKind::Http, None),
             EmbeddingError::JsonError(_) => (ErrorKind::Json, None),
             EmbeddingError::UrlError(_) => (ErrorKind::Url, None),
             EmbeddingError::DocumentError(_) => (ErrorKind::Request, None),
@@ -472,26 +453,9 @@ impl From<&EmbeddingError> for ErrorReport {
                 (ErrorKind::ProviderResponse, status)
             }
         };
-        let retryable = match kind {
-            ErrorKind::Http => transport_retryable,
-            ErrorKind::ProviderResponse => retryable_status(http_status),
-            ErrorKind::Json
-            | ErrorKind::Url
-            | ErrorKind::Request
-            | ErrorKind::Response
-            | ErrorKind::Provider
-            | ErrorKind::Tool(_)
-            | ErrorKind::MemoryBackend
-            | ErrorKind::MemoryPolicy
-            | ErrorKind::Internal
-            | ErrorKind::Cancelled
-            | ErrorKind::Timeout
-            | ErrorKind::BusClosed
-            | ErrorKind::HandlerUnavailable
-            | ErrorKind::Divergence
-            | ErrorKind::Denied
-            | ErrorKind::Other => false,
-        };
+        // One rule per error type: the retry verdict is the error's own,
+        // never a copy of its table kept beside the report.
+        let retryable = error.is_retryable();
         let provider_response = match error {
             EmbeddingError::ProviderResponse(response) => Some(Box::new(response.clone())),
             _ => None,
@@ -499,11 +463,14 @@ impl From<&EmbeddingError> for ErrorReport {
         let request_id = provider_response
             .as_ref()
             .and_then(|response| response.provider_request_id.clone());
+        let code = provider_response
+            .as_ref()
+            .and_then(|response| response.code.clone());
         ErrorReport {
             kind,
             retryable,
             message: error.to_string(),
-            code: None,
+            code,
             http_status,
             refusal: false,
             source_chain: source_chain(error),
@@ -521,12 +488,8 @@ impl From<EmbeddingError> for ErrorReport {
 
 impl From<&RerankError> for ErrorReport {
     fn from(error: &RerankError) -> Self {
-        let mut transport_retryable = false;
         let (kind, http_status) = match error {
-            RerankError::HttpError(inner) => {
-                transport_retryable = transient_transport(inner);
-                (ErrorKind::Http, None)
-            }
+            RerankError::HttpError(_) => (ErrorKind::Http, None),
             RerankError::JsonError(_) => (ErrorKind::Json, None),
             RerankError::UrlError(_) => (ErrorKind::Url, None),
             RerankError::ResponseError(_) => (ErrorKind::Response, None),
@@ -536,26 +499,9 @@ impl From<&RerankError> for ErrorReport {
                 (ErrorKind::ProviderResponse, status)
             }
         };
-        let retryable = match kind {
-            ErrorKind::Http => transport_retryable,
-            ErrorKind::ProviderResponse => retryable_status(http_status),
-            ErrorKind::Json
-            | ErrorKind::Url
-            | ErrorKind::Request
-            | ErrorKind::Response
-            | ErrorKind::Provider
-            | ErrorKind::Tool(_)
-            | ErrorKind::MemoryBackend
-            | ErrorKind::MemoryPolicy
-            | ErrorKind::Internal
-            | ErrorKind::Cancelled
-            | ErrorKind::Timeout
-            | ErrorKind::BusClosed
-            | ErrorKind::HandlerUnavailable
-            | ErrorKind::Divergence
-            | ErrorKind::Denied
-            | ErrorKind::Other => false,
-        };
+        // One rule per error type: the retry verdict is the error's own,
+        // never a copy of its table kept beside the report.
+        let retryable = error.is_retryable();
         let provider_response = match error {
             RerankError::ProviderResponse(response) => Some(Box::new(response.clone())),
             _ => None,
@@ -563,11 +509,14 @@ impl From<&RerankError> for ErrorReport {
         let request_id = provider_response
             .as_ref()
             .and_then(|response| response.provider_request_id.clone());
+        let code = provider_response
+            .as_ref()
+            .and_then(|response| response.code.clone());
         ErrorReport {
             kind,
             retryable,
             message: error.to_string(),
-            code: None,
+            code,
             http_status,
             refusal: false,
             source_chain: source_chain(error),

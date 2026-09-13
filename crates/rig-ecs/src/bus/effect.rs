@@ -171,7 +171,9 @@ pub struct Issued(
 /// denied (`EffectOutcome(Err(..))` inserted) or the entity despawned. The
 /// world-side spelling of a layer that suspends in `before`.
 /// Policies with independent ownership use [`super::acquire_hold`] and
-/// [`super::release_hold`]; removing this marker directly bypasses all owners.
+/// [`super::release_hold`]; removing this marker directly bypasses all owners
+/// (the batch's own marker follows: a call the batch held and a host
+/// approved is dispatched and counted as active).
 #[derive(Component, Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct Held;

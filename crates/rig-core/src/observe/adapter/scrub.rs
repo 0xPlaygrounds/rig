@@ -1,4 +1,6 @@
-//! Small, bounded diagnostics; credential-bearing transport fields are never copied.
+//! Small, bounded diagnostics. Credential-bearing transport fields are read
+//! once, held for the attempt so their values can be scrubbed out of every
+//! diagnostic, and never emitted.
 
 const LIMIT: usize = 512;
 

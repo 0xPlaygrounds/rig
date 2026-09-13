@@ -1138,52 +1138,52 @@ fn concurrency_and_independent_holds_survive_mid_batch_checkpoints() {
     }
 }
 
+/// A host may approve a call the batch holds by either documented route —
+/// removing `Held`, or releasing the `rig-ecs/batch` owner. Either way the
+/// batch's own marker goes with the hold: the call dispatches, the batch
+/// counts it as active, the run lands, and a scene saved afterwards is one
+/// a fresh world loads (a batch hold with no barrier would refuse the load).
 #[test]
-fn review_batch_hold_survives_scene_roundtrip() {
-    let (mut app, agent, _, _) = tooling(two_calls_then_text());
-    spawn_run(app.world_mut(), agent, &[], "add numbers", false, None);
-    let started = std::time::Instant::now();
-    loop {
-        app.world_mut().run_schedule(RigSchedule);
-        if app
-            .world_mut()
-            .query_filtered::<Entity, With<rig_ecs::bus::Held>>()
-            .iter(app.world())
-            .next()
-            .is_some()
-        {
-            break;
+fn approving_a_batch_held_call_by_any_route_keeps_the_batch_and_the_scene_consistent() {
+    use rig_ecs::{bus::Held, systems::BatchHeld};
+    for route in ["remove Held", "release the batch owner"] {
+        let (mut app, agent, _, _) = tooling(two_calls_then_text());
+        let run = spawn_run(app.world_mut(), agent, &[], "add numbers", false, None);
+        // One schedule pass at a time: an `update` runs to quiescence and
+        // would land the batch before the hold is observable.
+        let started = std::time::Instant::now();
+        let held = loop {
+            app.world_mut().run_schedule(RigSchedule);
+            let held = app
+                .world_mut()
+                .query_filtered::<Entity, (With<BatchHeld>, With<Held>)>()
+                .iter(app.world())
+                .next();
+            if let Some(held) = held {
+                break held;
+            }
+            assert!(
+                started.elapsed() < GUARD,
+                "{route}: batch was never materialised"
+            );
+            std::thread::yield_now();
+        };
+        if route == "remove Held" {
+            app.world_mut().entity_mut(held).remove::<Held>();
+        } else {
+            rig_ecs::bus::release_hold(app.world_mut(), held, "rig-ecs/batch")
+                .expect("the batch owner releases");
         }
-        assert!(started.elapsed() < std::time::Duration::from_secs(5));
-        std::thread::yield_now();
-    }
-    let saved = rig_ecs::agent::scene::save_world(app.world_mut()).unwrap();
-    let (mut restored, _, _, _) = tooling(vec![vec![AssistantContent::text("done")]]);
-    let loaded = rig_ecs::agent::scene::load_world(&saved, restored.world_mut()).unwrap();
-    let run = loaded
-        .graph
-        .iter()
-        .copied()
-        .find(|e| restored.world().get::<rig_ecs::agent::Run>(*e).is_some())
-        .unwrap();
-    let started = std::time::Instant::now();
-    while started.elapsed() < std::time::Duration::from_secs(1)
-        && restored.world().get::<Settled>(run).is_none()
-    {
-        restored.update();
-        std::thread::yield_now();
-    }
-    for e in &loaded.effects {
-        eprintln!(
-            "effect {:?}: held={} issued={} outcome={}",
-            e,
-            restored.world().get::<rig_ecs::bus::Held>(*e).is_some(),
-            restored.world().get::<Issued>(*e).is_some(),
-            restored.world().get::<EffectOutcome>(*e).is_some()
+        app.update();
+        assert!(
+            app.world().get::<BatchHeld>(held).is_none(),
+            "{route}: the batch marker follows the hold"
         );
+        ended(&mut app, run, "the run lands after the approval");
+        assert!(app.world().get::<Settled>(run).is_some(), "{route}");
+        let saved = rig_ecs::agent::scene::save_world(app.world_mut()).expect("saves");
+        let (mut fresh, _, _, _) = tooling(vec![vec![AssistantContent::text("done")]]);
+        rig_ecs::agent::scene::load_world(&saved, fresh.world_mut())
+            .unwrap_or_else(|error| panic!("{route}: the scene loads: {error}"));
     }
-    assert!(
-        restored.world().get::<Settled>(run).is_some(),
-        "restored batch never settles"
-    );
 }

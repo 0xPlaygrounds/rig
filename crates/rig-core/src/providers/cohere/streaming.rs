@@ -119,7 +119,9 @@ struct CohereAdapter {
     /// Wire id of the open tool call, when one is streaming. Only the wire
     /// identity is tracked here; fragment assembly, internal-id minting, and
     /// finalize policy live in the shared accumulator.
-    current_tool_call: Option<String>,
+    current_tool_call: Option<BlockId>,
+    /// Keys for calls whose wire id is empty: an absent id is not an id.
+    tool_ids: crate::streaming::SyntheticIds,
     message_id: Option<String>,
     /// Owns the constant-key reasoning lifecycle — the boundary end this
     /// wire never announces is derived, not hand-rolled here.
@@ -130,6 +132,7 @@ impl Default for CohereAdapter {
     fn default() -> Self {
         Self {
             current_tool_call: None,
+            tool_ids: crate::streaming::SyntheticIds::tool(),
             message_id: None,
             reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
                 MintKind::Reasoning,
@@ -234,9 +237,9 @@ impl WireAdapter for CohereAdapter {
                     return;
                 };
 
-                self.current_tool_call = Some(id.clone());
-
-                let key = BlockId::wire(id);
+                let key = crate::streaming::non_empty_id(id)
+                    .map_or_else(|| self.tool_ids.mint(), BlockId::wire);
+                self.current_tool_call = Some(key.clone());
                 let mut tool_events = AdapterOutput::new();
                 tool_events.tool_name(&key, name);
                 // `tool-call-start` may carry initial argument text; on the
@@ -277,24 +280,21 @@ impl WireAdapter for CohereAdapter {
 
                 // A delta with no open call has nothing to extend; skip it, as
                 // the wire never starts a call mid-delta.
-                let Some(id) = self.current_tool_call.clone() else {
+                let Some(key) = self.current_tool_call.clone() else {
                     return;
                 };
 
                 // Emit the delta so UI can show progress
-                out.tool_arguments(&BlockId::wire(id), arguments);
+                out.tool_arguments(&key, arguments);
             }
 
             StreamingEvent::ToolCallEnd => {
-                let Some(id) = self.current_tool_call.take() else {
+                let Some(key) = self.current_tool_call.take() else {
                     return;
                 };
                 // Unparseable assembled input drops in the accumulator,
                 // matching the old skip.
-                out.tool_end(
-                    BlockId::wire(id),
-                    ToolCallEnd::new(UnparseableToolInput::Drop),
-                );
+                out.tool_end(key, ToolCallEnd::new(UnparseableToolInput::Drop));
             }
 
             _ => {}

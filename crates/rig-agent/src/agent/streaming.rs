@@ -3,6 +3,7 @@ use rig_core::{message::AssistantContent, wasm_compat::WasmCompatSend};
 
 use crate::{
     agent::engine::{DriveItem, StreamingTurnSource, drive_agent, streaming_error_into_prompt},
+    agent::hook::{AgentHook, RunSettled, SettledOutcome, StepEventKind},
     agent::runner::{AgentRunner, RunOrigin},
     streaming::{BlockClose, Delta, StreamEvent, StreamedUserContent},
 };
@@ -20,15 +21,19 @@ use rig_core::message::Message;
 // go no-op — browser wasm. `rig-core` keys those markers on this same
 // predicate, so keep the two in step: a bare `target_arch = "wasm32"` would
 // also drop `Send` on WASI, where `rig-core` still requires it.
+/// The stream a streamed run yields: its items, then its ending.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub type StreamingResult =
     Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>> + Send>>;
 
+/// The stream a streamed run yields: its items, then its ending.
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>>>>;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
+/// One item of a streamed run: a provider stream event, a committed tool
+/// call, a lifecycle marker, or the run's final response.
 #[allow(
     clippy::large_enum_variant,
     reason = "the terminal items are one per run and are moved, not copied; boxing them would put an allocation on every consumer's match"
@@ -248,14 +253,17 @@ pub(crate) fn finalize_streamed_choice(
     Some(items)
 }
 
+/// Why a streamed run ended before its final response.
 #[derive(Debug, thiserror::Error)]
 pub enum StreamingError {
+    /// The provider stream failed.
     #[error("CompletionError: {0}")]
     Completion(#[from] CompletionError),
     /// An effect failed on the agent's bus — a bus or handler failure, a
     /// hook's denial, a stream item's error — as the wire reports it.
     #[error("{0}")]
     Report(#[from] rig_core::error::ErrorReport),
+    /// The run failed for a reason the blocking surface reports the same way.
     #[error("PromptError: {0}")]
     Prompt(#[from] Box<PromptError>),
 }
@@ -336,8 +344,25 @@ impl AgentRunner {
         let (history_override, memory_handle) = match resolved {
             Ok(resolved) => resolved,
             Err(err) => {
+                // A run that never reached the engine still settles: the
+                // load failure is its ending, reported before the one item
+                // the stream yields so a consumer that stops at the first
+                // `Err` has already seen it.
+                let hooks = self.config.hooks.clone();
                 let stream = async_stream::stream! {
-                    yield Err(StreamingError::from(err));
+                    let err = StreamingError::from(err);
+                    if hooks.observes(StepEventKind::RunSettled) {
+                        let reason = err.to_string();
+                        hooks
+                            .on_run_settled(
+                                &hook_ctx,
+                                RunSettled {
+                                    outcome: SettledOutcome::Error(&reason),
+                                },
+                            )
+                            .await;
+                    }
+                    yield Err(err);
                 };
                 // Instrument under the agent span like the success path so
                 // a load failure stays tied to invoke_agent.
@@ -472,7 +497,19 @@ impl AgentRunner {
             let mut response = None;
             let mut forward = true;
             while let Some(item) = stream.next().await {
-                let item = item.map_err(streaming_error_into_prompt)?;
+                let item = match item {
+                    Ok(item) => item,
+                    Err(err) => {
+                        // The engine settles an error ending before it
+                        // yields it; the forwarder still drains the stream
+                        // before returning, as `run` does, so the engine's
+                        // own teardown (its spans, its bus lineage) runs to
+                        // completion rather than being dropped at the yield.
+                        let error = streaming_error_into_prompt(err);
+                        while stream.next().await.is_some() {}
+                        return Err(error);
+                    }
+                };
                 match item {
                     MultiTurnStreamItem::FinalResponse(done) => {
                         if forward {

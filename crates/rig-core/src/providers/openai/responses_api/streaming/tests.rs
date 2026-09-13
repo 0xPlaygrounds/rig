@@ -2598,3 +2598,47 @@ async fn malformed_frame_surfaces_error_and_stream_still_completes() {
         "stream should still emit its terminal record"
     );
 }
+
+/// An item id the wire left empty identifies nothing: a text delta under
+/// `"item_id": ""` opens no block of its own (the text still streams), a
+/// message item with `"id": ""` starts no message block, and neither
+/// panics on the empty-id assertion.
+#[test]
+fn empty_item_ids_identify_nothing_and_do_not_panic() {
+    let body = format!(
+        "data: {}\ndata: {}\n",
+        json!({
+            "type": "response.output_text.delta",
+            "item_id": "",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 1,
+            "delta": "still text",
+        }),
+        json!({
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "sequence_number": 2,
+            "item": {
+                "type": "message",
+                "id": "",
+                "role": "assistant",
+                "status": "completed",
+                "content": []
+            },
+        }),
+    );
+    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+        .expect("an empty id is not a decode failure");
+    assert!(events.iter().any(|event| matches!(
+        event,
+        StreamEvent::BlockDelta { delta: Delta::Text { text }, .. } if text == "still text"
+    )));
+    assert!(
+        events.iter().all(|event| !matches!(
+            event,
+            StreamEvent::BlockStart { id: crate::streaming::BlockId::Wire(id), .. } if id.is_empty()
+        )),
+        "no block is keyed on the empty string: {events:?}"
+    );
+}

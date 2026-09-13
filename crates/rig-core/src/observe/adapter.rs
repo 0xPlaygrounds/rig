@@ -6,22 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use super::{Action, Emitter, Observation, Stage, Subject, Witness};
 
-/// Bound and scrub diagnostic text before persisting it.
-///
-/// Supply the credentials used by the owning request or connection. Known
-/// credential values and common credential markers redact the whole message;
-/// oversized messages are replaced rather than retaining a secret prefix.
-pub fn scrub_diagnostic(value: &str, secrets: &[String]) -> String {
-    scrub::text(value, secrets)
-}
-
-/// Collect URL userinfo and known credential query parameters for diagnostic
-/// redaction, including origin-form request URIs. Returned values are secrets:
-/// keep them runtime-only and never include them in diagnostics or artifacts.
-pub fn diagnostic_url_secrets(url: &str) -> Vec<String> {
-    scrub::url_secrets(url)
-}
-
 /// One fact about a provider operation, independently of its effect record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdapterObservation {

@@ -1097,7 +1097,7 @@ fn url_credentials_are_scrubbed_in_messages_and_allowlisted_header_echoes() {
             );
         }
     }
-    let secrets = super::diagnostic_url_secrets("/v1?search=ordinary-value&key=");
+    let secrets = super::scrub::url_secrets("/v1?search=ordinary-value&key=");
     assert!(secrets.is_empty());
     assert_eq!(
         super::scrub::text("ordinary%20value", &secrets),

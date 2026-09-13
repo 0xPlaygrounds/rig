@@ -228,3 +228,93 @@ fn serialized_log_reconstructs_capabilities_identity_and_uncalled_grants() {
     assert_eq!(error.kind, rig_core::error::ErrorKind::Divergence);
     assert!(error.message.contains(TOOL));
 }
+
+/// A layer's name is part of what serves a key, so a program recorded under
+/// one is replayed by the replayer wrapped in the same layer: then the spec
+/// hash matches and the replay proceeds. A bare replayer, or another
+/// layer, is a different program and is refused before the first dispatch.
+#[test]
+fn a_layered_program_replays_under_the_same_layer_and_refuses_another() {
+    use rig_core::serve::{Decision, ErasedHandler, Intercept, Verdict};
+    struct Audit(&'static str);
+    impl Intercept for Audit {
+        fn name(&self) -> String {
+            self.0.to_owned()
+        }
+        async fn before(&self, _id: rig_core::effect::EffectId, _kind: &EffectKind) -> Decision {
+            Decision::Proceed
+        }
+        async fn after(
+            &self,
+            _id: rig_core::effect::EffectId,
+            _kind: &EffectKind,
+            _outcome: &Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>,
+        ) -> Verdict {
+            Verdict::Keep
+        }
+    }
+
+    let mut live = app();
+    let recorder = EffectLogRecorder::new();
+    EffectLogResource::install(live.world_mut(), recorder.clone());
+    let (capturing, _) = Capturing::new(MODEL, "{\"a\":1}");
+    let model = Handlers::with(live.world_mut(), |handlers| {
+        handlers.register_erased(
+            MODEL,
+            ErasedHandler::new(Composing(capturing)).layered(Audit("audit")),
+        )
+    })
+    .unwrap()
+    .unwrap();
+    let tool = register(
+        &mut live,
+        TOOL,
+        NeverCalled {
+            name: "unused".into(),
+        },
+    );
+    let agent = program(live.world_mut(), model, tool);
+    let run = spawn_run(live.world_mut(), agent, &[], "go", false, None);
+    stamp_run(live.world_mut(), run, &recorder).expect("stamps");
+    tick_until(&mut live, "live settled", |world| {
+        world.get::<Settled>(run).is_some()
+    });
+    let log: EffectLog =
+        serde_json::from_str(&serde_json::to_string(&recorder.log()).unwrap()).unwrap();
+    assert!(
+        log.header
+            .handlers
+            .iter()
+            .any(|h| h.key == HandlerKey::from(MODEL) && h.layers == ["audit"]),
+        "the record names the layer"
+    );
+
+    for (layer, accepted) in [(Some("audit"), true), (Some("other"), false), (None, false)] {
+        let mut replay = app();
+        Handlers::with(replay.world_mut(), |handlers| {
+            for replayer in rig_effect_log::EffectLogReplayer::for_log_by_id(&log).unwrap() {
+                let key = replayer.key().clone();
+                let handler = match layer {
+                    Some(name) if key == HandlerKey::from(MODEL) => {
+                        ErasedHandler::new(replayer).layered(Audit(name))
+                    }
+                    _ => ErasedHandler::new(replayer),
+                };
+                handlers.register_erased(key.as_str(), handler).unwrap();
+            }
+        })
+        .unwrap();
+        let model = bound(replay.world_mut(), MODEL);
+        let tool = bound(replay.world_mut(), TOOL);
+        let agent = program(replay.world_mut(), model, tool);
+        let run = spawn_run(replay.world_mut(), agent, &[], "go", false, None);
+        let verdict = check_replayable(replay.world_mut(), run, &log);
+        assert_eq!(verdict.is_ok(), accepted, "layer {layer:?}: {verdict:?}");
+        if accepted {
+            tick_until(&mut replay, "layered replay settles", |world| {
+                world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some()
+            });
+            assert!(replay.world().get::<Settled>(run).is_some());
+        }
+    }
+}

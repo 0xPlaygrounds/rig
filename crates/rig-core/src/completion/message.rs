@@ -428,6 +428,13 @@ impl ToolCallId {
     }
 
     /// Generate a deterministic tool identity at a completion-local position.
+    ///
+    /// Completion-local is the whole scope: the `index`-th id-less call of
+    /// one response is `tool-<index>`, and the next turn's is too. A run's
+    /// history correlates a result with its call within the adjacent
+    /// assistant/user pair (the transcript law), so a repeated minted id
+    /// across turns is not a collision; a host that keys history by call
+    /// id across turns must key by turn as well.
     pub fn minted(index: u64) -> Self {
         Self::from_block(&crate::streaming::BlockId::minted(
             crate::streaming::MintKind::Tool,
@@ -679,14 +686,19 @@ impl ToolCall {
         }
     }
 
-    /// The single-identifier provider boundary: adopt the wire's id when it
-    /// issued one, mint when it did not (empty or absent ids mint).
+    /// The single-identifier provider boundary for a response's *only*
+    /// call: adopt the wire's id when it issued one, mint at index zero
+    /// when it did not (empty or absent ids mint). A converter that walks
+    /// a response's parts uses [`ToolCall::from_wire_indexed`] with the
+    /// call's position, otherwise two id-less calls in one turn mint the
+    /// same handle.
     pub fn from_wire(wire_id: impl Into<String>, function: ToolFunction) -> Self {
         Self::from_wire_indexed(wire_id, 0, function)
     }
 
     /// [`ToolCall::from_wire`] for the `index`-th call of a response whose
-    /// wire may omit ids: an empty `wire_id` yields `tool-<index>`, so two
+    /// wire may omit ids: an empty `wire_id` yields
+    /// [`ToolCallId::minted`]`(index)` (displayed `tool-<index>`), so two
     /// id-less calls in one response stay distinct and a re-run yields the
     /// same ids.
     pub fn from_wire_indexed(

@@ -46,8 +46,7 @@ mod adapter;
 pub(crate) use adapter::AdapterSlot;
 pub use adapter::{
     AdapterAnalysis, AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterErrorEnvelope,
-    AdapterEvent, AdapterObservation, AdapterUsage, AdapterVerdict, diagnostic_url_secrets,
-    scrub_diagnostic,
+    AdapterEvent, AdapterObservation, AdapterUsage, AdapterVerdict,
 };
 pub(crate) use adapter::{AdapterAttempt, PayloadObserver};
 
@@ -435,18 +434,24 @@ impl ObservationTrace {
     }
 }
 
-/// The bounded in-memory sink. Facts beyond `capacity` are counted, not
-/// kept, so an analysis sink never grows without bound; the trace says
-/// how many were lost.
+/// The bounded in-memory sink, in one of two shapes. A capture
+/// ([`Self::with_capacity`], the default) keeps the first `capacity` facts
+/// and counts the rest as dropped: the trace is a complete prefix or says
+/// how much of the session it missed, which is what a comparison wants. A
+/// ring ([`Self::ring`]) keeps the *last* `capacity` facts and counts what
+/// it let go: a long-running host always sees its recent past, which is
+/// what a dashboard wants. Either way [`Self::drain`] takes what is kept
+/// and starts over, so a host that exports periodically never fills up.
 pub struct ObservationLog {
     inner: Mutex<LogState>,
     capacity: usize,
+    ring: bool,
     clock: Option<Arc<dyn Clock + Send + Sync>>,
 }
 
 struct LogState {
     session: Option<String>,
-    observations: Vec<Observation>,
+    observations: std::collections::VecDeque<Observation>,
     next: u64,
     dropped: u64,
     finalized: bool,
@@ -473,19 +478,48 @@ impl Default for ObservationLog {
 }
 
 impl ObservationLog {
-    /// A log keeping at most `capacity` facts.
+    /// A capture keeping the first `capacity` facts; later ones are counted
+    /// as dropped.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             inner: Mutex::new(LogState {
                 session: None,
-                observations: Vec::new(),
+                observations: std::collections::VecDeque::new(),
                 next: 0,
                 dropped: 0,
                 finalized: false,
             }),
             capacity,
+            ring: false,
             clock: None,
         }
+    }
+
+    /// A ring keeping the last `capacity` facts; each one it lets go of
+    /// is counted as dropped, so a trace from a ring that ever overflowed
+    /// says so (and never compares equal).
+    pub fn ring(capacity: usize) -> Self {
+        Self {
+            ring: true,
+            // A ring of nothing would keep every fact and count it dropped.
+            ..Self::with_capacity(capacity.max(1))
+        }
+    }
+
+    /// Take the kept facts and start over: the session name and the
+    /// sequence continue, the kept facts and the dropped count reset. A
+    /// host that exports its trace periodically drains rather than
+    /// letting a capture fill and stop.
+    pub fn drain(&self) -> ObservationTrace {
+        let mut state = self.lock();
+        let trace = ObservationTrace {
+            session: state.session.clone(),
+            observations: state.observations.drain(..).collect(),
+            dropped: state.dropped,
+            finalized: state.finalized,
+        };
+        state.dropped = 0;
+        trace
     }
 
     /// Stamp every fact with `clock`'s elapsed time.
@@ -516,7 +550,7 @@ impl ObservationLog {
         let state = self.lock();
         ObservationTrace {
             session: state.session.clone(),
-            observations: state.observations.clone(),
+            observations: state.observations.iter().cloned().collect(),
             dropped: state.dropped,
             finalized: state.finalized,
         }
@@ -542,10 +576,13 @@ impl Witness for ObservationLog {
         state.next += 1;
         if state.observations.len() >= self.capacity {
             state.dropped += 1;
-            return;
+            if !self.ring {
+                return;
+            }
+            state.observations.pop_front();
         }
         observation.at = at;
-        state.observations.push(observation);
+        state.observations.push_back(observation);
     }
 }
 

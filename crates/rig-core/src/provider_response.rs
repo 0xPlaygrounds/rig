@@ -30,6 +30,16 @@ pub struct ProviderResponseError {
     /// keep this error small enough for `clippy::result_large_err`. `None`
     /// means "not captured", never "the response had no headers".
     pub headers: Option<Box<http::HeaderMap>>,
+    /// The provider's own machine-readable code for the failure, when the
+    /// transport reported one apart from the body: a gRPC status code name
+    /// (`UNAVAILABLE`), an AWS exception type (`ThrottlingException`).
+    /// `None` when the reply carried only a status and a body.
+    pub code: Option<String>,
+    /// The transport's own verdict on whether the same call may be retried,
+    /// for replies that carry no HTTP status (gRPC, SDK transports). `None`
+    /// when the transport gave none; a reply with a status is classified by
+    /// its status and ignores this.
+    pub transient: Option<bool>,
 }
 
 impl ProviderResponseError {
@@ -40,6 +50,8 @@ impl ProviderResponseError {
             body: body.into(),
             provider_request_id: None,
             headers: None,
+            code: None,
+            transient: None,
         }
     }
 
@@ -51,6 +63,42 @@ impl ProviderResponseError {
             body: body.into(),
             provider_request_id: None,
             headers: None,
+            code: None,
+            transient: None,
+        }
+    }
+
+    /// Attach the HTTP status a transport reported beside a reply that was
+    /// first preserved without one (an SDK that hands back the raw HTTP
+    /// response next to its typed exception). A status already set is kept.
+    pub fn with_status(mut self, status: Option<StatusCode>) -> Self {
+        if self.status.is_none() {
+            self.status = status;
+        }
+        self
+    }
+
+    /// Attach the provider's own machine-readable code for the failure.
+    pub fn with_code(mut self, code: Option<String>) -> Self {
+        self.code = code.filter(|code| !code.is_empty());
+        self
+    }
+
+    /// Attach the transport's own retry verdict, for a reply with no HTTP
+    /// status. A reply with a status keeps it, but classifies by the status.
+    pub fn with_transient(mut self, transient: Option<bool>) -> Self {
+        self.transient = transient;
+        self
+    }
+
+    /// Whether the same call may reasonably be retried: by the status when
+    /// the reply has one ([`crate::error::retryable_status`]), else by the
+    /// transport's own verdict, else not — a reply that says nothing about
+    /// itself is not retried on a guess.
+    pub fn is_retryable(&self) -> bool {
+        match self.status {
+            Some(status) => crate::error::retryable_status(Some(status.as_u16())),
+            None => self.transient.unwrap_or(false),
         }
     }
 
@@ -98,6 +146,10 @@ struct ProviderResponseErrorWire {
     status: Option<u16>,
     body: String,
     provider_request_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    transient: Option<bool>,
 }
 
 impl serde::Serialize for ProviderResponseError {
@@ -106,6 +158,8 @@ impl serde::Serialize for ProviderResponseError {
             status: self.status.map(|status| status.as_u16()),
             body: self.body.clone(),
             provider_request_id: self.provider_request_id.clone(),
+            code: self.code.clone(),
+            transient: self.transient,
         }
         .serialize(serializer)
     }
@@ -125,6 +179,8 @@ impl<'de> serde::Deserialize<'de> for ProviderResponseError {
             body: wire.body,
             provider_request_id: wire.provider_request_id,
             headers: None,
+            code: wire.code,
+            transient: wire.transient,
         })
     }
 }
@@ -157,7 +213,7 @@ pub(crate) fn completion_error_from_body(
 /// variant; the generated helpers read from those two sources only, since they
 /// are the only ones that genuinely represent a provider's response.
 macro_rules! impl_provider_response_helpers {
-    ($error:ty $(, $report:ident)?) => {
+    ($error:ty) => {
         impl $error {
             /// Builds an error from a captured HTTP status and raw response
             /// body: the one funnel every HTTP-error path uses.
@@ -191,7 +247,9 @@ macro_rules! impl_provider_response_helpers {
                         status,
                         body,
                         headers,
-                    } => Self::from_http_response(status, body).with_response_headers(Some(headers)),
+                    } => {
+                        Self::from_http_response(status, body).with_response_headers(Some(headers))
+                    }
                     other => Self::HttpError(other),
                 }
             }
@@ -203,7 +261,9 @@ macro_rules! impl_provider_response_helpers {
             pub fn with_provider_request_id(self, provider_request_id: Option<String>) -> Self {
                 match self {
                     Self::ProviderResponse(response) if response.provider_request_id.is_none() => {
-                        Self::ProviderResponse(response.with_provider_request_id(provider_request_id))
+                        Self::ProviderResponse(
+                            response.with_provider_request_id(provider_request_id),
+                        )
                     }
                     other => other,
                 }
@@ -225,6 +285,69 @@ macro_rules! impl_provider_response_helpers {
                         Self::ProviderResponse(response.with_headers(Some(headers)))
                     }
                     other => other,
+                }
+            }
+
+            /// Attaches the HTTP status a transport reported beside a reply
+            /// preserved without one (an SDK that carries the raw response
+            /// next to its typed exception), so the reply classifies by its
+            /// status like any HTTP reply; other variants pass through, and
+            /// a status already captured is kept.
+            pub fn with_provider_status(self, status: Option<http::StatusCode>) -> Self {
+                match self {
+                    Self::ProviderResponse(response) => {
+                        Self::ProviderResponse(response.with_status(status))
+                    }
+                    other => other,
+                }
+            }
+
+            /// Attaches the provider's own machine-readable code for the
+            /// failure (a gRPC status code name, an AWS exception type) to
+            /// a preserved provider response; other variants pass through.
+            pub fn with_provider_code(self, code: Option<String>) -> Self {
+                match self {
+                    Self::ProviderResponse(response) => {
+                        Self::ProviderResponse(response.with_code(code))
+                    }
+                    other => other,
+                }
+            }
+
+            /// Attaches the transport's own retry verdict to a preserved
+            /// provider response that has no HTTP status (gRPC, SDK
+            /// transports), so [`ProviderResponseError::is_retryable`]
+            /// has an answer beyond the status table; other variants pass
+            /// through.
+            ///
+            /// [`ProviderResponseError::is_retryable`]: $crate::provider_response::ProviderResponseError::is_retryable
+            pub fn with_transient(self, transient: Option<bool>) -> Self {
+                match self {
+                    Self::ProviderResponse(response) => {
+                        Self::ProviderResponse(response.with_transient(transient))
+                    }
+                    other => other,
+                }
+            }
+
+            /// Whether the same request may reasonably be retried: a
+            /// response-less transport failure by what it is
+            /// ([`transient_transport`]), a provider's reply by its status
+            /// or, without one, by the transport's own verdict
+            /// ([`ProviderResponseError::is_retryable`]); every other
+            /// variant is a fault in the request or the response and is
+            /// not retried.
+            ///
+            /// A variant added to the enum defaults to "not retried": adding
+            /// one is the moment to decide whether it belongs here.
+            ///
+            /// [`transient_transport`]: $crate::error::transient_transport
+            /// [`ProviderResponseError::is_retryable`]: $crate::provider_response::ProviderResponseError::is_retryable
+            pub fn is_retryable(&self) -> bool {
+                match self {
+                    Self::HttpError(error) => $crate::error::transient_transport(error),
+                    Self::ProviderResponse(response) => response.is_retryable(),
+                    _ => false,
                 }
             }
 
@@ -284,9 +407,6 @@ macro_rules! impl_provider_response_helpers {
             pub fn provider_response_status(&self) -> Option<http::StatusCode> {
                 match self {
                     Self::ProviderResponse(response) => response.status,
-                    $(Self::$report(report) => report
-                        .http_status
-                        .and_then(|status| http::StatusCode::from_u16(status).ok()),)?
                     _ => None,
                 }
             }
@@ -299,7 +419,6 @@ macro_rules! impl_provider_response_helpers {
             pub fn provider_request_id(&self) -> Option<&str> {
                 match self {
                     Self::ProviderResponse(response) => response.provider_request_id.as_deref(),
-                    $(Self::$report(report) => report.request_id.as_deref(),)?
                     _ => None,
                 }
             }

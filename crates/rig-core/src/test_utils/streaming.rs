@@ -239,7 +239,11 @@ impl MockStreamEvent {
     /// Emit this scripted event as canonical stream events into `out` — the
     /// same helper adapters use, so a script speaks exactly the grammar a
     /// wire would.
-    pub(crate) fn emit(self, out: &mut AdapterOutput) -> Result<(), CompletionError> {
+    pub(crate) fn emit(
+        self,
+        out: &mut AdapterOutput,
+        tool_ids: &mut crate::streaming::SyntheticIds,
+    ) -> Result<(), CompletionError> {
         match self {
             Self::Text(text) => out.text(text),
             Self::TextStart {
@@ -272,10 +276,15 @@ impl MockStreamEvent {
                 arguments,
                 call_id,
             } => {
-                let key = fixture_part_id(id.clone());
-                // A wire-derived key doubles as the durable id (the common
-                // case: providers key by the id the wire issued); minted
-                // keys carry none.
+                // An empty id is an id-less wire: mint the key, as every
+                // adapter for such a wire does. A wire-derived key doubles
+                // as the durable id (the common case: providers key by the
+                // id the wire issued); minted keys carry none.
+                let key = if id.is_empty() {
+                    tool_ids.mint()
+                } else {
+                    fixture_part_id(id)
+                };
                 let mut end = ToolCallEnd::whole(name, arguments);
                 if let Some(tool_id) = key.wire_str() {
                     end = end.with_tool_id(tool_id);

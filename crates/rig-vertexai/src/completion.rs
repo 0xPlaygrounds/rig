@@ -106,7 +106,10 @@ impl CompletionModel {
             request_builder = request_builder.set_tool_config(tool_config);
         }
 
-        let response = request_builder.send().await.map_err(rpc_error)?;
+        let response = request_builder
+            .send()
+            .await
+            .map_err(|error| rpc_error(&error))?;
 
         tracing::debug!(
             target: "rig_core::vertexai",
@@ -144,21 +147,45 @@ impl CompletionModelTrait for CompletionModel {
 }
 
 /// Map a failed `send()` RPC into a [`CompletionError`] that preserves the
-/// provider's gRPC error text verbatim.
+/// provider's error text verbatim, with everything the SDK knows about it:
+/// the HTTP status when the SDK saw one (then the reply classifies by
+/// status like any HTTP reply), else the RPC code as the provider's own
+/// code and the transport's retry verdict derived from it. (The `inner()`
+/// client-init failure stays a `ProviderError` because it is a Rig-side
+/// setup failure, not a provider response.)
 ///
-/// Vertex AI uses a non-HTTP (gRPC/SDK) transport, so there is no
-/// [`http::StatusCode`] to attach; the error body is preserved via
-/// [`CompletionError::from_provider_body`] (`status: None`) rather than a
-/// Rig-prefixed [`CompletionError::ProviderError`] diagnostic. (The
-/// `inner()` client-init failure stays a `ProviderError` because it is a
-/// Rig-side setup failure, not a provider response.)
-///
-/// Note: the SDK does not distinguish a server-returned gRPC error from a
-/// transport/connection failure, so a pure connection error is also preserved
-/// here (`status: None`) rather than gated out as a Rig diagnostic the way
+/// Note: the SDK does not distinguish a server-returned RPC error from a
+/// transport/connection failure, so a pure connection error is also
+/// preserved here rather than gated out as a Rig diagnostic the way
 /// Bedrock's typed service errors are.
-fn rpc_error(error: impl std::fmt::Display) -> CompletionError {
+fn rpc_error(error: &google_cloud_aiplatform_v1::Error) -> CompletionError {
+    let status = error
+        .http_status_code()
+        .and_then(|code| rig_core::http_client::StatusCode::from_u16(code).ok());
+    let code = error.status().map(|status| status.code.name());
+    // The SDK classifies its own response-less failures: a connect, I/O,
+    // timeout or transport error never reached a decision, so the same
+    // call may be retried, as every HTTP wire retries the same condition.
+    let transient = code.map(transient_rpc_code).or_else(|| {
+        (error.is_transport() || error.is_io() || error.is_timeout() || error.is_connect())
+            .then_some(true)
+    });
     CompletionError::from_provider_body(error.to_string())
+        .with_provider_status(status)
+        .with_provider_code(code.map(str::to_owned))
+        .with_transient(transient)
+}
+
+/// Whether an RPC code (by its canonical name) is one the same call may
+/// reasonably be retried on: the server was unreachable or overloaded, or
+/// the call was cut short. Every other code says the call itself is wrong
+/// or the resource is not there, and retrying it as-is asks the same
+/// question again.
+fn transient_rpc_code(code: &str) -> bool {
+    matches!(
+        code,
+        "UNAVAILABLE" | "RESOURCE_EXHAUSTED" | "DEADLINE_EXCEEDED" | "ABORTED"
+    )
 }
 
 #[cfg(test)]

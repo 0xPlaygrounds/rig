@@ -117,6 +117,7 @@ fn unknown_payload_loses_assistant_content(payload: &serde_json::Value) -> bool 
         && payload.get("additional_params").is_some()
 }
 
+/// The text items of a choice, as the streamed surface reports them.
 pub fn assistant_text_items_from_choice(choice: &[AssistantContent]) -> Vec<AssistantContent> {
     choice
         .iter()
@@ -549,6 +550,7 @@ impl StreamedTurnAssembler {
             .and_then(|part| part.provider_id.as_deref())
     }
 
+    /// The reasoning text accumulated so far under `correlator`.
     pub fn aggregated_reasoning(&self, correlator: &BlockId) -> Option<&str> {
         self.reasoning_parts
             .iter()

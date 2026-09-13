@@ -419,6 +419,28 @@ pub fn tool_key(name: &str) -> HandlerKey {
     HandlerKey::from(format!("tool:{name}"))
 }
 
+/// A key for an embedding handler: `embed:<label>`.
+pub fn embed_key(label: &str) -> HandlerKey {
+    HandlerKey::from(format!("embed:{label}"))
+}
+
+/// A key for a rerank handler: `rerank:<label>`.
+pub fn rerank_key(label: &str) -> HandlerKey {
+    HandlerKey::from(format!("rerank:{label}"))
+}
+
+/// A key for a labelled memory handler: `memory:<label>`. An agent's own
+/// memory is registered under the bare `memory` key.
+pub fn memory_key(label: &str) -> HandlerKey {
+    HandlerKey::from(format!("memory:{label}"))
+}
+
+/// A key for a labelled retrieval handler: `retrieve:<label>`. An agent's
+/// own index is registered under the bare `retrieve` key.
+pub fn retrieve_key(label: &str) -> HandlerKey {
+    HandlerKey::from(format!("retrieve:{label}"))
+}
+
 /// The family markers.
 pub mod family {
     use std::marker::PhantomData;

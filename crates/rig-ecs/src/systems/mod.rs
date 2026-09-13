@@ -173,6 +173,7 @@ pub fn install_agent(world: &mut World) {
     world.init_resource::<RunCounter>();
     world.add_observer(effect_cancelled);
     world.add_observer(run_cancelled);
+    world.add_observer(batch_marker_follows_the_hold);
     witness::install(world);
     let mut schedules = world.resource_mut::<Schedules>();
     let Some(schedule) = schedules.get_mut(RigSchedule) else {
@@ -220,6 +221,48 @@ pub fn install_agent(world: &mut World) {
             .in_set(RigSet::Materialise),
         append_memory.in_set(RigSet::Settle),
     ));
+}
+
+/// Why [`despawn_run`] left a run in the world.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunBusy {
+    /// The entity is not a run.
+    NotARun,
+    /// The run has not ended: it has no [`Settled`] and no [`Failed`].
+    Unsettled,
+    /// An effect of the run is still in flight or waiting to dispatch.
+    /// Cancel the run and let it drain first.
+    InFlight,
+}
+
+/// Despawn an ended run and everything that is its: turns, utterances,
+/// adverts, attachments and the settled effects under them (`ChildOf` is
+/// linked, so the despawn is deep), a `Streamed` fold included. The world
+/// keeps nothing of a run by itself — a host that runs for long must
+/// despawn the runs it is done reading, or their graphs and folds
+/// accumulate for the life of the world. Refused while the run has not
+/// ended or an effect of it is still in flight; nothing is despawned then.
+pub fn despawn_run(world: &mut World, run: Entity) -> Result<(), RunBusy> {
+    if world.get::<Run>(run).is_none() {
+        return Err(RunBusy::NotARun);
+    }
+    if world.get::<Settled>(run).is_none() && world.get::<Failed>(run).is_none() {
+        return Err(RunBusy::Unsettled);
+    }
+    let mut stack = vec![run];
+    while let Some(entity) = stack.pop() {
+        if world.get::<crate::bus::InFlight>(entity).is_some()
+            || (world.get::<PendingEffect>(entity).is_some()
+                && world.get::<EffectOutcome>(entity).is_none())
+        {
+            return Err(RunBusy::InFlight);
+        }
+        if let Some(children) = world.get::<Children>(entity) {
+            stack.extend(children.iter());
+        }
+    }
+    world.entity_mut(run).despawn();
+    Ok(())
 }
 
 /// Spawn a run of `agent` with `prompt` as its first utterance, after
@@ -1174,6 +1217,27 @@ pub type ToolChildView = (
 /// holds is released by the batch alone.
 #[derive(Component, Debug, Default, Clone, Copy)]
 pub struct BatchHeld;
+
+/// The batch's marker and its ownership go with the hold. A host may
+/// approve a call the batch holds by any route the bus documents —
+/// removing `Held` (which bypasses every owner), or releasing the
+/// `rig-ecs/batch` owner — and the call then dispatches; were the marker
+/// or the owner entry left behind, the batch would keep counting the call
+/// as waiting (its slot accounting silently exceeded) and every later
+/// scene would save a batch owner with no barrier, which no world loads.
+pub fn batch_marker_follows_the_hold(
+    released: On<Remove, crate::bus::Held>,
+    mut commands: Commands,
+) {
+    let entity = released.event().entity;
+    commands.queue(move |world: &mut World| {
+        let Ok(mut effect) = world.get_entity_mut(entity) else {
+            return;
+        };
+        effect.remove::<BatchHeld>();
+        crate::bus::hold::forget_owner(world, entity, "rig-ecs/batch");
+    });
+}
 
 /// One tool child of a batch: the entity, the slot, whether issued, the
 /// outcome, whether the batch holds it.

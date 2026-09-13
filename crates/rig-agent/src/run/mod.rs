@@ -810,6 +810,7 @@ impl AgentRun {
         self.previous_model = Some(model);
     }
 
+    /// Every completion call the run made so far, in order.
     pub fn completion_calls(&self) -> &[CompletionCall] {
         &self.completion_calls
     }
@@ -1543,6 +1544,8 @@ impl AgentRun {
         }
     }
 
+    /// Resolve the pending invalid tool call by ignoring it: the turn
+    /// proceeds as if the model had not made the call.
     pub fn ignore_invalid_tool_call(&mut self) -> Result<ModelTurnOutcome, PromptError> {
         let mut resolving = self.take_resolving(
             "ignore_invalid_tool_call called without a pending invalid tool call",
