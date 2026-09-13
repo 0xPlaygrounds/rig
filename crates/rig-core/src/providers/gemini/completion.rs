@@ -670,10 +670,33 @@ pub(crate) fn blocked_prompt_error(
         })
         .map(|ratings| format!(", safety_ratings=[{ratings}]"))
         .unwrap_or_default();
-    Some(CompletionError::ProviderError(format!(
+    let message = format!(
         "Gemini blocked the prompt: block_reason={}{ratings}",
         reason.as_wire_str()
-    )))
+    );
+    // A block on the prompt's content (`SAFETY`, `BLOCKLIST`,
+    // `PROHIBITED_CONTENT`) is the provider's verdict: a refusal, final. A
+    // block for `OTHER` ("blocked due to unknown reasons" in Google's
+    // reference) is not a verdict on the content — the same prompt is
+    // answered on the next call — and a reason this crate does not know
+    // yet is by definition unknown too. Those travel as a provider
+    // response with the transport's own transient verdict, so
+    // `is_retryable` says so without any caller reading the message.
+    Some(match reason {
+        gemini_api_types::BlockReason::Safety
+        | gemini_api_types::BlockReason::Blocklist
+        | gemini_api_types::BlockReason::ProhibitedContent
+        | gemini_api_types::BlockReason::BlockReasonUnspecified => {
+            CompletionError::ProviderError(message)
+        }
+        gemini_api_types::BlockReason::Other | gemini_api_types::BlockReason::Unknown(_) => {
+            CompletionError::ProviderResponse(
+                crate::provider_response::ProviderResponseError::without_status(message)
+                    .with_code(Some(reason.as_wire_str().to_owned()))
+                    .with_transient(Some(true)),
+            )
+        }
+    })
 }
 
 pub(crate) fn function_call_finish_reason_error(

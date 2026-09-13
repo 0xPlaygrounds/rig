@@ -78,6 +78,8 @@ fn test_unknown_block_reason_reaches_the_error_verbatim() {
         error.to_string().contains("block_reason=SOMETHING_NEW"),
         "{error}"
     );
+    // Unknown means unknown: not a verdict on the content, so retryable.
+    assert!(error.is_retryable(), "{error:?}");
 }
 
 #[test]
@@ -1769,4 +1771,47 @@ async fn completion_non_success_preserves_status_and_body() {
         Some(http::StatusCode::SERVICE_UNAVAILABLE)
     );
     assert_eq!(error.provider_response_body(), Some(body));
+}
+
+#[test]
+fn block_reasons_split_into_final_refusals_and_transient_blocks() {
+    // `SAFETY`, `BLOCKLIST` and `PROHIBITED_CONTENT` judge the content and
+    // are final. `OTHER` is Google's "blocked due to unknown reasons"; the
+    // same prompt is answered on the next call, so it is retryable and it
+    // is not a refusal. The classification is typed: the report's
+    // `retryable` and `kind` say it, no caller reads the message.
+    for (reason, retryable) in [
+        ("SAFETY", false),
+        ("BLOCKLIST", false),
+        ("PROHIBITED_CONTENT", false),
+        ("OTHER", true),
+        ("SOMETHING_NEW", true),
+    ] {
+        let response: GenerateContentResponse = serde_json::from_value(json!({
+            "promptFeedback": {"blockReason": reason}
+        }))
+        .unwrap();
+        let error = completion::CompletionResponse::try_from(response).expect_err(reason);
+        assert_eq!(error.is_retryable(), retryable, "{reason}: {error:?}");
+        let report = crate::error::ErrorReport::from(&error);
+        assert_eq!(report.retryable, retryable, "{reason}: {report:?}");
+        assert!(
+            report.message.contains(&format!("block_reason={reason}")),
+            "{reason}: {}",
+            report.message
+        );
+        if retryable {
+            assert!(
+                matches!(&error, CompletionError::ProviderResponse(response) if response.status.is_none() && response.code.as_deref() == Some(reason)),
+                "{reason}: {error:?}"
+            );
+            assert_eq!(report.kind, crate::error::ErrorKind::ProviderResponse);
+        } else {
+            assert!(
+                matches!(&error, CompletionError::ProviderError(_)),
+                "{reason}: {error:?}"
+            );
+            assert_eq!(report.kind, crate::error::ErrorKind::Provider);
+        }
+    }
 }
