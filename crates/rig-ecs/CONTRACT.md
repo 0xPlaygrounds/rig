@@ -93,6 +93,9 @@ preamble through real provider adapters.
 | `MaxTurns` counts model calls; `Advance` fails a run whose `Cursor.turn` reached it (`Failed(MaxTurns { limit })`); the default is 1 | `rig_agent::run::spec` docs (`effective_max_turns`) |
 | the output-tool reprompt budget is 1 | `rig_agent::run::spec` docs (`DEFAULT_OUTPUT_RETRIES`) |
 | every record of a `MaxTurns` run is a success; the run is not | corpus `Ending::MaxTurns` docs |
+| a completion whose outcome is a provider `ErrorReport` with `retryable` set, while `ProviderRetried < ProviderRetries` (the run's, else the agent's, else 3), is re-issued: the lost turn is read (`Materialised`) and leaves no utterance, `ProviderRetried` counts up, the run is `Assembling` under `ProviderRetrying`, and `Advance` spawns the next turn without checking or spending `MaxTurns`; the witness gets `rig-ecs/agent/provider_retry` (attempt, budget, reason) | `tests/run_provider_retry.rs` |
+| a non-retryable report, a cancellation, or a spent budget ends the run `Failed(Provider)` with that report, as before; no tool is ever re-run by a retry, and the log holds every attempt as its own effect | `tests/run_provider_retry.rs` |
+| time is the host's: the library issues the retry on the next pass; a backoff is a hold a `Gate` system acquires on the re-issued effect and releases when due, so replay needs no clock | `tests/run_provider_retry.rs` (`a_host_hold_is_where_a_backoff_goes...`) |
 
 ## 6. The header
 

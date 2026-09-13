@@ -138,6 +138,21 @@ impl Default for OutputToolConfig {
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct MaxTurns(pub usize);
 
+/// Retries a run allows a completion whose provider failure is retryable
+/// (a 5xx, a rate limit, a transient block; the report's `retryable`
+/// decides, CONTRACT §5): the same request is issued again over the same
+/// history. No tool is re-run, no history is rewritten, the lost turn
+/// leaves no assistant utterance and is not counted against `MaxTurns`.
+/// On the agent or the run; without one, [`DEFAULT_PROVIDER_RETRIES`].
+/// Time is the host's: a backoff is a hold on the re-issued effect from a
+/// `Gate` system, released when due.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct ProviderRetries(pub usize);
+
+/// The provider-retry budget of a run that declares none.
+pub const DEFAULT_PROVIDER_RETRIES: usize = 3;
+
 /// What to do with a tool call the program does not advertise when no
 /// system resolved it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -694,6 +709,18 @@ pub struct OutputRetries(pub usize);
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct InvalidRetries(pub usize);
+
+/// Provider retries spent ([`ProviderRetries`]).
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct ProviderRetried(pub usize);
+
+/// The run's next turn re-issues the completion its last turn lost to a
+/// retryable provider failure: `Advance` spawns it without counting it
+/// against `MaxTurns`, then removes this.
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct ProviderRetrying;
 
 /// The name the run's output tool was minted under, once a turn minted it.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -174,7 +174,11 @@ fn populated() -> bevy_app::App {
         rig_ecs::systems::Folded(rig_ecs::agent::OutputKind::Auto),
         rig_ecs::agent::AwaitingModel,
         rig_ecs::agent::ResolvingTools,
-        rig_ecs::agent::Assembling,
+        (
+            rig_ecs::agent::Assembling,
+            rig_ecs::agent::ProviderRetries(2),
+            rig_ecs::agent::ProviderRetrying,
+        ),
         rig_ecs::agent::Batch { calls: 2 },
         rig_ecs::bus::InFlight {
             key: HandlerKey::from(ADD),

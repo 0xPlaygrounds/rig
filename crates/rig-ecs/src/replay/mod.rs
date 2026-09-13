@@ -137,6 +137,13 @@ pub fn spec_json(world: &mut World, subject: Entity) -> serde_json::Value {
             "max_turns".into(),
             serde_json::json!(effective::<MaxTurns>(world, subject).map_or(1, |v| v.0)),
         );
+        fields.insert(
+            "provider_retries".into(),
+            serde_json::json!(
+                effective::<crate::agent::ProviderRetries>(world, subject)
+                    .map_or(crate::agent::DEFAULT_PROVIDER_RETRIES, |v| v.0)
+            ),
+        );
         let invalid = effective::<InvalidCalls>(world, subject)
             .copied()
             .unwrap_or_default();
