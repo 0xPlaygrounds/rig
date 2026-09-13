@@ -1,0 +1,239 @@
+{
+  "header": {
+    "run_spec": 10205229598120978059,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": 4096,
+          "tool_choice": null,
+          "additional_params": {
+            "generationConfig": {
+              "thinkingConfig": {
+                "includeThoughts": true,
+                "thinkingBudget": 128
+              }
+            }
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "**Defining Rust's Core**\n\nI've been drilling down on Rust. Right now, I am trying to define Rust. It's a systems programming language. I need to explain the concept concisely, in one or two sentences.\n\n\n",
+                    "signature": "signature_REDACTED_1"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "Rust is a systems programming language designed for high performance and safety, using a unique ownership system to manage memory without a garbage collector. Memory safety is critical because it prevents common bugs like buffer overflows and dangling pointers, which are leading causes of security vulnerabilities and system crashes."
+            }
+          ],
+          "usage": {
+            "input_tokens": 29,
+            "output_tokens": 53,
+            "total_tokens": 334,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 252
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-3-flash-preview",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 29,
+              "candidatesTokenCount": 53,
+              "totalTokenCount": 334,
+              "thoughtsTokenCount": 252,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 29
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "model_version": "gemini-3-flash-preview",
+            "response_id": "id_REDACTED_1"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:reasoning:0",
+          "kind": {
+            "kind": "reasoning"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "**Defining Rust's Core**\n\nI've been drilling down on Rust. Right now, I am trying to define Rust. It's a systems programming language. I need to explain the concept concisely, in one or two sentences.\n\n\n"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:reasoning:0",
+          "end": {
+            "close": "reasoning",
+            "wire_sent": false
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "Rust is a systems programming language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " designed for high performance and safety, using a unique ownership system to manage memory without a garbage collector. Memory safety is critical because it prevents"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " common bugs like buffer overflows and dangling pointers, which are leading causes of security vulnerabilities and system crashes."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:reasoning:0",
+          "end": {
+            "close": "reasoning",
+            "signature": "signature_REDACTED_1",
+            "wire_sent": false
+          },
+          "block": {
+            "type": "reasoning",
+            "id": null,
+            "content": [
+              {
+                "type": "text",
+                "content": {
+                  "text": "**Defining Rust's Core**\n\nI've been drilling down on Rust. Right now, I am trying to define Rust. It's a systems programming language. I need to explain the concept concisely, in one or two sentences.\n\n\n",
+                  "signature": "signature_REDACTED_1"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 29,
+            "output_tokens": 53,
+            "total_tokens": 334,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 252
+          },
+          "finish_reason": "stop",
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "provider": "gcp.gemini",
+          "model": "gemini-3-flash-preview",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 29,
+              "candidatesTokenCount": 53,
+              "totalTokenCount": 334,
+              "thoughtsTokenCount": 252,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 29
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "model_version": "gemini-3-flash-preview",
+            "response_id": "id_REDACTED_1"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"temperature":0.0,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":128}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"**My Take on Rust and Memory Safety**\n\nOkay, so I''m thinking about Rust again. It''s a systems programming language, right? And the whole deal is performance *and* safety. The key is its ownership system; that''s how it ensures memory safety. That means no more buffer overflows or dangling pointers – those classic vulnerabilities that lead to crashes and security headaches. It''s all about eliminating those bugs right at the source. This is great for high-performance systems and is really important, preventing security vulnerabilities and crashes.\n\n\n","thought":true},{"text":"Rust is a systems programming language designed for high performance and safety, using a unique ownership system to manage memory without a garbage collector. Memory safety is critical because it prevents common bugs like buffer overflows and dangling pointers, which are leading causes of security vulnerabilities and system crashes.","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":53,"promptTokenCount":29,"promptTokensDetails":[{"modality":"TEXT","tokenCount":29}],"serviceTier":"standard","thoughtsTokenCount":252,"totalTokenCount":334}}'
