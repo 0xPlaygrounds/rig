@@ -16,6 +16,7 @@ use crate::ecs_matrix::{
 
 fn wire(client: &rig::providers::deepseek::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
         model: client.completion_model("deepseek-chat"),
         route: Some(client.completion_model("deepseek-reasoner")),
         temperature: Some(0.0),

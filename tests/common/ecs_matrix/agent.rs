@@ -65,11 +65,13 @@ fn classify_stream(error: StreamingError) -> RunFailure {
 
 /// What a streamed run ended in: the final answer, or how it failed (the
 /// first error item; a fault ends the stream).
-async fn final_output(stream: &mut rig::agent::StreamingResult) -> Result<String, RunFailure> {
+async fn final_output(
+    stream: &mut rig::agent::StreamingResult,
+) -> Result<rig::agent::PromptResponse, RunFailure> {
     let mut output = None;
     while let Some(item) = stream.next().await {
         match item {
-            Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output),
+            Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response),
             Ok(_) => {}
             Err(error) => return Err(classify_stream(error)),
         }
@@ -102,7 +104,11 @@ fn expect_ending(result: Result<String, RunFailure>, ending: Ending, fixture: &s
 
 /// The program's builder settings, as the corpus's `build_agent` applies
 /// them; the wire's model is already the builder's.
-fn configure<S>(mut builder: AgentBuilder<S>, program: &Program) -> AgentBuilder<S> {
+fn configure<S>(
+    mut builder: AgentBuilder<S>,
+    program: &Program,
+    settlement: Option<&super::reasoning::SettlementCapture>,
+) -> AgentBuilder<S> {
     builder = builder.name(OWNER);
     builder = match program.preamble {
         Some(preamble) => builder.preamble(preamble),
@@ -130,7 +136,12 @@ fn configure<S>(mut builder: AgentBuilder<S>, program: &Program) -> AgentBuilder
     if let Some(default_max_turns) = program.default_max_turns {
         builder = builder.default_max_turns(default_max_turns);
     }
-    corpus::with_hooks(builder, program.hooks)
+    if let Some(capture) = settlement {
+        assert_eq!(program.hooks, &[corpus::Hook::RecordSettled]);
+        builder.add_hook(super::reasoning::RecordSettled(capture.clone()))
+    } else {
+        corpus::with_program_hooks(builder, program)
+    }
 }
 
 /// The builder's tool typestates share `build`.
@@ -259,7 +270,10 @@ fn grant<M: CompletionModel + Clone + 'static>(
 }
 
 /// Run the program's prompts on `agent`, ending as the program says.
-async fn run_prompts(agent: &rig::agent::Agent, program: &Program) -> Vec<String> {
+async fn run_prompts(
+    agent: &rig::agent::Agent,
+    program: &Program,
+) -> Vec<rig::agent::PromptResponse> {
     let prompts: Vec<&str> = std::iter::once(program.prompt)
         .chain(program.second_prompt)
         .collect();
@@ -290,7 +304,15 @@ async fn run_prompts(agent: &rig::agent::Agent, program: &Program) -> Vec<String
             .await
             .expect("the stream ends");
             drop(stream);
-            let output = expect_ending(result, ending, program.fixture);
+            let output = expect_ending(
+                result.map(|response| {
+                    let output = response.output.clone();
+                    outputs.push(response);
+                    output
+                }),
+                ending,
+                program.fixture,
+            );
             if ending != Ending::Answer {
                 // The engine settles an in-flight cancel or fault after the
                 // consumer saw it: give it the window the corpus producers
@@ -303,14 +325,17 @@ async fn run_prompts(agent: &rig::agent::Agent, program: &Program) -> Vec<String
         } else {
             let result = runner
                 .await
-                .map(|response| response.output)
+                .map(|response| {
+                    let output = response.output.clone();
+                    outputs.push(response);
+                    output
+                })
                 .map_err(classify_prompt);
             expect_ending(result, ending, program.fixture)
         };
         if let (Ending::Answer, Some(expected)) = (ending, program.expected_output) {
             assert_eq!(output, expected, "{}: the replaced answer", program.fixture);
         }
-        outputs.push(output);
     }
     outputs
 }
@@ -324,18 +349,20 @@ pub(crate) async fn run_agent<M: CompletionModel + Clone + 'static>(
 ) -> rig::effect_log::EffectLog {
     let program = wire.program(cell);
     let policy = cell.bus.policy();
-    let log = if cell.bus.declared() {
+    let settlement: Option<super::reasoning::SettlementCapture> =
+        (cell.reasoning == Some(super::cells::ReasoningCase::Capped)).then(Default::default);
+    let (log, responses) = if cell.bus.declared() {
         let mut builder = AgentBuilder::new(wire.model.clone());
         if cell.bus != Bus::Own {
             builder = builder.configure_bus(policy);
         }
-        let builder = configure(builder, &program);
+        let builder = configure(builder, &program, settlement.as_ref());
         let agent = grant(builder, wire, cell, &program);
         if let Some(label) = program.late_route {
             agent.register_model(label, wire.route());
         }
-        run_prompts(&agent, &program).await;
-        agent.take_effect_log().expect("recording")
+        let responses = run_prompts(&agent, &program).await;
+        (agent.take_effect_log().expect("recording"), responses)
     } else {
         // A host's bus: the host registers the model under the agent's key
         // and its note taker, drives the bus and records; the agent stamps
@@ -365,15 +392,52 @@ pub(crate) async fn run_agent<M: CompletionModel + Clone + 'static>(
         let driver = tokio::spawn(driver);
         let builder =
             AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), OWNER, model_key);
-        let builder = configure(builder, &program);
+        let builder = configure(builder, &program, settlement.as_ref());
         let agent = grant(builder, wire, cell, &program);
-        run_prompts(&agent, &program).await;
+        let responses = run_prompts(&agent, &program).await;
         let log = agent.stamp(recorder.take());
         drop((agent, dispatcher, registrar));
         driver.await.expect("the host's driver");
         assert_eq!(log.header.bus, None, "the policy is the host's");
-        log
+        (log, responses)
     };
+    if cell.reasoning.is_some() {
+        if std::env::var("RIG_PROVIDER_TEST_MODE").is_ok_and(|mode| mode == "record") {
+            eprintln!(
+                "REASONING_ATTEMPT {}",
+                serde_json::to_string(&log).expect("the log serializes")
+            );
+        }
+        super::reasoning::assert_log(cell, wire.thinking, &log);
+        if let Some(capture) = settlement {
+            let settled = capture
+                .lock()
+                .expect("settlement capture")
+                .take()
+                .expect("the error settled");
+            super::reasoning::assert_history(cell, &log, &settled.messages);
+            let error = settled.error.expect("the capped run failed");
+            assert!(
+                error.contains(&rig::completion::FinishReason::Length.no_answer_message()),
+                "{error}"
+            );
+        }
+        for response in &responses {
+            super::reasoning::assert_history(
+                cell,
+                &log,
+                response
+                    .messages
+                    .as_deref()
+                    .expect("a run has a transcript"),
+            );
+            assert_eq!(
+                response.output,
+                corpus::golden_answer(&log),
+                "the reasoning is not the answer"
+            );
+        }
+    }
     if !cell.families.is_empty() {
         assert_eq!(
             families(&log),

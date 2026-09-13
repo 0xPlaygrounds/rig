@@ -17,6 +17,7 @@ use crate::ecs_matrix::{Wire, cells, world::run_world};
 
 fn wire(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
         model: client.completion_model(GEMINI_3_FLASH_PREVIEW),
         route: Some(client.completion_model(GEMINI_3_1_FLASH_LITE_PREVIEW)),
         temperature: Some(0.0),
@@ -28,6 +29,7 @@ fn wire(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + 
 /// already had runs under the model and settings that recorded it.
 fn legacy(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
         model: client.completion_model(GEMINI_2_5_FLASH),
         route: None,
         temperature: Some(0.0),
@@ -1061,11 +1063,16 @@ async fn output_tool_under_none_degrades() {
     .await;
 }
 
-#[ignore = "the Gemini wire's thinking control is `generationConfig.thinkingConfig`, not the corpus's Anthropic-shaped `thinking` patch"]
+#[ignore = "gemini-3-flash-preview returned a signed final_result call without visible reasoning in all three attempts; record-gemini-output-tool-thinking-attempt-{1,2,3}.log; three attempts exhausted"]
 #[tokio::test]
 async fn output_tool_thinking() {
     with_gemini_cassette("corpus_matrix/output_tool_thinking", |client| async move {
-        run_world(&wire(&client), &cells::OUTPUT_TOOL_THINKING, |_| {}).await;
+        run_world(
+            &reasoning_wire(&client),
+            &cells::OUTPUT_TOOL_THINKING,
+            |_| panic!("unrecorded reasoning scenario: see this test\'s ignore disposition"),
+        )
+        .await;
     })
     .await;
 }
@@ -1191,13 +1198,18 @@ async fn shaping_max_tokens_second_turn() {
     .await;
 }
 
-#[ignore = "the Gemini wire's thinking control is `generationConfig.thinkingConfig`, not the corpus's Anthropic-shaped `thinking` patch"]
+#[ignore = "gemini-3-flash-preview returned only text and a signature-only reasoning part with zero reasoning usage on the second turn in all three attempts; record-gemini-shaping-thinking-second-turn-attempt-{1,2,3}.log; three attempts exhausted"]
 #[tokio::test]
 async fn shaping_thinking_second_turn() {
     with_gemini_cassette(
         "corpus_matrix/shaping_thinking_second_turn",
         |client| async move {
-            run_world(&wire(&client), &cells::SHAPING_THINKING_SECOND_TURN, |_| {}).await;
+            run_world(
+                &reasoning_wire(&client),
+                &cells::SHAPING_THINKING_SECOND_TURN,
+                |_| panic!("unrecorded reasoning scenario: see this test\'s ignore disposition"),
+            )
+            .await;
         },
     )
     .await;
@@ -1308,6 +1320,109 @@ async fn resume_tool_turn() {
         run_world(&wire(&client), &cells::RESUME_TOOL_TURN, |log| {
             crate::ecs_goldens::golden_effects("gemini_resume_tool_turn", log)
         })
+        .await;
+    })
+    .await;
+}
+
+// Reasoning matrix: the named thinking model, with the shared knob.
+fn reasoning_wire(
+    client: &rig::providers::gemini::Client,
+) -> Wire<impl CompletionModel + Clone + 'static> {
+    Wire {
+        thinking: cells::ThinkingWire::Gemini,
+        model: client.completion_model("gemini-3-flash-preview"),
+        route: None,
+        temperature: Some(0.0),
+        additional_params: None,
+    }
+}
+
+#[tokio::test]
+async fn reasoning_text_unary() {
+    with_gemini_cassette("reasoning_matrix/text_unary", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_TEXT_UNARY,
+            |log| crate::ecs_goldens::golden_effects("gemini_reasoning_text_unary", log),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_text_streamed() {
+    with_gemini_cassette("reasoning_matrix/text_streamed", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_TEXT_STREAMED,
+            |log| crate::ecs_goldens::golden_effects("gemini_reasoning_text_streamed", log),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "gemini-3-flash-preview with thinkingBudget 128 returned a signed tool call without reasoning in all three attempts; record-gemini-tool-unary-attempt-{1,2,3}.log; three attempts exhausted"]
+async fn reasoning_tool_unary() {
+    with_gemini_cassette("reasoning_matrix/tool_unary", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_TOOL_UNARY,
+            |_| panic!("unrecorded reasoning scenario: see this test\'s ignore disposition"),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "gemini-3-flash-preview with thinkingBudget 128 returned a signed tool call without reasoning in all three attempts; record-gemini-tool-streamed-attempt-{1,2,3}.log; three attempts exhausted"]
+async fn reasoning_tool_streamed() {
+    with_gemini_cassette("reasoning_matrix/tool_streamed", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_TOOL_STREAMED,
+            |_| panic!("unrecorded reasoning scenario: see this test\'s ignore disposition"),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "gemini-3-flash-preview accepted thinkingBudget 0 but returned a signature-only reasoning part despite zero reasoning usage in all three attempts; record-gemini-off-attempt-{1,2,3}.log; three attempts exhausted"]
+async fn reasoning_off() {
+    with_gemini_cassette("reasoning_matrix/off", |client| async move {
+        run_world(&reasoning_wire(&client), &cells::REASONING_OFF, |_| {
+            panic!("unrecorded reasoning scenario: see this test\'s ignore disposition")
+        })
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_capped() {
+    with_gemini_cassette("reasoning_matrix/capped", |client| async move {
+        run_world(&reasoning_wire(&client), &cells::REASONING_CAPPED, |log| {
+            crate::ecs_goldens::golden_effects("gemini_reasoning_capped", log)
+        })
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_capped_streamed() {
+    with_gemini_cassette("reasoning_matrix/capped_streamed", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_CAPPED_STREAMED,
+            |log| crate::ecs_goldens::golden_effects("gemini_reasoning_capped_streamed", log),
+        )
         .await;
     })
     .await;

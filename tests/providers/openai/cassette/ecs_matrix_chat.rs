@@ -15,6 +15,7 @@ use crate::ecs_matrix::{Wire, cells, world::run_world};
 
 fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
         model: client
             .clone()
             .completions_api()
@@ -1149,13 +1150,17 @@ async fn output_tool_under_none_degrades() {
     .await;
 }
 
-#[ignore = "the OpenAI Chat wire's reasoning control is `reasoning_effort`, not the corpus's Anthropic-shaped `thinking` patch"]
 #[tokio::test]
 async fn output_tool_thinking() {
     with_openai_cassette(
         "corpus_matrix_chat/output_tool_thinking",
         |client| async move {
-            run_world(&wire(&client), &cells::OUTPUT_TOOL_THINKING, |_| {}).await;
+            run_world(
+                &reasoning_wire(&client),
+                &cells::OUTPUT_TOOL_THINKING,
+                |log| crate::ecs_goldens::golden_effects("openai_chat_output_tool_thinking", log),
+            )
+            .await;
         },
     )
     .await;
@@ -1301,13 +1306,18 @@ async fn shaping_max_tokens_second_turn() {
     .await;
 }
 
-#[ignore = "the OpenAI Chat wire's reasoning control is `reasoning_effort`, not the corpus's Anthropic-shaped `thinking` patch"]
+#[ignore = "gpt-5-mini low reported zero reasoning tokens on the second turn in all three attempts; record-openai-chat-shaping-thinking-second-turn-attempt-{1,2,3}.log; three attempts exhausted"]
 #[tokio::test]
 async fn shaping_thinking_second_turn() {
     with_openai_cassette(
         "corpus_matrix_chat/shaping_thinking_second_turn",
         |client| async move {
-            run_world(&wire(&client), &cells::SHAPING_THINKING_SECOND_TURN, |_| {}).await;
+            run_world(
+                &reasoning_wire(&client),
+                &cells::SHAPING_THINKING_SECOND_TURN,
+                |_| panic!("unrecorded reasoning scenario: see this test\'s ignore disposition"),
+            )
+            .await;
         },
     )
     .await;
@@ -1423,6 +1433,99 @@ async fn resume_tool_turn() {
     with_openai_cassette("corpus_matrix_chat/resume_tool_turn", |client| async move {
         run_world(&wire(&client), &cells::RESUME_TOOL_TURN, |log| {
             crate::ecs_goldens::golden_effects("openai_chat_resume_tool_turn", log)
+        })
+        .await;
+    })
+    .await;
+}
+
+// Reasoning matrix: the named thinking model, with the shared knob.
+fn reasoning_wire(
+    client: &rig::providers::openai::Client,
+) -> Wire<impl CompletionModel + Clone + 'static> {
+    Wire {
+        thinking: cells::ThinkingWire::OpenAiChat,
+        model: client
+            .clone()
+            .completions_api()
+            .completion_model(rig::providers::openai::GPT_5_MINI),
+        route: None,
+        temperature: None,
+        additional_params: None,
+    }
+}
+
+#[ignore = "gpt-5-mini at reasoning_effort low reported zero reasoning tokens in attempts 1, 2 and 3 (2026-09-13, record-openai-chat-text-unary-attempt-{1,2,3}.log); exhausted the prompt's three-attempt limit"]
+#[tokio::test]
+async fn reasoning_text_unary() {
+    with_openai_cassette("reasoning_matrix_chat/text_unary", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_TEXT_UNARY,
+            |_| panic!("unrecorded reasoning scenario: see this test\'s ignore disposition"),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_text_streamed() {
+    with_openai_cassette("reasoning_matrix_chat/text_streamed", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_TEXT_STREAMED,
+            |log| crate::ecs_goldens::golden_effects("openai_chat_reasoning_text_streamed", log),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "gpt-5-mini low reported zero reasoning tokens on the tool turn in attempts 1, 2 and 3; record-openai-chat-tool-unary-attempt-{1,2,3}.log; three attempts exhausted"]
+async fn reasoning_tool_unary() {
+    with_openai_cassette("reasoning_matrix_chat/tool_unary", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_TOOL_UNARY,
+            |_| panic!("unrecorded reasoning scenario: see this test\'s ignore disposition"),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "gpt-5-mini low reported zero reasoning tokens on the tool turn in all three attempts; record-openai-chat-tool-streamed-attempt-{1,2,3}.log; three attempts exhausted"]
+async fn reasoning_tool_streamed() {
+    with_openai_cassette("reasoning_matrix_chat/tool_streamed", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_TOOL_STREAMED,
+            |_| panic!("unrecorded reasoning scenario: see this test\'s ignore disposition"),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_off() {
+    with_openai_cassette("reasoning_matrix_chat/off", |client| async move {
+        run_world(&reasoning_wire(&client), &cells::REASONING_OFF, |log| {
+            crate::ecs_goldens::golden_effects("openai_chat_reasoning_off", log)
+        })
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_capped() {
+    with_openai_cassette("reasoning_matrix_chat/capped", |client| async move {
+        run_world(&reasoning_wire(&client), &cells::REASONING_CAPPED, |log| {
+            crate::ecs_goldens::golden_effects("openai_chat_reasoning_capped", log)
         })
         .await;
     })

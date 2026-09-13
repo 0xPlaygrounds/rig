@@ -32,6 +32,7 @@ fn thinking_disabled() -> serde_json::Value {
 
 fn wire(client: &rig::providers::deepseek::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
         model: client.completion_model("deepseek-chat"),
         route: None,
         temperature: Some(0.0),
@@ -44,6 +45,7 @@ fn missing(
     client: &rig::providers::deepseek::Client,
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
         model: client.completion_model("deepseek-v9-nonexistent"),
         route: None,
         temperature: Some(0.0),
@@ -107,6 +109,7 @@ fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'st
         .build()
         .expect("client should build");
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
         model: client.completion_model("deepseek-chat"),
         route: None,
         temperature: Some(0.0),
@@ -123,6 +126,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
         .build()
         .expect("client should build");
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
         model: client.completion_model("deepseek-chat"),
         route: None,
         temperature: Some(0.0),

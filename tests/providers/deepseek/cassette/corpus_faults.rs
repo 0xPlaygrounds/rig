@@ -12,6 +12,7 @@ use crate::ecs_matrix::{Wire, agent::run_agent, faults};
 
 fn wire(client: &rig::providers::deepseek::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
         model: client.completion_model("deepseek-chat"),
         route: None,
         temperature: Some(0.0),
@@ -24,6 +25,7 @@ fn missing(
     client: &rig::providers::deepseek::Client,
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
         model: client.completion_model("deepseek-v9-nonexistent"),
         route: None,
         temperature: Some(0.0),

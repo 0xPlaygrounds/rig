@@ -17,6 +17,7 @@ fn wire(
     client: &rig::providers::doubleword::Client,
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
         model: client.completion_model(QWEN3_5_397B_A17B),
         route: Some(client.completion_model(QWEN3_5_9B)),
         temperature: Some(0.0),
@@ -1101,11 +1102,15 @@ async fn output_tool_under_none_degrades() {
     .await;
 }
 
-#[ignore = "the Doubleword wire's reasoning control is `reasoning_effort`, not the corpus's Anthropic-shaped `thinking` patch"]
 #[tokio::test]
 async fn output_tool_thinking() {
     with_doubleword_cassette("corpus_matrix/output_tool_thinking", |client| async move {
-        run_world(&wire(&client), &cells::OUTPUT_TOOL_THINKING, |_| {}).await;
+        run_world(
+            &reasoning_wire(&client),
+            &cells::OUTPUT_TOOL_THINKING,
+            |log| crate::ecs_goldens::golden_effects("doubleword_output_tool_thinking", log),
+        )
+        .await;
     })
     .await;
 }
@@ -1241,13 +1246,22 @@ async fn shaping_max_tokens_second_turn() {
     .await;
 }
 
-#[ignore = "the Doubleword wire's reasoning control is `reasoning_effort`, not the corpus's Anthropic-shaped `thinking` patch"]
 #[tokio::test]
 async fn shaping_thinking_second_turn() {
     with_doubleword_cassette(
         "corpus_matrix/shaping_thinking_second_turn",
         |client| async move {
-            run_world(&wire(&client), &cells::SHAPING_THINKING_SECOND_TURN, |_| {}).await;
+            run_world(
+                &reasoning_wire(&client),
+                &cells::SHAPING_THINKING_SECOND_TURN,
+                |log| {
+                    crate::ecs_goldens::golden_effects(
+                        "doubleword_shaping_thinking_second_turn",
+                        log,
+                    )
+                },
+            )
+            .await;
         },
     )
     .await;
@@ -1363,6 +1377,93 @@ async fn resume_tool_turn() {
     with_doubleword_cassette("corpus_matrix/resume_tool_turn", |client| async move {
         run_world(&wire(&client), &cells::RESUME_TOOL_TURN, |log| {
             crate::ecs_goldens::golden_effects("doubleword_resume_tool_turn", log)
+        })
+        .await;
+    })
+    .await;
+}
+
+// Reasoning matrix: the named thinking model, with the shared knob.
+fn reasoning_wire(
+    client: &rig::providers::doubleword::Client,
+) -> Wire<impl CompletionModel + Clone + 'static> {
+    Wire {
+        thinking: cells::ThinkingWire::Doubleword,
+        model: client.completion_model("Qwen/Qwen3.5-397B-A17B-FP8"),
+        route: None,
+        temperature: Some(0.0),
+        additional_params: None,
+    }
+}
+
+#[tokio::test]
+async fn reasoning_text_unary() {
+    with_doubleword_cassette("reasoning_matrix/text_unary", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_TEXT_UNARY,
+            |log| crate::ecs_goldens::golden_effects("doubleword_reasoning_text_unary", log),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_text_streamed() {
+    with_doubleword_cassette("reasoning_matrix/text_streamed", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_TEXT_STREAMED,
+            |log| crate::ecs_goldens::golden_effects("doubleword_reasoning_text_streamed", log),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_tool_unary() {
+    with_doubleword_cassette("reasoning_matrix/tool_unary", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_TOOL_UNARY,
+            |log| crate::ecs_goldens::golden_effects("doubleword_reasoning_tool_unary", log),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_tool_streamed() {
+    with_doubleword_cassette("reasoning_matrix/tool_streamed", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_TOOL_STREAMED,
+            |log| crate::ecs_goldens::golden_effects("doubleword_reasoning_tool_streamed", log),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_off() {
+    with_doubleword_cassette("reasoning_matrix/off", |client| async move {
+        run_world(&reasoning_wire(&client), &cells::REASONING_OFF, |log| {
+            crate::ecs_goldens::golden_effects("doubleword_reasoning_off", log)
+        })
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_capped() {
+    with_doubleword_cassette("reasoning_matrix/capped", |client| async move {
+        run_world(&reasoning_wire(&client), &cells::REASONING_CAPPED, |log| {
+            crate::ecs_goldens::golden_effects("doubleword_reasoning_capped", log)
         })
         .await;
     })

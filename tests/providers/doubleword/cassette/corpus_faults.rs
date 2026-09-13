@@ -15,6 +15,7 @@ fn wire(
     client: &rig::providers::doubleword::Client,
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
         model: client.completion_model(QWEN3_5_397B_A17B),
         route: None,
         temperature: Some(0.0),
@@ -27,6 +28,7 @@ fn missing(
     client: &rig::providers::doubleword::Client,
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
         model: client.completion_model("rig/definitely-not-a-doubleword-model"),
         route: None,
         temperature: Some(0.0),

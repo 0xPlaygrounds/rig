@@ -18,6 +18,7 @@ use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
 fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: client.completion_model(GPT_5_MINI),
         route: Some(client.completion_model(GPT_5_NANO)),
         temperature: None,
@@ -1040,13 +1041,17 @@ async fn output_tool_under_none_degrades() {
     .await;
 }
 
-#[ignore = "the OpenAI Responses wire's reasoning control is `reasoning.effort`, not the corpus's Anthropic-shaped `thinking` patch"]
 #[tokio::test]
 async fn output_tool_thinking() {
     with_openai_cassette(
         "corpus_matrix_responses/output_tool_thinking",
         |client| async move {
-            run_agent(&wire(&client), &cells::OUTPUT_TOOL_THINKING, |_| {}).await;
+            run_agent(
+                &reasoning_wire(&client),
+                &cells::OUTPUT_TOOL_THINKING,
+                |log| crate::goldens::golden_effects("openai_responses_output_tool_thinking", log),
+            )
+            .await;
         },
     )
     .await;
@@ -1188,13 +1193,18 @@ async fn shaping_max_tokens_second_turn() {
     .await;
 }
 
-#[ignore = "the OpenAI Responses wire's reasoning control is `reasoning.effort`, not the corpus's Anthropic-shaped `thinking` patch"]
+#[ignore = "gpt-5-mini minimal returned an encrypted reasoning block on the first turn in all three attempts; record-openai-responses-shaping-thinking-second-turn-attempt-{1,2,3}.log; three attempts exhausted"]
 #[tokio::test]
 async fn shaping_thinking_second_turn() {
     with_openai_cassette(
         "corpus_matrix_responses/shaping_thinking_second_turn",
         |client| async move {
-            run_agent(&wire(&client), &cells::SHAPING_THINKING_SECOND_TURN, |_| {}).await;
+            run_agent(
+                &reasoning_wire(&client),
+                &cells::SHAPING_THINKING_SECOND_TURN,
+                |_| panic!("unrecorded reasoning scenario: see this test\'s ignore disposition"),
+            )
+            .await;
         },
     )
     .await;
@@ -1300,6 +1310,132 @@ async fn resume_tool_turn() {
             run_agent(&wire(&client), &cells::RESUME_TOOL_TURN, |log| {
                 crate::goldens::golden_effects("openai_responses_resume_tool_turn", log)
             })
+            .await;
+        },
+    )
+    .await;
+}
+
+// Reasoning matrix: the named thinking model, with the shared knob.
+fn reasoning_wire(
+    client: &rig::providers::openai::Client,
+) -> Wire<impl CompletionModel + Clone + 'static> {
+    Wire {
+        thinking: cells::ThinkingWire::OpenAiResponses,
+        model: client.completion_model(rig::providers::openai::GPT_5_MINI),
+        route: None,
+        temperature: None,
+        additional_params: None,
+    }
+}
+
+#[tokio::test]
+async fn reasoning_text_unary() {
+    with_openai_cassette(
+        "reasoning_matrix_responses/text_unary",
+        |client| async move {
+            run_agent(
+                &reasoning_wire(&client),
+                &cells::REASONING_TEXT_UNARY,
+                |log| crate::goldens::golden_effects("openai_responses_reasoning_text_unary", log),
+            )
+            .await;
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_text_streamed() {
+    with_openai_cassette(
+        "reasoning_matrix_responses/text_streamed",
+        |client| async move {
+            run_agent(
+                &reasoning_wire(&client),
+                &cells::REASONING_TEXT_STREAMED,
+                |log| {
+                    crate::goldens::golden_effects("openai_responses_reasoning_text_streamed", log)
+                },
+            )
+            .await;
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "gpt-5-mini low: attempts 1 and 3 reported zero reasoning tokens on the tool turn; attempt 2 failed an over-strict final-turn assertion before cassette export; record-openai-responses-tool-unary-attempt-{1,2,3}.log; three attempts exhausted"]
+async fn reasoning_tool_unary() {
+    with_openai_cassette(
+        "reasoning_matrix_responses/tool_unary",
+        |client| async move {
+            run_agent(
+                &reasoning_wire(&client),
+                &cells::REASONING_TOOL_UNARY,
+                |_| panic!("unrecorded reasoning scenario: see this test\'s ignore disposition"),
+            )
+            .await;
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_tool_streamed() {
+    with_openai_cassette(
+        "reasoning_matrix_responses/tool_streamed",
+        |client| async move {
+            run_agent(
+                &reasoning_wire(&client),
+                &cells::REASONING_TOOL_STREAMED,
+                |log| {
+                    crate::goldens::golden_effects("openai_responses_reasoning_tool_streamed", log)
+                },
+            )
+            .await;
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "gpt-5-mini minimal returned an encrypted reasoning part despite zero reasoning usage in all three attempts; record-openai-responses-off-attempt-{1,2,3}.log; three attempts exhausted"]
+async fn reasoning_off() {
+    with_openai_cassette("reasoning_matrix_responses/off", |client| async move {
+        run_agent(&reasoning_wire(&client), &cells::REASONING_OFF, |_| {
+            panic!("unrecorded reasoning scenario: see this test\'s ignore disposition")
+        })
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_capped() {
+    with_openai_cassette("reasoning_matrix_responses/capped", |client| async move {
+        run_agent(&reasoning_wire(&client), &cells::REASONING_CAPPED, |log| {
+            crate::goldens::golden_effects("openai_responses_reasoning_capped", log)
+        })
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_capped_streamed() {
+    with_openai_cassette(
+        "reasoning_matrix_responses/capped_streamed",
+        |client| async move {
+            run_agent(
+                &reasoning_wire(&client),
+                &cells::REASONING_CAPPED_STREAMED,
+                |log| {
+                    crate::goldens::golden_effects(
+                        "openai_responses_reasoning_capped_streamed",
+                        log,
+                    )
+                },
+            )
             .await;
         },
     )

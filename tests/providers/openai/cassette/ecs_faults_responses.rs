@@ -27,6 +27,7 @@ use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, s
 
 fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: client.completion_model(GPT_5_MINI),
         route: None,
         temperature: None,
@@ -39,6 +40,7 @@ fn missing(
     client: &rig::providers::openai::Client,
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: client.completion_model("gpt-4o-mini-nonexistent-rig-test"),
         route: None,
         temperature: None,
@@ -50,6 +52,7 @@ fn missing(
 /// corpus already had.
 fn legacy(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: client.completion_model(GPT_4O),
         route: None,
         temperature: Some(0.0),
@@ -109,6 +112,7 @@ fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'st
         .build()
         .expect("client should build");
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: client.completion_model(GPT_5_MINI),
         route: None,
         temperature: None,
@@ -125,6 +129,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
         .build()
         .expect("client should build");
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: client.completion_model(GPT_5_MINI),
         route: None,
         temperature: None,

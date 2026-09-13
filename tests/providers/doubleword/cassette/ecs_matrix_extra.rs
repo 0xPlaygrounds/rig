@@ -19,6 +19,7 @@ fn wire(
     client: &rig::providers::doubleword::Client,
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
         model: client.completion_model(QWEN3_5_397B_A17B),
         route: Some(client.completion_model(QWEN3_5_9B)),
         temperature: Some(0.0),

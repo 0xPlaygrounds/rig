@@ -17,6 +17,7 @@ use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
 fn wire(client: &rig::providers::deepseek::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
         model: client.completion_model("deepseek-chat"),
         route: Some(client.completion_model("deepseek-reasoner")),
         temperature: Some(0.0),
@@ -1036,11 +1037,15 @@ async fn output_tool_under_none_degrades() {
     .await;
 }
 
-#[ignore = "the DeepSeek wire's thinking control is `thinking.type`, not the corpus's Anthropic-shaped `thinking` patch"]
 #[tokio::test]
 async fn output_tool_thinking() {
     with_deepseek_cassette("corpus_matrix/output_tool_thinking", |client| async move {
-        run_agent(&wire(&client), &cells::OUTPUT_TOOL_THINKING, |_| {}).await;
+        run_agent(
+            &reasoning_wire(&client),
+            &cells::OUTPUT_TOOL_THINKING,
+            |log| crate::goldens::golden_effects("deepseek_output_tool_thinking", log),
+        )
+        .await;
     })
     .await;
 }
@@ -1170,13 +1175,18 @@ async fn shaping_max_tokens_second_turn() {
     .await;
 }
 
-#[ignore = "the DeepSeek wire's thinking control is `thinking.type`, not the corpus's Anthropic-shaped `thinking` patch"]
+#[ignore = "deepseek-flash rejects enabling thinking after a disabled tool turn with HTTP 400: prior reasoning_content required; record-deepseek-shaping-thinking-second-turn-attempt-1.log and https://api-docs.deepseek.com/guides/thinking_mode/; the model refuses this setting transition"]
 #[tokio::test]
 async fn shaping_thinking_second_turn() {
     with_deepseek_cassette(
         "corpus_matrix/shaping_thinking_second_turn",
         |client| async move {
-            run_agent(&wire(&client), &cells::SHAPING_THINKING_SECOND_TURN, |_| {}).await;
+            run_agent(
+                &reasoning_wire(&client),
+                &cells::SHAPING_THINKING_SECOND_TURN,
+                |_| panic!("unrecorded reasoning scenario: see this test\'s ignore disposition"),
+            )
+            .await;
         },
     )
     .await;
@@ -1282,6 +1292,93 @@ async fn resume_tool_turn() {
     with_deepseek_cassette("corpus_matrix/resume_tool_turn", |client| async move {
         run_agent(&wire(&client), &cells::RESUME_TOOL_TURN, |log| {
             crate::goldens::golden_effects("deepseek_resume_tool_turn", log)
+        })
+        .await;
+    })
+    .await;
+}
+
+// Reasoning matrix: the named thinking model, with the shared knob.
+fn reasoning_wire(
+    client: &rig::providers::deepseek::Client,
+) -> Wire<impl CompletionModel + Clone + 'static> {
+    Wire {
+        thinking: cells::ThinkingWire::DeepSeek,
+        model: client.completion_model("deepseek-flash"),
+        route: None,
+        temperature: Some(0.0),
+        additional_params: None,
+    }
+}
+
+#[tokio::test]
+async fn reasoning_text_unary() {
+    with_deepseek_cassette("reasoning_matrix/text_unary", |client| async move {
+        run_agent(
+            &reasoning_wire(&client),
+            &cells::REASONING_TEXT_UNARY,
+            |log| crate::goldens::golden_effects("deepseek_reasoning_text_unary", log),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_text_streamed() {
+    with_deepseek_cassette("reasoning_matrix/text_streamed", |client| async move {
+        run_agent(
+            &reasoning_wire(&client),
+            &cells::REASONING_TEXT_STREAMED,
+            |log| crate::goldens::golden_effects("deepseek_reasoning_text_streamed", log),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_tool_unary() {
+    with_deepseek_cassette("reasoning_matrix/tool_unary", |client| async move {
+        run_agent(
+            &reasoning_wire(&client),
+            &cells::REASONING_TOOL_UNARY,
+            |log| crate::goldens::golden_effects("deepseek_reasoning_tool_unary", log),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_tool_streamed() {
+    with_deepseek_cassette("reasoning_matrix/tool_streamed", |client| async move {
+        run_agent(
+            &reasoning_wire(&client),
+            &cells::REASONING_TOOL_STREAMED,
+            |log| crate::goldens::golden_effects("deepseek_reasoning_tool_streamed", log),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_off() {
+    with_deepseek_cassette("reasoning_matrix/off", |client| async move {
+        run_agent(&reasoning_wire(&client), &cells::REASONING_OFF, |log| {
+            crate::goldens::golden_effects("deepseek_reasoning_off", log)
+        })
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_capped() {
+    with_deepseek_cassette("reasoning_matrix/capped", |client| async move {
+        run_agent(&reasoning_wire(&client), &cells::REASONING_CAPPED, |log| {
+            crate::goldens::golden_effects("deepseek_reasoning_capped", log)
         })
         .await;
     })

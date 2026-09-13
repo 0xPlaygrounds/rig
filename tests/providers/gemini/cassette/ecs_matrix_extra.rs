@@ -21,6 +21,7 @@ use crate::ecs_matrix::{
 
 fn wire(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
         model: client.completion_model(GEMINI_3_FLASH_PREVIEW),
         route: Some(client.completion_model(GEMINI_3_1_FLASH_LITE_PREVIEW)),
         temperature: Some(0.0),
@@ -31,6 +32,7 @@ fn wire(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + 
 /// The recording's own model, for the cell over a breadth recording.
 fn legacy(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
         model: client.completion_model(GEMINI_2_5_FLASH),
         route: None,
         temperature: Some(0.0),

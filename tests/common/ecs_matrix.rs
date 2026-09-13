@@ -41,6 +41,8 @@ pub(crate) mod cells;
 pub(crate) mod extra;
 #[path = "ecs_matrix/faults.rs"]
 pub(crate) mod faults;
+#[path = "ecs_matrix/reasoning.rs"]
+pub(crate) mod reasoning;
 #[path = "ecs_matrix/world.rs"]
 pub(crate) mod world;
 
@@ -55,6 +57,8 @@ pub(crate) const OWNER: &str = "golden";
 
 /// A wire: the models a cell is served by, and what the wire cannot take.
 pub(crate) struct Wire<M> {
+    /// How this wire renders the matrix's thinking control.
+    pub thinking: cells::ThinkingWire,
     /// The default model, under `golden/model:default`.
     pub model: M,
     /// The route (`golden/model:fast` or `golden/model:late`), where a cell
@@ -81,6 +85,19 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
         }
         if program.additional_params.is_none() {
             program.additional_params = self.additional_params;
+        }
+        match cell.thinking {
+            cells::Thinking::On => {
+                program.additional_params = Some(self.thinking.params(true));
+            }
+            cells::Thinking::SecondTurnOnly => {
+                program.additional_params = Some(self.thinking.params(false));
+                program.thinking_params = Some(self.thinking.params(true));
+            }
+            cells::Thinking::Off if cell.explicit_thinking_off => {
+                program.additional_params = Some(self.thinking.params(false));
+            }
+            cells::Thinking::Off => {}
         }
         program
     }

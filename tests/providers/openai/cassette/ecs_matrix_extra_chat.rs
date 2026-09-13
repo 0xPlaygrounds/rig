@@ -17,6 +17,7 @@ use crate::ecs_matrix::{
 
 fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
         model: client
             .clone()
             .completions_api()
