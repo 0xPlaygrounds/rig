@@ -6,6 +6,26 @@ use serde::{Deserialize, Serialize};
 
 use super::{Action, Emitter, Observation, Stage, Subject, Witness};
 
+/// Bound and scrub diagnostic text before persisting it, with the same
+/// rules the adapter applies to its own facts: known credential values and
+/// common credential markers redact the whole message, and an oversized
+/// message is replaced rather than kept with a secret prefix.
+///
+/// For a host that persists diagnostics of its own (rigcoder's failure
+/// records and checkpoint artifacts do); the adapter's scrubbing is not
+/// reachable any other way.
+pub fn scrub_diagnostic(value: &str, secrets: &[String]) -> String {
+    scrub::text(value, secrets)
+}
+
+/// The secrets a URL carries for diagnostic redaction: userinfo and known
+/// credential query parameters, origin-form request URIs included. The
+/// returned values are secrets: keep them runtime-only and never write
+/// them into a diagnostic or an artifact.
+pub fn diagnostic_url_secrets(url: &str) -> Vec<String> {
+    scrub::url_secrets(url)
+}
+
 /// One fact about a provider operation, independently of its effect record.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdapterObservation {
