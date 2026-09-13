@@ -1828,8 +1828,32 @@ pub fn materialise(
         };
         let content = outs.content.clone();
 
-        // An empty turn is not history, and answers nothing.
+        // An empty turn is not history, and answers nothing. A retry
+        // written on it (CONTRACT §9.4) still asks again: the feedback
+        // becomes history, the empty turn does not, and another turn
+        // begins; without one, the run settles on the empty answer.
         if policy::turn_is_empty(&content) {
+            if let Some(Retry { feedback }) = retry {
+                commands.entity(turn).remove::<Retry>();
+                if let Some(feedback) = feedback {
+                    let user = MessageParts::User {
+                        content: vec![UserContent::text(feedback)],
+                    };
+                    commands.spawn((
+                        Utterance,
+                        user.role(),
+                        Parts(user),
+                        next_order_in(&mut orders),
+                        ChildOf(run),
+                    ));
+                }
+                commands
+                    .entity(run)
+                    .remove::<AwaitingModel>()
+                    .insert(Assembling);
+                progress.mark();
+                continue;
+            }
             commands
                 .entity(run)
                 .remove::<AwaitingModel>()

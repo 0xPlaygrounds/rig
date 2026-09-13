@@ -242,7 +242,7 @@ No hook trait: a user system writes a component at a set boundary and a library 
 
 | the hook | the write | what `materialise` does | pinned by |
 |---|---|---|---|
-| `on_model_turn_finished` → `retry_with_feedback(text)` | `agent::Retry { feedback: Some(text) }` on the turn, in `RigSet::Judge` | the turn (unless empty) and a user utterance of the feedback become history; another turn; nothing is committed as an answer; text turns only (a tool-bearing turn is refused, `Failed(Unsupported)`) | `anthropic_hooks_demand_done` `/records/1/…/chat_history/2..3` |
+| `on_model_turn_finished` → `retry_with_feedback(text)` | `agent::Retry { feedback: Some(text) }` on the turn, in `RigSet::Judge` | the turn (unless empty) and a user utterance of the feedback become history; another turn; nothing is committed as an answer; text turns only (a tool-bearing turn is refused, `Failed(Unsupported)`); an empty turn with a retry asks again instead of settling on the empty answer | `anthropic_hooks_demand_done` `/records/1/…/chat_history/2..3`; `steer_hooks::a_retry_written_on_an_empty_turn_asks_again` |
 | `repeat` | `Retry { feedback: None }` | nothing becomes history; another turn | `rig_agent::run::AgentRun::retry_model_turn` docs |
 | `on_outcome` → replace a completion | a system in `RigSet::Judge` rewriting the turn's `Outputs.content` (or the bus's `Judge` rewriting the `EffectOutcome`) | what is read is the replacement; the record holds the model's | `anthropic_hooks_replace_answer` (the run's output `REPLACED`, the record's text) |
 

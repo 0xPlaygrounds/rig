@@ -8,6 +8,7 @@
 //! | `Cancelled` in `Patch`: the folded completion is despawned before the bus | `cancelled_in_patch_leaves_no_record` |
 //! | `RequestPatch` on the fresh turn is folded in: the preamble, a document, the history with the prompt kept | `a_request_patch_is_folded_into_the_turn` |
 //! | `Retry { feedback }` on a text turn makes the turn and the feedback history, then another turn | `a_retry_with_feedback_asks_again` |
+//! | `Retry { feedback }` on an empty turn makes the feedback history, not the turn, then another turn; without a retry the empty turn settles | `a_retry_written_on_an_empty_turn_asks_again` |
 //! | `UsesModel` written on the run before `Select` routes the turn; `Route` is in the required row | `uses_model_written_before_select_routes_the_turn` |
 //! | a decision written and not yet read survives a scene (§10 of the dissolves doc) | `a_retry_written_before_a_save_is_read_after_the_load` |
 //! | `RequestPatch` on the turn and `Resolution` on the invalid call survive a scene the same way | `a_patch_and_a_resolution_written_before_a_save_are_read_after_the_load` |
@@ -246,6 +247,45 @@ fn a_retry_with_feedback_asks_again() {
             "assistant:first",
             "user:End with DONE."
         ]
+    );
+}
+
+#[test]
+fn a_retry_written_on_an_empty_turn_asks_again() {
+    // A model that answers nothing (a provider can return only a thought
+    // signature, which the fold drops to an empty turn) would settle the
+    // run on "". A judge that writes `Retry` on that turn is honoured
+    // before the empty settlement: the feedback is history, the empty
+    // turn is not, and the next turn answers.
+    let mut app = app();
+    let (model, requests) = Scripted::new(
+        MODEL,
+        vec![Vec::new(), vec![AssistantContent::text("second DONE")]],
+    );
+    let model = register(&mut app, MODEL, model);
+    let agent = spawn_agent(app.world_mut(), "t", model);
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(rig_ecs::agent::MaxTurns(3));
+    add_system(&mut app, demand_done.in_set(RigSet::Judge));
+    let run = spawn_run(app.world_mut(), agent, &[], "say it", false, None);
+    ended(&mut app, run, "answered after an empty turn");
+    assert_eq!(
+        app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
+        Some("second DONE"),
+        "{:?}",
+        app.world().get::<Failed>(run)
+    );
+    let requests = requests.lock().unwrap();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        texts(&requests[1]),
+        vec![
+            "system:You are terse.",
+            "user:say it",
+            "user:End with DONE."
+        ],
+        "the empty turn is not history; the feedback is"
     );
 }
 
