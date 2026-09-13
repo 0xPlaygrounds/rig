@@ -333,6 +333,12 @@ pub(super) fn plan(
                 "default-tests",
                 "goldens may be consumed by any original/native provider target",
             )?;
+            add(
+                &mut out,
+                all,
+                "ecs-parity",
+                "a golden changed: replay the parity lane",
+            )?;
             continue;
         }
         if let Some(name) = provider(path) {
@@ -395,6 +401,21 @@ pub(super) fn plan(
     }
     if paths.iter().any(|p| p != "DEVELOPING.md") {
         add(&mut out, all, "fmt", "changed files must remain formatted")?;
+    }
+    // The runtimes and the effective-policy hash: an edit to rig-ecs (the
+    // hash, `Materialise`), rig-agent (the runner) or rig-core (the message
+    // and error rules) can stale or diverge the parity goldens, which the
+    // package's own tests never replay (tests/ecs_parity/README.md).
+    if affected
+        .iter()
+        .any(|name| matches!(name.as_str(), "rig-ecs" | "rig-agent" | "rig-core"))
+    {
+        add(
+            &mut out,
+            all,
+            "ecs-parity",
+            "runtime crate changed: the parity goldens may be stale or diverge",
+        )?;
     }
     let mut downstream = BTreeSet::new();
     for name in affected {

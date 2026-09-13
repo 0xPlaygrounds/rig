@@ -99,6 +99,23 @@ jobs:
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check scenario-registrations
 
+  # The ECS parity goldens as a named, required lane: the agent/ECS matrix
+  # cells and the golden guards (a subset of `test`, so a red here names the
+  # cause: the runtimes disagree or a golden is stale). See
+  # tests/ecs_parity/README.md on the policy hash.
+  ecs-parity:
+    name: stable / ecs parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/rust-setup
+        with:
+          nextest: "true"
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
+      - run: cargo xtask verify --check ecs-parity
+
   # Cross-crate contract tripwires, each with its own feature configuration:
   # rig-core/rig-agent under all features with zero retries for the telemetry
   # contracts, the bus verification suite, the telemetry macro-hygiene

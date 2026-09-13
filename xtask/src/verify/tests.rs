@@ -165,6 +165,7 @@ fn pr_preserves_required_platform_and_default_guarantees() {
         "doctests",
         "conformance",
         "derive",
+        "ecs-parity",
     ] {
         assert!(p.contains(c), "missing {c}");
     }
@@ -749,4 +750,25 @@ fn workflows_carry_no_toolchain_copy() {
             }
         }
     }
+}
+
+#[test]
+fn a_golden_change_selects_the_parity_lane() {
+    let p = ids(
+        "--changed",
+        &["crates/rig-verify/fixtures/ecs_parity/x.effects.json"],
+    );
+    assert!(p.contains("ecs-parity"), "{p:?}");
+    assert!(p.contains("default-tests"), "{p:?}");
+}
+
+/// The fixture metadata declares `rig-ecs` (a runtime crate) and
+/// `rig-sqlite` (a store): an edit to the first selects the parity lane on
+/// its own account, an edit to the second does not.
+#[test]
+fn a_runtime_crate_change_selects_the_parity_lane() {
+    let p = ids("--changed", &["crates/rig-ecs/src/replay/mod.rs"]);
+    assert!(p.contains("ecs-parity"), "{p:?}");
+    let p = ids("--changed", &["crates/rig-sqlite/src/lib.rs"]);
+    assert!(!p.contains("ecs-parity"), "{p:?}");
 }
