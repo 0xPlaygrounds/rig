@@ -232,6 +232,7 @@ where
                             &hook_ctx,
                             RunSettled {
                                 outcome: SettledOutcome::Error(&reason),
+                                messages: Some(run.messages()),
                             },
                         )
                         .await;
@@ -536,6 +537,7 @@ where
                                 &hook_ctx,
                                 RunSettled {
                                     outcome: SettledOutcome::Response(&response),
+                                    messages: Some(run.messages()),
                                 },
                             )
                             .await;

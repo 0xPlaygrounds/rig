@@ -852,6 +852,11 @@ impl RunStartAction {
 pub struct RunSettled<'a> {
     /// How the run ended.
     pub outcome: SettledOutcome<'a>,
+    /// Messages actually committed by this run, including its prompt and
+    /// excluding input history. Available on error as well as success;
+    /// rejected or truncated answerless turns are not committed.
+    /// `None` means the run failed before its state was constructed.
+    pub messages: Option<&'a [Message]>,
 }
 
 /// The outcome carried by [`RunSettled`].

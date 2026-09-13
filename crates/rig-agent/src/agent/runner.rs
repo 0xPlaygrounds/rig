@@ -572,6 +572,7 @@ impl AgentRunner {
                                     &hook_ctx,
                                     RunSettled {
                                         outcome: SettledOutcome::Error(&reason),
+                                        messages: None,
                                     },
                                 )
                                 .await;
