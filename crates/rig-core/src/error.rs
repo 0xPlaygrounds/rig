@@ -342,13 +342,17 @@ impl From<&CompletionError> for ErrorReport {
             CompletionError::ProviderResponse(response) => response.machine_code(),
             _ => None,
         };
+        let refusal = match error {
+            CompletionError::ProviderResponse(response) => response.refusal,
+            _ => false,
+        };
         ErrorReport {
             kind,
             retryable: error.is_retryable(),
             message: error.to_string(),
             code,
             http_status,
-            refusal: false,
+            refusal,
             source_chain: source_chain(error),
             request_id,
             provider_response,
@@ -469,13 +473,16 @@ impl From<&EmbeddingError> for ErrorReport {
         let code = provider_response
             .as_ref()
             .and_then(|response| response.machine_code());
+        let refusal = provider_response
+            .as_ref()
+            .is_some_and(|response| response.refusal);
         ErrorReport {
             kind,
             retryable,
             message: error.to_string(),
             code,
             http_status,
-            refusal: false,
+            refusal,
             source_chain: source_chain(error),
             request_id,
             provider_response,
@@ -515,13 +522,16 @@ impl From<&RerankError> for ErrorReport {
         let code = provider_response
             .as_ref()
             .and_then(|response| response.machine_code());
+        let refusal = provider_response
+            .as_ref()
+            .is_some_and(|response| response.refusal);
         ErrorReport {
             kind,
             retryable,
             message: error.to_string(),
             code,
             http_status,
-            refusal: false,
+            refusal,
             source_chain: source_chain(error),
             request_id,
             provider_response,
@@ -576,7 +586,7 @@ impl From<&VectorStoreError> for ErrorReport {
             message: error.to_string(),
             code: None,
             http_status,
-            refusal: false,
+            refusal: provider_response.as_ref().is_some_and(|r| r.refusal),
             source_chain: source_chain(error),
             request_id: None,
             provider_response,

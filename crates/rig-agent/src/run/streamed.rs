@@ -50,7 +50,7 @@ use rig_core::streaming::{BlockClose, BlockKind, Delta, StreamEvent};
 /// The canonical replay order of a streamed turn, `rig_core`'s: reasoning
 /// blocks, then text, then trailing items. rig-ecs's fold applies the same
 /// rule through `rig_core::message::canonical_streamed_choice`.
-pub use rig_core::message::ordered_assistant_content;
+pub use rig_core::message::{canonical_streamed_choice, ordered_assistant_content};
 
 /// [`ordered_assistant_content`], as an `Option` for slots where an empty
 /// assembly means "no message".
@@ -562,15 +562,30 @@ impl StreamedTurnAssembler {
         provider_choice: &[AssistantContent],
     ) -> Vec<AssistantContent> {
         if !pending_tool_calls.is_empty() || !reasoning.is_empty() {
-            let text_items = assistant_text_items_from_choice(provider_choice);
-            let tool_items = pending_tool_calls
+            // The grouping is rig-core's `canonical_streamed_choice`, over
+            // the assembler's own inputs: the reasoning it accumulated, the
+            // text items the streamed surface reports (an empty text block
+            // without params is dropped), the calls it accepted (a call the
+            // provider delivered but the assembler rejected is not here) and
+            // every image the provider delivered. The regroup guard above is
+            // rig-core's on those inputs: a reasoning block or a call.
+            let parts = reasoning
                 .into_iter()
-                .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call))
-                .collect::<Vec<_>>();
-            // Infallible on purpose: the enclosing guard makes at least one
-            // input non-empty and the assembly maps its inputs 1:1, so there
-            // is no empty case to fall back from.
-            ordered_assistant_content(reasoning, text_items, tool_items)
+                .map(AssistantContent::Reasoning)
+                .chain(assistant_text_items_from_choice(provider_choice))
+                .chain(
+                    pending_tool_calls
+                        .into_iter()
+                        .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call)),
+                )
+                .chain(
+                    provider_choice
+                        .iter()
+                        .filter(|content| matches!(content, AssistantContent::Image(_)))
+                        .cloned(),
+                )
+                .collect();
+            canonical_streamed_choice(parts)
         } else {
             provider_choice.to_vec()
         }

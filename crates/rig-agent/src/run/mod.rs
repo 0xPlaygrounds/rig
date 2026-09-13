@@ -1094,34 +1094,24 @@ impl AgentRun {
                     return Ok(self.finish(output, final_items, output_tool_calls));
                 }
 
-                // An empty turn is not, on its own, a lost turn. Cancelling on
-                // every textless turn would fail runs that previously
-                // succeeded: with the fabricated empty-text padding gone, a
-                // tool-call-only turn whose calls were all dropped arrives
-                // honestly empty. `is_empty_assistant_turn` does the right
-                // thing: keep the turn out of history and carry on.
-                if !is_empty_assistant_turn(&items) {
-                    self.new_messages.push(Message::Assistant {
-                        id: message_id,
-                        content: items.clone(),
-                    });
-                }
-
-                // rig#2322 — but an empty turn the provider *cut short* is a
-                // lost turn, and finishing it as a successful empty answer is
-                // how a truncated response reached users as an unexplained
-                // blank. The blocking Gemini path already rejects a
-                // content-less candidate with a `ResponseError` naming the
-                // finish reason; this makes the agent surface agree.
+                // rig#2322 — an empty turn the provider *cut short* is a lost
+                // turn, and finishing it as a successful empty answer is how
+                // a truncated response reached users as an unexplained blank.
+                // Decided before anything is committed: the run ends in
+                // `Err`, and a reasoning-only turn nobody can answer around is
+                // not history (CONTRACT §4; rig-ecs keeps nothing either). The
+                // blocking Gemini path already rejects a content-less
+                // candidate with a `ResponseError` naming the finish reason;
+                // this makes the agent surface agree.
                 //
                 // The predicate is `turn_delivered_no_answer`, **not**
                 // `is_empty_assistant_turn`: they diverge on a reasoning-only
-                // turn, which belongs in history (pushed above) but answered
-                // nothing. That divergence is the common case, not a corner —
-                // Gemini counts thinking tokens against `maxOutputTokens`, so a
-                // truncated thinking turn typically carries reasoning and no
-                // text, and gating on "empty" let exactly that shape finalize
-                // as a successful `""`.
+                // turn, which belongs in history (pushed below, when the turn
+                // is not lost) but answered nothing. That divergence is the
+                // common case, not a corner — Gemini counts thinking tokens
+                // against `maxOutputTokens`, so a truncated thinking turn
+                // typically carries reasoning and no text, and gating on
+                // "empty" let exactly that shape finalize as a successful `""`.
                 //
                 // Deliberately narrow, so it cannot regress the case above:
                 //   - nothing delivered **and** truncated → error;
@@ -1142,6 +1132,19 @@ impl AgentRun {
                     // in `Err` — so the message must not send the caller to
                     // `completion_calls` for the reason.
                     return Err(CompletionError::ResponseError(reason.no_answer_message()).into());
+                }
+
+                // An empty turn is not, on its own, a lost turn. Cancelling on
+                // every textless turn would fail runs that previously
+                // succeeded: with the fabricated empty-text padding gone, a
+                // tool-call-only turn whose calls were all dropped arrives
+                // honestly empty. `is_empty_assistant_turn` does the right
+                // thing: keep the turn out of history and carry on.
+                if !is_empty_assistant_turn(&items) {
+                    self.new_messages.push(Message::Assistant {
+                        id: message_id,
+                        content: items.clone(),
+                    });
                 }
 
                 if has_tool_calls {

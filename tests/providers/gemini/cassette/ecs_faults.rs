@@ -315,7 +315,7 @@ async fn error_after_text() {
 async fn refusal() {
     let cell = Cell {
         program: Program {
-            ending: Ending::Failed(ErrorKind::Provider),
+            ending: Ending::Failed(ErrorKind::ProviderResponse),
             ..faults::REFUSAL.program
         },
         ..faults::REFUSAL

@@ -473,3 +473,23 @@ fn a_reply_names_its_machine_code_from_the_transport_then_the_body() {
         ));
     assert_eq!(report.code, None);
 }
+
+#[test]
+fn a_refusal_is_never_retryable_whatever_its_status_or_transport_verdict() {
+    use super::ProviderResponseError;
+    // The provider judged the content; the same call gets the same verdict,
+    // so a refusal beats a retryable status and a transient transport verdict.
+    let with_status =
+        ProviderResponseError::new(http::StatusCode::SERVICE_UNAVAILABLE, "blocked".to_owned())
+            .with_refusal(true);
+    assert!(!with_status.is_retryable());
+
+    let by_transport = ProviderResponseError::without_status("blocked".to_owned())
+        .with_transient(Some(true))
+        .with_refusal(true);
+    assert!(!by_transport.is_retryable());
+
+    let plain_block =
+        ProviderResponseError::without_status("blocked".to_owned()).with_refusal(true);
+    assert!(!plain_block.is_retryable());
+}

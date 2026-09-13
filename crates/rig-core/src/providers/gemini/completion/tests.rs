@@ -40,9 +40,16 @@ fn test_generate_content_response_deserializes_without_candidates_or_response_id
     let error = completion::CompletionResponse::try_from(response)
         .expect_err("a blocked prompt is an error");
     assert!(
-        matches!(&error, CompletionError::ProviderError(message) if message.contains("blocked the prompt") && message.contains("SAFETY")),
+        matches!(&error, CompletionError::ProviderResponse(response) if response.body.contains("blocked the prompt") && response.body.contains("SAFETY") && response.refusal && response.code.as_deref() == Some("SAFETY")),
         "{error}"
     );
+    let report = crate::error::ErrorReport::from(&error);
+    assert!(
+        report.refusal,
+        "the verdict is a refusal on the report: {report:?}"
+    );
+    assert!(!report.retryable, "{report:?}");
+    assert_eq!(report.code.as_deref(), Some("SAFETY"));
 }
 
 #[test]
@@ -1808,10 +1815,11 @@ fn block_reasons_split_into_final_refusals_and_transient_blocks() {
             assert_eq!(report.kind, crate::error::ErrorKind::ProviderResponse);
         } else {
             assert!(
-                matches!(&error, CompletionError::ProviderError(_)),
+                matches!(&error, CompletionError::ProviderResponse(response) if response.status.is_none() && response.refusal && response.code.as_deref() == Some(reason)),
                 "{reason}: {error:?}"
             );
-            assert_eq!(report.kind, crate::error::ErrorKind::Provider);
+            assert_eq!(report.kind, crate::error::ErrorKind::ProviderResponse);
+            assert!(report.refusal, "{reason}: {report:?}");
         }
     }
 }

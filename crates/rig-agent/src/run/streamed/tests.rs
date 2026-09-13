@@ -1855,3 +1855,43 @@ fn a_provider_id_matched_completion_retains_its_new_correlator_for_metadata() {
         );
     }
 }
+
+/// The regrouped branch (a call or reasoning present) carries the images
+/// the provider delivered, after the calls, in their order: rig-core's
+/// `canonical_streamed_choice` rule exactly. Before, they were dropped.
+#[test]
+fn finish_carries_images_after_the_calls_when_regrouping() {
+    let mut asm = assembler();
+    asm.ingest(&tool_call_item("call_1", "add"))
+        .expect("ingest");
+    let image = AssistantContent::image_base64(
+        "aGVsbG8=",
+        Some(rig_core::message::ImageMediaType::PNG),
+        None,
+    );
+    let final_choice = vec![
+        image.clone(),
+        AssistantContent::text("look"),
+        AssistantContent::ToolCall(tool_call("call_1", "add")),
+    ];
+    let turn = asm.finish(None, &final_choice);
+    let kinds: Vec<&str> = turn
+        .choice
+        .iter()
+        .map(|content| match content {
+            AssistantContent::Text(_) => "text",
+            AssistantContent::ToolCall(_) => "call",
+            AssistantContent::Image(_) => "image",
+            AssistantContent::Reasoning(_) => "reasoning",
+        })
+        .collect();
+    assert_eq!(kinds, ["text", "call", "image"], "{:?}", turn.choice);
+    assert_eq!(
+        serde_json::to_value(&turn.choice).expect("serialize"),
+        serde_json::to_value(rig_core::completion::message::canonical_streamed_choice(
+            final_choice
+        ))
+        .expect("serialize"),
+        "the assembler and rig-core's rule agree"
+    );
+}
