@@ -17,6 +17,8 @@ mod cassette {
     mod completions_api;
     mod corpus_breadth;
     mod corpus_delta;
+    mod corpus_faults_chat;
+    mod corpus_faults_responses;
     mod corpus_host;
     mod corpus_matrix_chat;
     mod corpus_matrix_responses;
@@ -27,6 +29,8 @@ mod cassette {
     mod ecs_chat_tool_lifecycle;
     mod ecs_extractor;
     mod ecs_extractor_usage;
+    mod ecs_faults_chat;
+    mod ecs_faults_responses;
     mod ecs_lifecycle;
     mod ecs_matrix_chat;
     mod ecs_matrix_extra_chat;

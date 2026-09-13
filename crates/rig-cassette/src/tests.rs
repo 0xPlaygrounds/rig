@@ -871,3 +871,38 @@ then:
     assert!(!scrubbed.contains("body-token"));
     assert_eq!(scrubbed.matches(REDACTED).count(), 4);
 }
+
+/// OAuth tokens in a recorded body are placeholdered at record time, the
+/// way generated ids are: a token exchange or a refresh reply can never
+/// reach a committed cassette with its material.
+#[test]
+fn oauth_token_fields_are_placeholdered_at_record_time() {
+    let cassette = scrub_cassette_contents(
+        r#"when:
+  path: /oauth/token
+  method: POST
+then:
+  status: 200
+  body: '{"access_token":"ya29.a0AfB_secret-material","id_token":"eyJhbGciOi.secret","refresh_token":"1//0g-secret","token_type":"Bearer"}'
+"#,
+    );
+    for secret in [
+        "ya29.a0AfB_secret-material",
+        "eyJhbGciOi.secret",
+        "1//0g-secret",
+    ] {
+        assert!(
+            !cassette.contains(secret),
+            "{secret} survived scrubbing: {cassette}"
+        );
+    }
+    assert!(
+        cassette.contains("access_token"),
+        "the key is kept, the value is not: {cassette}"
+    );
+    assert_eq!(
+        scrub_cassette_contents(&cassette),
+        cassette,
+        "scrubbing is idempotent"
+    );
+}

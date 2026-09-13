@@ -1,0 +1,105 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.","type":"text"}],"role":"system"},{"content":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. If a tool reports an error, do not call it again. After both tools have answered, respond in one short sentence that includes the harbor label and the orchard tool''s error text.","role":"user"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","reasoning_effort":"none","stream":true,"stream_options":{"include_usage":true},"tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"},{"function":{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |2+
+
+
+    data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"function":{"arguments":"","name":"lookup_harbor_label"},"id":"chatcmpl-REDACTED_1","index":0,"type":"function"}]},"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"function":{"arguments":"{}"},"index":0}]},"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"function":{"arguments":"","name":"lookup_orchard_label"},"id":"chatcmpl-REDACTED_3","index":1,"type":"function"}]},"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"function":{"arguments":"{}"},"index":1}]},"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":36,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"prompt_tokens":425,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":461}}
+
+    data: [DONE]
+
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.","type":"text"}],"role":"system"},{"content":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. If a tool reports an error, do not call it again. After both tools have answered, respond in one short sentence that includes the harbor label and the orchard tool''s error text.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"chatcmpl-REDACTED_1","type":"function"},{"function":{"arguments":"{}","name":"lookup_orchard_label"},"id":"chatcmpl-REDACTED_3","type":"function"}]},{"content":"crimson-harbor","role":"tool","tool_call_id":"chatcmpl-REDACTED_1"},{"content":"the orchard lookup is broken","role":"tool","tool_call_id":"chatcmpl-REDACTED_3"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","reasoning_effort":"none","stream":true,"stream_options":{"include_usage":true},"tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"},{"function":{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    data: {"choices":[{"delta":{"content":"The","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":" harbor","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":" label","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":" is","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":" crimson","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"-h","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"ar","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"bor","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":" and","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":" the","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":" orch","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"ard","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":" tool","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"'s","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":" error","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":" text","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":" is","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":" \"","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"the","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":" orch","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"ard","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":" lookup","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":" is","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":" broken","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"\".","role":"assistant"},"index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_4","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion.chunk","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":26,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"prompt_tokens":494,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":520}}
+
+    data: [DONE]
+

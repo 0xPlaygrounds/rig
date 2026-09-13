@@ -1,0 +1,41 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the add tool to add 17 and 25. If the tool reports an error, do not call it again: reply with the error message it gave.","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"adds two integers","name":"add","parameters":{"properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":17,\"y\":25},\"id\":\"call_1420669\",\"name\":\"add\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":112,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":112}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":62,\"totalTokenCount\":192}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":112,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":112}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":62,\"totalTokenCount\":192}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the add tool to add 17 and 25. If the tool reports an error, do not call it again: reply with the error message it gave.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":17,"y":25},"id":"call_1420669","name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"id":"call_1420669","name":"add","response":{"result":"the adder is broken"}},"thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"adds two integers","name":"add","parameters":{"properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"the adder is broken\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":4,\"promptTokenCount\":145,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":145}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":45,\"totalTokenCount\":194}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"signature_REDACTED_2\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":4,\"promptTokenCount\":207,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":207}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":45,\"totalTokenCount\":256}}\r\n\r\n"

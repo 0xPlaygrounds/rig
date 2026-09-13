@@ -16,9 +16,11 @@ mod cassette {
     #[cfg(feature = "audio")]
     mod audio_generation;
     mod conformance;
+    mod corpus_faults;
     mod corpus_matrix;
     mod ecs_completion;
     mod ecs_extractor;
+    mod ecs_faults;
     mod ecs_matrix;
     mod ecs_matrix_extra;
     mod ecs_prompt_caching;

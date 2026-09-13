@@ -72,7 +72,7 @@ async fn error_facts_unary() {
                     additional_params: Some(serde_json::json!({"temperature": 99.0})),
                     streamed: false,
                     status: 400,
-                    code: None,
+                    code: Some("decimal_above_max_value"),
                 },
             )
             .await;
@@ -98,7 +98,7 @@ async fn error_facts_streamed() {
                     additional_params: None,
                     streamed: true,
                     status: 404,
-                    code: None,
+                    code: Some("model_not_found"),
                 },
             )
             .await;

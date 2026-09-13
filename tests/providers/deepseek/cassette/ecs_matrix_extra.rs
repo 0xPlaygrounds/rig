@@ -65,7 +65,7 @@ async fn error_facts_unary() {
                     ),
                     streamed: false,
                     status: 400,
-                    code: None,
+                    code: Some("invalid_request_error"),
                 },
             )
             .await;
@@ -86,7 +86,7 @@ async fn error_facts_streamed() {
                 additional_params: Some(serde_json::json!({ "thinking": { "type": "disabled" } })),
                 streamed: true,
                 status: 400,
-                code: None,
+                code: Some("invalid_request_error"),
             },
         )
         .await;

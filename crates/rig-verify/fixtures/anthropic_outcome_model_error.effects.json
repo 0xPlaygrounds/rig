@@ -65,7 +65,7 @@
           "kind": "provider_response",
           "retryable": false,
           "message": "ProviderResponseError: status 401 Unauthorized: {\"error\":{\"message\":\"API key is invalid.\",\"type\":\"authentication_error\"},\"request_id\":null,\"type\":\"error\"}",
-          "code": null,
+          "code": "authentication_error",
           "http_status": 401,
           "refusal": false,
           "source_chain": [],
