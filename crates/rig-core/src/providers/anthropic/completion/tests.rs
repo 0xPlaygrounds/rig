@@ -5,6 +5,13 @@ use serde_path_to_error::deserialize;
 
 #[test]
 fn current_model_default_max_tokens_match_anthropic_limits() {
+    assert_eq!(
+        default_max_tokens_for_model(CLAUDE_FABLE_5_1),
+        Some(128_000)
+    );
+    assert_eq!(default_max_tokens_for_model(CLAUDE_FABLE_5), Some(128_000));
+    assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_5), Some(128_000));
+    assert_eq!(default_max_tokens_for_model(CLAUDE_SONNET_5), Some(128_000));
     assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_4_8), Some(128_000));
     assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_4_7), Some(128_000));
     assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_4_6), Some(128_000));
@@ -13,6 +20,19 @@ fn current_model_default_max_tokens_match_anthropic_limits() {
         Some(64_000)
     );
     assert_eq!(default_max_tokens_for_model(CLAUDE_HAIKU_4_5), Some(64_000));
+}
+
+#[test]
+fn mid_conversation_system_messages_match_anthropic_support() {
+    assert!(supports_mid_conversation_system_messages(CLAUDE_FABLE_5_1));
+    assert!(supports_mid_conversation_system_messages(CLAUDE_FABLE_5));
+    assert!(supports_mid_conversation_system_messages(CLAUDE_OPUS_5));
+    assert!(supports_mid_conversation_system_messages(CLAUDE_OPUS_4_8));
+
+    assert!(!supports_mid_conversation_system_messages(CLAUDE_SONNET_5));
+    assert!(!supports_mid_conversation_system_messages(
+        CLAUDE_SONNET_4_6
+    ));
 }
 
 #[test]

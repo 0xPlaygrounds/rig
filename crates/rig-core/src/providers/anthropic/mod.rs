@@ -7,7 +7,7 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = anthropic::Client::new("YOUR_API_KEY")?;
 //!
-//! let sonnet = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
+//! let sonnet = client.completion_model(anthropic::completion::CLAUDE_SONNET_5);
 //! # Ok(())
 //! # }
 //! ```
