@@ -928,7 +928,15 @@ async fn blocked_prompt_with_an_unrecognised_safety_category_still_names_the_blo
     let Err(report) = &items[0] else {
         panic!("{:?}", items[0]);
     };
-    assert_eq!(report.kind, crate::error::ErrorKind::Provider, "{report:?}");
+    // `OTHER` is not a verdict on the content: it is retryable, and it
+    // reaches the consumer as a provider response, not a refusal.
+    assert_eq!(
+        report.kind,
+        crate::error::ErrorKind::ProviderResponse,
+        "{report:?}"
+    );
+    assert!(report.retryable, "an OTHER block is transient: {report:?}");
+    assert_eq!(report.code.as_deref(), Some("OTHER"));
     assert!(
         report.message.contains("block_reason=OTHER"),
         "{}",
@@ -990,5 +998,45 @@ async fn in_band_opaque_or_invalid_codes_do_not_invent_http_status() {
         assert_eq!(errors[0].http_status, None);
         assert!(!errors[0].is_retryable());
         assert_eq!(errors[0].provider_response_body(), Some(body.as_str()));
+    }
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[tokio::test]
+async fn each_block_reason_classifies_the_same_on_the_stream_as_unary() {
+    // The refusal reasons are final; `OTHER` and a reason this crate has
+    // never seen are transient. Both wires agree.
+    for (reason, retryable) in [
+        ("SAFETY", false),
+        ("BLOCKLIST", false),
+        ("PROHIBITED_CONTENT", false),
+        ("OTHER", true),
+        ("SOMETHING_NEW", true),
+    ] {
+        let frame = format!(r#"{{"promptFeedback":{{"blockReason":"{reason}"}}}}"#);
+        let (items, finished) = collect_stream(&[frame.as_str()]).await;
+        assert_eq!(items.len(), 1, "{reason}: {items:?}");
+        let Err(report) = &items[0] else {
+            panic!("{reason}: {:?}", items[0]);
+        };
+        assert_eq!(report.retryable, retryable, "{reason}: {report:?}");
+        assert_eq!(
+            report.kind,
+            if retryable {
+                crate::error::ErrorKind::ProviderResponse
+            } else {
+                crate::error::ErrorKind::Provider
+            },
+            "{reason}: {report:?}"
+        );
+        assert!(
+            report.message.contains(&format!("block_reason={reason}")),
+            "{reason}: {}",
+            report.message
+        );
+        assert!(
+            !finished,
+            "{reason}: a blocked prompt has no terminal record"
+        );
     }
 }

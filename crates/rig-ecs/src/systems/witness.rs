@@ -3,7 +3,8 @@
 //! same ending components whether written by the runtime or a host system.
 
 use bevy_ecs::prelude::*;
-use rig_core::observe::{Action, Emitter, Observation, Reason, Stage};
+use rig_core::observe::{Action, Emitter, HostAction, Observation, Reason, Stage, Subject};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     agent::{Failed, Failure, Run, Settled},
@@ -16,6 +17,47 @@ pub const AGENT_EMITTER: &str = "rig-ecs/agent";
 /// The agent runtime as an emitter: its name and crate version.
 pub fn agent_emitter() -> Emitter {
     Emitter::versioned(AGENT_EMITTER, env!("CARGO_PKG_VERSION"))
+}
+
+/// The runtime re-issued a completion after a retryable provider failure
+/// (CONTRACT §5): which attempt this is, out of how many, and why.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProviderRetry {
+    /// The attempt about to be issued, counting from 1.
+    pub attempt: usize,
+    /// The run's retry budget.
+    pub budget: usize,
+    /// The failure's kind code and message.
+    pub reason: Reason,
+}
+
+impl HostAction for ProviderRetry {
+    const KIND: &'static str = "rig-ecs/agent/provider_retry";
+}
+
+/// Tell the witness a completion is being re-issued.
+pub(crate) fn observe_provider_retry(
+    witness: &Witnessing,
+    subject: Subject,
+    attempt: usize,
+    budget: usize,
+    report: &rig_core::error::ErrorReport,
+) {
+    let fact = ProviderRetry {
+        attempt,
+        budget,
+        reason: Reason::with_detail(report.kind.code(), report.message.clone()),
+    };
+    // A fact of two integers and a reason serializes; if it ever does not,
+    // the ending still names the failure, so the retry is not lost twice.
+    if let Ok(action) = fact.action() {
+        witness.observe(Observation::new(
+            subject,
+            Stage::Runtime,
+            agent_emitter(),
+            action,
+        ));
+    }
 }
 
 /// Install the runtime's observers on `world`.

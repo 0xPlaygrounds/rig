@@ -17,11 +17,11 @@ use super::{
     Conversation, Cursor, DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Failed, Grant,
     InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory, MaxTokens, MaxTurns,
     MemoryAppendScheduled, Order, OrderCounter, Output, OutputRetries, OutputToolConfig,
-    OutputToolName, Outputs, Owner, Parts, Preamble, Remembered, Remembering, Remembers, Reprompt,
-    RequestPatch, Resolution, ResolvingTools, Retrievable, Retrieval, Retrieves, Retrieving, Retry,
-    Role, Route, Run, RunCounter, RunOf, RunResult, RunSeq, Settled, StreamRequested, Temperature,
-    ToolAccess, ToolCallSlot, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Usage, UsesModel,
-    Utterance,
+    OutputToolName, Outputs, Owner, Parts, Preamble, ProviderRetried, ProviderRetries,
+    ProviderRetrying, Remembered, Remembering, Remembers, Reprompt, RequestPatch, Resolution,
+    ResolvingTools, Retrievable, Retrieval, Retrieves, Retrieving, Retry, Role, Route, Run,
+    RunCounter, RunOf, RunResult, RunSeq, Settled, StreamRequested, Temperature, ToolAccess,
+    ToolCallSlot, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Usage, UsesModel, Utterance,
 };
 use crate::bus::{Bound, Scope};
 
@@ -488,6 +488,7 @@ impl RunScene {
                 Settled => "settled", Failed => "failed", RunResult => "run_result",
                 Usage => "usage", OutputRetries => "output_retries",
                 InvalidRetries => "invalid_retries", OutputToolName => "output_tool_name",
+                ProviderRetries => "provider_retries", ProviderRetried => "provider_retried", ProviderRetrying => "provider_retrying",
                 Scope => "scope", Turn => "turn", Outputs => "outputs", Reprompt => "reprompt",
                 InvalidCall => "invalid_call", Resolution => "resolution",
                 ToolPolicy => "tool_policy", ToolContextSpec => "tool_context",
@@ -649,6 +650,7 @@ impl RunScene {
                 Settled => "settled", Failed => "failed", RunResult => "run_result",
                 Usage => "usage", OutputRetries => "output_retries",
                 InvalidRetries => "invalid_retries", OutputToolName => "output_tool_name",
+                ProviderRetries => "provider_retries", ProviderRetried => "provider_retried", ProviderRetrying => "provider_retrying",
                 Scope => "scope", Turn => "turn", Outputs => "outputs", Reprompt => "reprompt",
                 InvalidCall => "invalid_call", Resolution => "resolution",
                 ToolPolicy => "tool_policy", ToolContextSpec => "tool_context",

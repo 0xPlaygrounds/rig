@@ -11,7 +11,7 @@
 //! | *the bus's `Gate`, `Dispatch`, `Collect`, `Judge`* | | |
 //! | `Fold` | the effect may have streamed or landed | `Outputs` on the turn, per tick |
 //! | `Judge` | the turn's outputs are complete | a user system may rewrite them, or an `EffectOutcome` of a tool child |
-//! | `Materialise` | a complete turn is unread, or its batch has landed | `land_batch`: the results as one user utterance, or a failure; `materialise`: the assistant utterance, the answer, a reprompt, an invalid call, the tool batch, or a failure |
+//! | `Materialise` | a complete turn is unread, or its batch has landed | `land_batch`: the results as one user utterance, or a failure; `materialise`: the assistant utterance, the answer, a reprompt, an invalid call, the tool batch, a provider retry (`ProviderRetried`, `ProviderRetrying`, `Assembling`), or a failure |
 //! | `Settle` | a run settled or failed this pass | nothing yet (observers fire on `Settled`/`Failed`) |
 //!
 //! The first steering slot is any system before `Assemble`: it edits the
@@ -27,14 +27,15 @@ use rig_core::{
 use crate::{
     agent::{
         AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Batch, Cancelled, Context,
-        Conversation, Cursor, DocumentId, DocumentProps, DocumentText, Failed, Failure, Grant,
-        InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory, MaxTokens, MaxTurns,
-        MemoryAppendScheduled, MessageParts, Order, OrderCounter, Output, OutputKind,
-        OutputRetries, OutputToolConfig, OutputToolName, Outputs, Parts, Preamble, Remembered,
-        Remembering, Remembers, Reprompt, RequestPatch, Resolution, ResolvingTools, Retrievable,
-        Retrieval, RetrievalKind, Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunResult,
-        RunSeq, Settled, StreamRequested, Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec,
-        ToolContextSpec, ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
+        Conversation, Cursor, DEFAULT_PROVIDER_RETRIES, DocumentId, DocumentProps, DocumentText,
+        Failed, Failure, Grant, InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory,
+        MaxTokens, MaxTurns, MemoryAppendScheduled, MessageParts, Order, OrderCounter, Output,
+        OutputKind, OutputRetries, OutputToolConfig, OutputToolName, Outputs, Parts, Preamble,
+        ProviderRetried, ProviderRetries, ProviderRetrying, Remembered, Remembering, Remembers,
+        Reprompt, RequestPatch, Resolution, ResolvingTools, Retrievable, Retrieval, RetrievalKind,
+        Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunResult, RunSeq, Settled,
+        StreamRequested, Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec, ToolContextSpec,
+        ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
     },
     bus::{
         Bound, BusSet, EffectOutcome, Issued, PendingEffect, Progress, RigSchedule, Scope,
@@ -130,6 +131,23 @@ pub type NeedsMemoryAppend = (
 );
 /// A completion effect: any effect of a turn that is not a retrieval.
 pub type NotRetrieval = (With<PendingEffect>, Without<Retrieval>);
+/// What `materialise` reads besides the graph: the tool choice and access
+/// settings, the provider-retry budget, and the witness a retry is told
+/// to. Grouped: a system takes at most sixteen parameters.
+#[derive(bevy_ecs::system::SystemParam)]
+pub struct MaterialiseReads<'w, 's> {
+    /// The tool choice, the run's over the agent's.
+    pub choices: Query<'w, 's, &'static ToolChoiceSpec>,
+    /// The tool access spec.
+    pub access: Query<'w, 's, &'static ToolAccess>,
+    /// The provider-retry budget, the run's over the agent's.
+    pub provider_retries: Query<'w, 's, &'static ProviderRetries>,
+    /// Subjects for the witness.
+    pub subjects: crate::bus::Subjects<'w, 's>,
+    /// The witness, if the world has one.
+    pub witness: Option<Res<'w, crate::bus::Witnessing>>,
+}
+
 /// What `materialise` reads of a run awaiting its model.
 pub type AwaitingView = (
     &'static RunOf,
@@ -138,6 +156,7 @@ pub type AwaitingView = (
     &'static InvalidRetries,
     &'static OutputToolName,
     &'static Usage,
+    &'static ProviderRetried,
 );
 /// What the cancel observer reads of a run: awaiting its model, resolving
 /// its tools, already ended.
@@ -306,6 +325,7 @@ pub fn spawn_run(
         Cursor::default(),
         OutputRetries::default(),
         crate::agent::InvalidRetries::default(),
+        ProviderRetried::default(),
         OutputToolName::default(),
         Usage::default(),
         Scope(format!("{owner}/run#{seq}")),
@@ -416,6 +436,7 @@ pub fn advance(
     contexts: Query<(&Context, &Order)>,
     retrievals: Query<(), With<Retrieves>>,
     max_turns: Query<&MaxTurns>,
+    retrying: Query<(), With<ProviderRetrying>>,
     mut orders: ResMut<OrderCounter>,
     mut progress: ResMut<Progress>,
 ) {
@@ -425,8 +446,11 @@ pub fn advance(
         if fresh.iter().any(|child_of| child_of.parent() == run) {
             continue;
         }
+        // A retried attempt re-issues a turn the cursor already counted
+        // (CONTRACT §5): it neither checks nor spends the model-call budget.
+        let retrying = retrying.get(run).is_ok();
         let limit = setting(run, *agent, &max_turns).map_or(1, |limit| limit.0);
-        if cursor.turn >= limit {
+        if !retrying && cursor.turn >= limit {
             commands
                 .entity(run)
                 .remove::<Assembling>()
@@ -458,9 +482,13 @@ pub fn advance(
                 ));
             }
         }
-        commands.entity(run).insert(Cursor {
-            turn: cursor.turn + 1,
-        });
+        if retrying {
+            commands.entity(run).remove::<ProviderRetrying>();
+        } else {
+            commands.entity(run).insert(Cursor {
+                turn: cursor.turn + 1,
+            });
+        }
         progress.mark();
     }
 }
@@ -1503,20 +1531,28 @@ pub fn materialise(
     outputs: Query<&Output>,
     max_turns: Query<&MaxTurns>,
     policies: Query<&InvalidCalls>,
-    access_and_choices: (Query<&ToolChoiceSpec>, Query<&ToolAccess>),
+    reads: MaterialiseReads,
     tool_policies: Query<&ToolPolicy>,
     contexts: Query<&ToolContextSpec>,
     invalid_calls: Query<(Entity, &ChildOf, &InvalidCall, &Resolution)>,
     mut orders: ResMut<OrderCounter>,
     mut progress: ResMut<Progress>,
 ) {
-    let (choices, access) = access_and_choices;
+    let MaterialiseReads {
+        choices,
+        access,
+        provider_retries,
+        subjects,
+        witness,
+    } = reads;
     let mut turns: Vec<_> = turns.iter_mut().collect();
     turns.sort_by_key(|(_, turn_of, _, _, _)| runs.get(turn_of.parent()).map(|(_, seq)| *seq).ok());
     for (turn, turn_of, mut outs, Folded(mode), retry) in turns {
         let run = turn_of.parent();
-        let Ok(((RunOf(agent), cursor, retries, invalid_retries, minted, usage), _)) =
-            runs.get(run)
+        let Ok((
+            (RunOf(agent), cursor, retries, invalid_retries, minted, usage, provider_retried),
+            _,
+        )) = runs.get(run)
         else {
             continue;
         };
@@ -1737,6 +1773,35 @@ pub fn materialise(
                 continue;
             }
             Err(report) => {
+                // A retryable provider failure with budget left re-issues
+                // the same request over the same history (CONTRACT §5):
+                // the lost turn is read and leaves nothing; the run wants
+                // a turn again, marked so `Advance` does not count it.
+                let budget = setting(run, agent, &provider_retries)
+                    .map_or(DEFAULT_PROVIDER_RETRIES, |retries| retries.0);
+                if report.kind != ErrorKind::Cancelled
+                    && report.retryable
+                    && provider_retried.0 < budget
+                {
+                    let attempt = provider_retried.0 + 1;
+                    commands.entity(turn).insert(Materialised);
+                    commands.entity(run).remove::<AwaitingModel>().insert((
+                        ProviderRetried(attempt),
+                        ProviderRetrying,
+                        Assembling,
+                    ));
+                    if let Some(witness) = witness.as_deref() {
+                        witness::observe_provider_retry(
+                            witness,
+                            subjects.of_scope(run),
+                            attempt,
+                            budget,
+                            report,
+                        );
+                    }
+                    progress.mark();
+                    continue;
+                }
                 let failure = if report.kind == ErrorKind::Cancelled {
                     Failure::Cancelled(report.clone())
                 } else {
