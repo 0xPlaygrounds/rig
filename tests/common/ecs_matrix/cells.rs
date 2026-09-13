@@ -70,6 +70,7 @@ pub(crate) enum Thinking {
     reason = "each provider test target constructs only its own dialect"
 )]
 pub(crate) enum ThinkingWire {
+    Anthropic,
     OpenAiChat,
     OpenAiResponses,
     Gemini,
@@ -139,6 +140,10 @@ impl ThinkingWire {
     /// a builder's defaults and a second-turn patch.
     pub(crate) fn params(self, on: bool) -> fn() -> serde_json::Value {
         match (self, on) {
+            (Self::Anthropic, true) => {
+                || serde_json::json!({"thinking": {"type": "enabled", "budget_tokens": 1024}})
+            }
+            (Self::Anthropic, false) => || serde_json::json!({"thinking": {"type": "disabled"}}),
             (Self::OpenAiChat, true) => || openai_chat_thinking(true),
             (Self::OpenAiChat, false) => || openai_chat_thinking(false),
             (Self::OpenAiResponses, true) => || openai_responses_thinking(true),
@@ -241,6 +246,8 @@ pub(crate) struct Cell {
     /// cells keep their original additional parameters byte-for-byte.
     pub explicit_thinking_off: bool,
     pub reasoning: Option<ReasoningCase>,
+    /// The image the first prompt carries, and how (`super::image`).
+    pub image: Option<super::image::ImageCell>,
     pub tools: &'static [ToolKind],
     pub memory: Memory,
     pub bus: Bus,
@@ -253,6 +260,11 @@ pub(crate) struct Cell {
     /// Save a scene after this many tool turns' results and resume in a
     /// fresh world over the log's tail (CONTRACT §13).
     pub resume_after: Option<usize>,
+    /// The cut is resumed in a fresh world over fresh live adapters and
+    /// the same cassette (the head world sends the head, only the restored
+    /// world can send the tail) rather than over replayers of the log's
+    /// tail; `resume_after` names the cut.
+    pub live_resume: bool,
     /// The fault the cell drives, if it is a failure-row cell
     /// (`super::faults`).
     pub fault: Option<super::faults::Fault>,
@@ -269,6 +281,7 @@ pub(crate) const CELL: Cell = Cell {
     thinking: Thinking::Off,
     explicit_thinking_off: false,
     reasoning: None,
+    image: None,
     tools: &[],
     memory: Memory::None,
     bus: Bus::Own,
@@ -276,6 +289,7 @@ pub(crate) const CELL: Cell = Cell {
     events: false,
     families: &[],
     resume_after: None,
+    live_resume: false,
     fault: None,
     scene: super::faults::Scene::None,
     provider_retries: None,
@@ -345,6 +359,7 @@ pub(crate) const REASONING_TOOL_UNARY: Cell = Cell {
         ..TOOLS
     },
     resume_after: Some(1),
+    live_resume: true,
     ..ADD
 };
 
@@ -356,6 +371,7 @@ pub(crate) const REASONING_TOOL_STREAMED: Cell = Cell {
     },
     events: true,
     resume_after: None,
+    live_resume: false,
     ..REASONING_TOOL_UNARY
 };
 
@@ -392,6 +408,131 @@ pub(crate) const REASONING_CAPPED_STREAMED: Cell = Cell {
     },
     events: true,
     ..REASONING_CAPPED
+};
+
+// -- Images: the user's content, verbatim, through record, history and scene --
+
+use super::image::{ImageCase, ImageCell, ImageSource};
+
+#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
+const IMAGE_TEXT: Program = Program {
+    preamble: Some(super::image::IMAGE_PREAMBLE),
+    prompt: super::image::COLOR_PROMPT,
+    temperature: Some(0.0),
+    max_tokens: Some(2048),
+    ..Program::DEFAULT
+};
+#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
+const IMAGE_TOOLS: Program = Program {
+    preamble: Some(super::image::IMAGE_TOOL_PREAMBLE),
+    prompt: super::image::IMAGE_TOOL_PROMPT,
+    temperature: Some(0.0),
+    max_tokens: Some(2048),
+    max_turns: Some(3),
+    ..Program::DEFAULT
+};
+#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
+const INLINE_TEXT: ImageCell = ImageCell {
+    case: ImageCase::Text,
+    source: ImageSource::Inline,
+};
+#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
+const INLINE_TOOL: ImageCell = ImageCell {
+    case: ImageCase::Tool,
+    source: ImageSource::Inline,
+};
+
+#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
+pub(crate) const IMAGE_INLINE_TEXT_UNARY: Cell = Cell {
+    name: "image_inline_text_unary",
+    program: IMAGE_TEXT,
+    image: Some(INLINE_TEXT),
+    families: C,
+    ..CELL
+};
+#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
+pub(crate) const IMAGE_INLINE_TEXT_STREAMED: Cell = Cell {
+    name: "image_inline_text_streamed",
+    program: Program {
+        streamed: true,
+        ..IMAGE_TEXT
+    },
+    events: true,
+    ..IMAGE_INLINE_TEXT_UNARY
+};
+#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
+pub(crate) const IMAGE_INLINE_MIXED_ORDER: Cell = Cell {
+    name: "image_inline_mixed_order",
+    program: Program {
+        prompt: super::image::MIXED_AFTER,
+        ..IMAGE_TEXT
+    },
+    image: Some(ImageCell {
+        case: ImageCase::MixedOrder,
+        source: ImageSource::Inline,
+    }),
+    ..IMAGE_INLINE_TEXT_UNARY
+};
+#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
+pub(crate) const IMAGE_INLINE_TOOL_UNARY: Cell = Cell {
+    name: "image_inline_tool_unary",
+    program: IMAGE_TOOLS,
+    image: Some(INLINE_TOOL),
+    tools: &[ToolKind::Adder],
+    families: CTC,
+    resume_after: Some(1),
+    live_resume: true,
+    ..CELL
+};
+#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
+pub(crate) const IMAGE_INLINE_TOOL_STREAMED: Cell = Cell {
+    name: "image_inline_tool_streamed",
+    program: Program {
+        streamed: true,
+        ..IMAGE_TOOLS
+    },
+    events: true,
+    resume_after: None,
+    live_resume: false,
+    ..IMAGE_INLINE_TOOL_UNARY
+};
+/// The first run answers the image; the second run, a text prompt about
+/// it, is fed the first run's committed history through the conversation
+/// store both interpreters append to and load from (§11).
+#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
+pub(crate) const IMAGE_INLINE_FOLLOWUP: Cell = Cell {
+    name: "image_inline_followup",
+    program: Program {
+        max_turns: Some(3),
+        conversation: Some(CONVERSATION),
+        second_prompt: Some(super::image::FOLLOWUP_PROMPT),
+        ..IMAGE_TEXT
+    },
+    image: Some(ImageCell {
+        case: ImageCase::Followup,
+        source: ImageSource::Inline,
+    }),
+    memory: Memory::InMemory,
+    families: TWO_RUNS,
+    ..CELL
+};
+#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
+pub(crate) const IMAGE_URL_TEXT_UNARY: Cell = Cell {
+    name: "image_url_text_unary",
+    image: Some(ImageCell {
+        case: ImageCase::Text,
+        source: ImageSource::Url,
+    }),
+    ..IMAGE_INLINE_TEXT_UNARY
+};
+#[allow(dead_code, reason = "the image matrix runs on four of the six wires")]
+pub(crate) const IMAGE_URL_TOOL_UNARY: Cell = Cell {
+    name: "image_url_tool_unary",
+    image: Some(ImageCell {
+        case: ImageCase::Tool,
+        source: ImageSource::Url,
+    }),
+    ..IMAGE_INLINE_TOOL_UNARY
 };
 
 // -- §5 budgets and endings; §9.1 stopping (`ecs_endings`) --------------------

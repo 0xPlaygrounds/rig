@@ -1,0 +1,41 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"inlineData":{"data":"iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC","mimeType":"image/png"},"thought":false},{"text":"Look at the image, then use the add tool to add 17 and 25. Reply in one short sentence giving the image''s dominant non-background color and the sum.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2048,"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant with an add tool. Use the tool when asked, then answer directly.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":17,\"y\":25},\"id\":\"call_2293753\",\"name\":\"add\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":133,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":133}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":125,\"totalTokenCount\":276}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":1222,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":133},{\"modality\":\"IMAGE\",\"tokenCount\":1089}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":125,\"totalTokenCount\":1365}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"inlineData":{"data":"iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC","mimeType":"image/png"},"thought":false},{"text":"Look at the image, then use the add tool to add 17 and 25. Reply in one short sentence giving the image''s dominant non-background color and the sum.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":17,"y":25},"id":"call_2293753","name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"id":"call_2293753","name":"add","response":{"result":42}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2048,"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant with an add tool. Use the tool when asked, then answer directly.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The image'\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":3,\"promptTokenCount\":162,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":162}],\"serviceTier\":\"standard\",\"totalTokenCount\":165}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"s dominant color is red, and the sum is 42.\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":17,\"promptTokenCount\":162,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":162}],\"serviceTier\":\"standard\",\"totalTokenCount\":179}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":17,\"promptTokenCount\":1376,\"promptTokensDetails\":[{\"modality\":\"IMAGE\",\"tokenCount\":1089},{\"modality\":\"TEXT\",\"tokenCount\":287}],\"serviceTier\":\"standard\",\"totalTokenCount\":1393}}\r\n\r\n"

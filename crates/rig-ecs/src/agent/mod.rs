@@ -539,6 +539,35 @@ impl MessageParts {
     }
 }
 
+/// A run's prompt: the parts of the user message it opens with — text,
+/// or text and images in the order given (`spawn_run`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Prompt(pub Vec<UserContent>);
+
+impl From<&str> for Prompt {
+    fn from(text: &str) -> Self {
+        Self(vec![UserContent::text(text)])
+    }
+}
+
+impl From<String> for Prompt {
+    fn from(text: String) -> Self {
+        Self(vec![UserContent::text(text)])
+    }
+}
+
+impl From<UserContent> for Prompt {
+    fn from(part: UserContent) -> Self {
+        Self(vec![part])
+    }
+}
+
+impl From<Vec<UserContent>> for Prompt {
+    fn from(parts: Vec<UserContent>) -> Self {
+        Self(parts)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Runs and turns.
 

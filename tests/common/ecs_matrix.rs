@@ -41,6 +41,8 @@ pub(crate) mod cells;
 pub(crate) mod extra;
 #[path = "ecs_matrix/faults.rs"]
 pub(crate) mod faults;
+#[path = "ecs_matrix/image.rs"]
+pub(crate) mod image;
 #[path = "ecs_matrix/reasoning.rs"]
 pub(crate) mod reasoning;
 #[path = "ecs_matrix/world.rs"]

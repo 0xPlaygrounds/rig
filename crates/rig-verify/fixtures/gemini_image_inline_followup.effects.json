@@ -1,0 +1,506 @@
+{
+  "header": {
+    "run_spec": 10647386973881105715,
+    "handlers": [
+      {
+        "key": "golden/memory",
+        "family": {
+          "family": "memory"
+        }
+      },
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/memory": "memory",
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/memory": "memory",
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/memory",
+      "kind": {
+        "effect": "memory",
+        "op": {
+          "op": "load",
+          "conversation": "golden-conversation"
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "memory",
+          "memory": "loaded",
+          "messages": []
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "image",
+                  "data": {
+                    "type": "base64",
+                    "value": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC"
+                  },
+                  "media_type": "png"
+                },
+                {
+                  "type": "text",
+                  "text": "Describe the dominant non-background color of this image in one short sentence."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "The dominant non-background color is red."
+            },
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "",
+                    "signature": "signature_REDACTED_1"
+                  }
+                }
+              ]
+            }
+          ],
+          "usage": {
+            "input_tokens": 1115,
+            "output_tokens": 9,
+            "total_tokens": 1230,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 106
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-3-flash-preview",
+          "raw": {
+            "responseId": "id_REDACTED_1",
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "thoughtSignature": "signature_REDACTED_1",
+                      "text": "The dominant non-background color is red."
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "safetyRatings": null,
+                "citationMetadata": null,
+                "tokenCount": null,
+                "avgLogprobs": null,
+                "logprobsResult": null,
+                "index": 0,
+                "finishMessage": null
+              }
+            ],
+            "promptFeedback": null,
+            "usageMetadata": {
+              "promptTokenCount": 1115,
+              "candidatesTokenCount": 9,
+              "totalTokenCount": 1230,
+              "thoughtsTokenCount": 106,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 26
+                },
+                {
+                  "modality": "IMAGE",
+                  "tokenCount": 1089
+                }
+              ]
+            },
+            "modelVersion": "gemini-3-flash-preview"
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 3,
+      "key": "golden/memory",
+      "kind": {
+        "effect": "memory",
+        "op": {
+          "op": "append",
+          "conversation": "golden-conversation",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "image",
+                  "data": {
+                    "type": "base64",
+                    "value": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC"
+                  },
+                  "media_type": "png"
+                },
+                {
+                  "type": "text",
+                  "text": "Describe the dominant non-background color of this image in one short sentence."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The dominant non-background color is red."
+                },
+                {
+                  "type": "reasoning",
+                  "id": null,
+                  "content": [
+                    {
+                      "type": "text",
+                      "content": {
+                        "text": "",
+                        "signature": "signature_REDACTED_1"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "memory",
+          "memory": "appended"
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 4,
+      "key": "golden/memory",
+      "kind": {
+        "effect": "memory",
+        "op": {
+          "op": "load",
+          "conversation": "golden-conversation"
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "memory",
+          "memory": "loaded",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "image",
+                  "data": {
+                    "type": "base64",
+                    "value": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC"
+                  },
+                  "media_type": "png"
+                },
+                {
+                  "type": "text",
+                  "text": "Describe the dominant non-background color of this image in one short sentence."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The dominant non-background color is red."
+                },
+                {
+                  "type": "reasoning",
+                  "id": null,
+                  "content": [
+                    {
+                      "type": "text",
+                      "content": {
+                        "text": "",
+                        "signature": "signature_REDACTED_1"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 5,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "image",
+                  "data": {
+                    "type": "base64",
+                    "value": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC"
+                  },
+                  "media_type": "png"
+                },
+                {
+                  "type": "text",
+                  "text": "Describe the dominant non-background color of this image in one short sentence."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The dominant non-background color is red."
+                },
+                {
+                  "type": "reasoning",
+                  "id": null,
+                  "content": [
+                    {
+                      "type": "text",
+                      "content": {
+                        "text": "",
+                        "signature": "signature_REDACTED_1"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "What shape did the image I sent earlier contain? Answer in one short sentence."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "The image contained a red square."
+            },
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "",
+                    "signature": "signature_REDACTED_2"
+                  }
+                }
+              ]
+            }
+          ],
+          "usage": {
+            "input_tokens": 1142,
+            "output_tokens": 7,
+            "total_tokens": 1214,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 65
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-3-flash-preview",
+          "raw": {
+            "responseId": "id_REDACTED_2",
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "thoughtSignature": "signature_REDACTED_2",
+                      "text": "The image contained a red square."
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "safetyRatings": null,
+                "citationMetadata": null,
+                "tokenCount": null,
+                "avgLogprobs": null,
+                "logprobsResult": null,
+                "index": 0,
+                "finishMessage": null
+              }
+            ],
+            "promptFeedback": null,
+            "usageMetadata": {
+              "promptTokenCount": 1142,
+              "candidatesTokenCount": 7,
+              "totalTokenCount": 1214,
+              "thoughtsTokenCount": 65,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 53
+                },
+                {
+                  "modality": "IMAGE",
+                  "tokenCount": 1089
+                }
+              ]
+            },
+            "modelVersion": "gemini-3-flash-preview"
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 6,
+      "key": "golden/memory",
+      "kind": {
+        "effect": "memory",
+        "op": {
+          "op": "append",
+          "conversation": "golden-conversation",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "What shape did the image I sent earlier contain? Answer in one short sentence."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The image contained a red square."
+                },
+                {
+                  "type": "reasoning",
+                  "id": null,
+                  "content": [
+                    {
+                      "type": "text",
+                      "content": {
+                        "text": "",
+                        "signature": "signature_REDACTED_2"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "memory",
+          "memory": "appended"
+        }
+      }
+    }
+  ]
+}

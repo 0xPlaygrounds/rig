@@ -1,0 +1,534 @@
+{
+  "header": {
+    "run_spec": 207107301318669254,
+    "handlers": [
+      {
+        "key": "golden/memory",
+        "family": {
+          "family": "memory"
+        }
+      },
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/memory": "memory",
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/memory": "memory",
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/memory",
+      "kind": {
+        "effect": "memory",
+        "op": {
+          "op": "load",
+          "conversation": "golden-conversation"
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "memory",
+          "memory": "loaded",
+          "messages": []
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "image",
+                  "data": {
+                    "type": "base64",
+                    "value": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC"
+                  },
+                  "media_type": "png"
+                },
+                {
+                  "type": "text",
+                  "text": "Describe the dominant non-background color of this image in one short sentence."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_1",
+              "content": [
+                {
+                  "type": "encrypted",
+                  "content": "encrypted_content_REDACTED_1"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "The dominant non-background color is bright red."
+            }
+          ],
+          "usage": {
+            "input_tokens": 43,
+            "output_tokens": 112,
+            "total_tokens": 155,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 64
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": "resp_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "id": "resp_REDACTED_1",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You are a concise assistant. Answer directly.",
+            "max_output_tokens": 2048,
+            "model": "gpt-5-mini-2025-08-07",
+            "reasoning": {
+              "context": "current_turn",
+              "effort": "medium",
+              "mode": "standard",
+              "summary": null
+            },
+            "usage": {
+              "input_tokens": 43,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 112,
+              "output_tokens_details": {
+                "reasoning_tokens": 64
+              },
+              "total_tokens": 155
+            },
+            "output": [
+              {
+                "type": "reasoning",
+                "id": "rs_REDACTED_1",
+                "summary": [],
+                "encrypted_content": "encrypted_content_REDACTED_1",
+                "status": null
+              },
+              {
+                "id": "msg_REDACTED_1",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "The dominant non-background color is bright red.",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 3,
+      "key": "golden/memory",
+      "kind": {
+        "effect": "memory",
+        "op": {
+          "op": "append",
+          "conversation": "golden-conversation",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "image",
+                  "data": {
+                    "type": "base64",
+                    "value": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC"
+                  },
+                  "media_type": "png"
+                },
+                {
+                  "type": "text",
+                  "text": "Describe the dominant non-background color of this image in one short sentence."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": "msg_REDACTED_1",
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_1",
+                  "content": [
+                    {
+                      "type": "encrypted",
+                      "content": "encrypted_content_REDACTED_1"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "text": "The dominant non-background color is bright red."
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "memory",
+          "memory": "appended"
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 4,
+      "key": "golden/memory",
+      "kind": {
+        "effect": "memory",
+        "op": {
+          "op": "load",
+          "conversation": "golden-conversation"
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "memory",
+          "memory": "loaded",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "image",
+                  "data": {
+                    "type": "base64",
+                    "value": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC"
+                  },
+                  "media_type": "png"
+                },
+                {
+                  "type": "text",
+                  "text": "Describe the dominant non-background color of this image in one short sentence."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": "msg_REDACTED_1",
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_1",
+                  "content": [
+                    {
+                      "type": "encrypted",
+                      "content": "encrypted_content_REDACTED_1"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "text": "The dominant non-background color is bright red."
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 5,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "image",
+                  "data": {
+                    "type": "base64",
+                    "value": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC"
+                  },
+                  "media_type": "png"
+                },
+                {
+                  "type": "text",
+                  "text": "Describe the dominant non-background color of this image in one short sentence."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": "msg_REDACTED_1",
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_1",
+                  "content": [
+                    {
+                      "type": "encrypted",
+                      "content": "encrypted_content_REDACTED_1"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "text": "The dominant non-background color is bright red."
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "What shape did the image I sent earlier contain? Answer in one short sentence."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_2",
+              "content": [
+                {
+                  "type": "encrypted",
+                  "content": "encrypted_content_REDACTED_2"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "The image contained a red square."
+            }
+          ],
+          "usage": {
+            "input_tokens": 78,
+            "output_tokens": 99,
+            "total_tokens": 177,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 64
+          },
+          "message_id": "msg_REDACTED_2",
+          "response_id": "resp_REDACTED_2",
+          "provider_request_id": "req_REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "id": "resp_REDACTED_2",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You are a concise assistant. Answer directly.",
+            "max_output_tokens": 2048,
+            "model": "gpt-5-mini-2025-08-07",
+            "reasoning": {
+              "context": "current_turn",
+              "effort": "medium",
+              "mode": "standard",
+              "summary": null
+            },
+            "usage": {
+              "input_tokens": 78,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 99,
+              "output_tokens_details": {
+                "reasoning_tokens": 64
+              },
+              "total_tokens": 177
+            },
+            "output": [
+              {
+                "type": "reasoning",
+                "id": "rs_REDACTED_2",
+                "summary": [],
+                "encrypted_content": "encrypted_content_REDACTED_2",
+                "status": null
+              },
+              {
+                "id": "msg_REDACTED_2",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "The image contained a red square.",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 6,
+      "key": "golden/memory",
+      "kind": {
+        "effect": "memory",
+        "op": {
+          "op": "append",
+          "conversation": "golden-conversation",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "What shape did the image I sent earlier contain? Answer in one short sentence."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": "msg_REDACTED_2",
+              "content": [
+                {
+                  "type": "reasoning",
+                  "id": "rs_REDACTED_2",
+                  "content": [
+                    {
+                      "type": "encrypted",
+                      "content": "encrypted_content_REDACTED_2"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "text": "The image contained a red square."
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "memory",
+          "memory": "appended"
+        }
+      }
+    }
+  ]
+}

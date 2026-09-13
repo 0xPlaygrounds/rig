@@ -34,11 +34,11 @@ use crate::{
         Failed, Failure, Grant, InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory,
         MaxTokens, MaxTurns, MemoryAppendScheduled, MessageParts, Order, OrderCounter, Output,
         OutputKind, OutputRetries, OutputToolConfig, OutputToolName, Outputs, Parts, Preamble,
-        ProviderRetried, ProviderRetries, ProviderRetrying, Remembered, Remembering, Remembers,
-        Reprompt, RequestPatch, Resolution, ResolvingTools, Retrievable, Retrieval, RetrievalKind,
-        Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunResult, RunSeq, Settled,
-        StreamRequested, Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec, ToolContextSpec,
-        ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
+        Prompt, ProviderRetried, ProviderRetries, ProviderRetrying, Remembered, Remembering,
+        Remembers, Reprompt, RequestPatch, Resolution, ResolvingTools, Retrievable, Retrieval,
+        RetrievalKind, Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunResult, RunSeq,
+        Settled, StreamRequested, Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec,
+        ToolContextSpec, ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
     },
     bus::{
         Bound, BusSet, EffectOutcome, Issued, PendingEffect, Progress, RigSchedule, Scope,
@@ -288,15 +288,20 @@ pub fn despawn_run(world: &mut World, run: Entity) -> Result<(), RunBusy> {
 }
 
 /// Spawn a run of `agent` with `prompt` as its first utterance, after
-/// `history`: the host's one entry point. Returns the run entity.
+/// `history`: the host's one entry point. The prompt is a user message's
+/// parts (`&str` text, or text and images kept in their given order,
+/// [`Prompt`]). Returns the run entity.
 pub fn spawn_run(
     world: &mut World,
     agent: Entity,
     history: &[MessageParts],
-    prompt: &str,
+    prompt: impl Into<Prompt>,
     streamed: bool,
     max_turns: Option<usize>,
 ) -> Entity {
+    let prompt = MessageParts::User {
+        content: prompt.into().0,
+    };
     let seq = {
         let mut counter = world.resource_mut::<RunCounter>();
         let seq = counter.0;
@@ -365,13 +370,7 @@ pub fn spawn_run(
     for parts in history {
         spawn_utterance(world, run, parts.clone());
     }
-    spawn_utterance(
-        world,
-        run,
-        MessageParts::User {
-            content: vec![UserContent::text(prompt)],
-        },
-    );
+    spawn_utterance(world, run, prompt);
     run
 }
 
