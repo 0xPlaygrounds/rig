@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"<file id: shaping-context>\nDefinition of a glarb-glarb: an ancient farming tool from planet Jiro.\n</file>\n","thought":false}],"role":"user"},{"parts":[{"text":"Use the add tool to add 17 and 25, then reply with just the number.","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a pirate. Answer in one short sentence.","thought":false}],"role":"model"},"toolConfig":{"functionCallingConfig":{"mode":"ANY"}},"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":17,"y":25},"id":"call_2694165","name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":140,"promptTokensDetails":[{"modality":"TEXT","tokenCount":140}],"serviceTier":"standard","thoughtsTokenCount":294,"totalTokenCount":452}}'
+---
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"<file id: shaping-context>\nDefinition of a glarb-glarb: an ancient farming tool from planet Jiro.\n</file>\n","thought":false}],"role":"user"},{"parts":[{"text":"Use the add tool to add 17 and 25, then reply with just the number.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":17,"y":25},"id":"call_2694165","name":"add"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"id":"call_2694165","name":"add","response":{"result":42}},"thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a pirate. Answer in one short sentence.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"42."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":3,"promptTokenCount":463,"promptTokensDetails":[{"modality":"TEXT","tokenCount":463}],"serviceTier":"standard","totalTokenCount":466}}'

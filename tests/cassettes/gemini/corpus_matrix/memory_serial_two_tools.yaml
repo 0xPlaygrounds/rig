@@ -1,0 +1,41 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs.","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"id\":\"call_10710\",\"name\":\"lookup_harbor_label\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":13,\"promptTokenCount\":166,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":166}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":95,\"totalTokenCount\":274}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"id\":\"call_10714\",\"name\":\"lookup_orchard_label\"}}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":26,\"promptTokenCount\":166,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":166}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":95,\"totalTokenCount\":287}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":26,\"promptTokenCount\":166,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":166}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":95,\"totalTokenCount\":287}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"id":"call_10710","name":"lookup_harbor_label"},"thought":false,"thoughtSignature":"signature_REDACTED_1"},{"functionCall":{"args":{},"id":"call_10714","name":"lookup_orchard_label"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"id":"call_10710","name":"lookup_harbor_label","response":{"result":"crimson-harbor"}},"thought":false},{"functionResponse":{"id":"call_10714","name":"lookup_orchard_label","response":{"result":"silver-orchard"}},"thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The markers are crimson-harbor and silver-orchard.\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":13,\"promptTokenCount\":231,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":231}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":49,\"totalTokenCount\":293}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"signature_REDACTED_2\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":13,\"promptTokenCount\":326,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":326}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":49,\"totalTokenCount\":388}}\r\n\r\n"
