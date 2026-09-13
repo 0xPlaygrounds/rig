@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":16,"messages":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"role":"system"},{"content":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","role":"user"}],"model":"qwen3-235b-a22b-thinking-2507","temperature":0.0,"venice_parameters":{"strip_thinking_response":false}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":null,"message":{"content":"","name":null,"reasoning_content":"Here''s a thinking process:\n\n1.  **Analyze User Input:**","role":"assistant","tool_calls":null}}],"cost":{"diem":0,"usd":0.0005087},"created":0,"id":"chatcmpl-REDACTED_1","model":"qwen3-235b-a22b-thinking-2507","object":"chat.completion","service_tier":"default","usage":{"completion_tokens":16,"prompt_tokens":1006,"total_tokens":1022},"venice_parameters":{"disable_thinking":false,"enable_e2ee":true,"enable_web_citations":false,"enable_web_scraping":false,"enable_web_search":"off","enable_x_search":false,"include_search_results_in_stream":false,"include_venice_system_prompt":true,"return_search_results_as_documents":false,"strip_thinking_response":false,"web_search_citations":[]}}'
