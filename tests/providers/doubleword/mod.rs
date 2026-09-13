@@ -6,8 +6,12 @@ const TOOL_MODEL: &str = rig::providers::doubleword::QWEN3_5_397B_A17B;
 mod cassette {
     mod agent;
     mod conformance;
+    mod corpus_matrix;
     mod ecs_completion;
     mod ecs_extractor;
+    mod ecs_matrix;
+    mod ecs_matrix_extra;
+    mod ecs_termination;
     mod embedding_dimensions;
     mod embedding_matrix;
     mod embeddings;
@@ -26,5 +30,6 @@ mod cassette {
     mod streaming_tools;
     mod structured_output;
     mod tools;
+    mod turn_termination_matrix;
     mod typed_prompt_tools;
 }
