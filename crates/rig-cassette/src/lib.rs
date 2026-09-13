@@ -2213,6 +2213,14 @@ const VOLATILE_JSON_KEYS: &[&str] = &[
 ];
 
 const SENSITIVE_STRING_KEYS: &[&str] = &[
+    // OAuth material a token exchange or a refresh reply carries in its
+    // body. No committed cassette records such an exchange (the ChatGPT and
+    // Copilot recordings hold completion paths only); the keys are here so
+    // one never can. Matching lowercases the key without stripping
+    // underscores, so these need no squashed twin.
+    "access_token",
+    "id_token",
+    "refresh_token",
     "encrypted_content",
     "encryptedcontent",
     // Anthropic's server-tool locators. Named like opaque handles but both
