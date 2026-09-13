@@ -13,6 +13,7 @@ use crate::ecs_matrix::{Wire, agent::run_agent, faults};
 
 fn wire(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
         model: client.completion_model(GEMINI_3_FLASH_PREVIEW),
         route: None,
         temperature: Some(0.0),
@@ -25,6 +26,7 @@ fn missing(
     client: &rig::providers::gemini::Client,
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
         model: client.completion_model("gemini-nonexistent-rig-test"),
         route: None,
         temperature: Some(0.0),

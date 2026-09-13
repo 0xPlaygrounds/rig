@@ -37,8 +37,8 @@ use super::{
     REPLACED_RESULT, RERANK_KEY, SKIP_REASON, STOP_AFTER_TURN, STOP_AT_ANSWER,
     STOP_AT_COMPLETION_CALL, STOP_AT_MODEL_SELECT, STOP_AT_START, STOP_ON_REASONING_DELTA,
     STOP_ON_TEXT_DELTA, STOP_ON_TOOL_ARGUMENTS_DELTA, STOP_ON_TOOL_CALL_DELTA,
-    STOP_ON_TOOL_NAME_DELTA, Unserializable, hook_patch, rerank_request, retry_feedback,
-    stop_after_turn_reason,
+    STOP_ON_TOOL_NAME_DELTA, Unserializable, hook_patch_with_thinking, rerank_request,
+    retry_feedback, stop_after_turn_reason,
 };
 
 /// The program's hooks, in registration order, and what the systems need
@@ -50,6 +50,7 @@ struct Hooks {
     prompt: &'static str,
     route: Option<&'static str>,
     late_route: Option<&'static str>,
+    thinking_params: Option<fn() -> serde_json::Value>,
 }
 
 impl Hooks {
@@ -70,6 +71,7 @@ pub fn install(world: &mut World, program: &Program) {
         prompt: program.prompt,
         route: program.route,
         late_route: program.late_route,
+        thinking_params: program.thinking_params,
     });
     world.add_observer(at_run_start);
     world.add_observer(at_settled);
@@ -372,8 +374,12 @@ fn before_select(
 }
 
 /// The corpus hook's patch, as `rig_ecs`'s data.
-fn patch_of(hook: Hook, turn: usize) -> Option<RequestPatch> {
-    hook_patch(hook, turn).map(|patch| RequestPatch {
+fn patch_of(
+    hook: Hook,
+    turn: usize,
+    thinking_params: Option<fn() -> serde_json::Value>,
+) -> Option<RequestPatch> {
+    hook_patch_with_thinking(hook, turn, thinking_params).map(|patch| RequestPatch {
         preamble: patch.preamble,
         temperature: patch.temperature,
         max_tokens: patch.max_tokens,
@@ -414,7 +420,7 @@ fn before_assemble(
                 }
                 Hook::NoteAtCompletionCall => note(&mut commands, &bound, run, "completion_call"),
                 hook => {
-                    if let Some(next) = patch_of(*hook, cursor.turn) {
+                    if let Some(next) = patch_of(*hook, cursor.turn, hooks.thinking_params) {
                         patch = Some(match patch.take() {
                             Some(earlier) => earlier.merge(next),
                             None => next,

@@ -351,6 +351,19 @@ pub(crate) fn open_gated<M: CompletionModel + Clone + 'static>(
     program: &Program,
     gate: Option<bool>,
 ) -> (App, Entity, EffectLogRecorder, Gates) {
+    open_inner(wire, cell, program, gate, None, None)
+}
+
+/// Bind fresh live handlers, optionally restoring a graph before installing
+/// its hooks. The observation sink belongs to the host, not the saved world.
+fn open_inner<M: CompletionModel + Clone + 'static>(
+    wire: &Wire<M>,
+    cell: &Cell,
+    program: &Program,
+    gate: Option<bool>,
+    scene: Option<&WorldScene>,
+    witness: Option<Arc<rig::observe::ObservationLog>>,
+) -> (App, Entity, EffectLogRecorder, Gates) {
     one_thread_pool();
     let policy = cell.bus.policy();
     let mut app = App::new();
@@ -362,11 +375,22 @@ pub(crate) fn open_gated<M: CompletionModel + Clone + 'static>(
     let gates = Gates {
         tool: Arc::new(Semaphore::new(0)),
         stream: Arc::new(Semaphore::new(0)),
-        witness: cell
-            .fault
-            .is_some()
-            .then(|| crate::stream_faults::witnessed(&mut app)),
+        witness: (cell.fault.is_some() || cell.reasoning.is_some()).then(|| match witness {
+            Some(trace) => {
+                rig_ecs::bus::Witnessing::install(app.world_mut(), trace.clone());
+                trace
+            }
+            None => crate::stream_faults::witnessed(&mut app),
+        }),
     };
+    if cell.reasoning.is_some() {
+        app.add_systems(
+            RigSchedule,
+            super::reasoning::witness_deltas
+                .after(BusSet::Collect)
+                .before(RigSet::Fold),
+        );
+    }
     let recorder = if cell.events {
         EffectLogRecorder::keeping_stream_events()
     } else {
@@ -536,62 +560,74 @@ pub(crate) fn open_gated<M: CompletionModel + Clone + 'static>(
         .expect("fresh late route key");
     }
 
-    // The program as an agent graph, as the corpus's `spawn_agent` spawns it.
-    let mode = match program.output_mode {
-        None => OutputKind::Auto,
-        Some(corpus::Output::Native) => OutputKind::Native,
-        Some(corpus::Output::Tool) => OutputKind::Tool,
-        Some(corpus::Output::Prompted) => OutputKind::Prompted,
-    };
-    let agent = world
-        .spawn((
-            Owner(OWNER.to_owned()),
-            Preamble(program.preamble.map(str::to_owned)),
-            Temperature(program.temperature),
-            MaxTokens(program.max_tokens),
-            AdditionalParams(program.additional_params.map(|params| params())),
-            ToolChoiceSpec(program.tool_choice.map(corpus::Choice::tool_choice)),
-            Output {
-                mode,
-                schema: program.output_schema.map(|schema| schema()),
-            },
-            DefaultMaxTurns(program.default_max_turns),
-            MaxTurns(program.max_turns.or(program.default_max_turns).unwrap_or(1)),
-            InvalidCalls {
-                retries: program.invalid_retries,
-                unhandled: match program.unhandled {
-                    Unhandled::Fail => WorldUnhandled::Fail,
-                    Unhandled::Ignore => WorldUnhandled::Ignore,
+    let agent = if let Some(scene) = scene {
+        let loaded = load_world(scene, world).expect("the scene binds to fresh live handlers");
+        let run = loaded
+            .graph
+            .iter()
+            .copied()
+            .find(|entity| world.get::<Run>(*entity).is_some())
+            .expect("the saved run");
+        world.get::<RunOf>(run).expect("the loaded run's agent").0
+    } else {
+        let mode = match program.output_mode {
+            None => OutputKind::Auto,
+            Some(corpus::Output::Native) => OutputKind::Native,
+            Some(corpus::Output::Tool) => OutputKind::Tool,
+            Some(corpus::Output::Prompted) => OutputKind::Prompted,
+        };
+        let agent = world
+            .spawn((
+                Owner(OWNER.to_owned()),
+                Preamble(program.preamble.map(str::to_owned)),
+                Temperature(program.temperature),
+                MaxTokens(program.max_tokens),
+                AdditionalParams(program.additional_params.map(|params| params())),
+                ToolChoiceSpec(program.tool_choice.map(corpus::Choice::tool_choice)),
+                Output {
+                    mode,
+                    schema: program.output_schema.map(|schema| schema()),
                 },
-            },
-            UsesModel(model),
-        ))
-        .id();
-    if let Some(retries) = cell.provider_retries {
-        world.entity_mut(agent).insert(ProviderRetries(retries));
-    }
-    let mut order = 0u64;
-    for (_, tool) in &tools {
-        world.spawn((Grant(*tool), Order(order), ChildOf(agent)));
-        order += 1;
-    }
-    if let Some(conversation) = program.conversation {
-        world.entity_mut(agent).insert((
-            Remembers(memory.expect("the cell remembers")),
-            Conversation(conversation.into()),
-        ));
-    }
-    if let Some(route) = route {
-        world.spawn((Route(route), Order(order), ChildOf(agent)));
-        order += 1;
-    }
-    world.resource_mut::<rig_ecs::agent::OrderCounter>().0 = order;
-    let hooks = corpus::program_hooks(program, OWNER);
-    if !hooks.is_empty() {
-        world
-            .entity_mut(agent)
-            .insert(PolicyVersion(format!("ecs-matrix/v1:{}", hooks.join("+"))));
-    }
+                DefaultMaxTurns(program.default_max_turns),
+                MaxTurns(program.max_turns.or(program.default_max_turns).unwrap_or(1)),
+                InvalidCalls {
+                    retries: program.invalid_retries,
+                    unhandled: match program.unhandled {
+                        Unhandled::Fail => WorldUnhandled::Fail,
+                        Unhandled::Ignore => WorldUnhandled::Ignore,
+                    },
+                },
+                UsesModel(model),
+            ))
+            .id();
+        if let Some(retries) = cell.provider_retries {
+            world.entity_mut(agent).insert(ProviderRetries(retries));
+        }
+        let mut order = 0u64;
+        for (_, tool) in &tools {
+            world.spawn((Grant(*tool), Order(order), ChildOf(agent)));
+            order += 1;
+        }
+        if let Some(conversation) = program.conversation {
+            world.entity_mut(agent).insert((
+                Remembers(memory.expect("the cell remembers")),
+                Conversation(conversation.into()),
+            ));
+        }
+        if let Some(route) = route {
+            world.spawn((Route(route), Order(order), ChildOf(agent)));
+            order += 1;
+        }
+        world.resource_mut::<rig_ecs::agent::OrderCounter>().0 = order;
+        let hooks = corpus::program_hooks(program, OWNER);
+        if !hooks.is_empty() {
+            world
+                .entity_mut(agent)
+                .insert(PolicyVersion(format!("ecs-matrix/v1:{}", hooks.join("+"))));
+        }
+
+        agent
+    };
 
     // The hooks as systems; the delta stops despawn their stream; a hook's
     // own dispatch gates the run.
@@ -666,6 +702,17 @@ pub(crate) async fn drive_run(
     cut: &mut Option<(WorldScene, usize, u64)>,
     recorder: &EffectLogRecorder,
 ) {
+    drive_until(app, run, cut_after, cut, recorder, false).await;
+}
+
+async fn drive_until(
+    app: &mut App,
+    run: Entity,
+    cut_after: Option<usize>,
+    cut: &mut Option<(WorldScene, usize, u64)>,
+    recorder: &EffectLogRecorder,
+    pause_at_cut: bool,
+) {
     let start = Instant::now();
     loop {
         if cut_after.is_some() && cut.is_none() {
@@ -677,6 +724,9 @@ pub(crate) async fn drive_run(
                 let scene = save_world(app.world_mut()).expect("every component serializes");
                 let at = recorder.log().records.len();
                 *cut = Some((scene, at, next_id));
+                if pause_at_cut {
+                    return;
+                }
             }
         } else {
             app.update();
@@ -1451,7 +1501,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     golden: impl FnOnce(&EffectLog),
 ) -> EffectLog {
     let program = wire.program(cell);
-    let (mut app, agent, recorder, gates) = open(wire, cell, &program);
+    let (mut app, mut agent, mut recorder, mut gates) = open(wire, cell, &program);
     let two_signals = two_signals(cell);
     if two_signals {
         app.init_resource::<Published>().add_systems(
@@ -1478,10 +1528,11 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     let mut runs = Vec::new();
     let mut cut = None;
     let mut before = Vec::new();
+    let mut saved_head = None;
     for (n, prompt) in prompts.into_iter().enumerate() {
         before.push(live_entities(app.world_mut()));
         let world = app.world_mut();
-        let run = spawn_run(
+        let mut run = spawn_run(
             world,
             agent,
             &history,
@@ -1551,6 +1602,43 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             assert_mid_stream_scene_refused(&mut app, cell, &program, &recorder.log());
             gates.stream.add_permits(1);
             drive_run(&mut app, run, None, &mut cut, &recorder).await;
+        } else if cut_after.is_some()
+            && cell.reasoning == Some(super::cells::ReasoningCase::Tool)
+            && cell.thinking == super::cells::Thinking::On
+            && !program.streamed
+        {
+            // Row 7 consumes row 2's recording once: the first world sends
+            // its head, and only the restored world can send the tail. The
+            // cassette's strict HTTP match therefore checks the resumed
+            // provider request, beyond normalized effect-log replay.
+            assert_eq!(n, 0);
+            assert_eq!(last, 0);
+            drive_until(&mut app, run, cut_after, &mut cut, &recorder, true).await;
+            let (scene, _, _) = cut.take().expect("the tool-result cut");
+            let encoded_scene = serde_json::to_string(&scene).expect("scene JSON");
+            let encoded_head = serde_json::to_string(&recorder.log()).expect("head JSON");
+            let witness = gates.witness.clone();
+            drop(std::mem::replace(&mut app, App::new()));
+            let scene: WorldScene =
+                serde_json::from_str(&encoded_scene).expect("restore scene JSON");
+            saved_head =
+                Some(serde_json::from_str::<EffectLog>(&encoded_head).expect("restore head JSON"));
+            (app, agent, recorder, gates) =
+                open_inner(wire, cell, &program, None, Some(&scene), witness);
+            run = app
+                .world_mut()
+                .query_filtered::<Entity, With<Run>>()
+                .single(app.world())
+                .expect("only the restored run exists");
+            stamp_legacy_builder_header(
+                app.world_mut(),
+                agent,
+                &recorder,
+                declared,
+                corpus::program_hooks(&program, OWNER),
+            );
+            stamp_run(app.world_mut(), run, &recorder).expect("stamp restored run");
+            drive_run(&mut app, run, None, &mut cut, &recorder).await;
         } else {
             drive_run(&mut app, run, cut_after, &mut cut, &recorder).await;
         }
@@ -1565,7 +1653,11 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
         runs.push(run);
     }
     let run = *runs.last().expect("a run");
-    let log = recorder.log();
+    let mut log = recorder.log();
+    if let Some(mut head) = saved_head {
+        head.records.extend(log.records);
+        log = head;
+    }
     if !cell.families.is_empty() {
         assert_eq!(
             families(&log),
@@ -1586,6 +1678,25 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     // (2) the graph, and the fault's facts.
     assert_ending(app.world(), &program, run, &log);
     assert_graph(&mut app, &runs, &program, &log);
+    if cell.reasoning.is_some() {
+        super::reasoning::assert_log(cell, wire.thinking, &log);
+        let history = super::reasoning::assistant_history(app.world_mut(), run);
+        super::reasoning::assert_history(cell, &log, &history);
+        if cell.reasoning == Some(super::cells::ReasoningCase::Capped) {
+            let report = provider_report(app.world(), run, cell.name);
+            assert!(
+                report
+                    .message
+                    .contains(&rig::completion::FinishReason::Length.no_answer_message()),
+                "{report:?}"
+            );
+        }
+        super::reasoning::assert_witness(
+            cell,
+            &log,
+            gates.witness.as_deref().expect("reasoning is witnessed"),
+        );
+    }
     if two_signals {
         assert_batch(&mut app, cell);
     }
@@ -1661,6 +1772,10 @@ fn resume(
         .find(|entity| world.get::<Run>(*entity).is_some())
         .expect("the scene holds the run");
     let agent = world.get::<RunOf>(run).expect("the run's agent").0;
+    if cell.reasoning.is_some() {
+        let history = super::reasoning::assistant_history(world, run);
+        super::reasoning::assert_history(cell, &head, &history);
+    }
     corpus::world_hooks::install(world, &program);
     stamp_legacy_builder_header(
         world,

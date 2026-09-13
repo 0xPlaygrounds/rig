@@ -194,9 +194,16 @@
     "crates/rig-verify/fixtures/deepseek_output_tool_choice_required.effects.json",
     "crates/rig-verify/fixtures/deepseek_output_tool_choice_specific_output.effects.json",
     "crates/rig-verify/fixtures/deepseek_output_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/deepseek_output_tool_thinking.effects.json",
     "crates/rig-verify/fixtures/deepseek_output_tool_unary.effects.json",
     "crates/rig-verify/fixtures/deepseek_output_tool_under_none_degrades.effects.json",
     "crates/rig-verify/fixtures/deepseek_output_tool_with_real_tool.effects.json",
+    "crates/rig-verify/fixtures/deepseek_reasoning_capped.effects.json",
+    "crates/rig-verify/fixtures/deepseek_reasoning_off.effects.json",
+    "crates/rig-verify/fixtures/deepseek_reasoning_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/deepseek_reasoning_text_unary.effects.json",
+    "crates/rig-verify/fixtures/deepseek_reasoning_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/deepseek_reasoning_tool_unary.effects.json",
     "crates/rig-verify/fixtures/deepseek_resume_tool_turn.effects.json",
     "crates/rig-verify/fixtures/deepseek_serving_capacity_one.effects.json",
     "crates/rig-verify/fixtures/deepseek_serving_concurrent_concurrency_one.effects.json",
@@ -283,9 +290,16 @@
     "crates/rig-verify/fixtures/doubleword_output_tool_choice_required.effects.json",
     "crates/rig-verify/fixtures/doubleword_output_tool_choice_specific_output.effects.json",
     "crates/rig-verify/fixtures/doubleword_output_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/doubleword_output_tool_thinking.effects.json",
     "crates/rig-verify/fixtures/doubleword_output_tool_unary.effects.json",
     "crates/rig-verify/fixtures/doubleword_output_tool_under_none_degrades.effects.json",
     "crates/rig-verify/fixtures/doubleword_output_tool_with_real_tool.effects.json",
+    "crates/rig-verify/fixtures/doubleword_reasoning_capped.effects.json",
+    "crates/rig-verify/fixtures/doubleword_reasoning_off.effects.json",
+    "crates/rig-verify/fixtures/doubleword_reasoning_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/doubleword_reasoning_text_unary.effects.json",
+    "crates/rig-verify/fixtures/doubleword_reasoning_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/doubleword_reasoning_tool_unary.effects.json",
     "crates/rig-verify/fixtures/doubleword_resume_tool_turn.effects.json",
     "crates/rig-verify/fixtures/doubleword_serving_capacity_one.effects.json",
     "crates/rig-verify/fixtures/doubleword_serving_concurrent_concurrency_one.effects.json",
@@ -306,6 +320,7 @@
     "crates/rig-verify/fixtures/doubleword_shaping_merged_three.effects.json",
     "crates/rig-verify/fixtures/doubleword_shaping_preamble_second_turn.effects.json",
     "crates/rig-verify/fixtures/doubleword_shaping_route_on_first_turn.effects.json",
+    "crates/rig-verify/fixtures/doubleword_shaping_thinking_second_turn.effects.json",
     "crates/rig-verify/fixtures/doubleword_shaping_tool_choice_none_on_committed_output.effects.json",
     "crates/rig-verify/fixtures/doubleword_shaping_tool_choice_required_first.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/anthropic_causal_completion_concurrent.effects.json",
@@ -478,9 +493,16 @@
     "crates/rig-verify/fixtures/ecs_parity/deepseek_output_tool_choice_required.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_output_tool_choice_specific_output.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_output_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_output_tool_thinking.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_output_tool_unary.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_output_tool_under_none_degrades.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_output_tool_with_real_tool.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_reasoning_capped.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_reasoning_off.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_reasoning_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_reasoning_text_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_reasoning_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_reasoning_tool_unary.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_resume_tool_turn.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_serving_capacity_one.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_serving_concurrent_concurrency_one.effects.json",
@@ -567,9 +589,16 @@
     "crates/rig-verify/fixtures/ecs_parity/doubleword_output_tool_choice_required.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_output_tool_choice_specific_output.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_output_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/doubleword_output_tool_thinking.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_output_tool_unary.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_output_tool_under_none_degrades.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_output_tool_with_real_tool.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/doubleword_reasoning_capped.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/doubleword_reasoning_off.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/doubleword_reasoning_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/doubleword_reasoning_text_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/doubleword_reasoning_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/doubleword_reasoning_tool_unary.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_resume_tool_turn.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_serving_capacity_one.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_serving_concurrent_concurrency_one.effects.json",
@@ -590,6 +619,7 @@
     "crates/rig-verify/fixtures/ecs_parity/doubleword_shaping_merged_three.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_shaping_preamble_second_turn.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_shaping_route_on_first_turn.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/doubleword_shaping_thinking_second_turn.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_shaping_tool_choice_none_on_committed_output.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_shaping_tool_choice_required_first.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_breadth_custom_at_outcome.effects.json",
@@ -658,6 +688,10 @@
     "crates/rig-verify/fixtures/ecs_parity/gemini_output_tool_choice_specific_output.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_output_tool_under_none_degrades.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_output_tool_with_real_tool.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_reasoning_capped.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_reasoning_capped_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_reasoning_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_reasoning_text_unary.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_resume_tool_turn.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_serving_capacity_one.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_serving_concurrent_concurrency_one.effects.json",
@@ -750,9 +784,13 @@
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_output_tool_choice_required.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_output_tool_choice_specific_output.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_output_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_output_tool_thinking.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_output_tool_unary.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_output_tool_under_none_degrades.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_output_tool_with_real_tool.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_reasoning_capped.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_reasoning_off.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_reasoning_text_streamed.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_resume_tool_turn.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_serving_capacity_one.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_serving_concurrent_concurrency_one.effects.json",
@@ -831,8 +869,14 @@
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_output_prompted_with_real_tool.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_output_tool_choice_required.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_output_tool_choice_specific_output.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_output_tool_thinking.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_output_tool_under_none_degrades.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_output_tool_with_real_tool.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_reasoning_capped.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_reasoning_capped_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_reasoning_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_reasoning_text_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_reasoning_tool_streamed.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_resume_tool_turn.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_serving_capacity_one.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_serving_concurrent_concurrency_one.effects.json",
@@ -918,8 +962,15 @@
     "crates/rig-verify/fixtures/ecs_parity/venice_output_tool_choice_required.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/venice_output_tool_choice_specific_output.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/venice_output_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/venice_output_tool_thinking.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/venice_output_tool_unary.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/venice_output_tool_under_none_degrades.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/venice_reasoning_capped.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/venice_reasoning_off.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/venice_reasoning_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/venice_reasoning_text_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/venice_reasoning_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/venice_reasoning_tool_unary.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/venice_resume_tool_turn.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/venice_serving_capacity_one.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/venice_serving_concurrent_concurrency_one.effects.json",
@@ -1010,6 +1061,10 @@
     "crates/rig-verify/fixtures/gemini_output_tool_choice_specific_output.effects.json",
     "crates/rig-verify/fixtures/gemini_output_tool_under_none_degrades.effects.json",
     "crates/rig-verify/fixtures/gemini_output_tool_with_real_tool.effects.json",
+    "crates/rig-verify/fixtures/gemini_reasoning_capped.effects.json",
+    "crates/rig-verify/fixtures/gemini_reasoning_capped_streamed.effects.json",
+    "crates/rig-verify/fixtures/gemini_reasoning_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/gemini_reasoning_text_unary.effects.json",
     "crates/rig-verify/fixtures/gemini_resume_tool_turn.effects.json",
     "crates/rig-verify/fixtures/gemini_retrieval_context_and_tools.effects.json",
     "crates/rig-verify/fixtures/gemini_retrieval_dynamic_context_empty_index.effects.json",
@@ -1170,9 +1225,13 @@
     "crates/rig-verify/fixtures/openai_chat_output_tool_choice_required.effects.json",
     "crates/rig-verify/fixtures/openai_chat_output_tool_choice_specific_output.effects.json",
     "crates/rig-verify/fixtures/openai_chat_output_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_output_tool_thinking.effects.json",
     "crates/rig-verify/fixtures/openai_chat_output_tool_unary.effects.json",
     "crates/rig-verify/fixtures/openai_chat_output_tool_under_none_degrades.effects.json",
     "crates/rig-verify/fixtures/openai_chat_output_tool_with_real_tool.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_reasoning_capped.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_reasoning_off.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_reasoning_text_streamed.effects.json",
     "crates/rig-verify/fixtures/openai_chat_resume_tool_turn.effects.json",
     "crates/rig-verify/fixtures/openai_chat_serving_capacity_one.effects.json",
     "crates/rig-verify/fixtures/openai_chat_serving_concurrent_concurrency_one.effects.json",
@@ -1254,8 +1313,14 @@
     "crates/rig-verify/fixtures/openai_responses_output_prompted_with_real_tool.effects.json",
     "crates/rig-verify/fixtures/openai_responses_output_tool_choice_required.effects.json",
     "crates/rig-verify/fixtures/openai_responses_output_tool_choice_specific_output.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_output_tool_thinking.effects.json",
     "crates/rig-verify/fixtures/openai_responses_output_tool_under_none_degrades.effects.json",
     "crates/rig-verify/fixtures/openai_responses_output_tool_with_real_tool.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_reasoning_capped.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_reasoning_capped_streamed.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_reasoning_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_reasoning_text_unary.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_reasoning_tool_streamed.effects.json",
     "crates/rig-verify/fixtures/openai_responses_resume_tool_turn.effects.json",
     "crates/rig-verify/fixtures/openai_responses_serving_capacity_one.effects.json",
     "crates/rig-verify/fixtures/openai_responses_serving_concurrent_concurrency_one.effects.json",
@@ -1349,8 +1414,15 @@
     "crates/rig-verify/fixtures/venice_output_tool_choice_required.effects.json",
     "crates/rig-verify/fixtures/venice_output_tool_choice_specific_output.effects.json",
     "crates/rig-verify/fixtures/venice_output_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/venice_output_tool_thinking.effects.json",
     "crates/rig-verify/fixtures/venice_output_tool_unary.effects.json",
     "crates/rig-verify/fixtures/venice_output_tool_under_none_degrades.effects.json",
+    "crates/rig-verify/fixtures/venice_reasoning_capped.effects.json",
+    "crates/rig-verify/fixtures/venice_reasoning_off.effects.json",
+    "crates/rig-verify/fixtures/venice_reasoning_text_streamed.effects.json",
+    "crates/rig-verify/fixtures/venice_reasoning_text_unary.effects.json",
+    "crates/rig-verify/fixtures/venice_reasoning_tool_streamed.effects.json",
+    "crates/rig-verify/fixtures/venice_reasoning_tool_unary.effects.json",
     "crates/rig-verify/fixtures/venice_resume_tool_turn.effects.json",
     "crates/rig-verify/fixtures/venice_serving_capacity_one.effects.json",
     "crates/rig-verify/fixtures/venice_serving_concurrent_concurrency_one.effects.json",
@@ -1569,18 +1641,33 @@
     "tests/cassettes/deepseek/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml",
     "tests/cassettes/deepseek/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml",
     "tests/cassettes/deepseek/agent_tool_sessions/tool_choice_required_specific_and_none.yaml",
+    "tests/cassettes/deepseek/corpus_matrix/output_tool_thinking.yaml",
     "tests/cassettes/deepseek/extractor/extractor_smoke.yaml",
     "tests/cassettes/deepseek/extractor_usage/extract_and_extract_with_usage_return_same_data.yaml",
     "tests/cassettes/deepseek/extractor_usage/extract_backward_compatibility.yaml",
     "tests/cassettes/deepseek/extractor_usage/extract_with_chat_history_with_usage_works.yaml",
     "tests/cassettes/deepseek/extractor_usage/extract_with_usage_returns_data_and_usage.yaml",
     "tests/cassettes/deepseek/extractor_usage/usage_tracking_works_for_different_schemas.yaml",
+    "tests/cassettes/deepseek/reasoning_matrix/capped.yaml",
+    "tests/cassettes/deepseek/reasoning_matrix/off.yaml",
+    "tests/cassettes/deepseek/reasoning_matrix/text_streamed.yaml",
+    "tests/cassettes/deepseek/reasoning_matrix/text_unary.yaml",
+    "tests/cassettes/deepseek/reasoning_matrix/tool_streamed.yaml",
+    "tests/cassettes/deepseek/reasoning_matrix/tool_unary.yaml",
     "tests/cassettes/deepseek/truncation_matrix/agent_blocking_empty_arguments_on_length_are_not_invoked.yaml",
     "tests/cassettes/deepseek/truncation_matrix/agent_blocking_truncated_call_is_not_invoked.yaml",
     "tests/cassettes/deepseek/truncation_matrix/agent_streaming_empty_arguments_on_length_are_not_invoked.yaml",
     "tests/cassettes/deepseek/truncation_matrix/agent_streaming_truncated_call_is_not_invoked.yaml",
     "tests/cassettes/doubleword/agent/completion_smoke.yaml",
+    "tests/cassettes/doubleword/corpus_matrix/output_tool_thinking.yaml",
+    "tests/cassettes/doubleword/corpus_matrix/shaping_thinking_second_turn.yaml",
     "tests/cassettes/doubleword/extractor/extractor_smoke.yaml",
+    "tests/cassettes/doubleword/reasoning_matrix/capped.yaml",
+    "tests/cassettes/doubleword/reasoning_matrix/off.yaml",
+    "tests/cassettes/doubleword/reasoning_matrix/text_streamed.yaml",
+    "tests/cassettes/doubleword/reasoning_matrix/text_unary.yaml",
+    "tests/cassettes/doubleword/reasoning_matrix/tool_streamed.yaml",
+    "tests/cassettes/doubleword/reasoning_matrix/tool_unary.yaml",
     "tests/cassettes/gemini/agent/completion_smoke.yaml",
     "tests/cassettes/gemini/agent_run_streamed/builtin_streaming_cancellation_history_includes_assistant_turn.yaml",
     "tests/cassettes/gemini/agent_run_streamed/builtin_streaming_max_turns_error_carries_pending_message.yaml",
@@ -1636,6 +1723,10 @@
     "tests/cassettes/gemini/lifecycle_matrix/run_settled_tool_run.yaml",
     "tests/cassettes/gemini/lifecycle_matrix/run_start_rewrite.yaml",
     "tests/cassettes/gemini/prompt_caching/agent_loop.yaml",
+    "tests/cassettes/gemini/reasoning_matrix/capped.yaml",
+    "tests/cassettes/gemini/reasoning_matrix/capped_streamed.yaml",
+    "tests/cassettes/gemini/reasoning_matrix/text_streamed.yaml",
+    "tests/cassettes/gemini/reasoning_matrix/text_unary.yaml",
     "tests/cassettes/gemini/stream_terminal_matrix/two_terminal_stream_agent_prompt_keeps_the_answer.yaml",
     "tests/cassettes/gemini/streaming/example_streaming_prompt.yaml",
     "tests/cassettes/gemini/streaming/streaming_smoke.yaml",
@@ -1685,6 +1776,8 @@
     "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt4o_parallel_model.yaml",
     "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt4o_zero_agent.yaml",
     "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt4o_zero_model.yaml",
+    "tests/cassettes/openai/corpus_matrix_chat/output_tool_thinking.yaml",
+    "tests/cassettes/openai/corpus_matrix_responses/output_tool_thinking.yaml",
     "tests/cassettes/openai/extractor/extractor_smoke.yaml",
     "tests/cassettes/openai/extractor_usage/extract_and_extract_with_usage_return_same_data.yaml",
     "tests/cassettes/openai/extractor_usage/extract_backward_compatibility.yaml",
@@ -1698,6 +1791,14 @@
     "tests/cassettes/openai/lifecycle_matrix/run_start_rewrite.yaml",
     "tests/cassettes/openai/prompt_caching/chat_completions_agent_loop.yaml",
     "tests/cassettes/openai/prompt_caching/responses_agent_loop.yaml",
+    "tests/cassettes/openai/reasoning_matrix_chat/capped.yaml",
+    "tests/cassettes/openai/reasoning_matrix_chat/off.yaml",
+    "tests/cassettes/openai/reasoning_matrix_chat/text_streamed.yaml",
+    "tests/cassettes/openai/reasoning_matrix_responses/capped.yaml",
+    "tests/cassettes/openai/reasoning_matrix_responses/capped_streamed.yaml",
+    "tests/cassettes/openai/reasoning_matrix_responses/text_streamed.yaml",
+    "tests/cassettes/openai/reasoning_matrix_responses/text_unary.yaml",
+    "tests/cassettes/openai/reasoning_matrix_responses/tool_streamed.yaml",
     "tests/cassettes/openai/streaming/example_streaming_prompt.yaml",
     "tests/cassettes/openai/streaming/streaming_smoke.yaml",
     "tests/cassettes/openai/streaming_tools/example_streaming_with_tools.yaml",
@@ -1729,8 +1830,15 @@
     "tests/cassettes/perplexity/agent/completion_smoke.yaml",
     "tests/cassettes/perplexity/agent/completion_with_perplexity_options.yaml",
     "tests/cassettes/venice/agent/completion_smoke.yaml",
+    "tests/cassettes/venice/corpus_matrix/output_tool_thinking.yaml",
     "tests/cassettes/venice/extractor/extractor_smoke.yaml",
     "tests/cassettes/venice/prompt_caching/agent_loop.yaml",
+    "tests/cassettes/venice/reasoning_matrix/capped.yaml",
+    "tests/cassettes/venice/reasoning_matrix/off.yaml",
+    "tests/cassettes/venice/reasoning_matrix/text_streamed.yaml",
+    "tests/cassettes/venice/reasoning_matrix/text_unary.yaml",
+    "tests/cassettes/venice/reasoning_matrix/tool_streamed.yaml",
+    "tests/cassettes/venice/reasoning_matrix/tool_unary.yaml",
     "tests/cassettes/xai/agent/completion_smoke.yaml",
     "tests/cassettes/xai/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml",
     "tests/cassettes/xai/agent_tool_sessions/multimodal_image_input_mixed_text_ordering.yaml",
@@ -1756,6 +1864,7 @@
     "tests/common/ecs_matrix/cells.rs",
     "tests/common/ecs_matrix/extra.rs",
     "tests/common/ecs_matrix/faults.rs",
+    "tests/common/ecs_matrix/reasoning.rs",
     "tests/common/ecs_matrix/world.rs",
     "tests/common/goldens.rs",
     "tests/common/stream_faults.rs",
@@ -11004,6 +11113,72 @@
       }
     },
     {
+      "id": "rig::deepseek::deepseek::corpus_matrix::reasoning_capped",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix::reasoning_capped",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_matrix::reasoning_off",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix::reasoning_off",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_matrix::reasoning_text_streamed",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix::reasoning_text_streamed",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_matrix::reasoning_text_unary",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix::reasoning_text_unary",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_matrix::reasoning_tool_streamed",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix::reasoning_tool_streamed",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_matrix::reasoning_tool_unary",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix::reasoning_tool_unary",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix.rs"
+      }
+    },
+    {
       "id": "rig::deepseek::deepseek::corpus_matrix::resume_tool_turn",
       "classification": "agent",
       "source": "tests/providers/deepseek/cassette/corpus_matrix.rs",
@@ -13442,6 +13617,72 @@
       "ecs": {
         "binary": "doubleword",
         "test": "doubleword::cassette::ecs_matrix::output_tool_with_real_tool",
+        "source": "tests/providers/doubleword/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::doubleword::doubleword::cassette::corpus_matrix::reasoning_capped",
+      "classification": "agent",
+      "source": "tests/providers/doubleword/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "doubleword",
+        "test": "doubleword::cassette::ecs_matrix::reasoning_capped",
+        "source": "tests/providers/doubleword/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::doubleword::doubleword::cassette::corpus_matrix::reasoning_off",
+      "classification": "agent",
+      "source": "tests/providers/doubleword/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "doubleword",
+        "test": "doubleword::cassette::ecs_matrix::reasoning_off",
+        "source": "tests/providers/doubleword/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::doubleword::doubleword::cassette::corpus_matrix::reasoning_text_streamed",
+      "classification": "agent",
+      "source": "tests/providers/doubleword/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "doubleword",
+        "test": "doubleword::cassette::ecs_matrix::reasoning_text_streamed",
+        "source": "tests/providers/doubleword/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::doubleword::doubleword::cassette::corpus_matrix::reasoning_text_unary",
+      "classification": "agent",
+      "source": "tests/providers/doubleword/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "doubleword",
+        "test": "doubleword::cassette::ecs_matrix::reasoning_text_unary",
+        "source": "tests/providers/doubleword/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::doubleword::doubleword::cassette::corpus_matrix::reasoning_tool_streamed",
+      "classification": "agent",
+      "source": "tests/providers/doubleword/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "doubleword",
+        "test": "doubleword::cassette::ecs_matrix::reasoning_tool_streamed",
+        "source": "tests/providers/doubleword/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::doubleword::doubleword::cassette::corpus_matrix::reasoning_tool_unary",
+      "classification": "agent",
+      "source": "tests/providers/doubleword/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "doubleword",
+        "test": "doubleword::cassette::ecs_matrix::reasoning_tool_unary",
         "source": "tests/providers/doubleword/cassette/ecs_matrix.rs"
       }
     },
@@ -16042,6 +16283,83 @@
       "ecs": {
         "binary": "gemini",
         "test": "gemini::cassette::ecs_matrix::output_tool_with_real_tool",
+        "source": "tests/providers/gemini/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix::reasoning_capped",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix::reasoning_capped",
+        "source": "tests/providers/gemini/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix::reasoning_capped_streamed",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix::reasoning_capped_streamed",
+        "source": "tests/providers/gemini/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix::reasoning_off",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix::reasoning_off",
+        "source": "tests/providers/gemini/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix::reasoning_text_streamed",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix::reasoning_text_streamed",
+        "source": "tests/providers/gemini/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix::reasoning_text_unary",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix::reasoning_text_unary",
+        "source": "tests/providers/gemini/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix::reasoning_tool_streamed",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix::reasoning_tool_streamed",
+        "source": "tests/providers/gemini/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix::reasoning_tool_unary",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix::reasoning_tool_unary",
         "source": "tests/providers/gemini/cassette/ecs_matrix.rs"
       }
     },
@@ -25882,6 +26200,72 @@
       }
     },
     {
+      "id": "rig::openai::openai::cassette::corpus_matrix_chat::reasoning_capped",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_chat::reasoning_capped",
+        "source": "tests/providers/openai/cassette/ecs_matrix_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_chat::reasoning_off",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_chat::reasoning_off",
+        "source": "tests/providers/openai/cassette/ecs_matrix_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_chat::reasoning_text_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_chat::reasoning_text_streamed",
+        "source": "tests/providers/openai/cassette/ecs_matrix_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_chat::reasoning_text_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_chat::reasoning_text_unary",
+        "source": "tests/providers/openai/cassette/ecs_matrix_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_chat::reasoning_tool_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_chat::reasoning_tool_streamed",
+        "source": "tests/providers/openai/cassette/ecs_matrix_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_chat::reasoning_tool_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_chat::reasoning_tool_unary",
+        "source": "tests/providers/openai/cassette/ecs_matrix_chat.rs"
+      }
+    },
+    {
       "id": "rig::openai::openai::cassette::corpus_matrix_chat::resume_tool_turn",
       "classification": "agent",
       "source": "tests/providers/openai/cassette/corpus_matrix_chat.rs",
@@ -26725,6 +27109,83 @@
       "ecs": {
         "binary": "openai",
         "test": "openai::cassette::ecs_matrix_responses::output_tool_with_real_tool",
+        "source": "tests/providers/openai/cassette/ecs_matrix_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_responses::reasoning_capped",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_responses::reasoning_capped",
+        "source": "tests/providers/openai/cassette/ecs_matrix_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_responses::reasoning_capped_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_responses::reasoning_capped_streamed",
+        "source": "tests/providers/openai/cassette/ecs_matrix_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_responses::reasoning_off",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_responses::reasoning_off",
+        "source": "tests/providers/openai/cassette/ecs_matrix_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_responses::reasoning_text_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_responses::reasoning_text_streamed",
+        "source": "tests/providers/openai/cassette/ecs_matrix_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_responses::reasoning_text_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_responses::reasoning_text_unary",
+        "source": "tests/providers/openai/cassette/ecs_matrix_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_responses::reasoning_tool_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_responses::reasoning_tool_streamed",
+        "source": "tests/providers/openai/cassette/ecs_matrix_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_responses::reasoning_tool_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_responses::reasoning_tool_unary",
         "source": "tests/providers/openai/cassette/ecs_matrix_responses.rs"
       }
     },
@@ -33101,6 +33562,72 @@
       "ecs": {
         "binary": "venice",
         "test": "venice::cassette::ecs_matrix::output_tool_with_real_tool",
+        "source": "tests/providers/venice/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::venice::venice::cassette::corpus_matrix::reasoning_capped",
+      "classification": "agent",
+      "source": "tests/providers/venice/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "venice",
+        "test": "venice::cassette::ecs_matrix::reasoning_capped",
+        "source": "tests/providers/venice/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::venice::venice::cassette::corpus_matrix::reasoning_off",
+      "classification": "agent",
+      "source": "tests/providers/venice/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "venice",
+        "test": "venice::cassette::ecs_matrix::reasoning_off",
+        "source": "tests/providers/venice/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::venice::venice::cassette::corpus_matrix::reasoning_text_streamed",
+      "classification": "agent",
+      "source": "tests/providers/venice/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "venice",
+        "test": "venice::cassette::ecs_matrix::reasoning_text_streamed",
+        "source": "tests/providers/venice/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::venice::venice::cassette::corpus_matrix::reasoning_text_unary",
+      "classification": "agent",
+      "source": "tests/providers/venice/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "venice",
+        "test": "venice::cassette::ecs_matrix::reasoning_text_unary",
+        "source": "tests/providers/venice/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::venice::venice::cassette::corpus_matrix::reasoning_tool_streamed",
+      "classification": "agent",
+      "source": "tests/providers/venice/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "venice",
+        "test": "venice::cassette::ecs_matrix::reasoning_tool_streamed",
+        "source": "tests/providers/venice/cassette/ecs_matrix.rs"
+      }
+    },
+    {
+      "id": "rig::venice::venice::cassette::corpus_matrix::reasoning_tool_unary",
+      "classification": "agent",
+      "source": "tests/providers/venice/cassette/corpus_matrix.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "venice",
+        "test": "venice::cassette::ecs_matrix::reasoning_tool_unary",
         "source": "tests/providers/venice/cassette/ecs_matrix.rs"
       }
     },

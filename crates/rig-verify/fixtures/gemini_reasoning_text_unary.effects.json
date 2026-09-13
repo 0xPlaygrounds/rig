@@ -1,0 +1,152 @@
+{
+  "header": {
+    "run_spec": 10205229598120978059,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": 4096,
+          "tool_choice": null,
+          "additional_params": {
+            "generationConfig": {
+              "thinkingConfig": {
+                "includeThoughts": true,
+                "thinkingBudget": 128
+              }
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "**My Take on Rust and Memory Safety**\n\nOkay, so I'm thinking about Rust again. It's a systems programming language, right? And the whole deal is performance *and* safety. The key is its ownership system; that's how it ensures memory safety. That means no more buffer overflows or dangling pointers – those classic vulnerabilities that lead to crashes and security headaches. It's all about eliminating those bugs right at the source. This is great for high-performance systems and is really important, preventing security vulnerabilities and crashes.\n\n\n",
+                    "signature": "signature_REDACTED_1"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "Rust is a systems programming language designed for high performance and safety, using a unique ownership system to manage memory without a garbage collector. Memory safety is critical because it prevents common bugs like buffer overflows and dangling pointers, which are leading causes of security vulnerabilities and system crashes."
+            }
+          ],
+          "usage": {
+            "input_tokens": 29,
+            "output_tokens": 53,
+            "total_tokens": 334,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 252
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-3-flash-preview",
+          "raw": {
+            "responseId": "id_REDACTED_1",
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "thought": true,
+                      "text": "**My Take on Rust and Memory Safety**\n\nOkay, so I'm thinking about Rust again. It's a systems programming language, right? And the whole deal is performance *and* safety. The key is its ownership system; that's how it ensures memory safety. That means no more buffer overflows or dangling pointers – those classic vulnerabilities that lead to crashes and security headaches. It's all about eliminating those bugs right at the source. This is great for high-performance systems and is really important, preventing security vulnerabilities and crashes.\n\n\n"
+                    },
+                    {
+                      "thoughtSignature": "signature_REDACTED_1",
+                      "text": "Rust is a systems programming language designed for high performance and safety, using a unique ownership system to manage memory without a garbage collector. Memory safety is critical because it prevents common bugs like buffer overflows and dangling pointers, which are leading causes of security vulnerabilities and system crashes."
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "safetyRatings": null,
+                "citationMetadata": null,
+                "tokenCount": null,
+                "avgLogprobs": null,
+                "logprobsResult": null,
+                "index": 0,
+                "finishMessage": null
+              }
+            ],
+            "promptFeedback": null,
+            "usageMetadata": {
+              "promptTokenCount": 29,
+              "candidatesTokenCount": 53,
+              "totalTokenCount": 334,
+              "thoughtsTokenCount": 252,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 29
+                }
+              ]
+            },
+            "modelVersion": "gemini-3-flash-preview"
+          }
+        }
+      }
+    }
+  ]
+}

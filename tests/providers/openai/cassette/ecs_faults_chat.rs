@@ -29,6 +29,7 @@ use crate::stream_faults::{
 
 fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
         model: client
             .clone()
             .completions_api()
@@ -44,6 +45,7 @@ fn missing(
     client: &rig::providers::openai::Client,
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
         model: client
             .clone()
             .completions_api()
@@ -104,6 +106,7 @@ fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'st
         .build()
         .expect("client should build");
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
         model: client
             .clone()
             .completions_api()
@@ -123,6 +126,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
         .build()
         .expect("client should build");
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
         model: client
             .clone()
             .completions_api()

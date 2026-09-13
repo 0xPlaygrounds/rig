@@ -1,0 +1,4625 @@
+{
+  "header": {
+    "run_spec": 8630632220564808386,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": 4096,
+          "tool_choice": null,
+          "additional_params": {
+            "reasoning_effort": "low"
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Rust programming language and memory safety.\n    *   Constraint: One or two sentences.\n    *   Goal: Explain what Rust is and why memory safety matters.\n    *   Style: Concise, direct.\n\n2.  **Drafting - Attempt 1:**\n    Rust is a systems programming language that focuses on performance and safety. Memory safety matters because it prevents bugs like buffer overflows and use-after-free errors that can lead to crashes or security vulnerabilities.\n\n3.  **Refining - Attempt 1 (Checking constraints):**\n    *   Sentence 1: \"Rust is a systems programming language that focuses on performance and safety.\" (Good)\n    *   Sentence 2: \"Memory safety matters because it prevents bugs like buffer overflows and use-after-free errors that can lead to crashes or security vulnerabilities.\" (Good)\n    *   Count: 2 sentences.\n    *   Content: Covers what Rust is and why memory safety matters.\n\n4.  **Drafting - Attempt 2 (Combining for flow):**\n    Rust is a high-performance systems programming language designed to guarantee memory safety without garbage collection. This safety is crucial because it eliminates entire classes of bugs, such as buffer overflows and dangling pointers, which are common causes of software crashes and security vulnerabilities.\n\n5.  **Selecting the Best Version:**\n    Attempt 2 is slightly more precise about *how* Rust achieves it (without garbage collection) and *why* it matters (eliminates classes of bugs). However, Attempt 1 is simpler. Let's aim for a balance.\n\n    *Revised Draft:* Rust is a systems programming language designed for high performance and reliability by enforcing strict memory safety guarantees without garbage collection. This matters because it prevents common, critical errors like buffer overflows and use-after-free bugs that often lead to security vulnerabilities and system crashes.\n\n6.  **Final Polish (Checking sentence count):**\n    Sentence 1: Rust is a systems programming language designed for high performance and reliability by enforcing strict memory safety guarantees without garbage collection.\n    Sentence 2: This matters because it prevents common, critical errors like buffer overflows and use-after-free bugs that often lead to security vulnerabilities and system crashes.\n    Total: 2 sentences.\n\n7.  **Final Output Generation.** (Matches the thought process above).ot\n"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "\n\nRust is a systems programming language designed for high performance and reliability by enforcing strict memory safety guarantees without garbage collection. This matters because it prevents common, critical errors like buffer overflows and use-after-free bugs that often lead to security vulnerabilities and system crashes."
+            }
+          ],
+          "usage": {
+            "input_tokens": 42,
+            "output_tokens": 559,
+            "total_tokens": 601,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 505
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "doubleword",
+          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 42,
+              "completion_tokens": 559,
+              "total_tokens": 601,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 505
+              }
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk"
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:reasoning:0",
+          "kind": {
+            "kind": "reasoning"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Thinking"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Process"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " **"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "An"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "alyze"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Request"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":**"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "   "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " *"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "  "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Topic"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " programming"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "   "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " *"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "  "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Constraint"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " One"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " or"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " two"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " sentences"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "   "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " *"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "  "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Goal"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Explain"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " what"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " why"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " matters"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "   "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " *"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "  "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Style"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Conc"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "ise"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " direct"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " **"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Draft"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "ing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " -"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Attempt"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":**"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "   "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " systems"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " programming"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " that"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " focuses"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " on"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " performance"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " matters"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " because"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " it"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " prevents"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " bugs"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " like"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " buffer"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " over"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "flows"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " use"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-after"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-free"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " errors"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " that"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " can"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " lead"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " crashes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " or"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " security"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " vulnerabilities"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "3"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " **"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Ref"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "ining"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " -"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Attempt"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " ("
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Checking"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " constraints"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "):**"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "   "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " *"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "  "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Sentence"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "R"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "ust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " systems"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " programming"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " that"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " focuses"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " on"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " performance"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ".\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " ("
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Good"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ")"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "   "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " *"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "  "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Sentence"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " \""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " matters"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " because"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " it"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " prevents"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " bugs"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " like"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " buffer"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " over"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "flows"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " use"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-after"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-free"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " errors"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " that"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " can"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " lead"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " crashes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " or"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " security"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " vulnerabilities"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ".\""
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " ("
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Good"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ")"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "   "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " *"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "  "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Count"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " sentences"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "   "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " *"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "  "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Content"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Covers"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " what"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " why"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " matters"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "4"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " **"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Draft"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "ing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " -"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Attempt"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " ("
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Comb"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "ining"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " for"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " flow"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "):**"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "   "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " high"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-performance"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " systems"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " programming"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " designed"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " guarantee"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " without"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " garbage"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " collection"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " This"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " crucial"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " because"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " it"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " eliminates"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " entire"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " classes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " bugs"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " such"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " as"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " buffer"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " over"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "flows"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " dangling"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " pointers"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " which"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " are"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " common"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " causes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " software"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " crashes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " security"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " vulnerabilities"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "5"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " **"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Selecting"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Best"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Version"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":**"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "   "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Attempt"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " slightly"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " more"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " precise"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " about"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " *"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "how"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "*"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " achieves"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " it"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " ("
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "without"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " garbage"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " collection"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ")"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " *"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "why"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "*"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " it"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " matters"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " ("
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "elimin"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "ates"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " classes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " bugs"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ")."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " However"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Attempt"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " simpler"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Let"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "'s"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " aim"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " for"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " balance"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "   "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " *"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Re"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "vised"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Draft"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":*"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " systems"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " programming"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " designed"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " for"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " high"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " performance"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " reliability"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " by"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " enforcing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " strict"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " guarantees"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " without"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " garbage"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " collection"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " This"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " matters"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " because"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " it"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " prevents"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " common"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " critical"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " errors"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " like"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " buffer"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " over"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "flows"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " use"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-after"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-free"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " bugs"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " that"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " often"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " lead"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " security"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " vulnerabilities"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " system"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " crashes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "6"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " **"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Final"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Polish"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " ("
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Checking"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " sentence"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " count"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "):**"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "   "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Sentence"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " systems"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " programming"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " designed"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " for"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " high"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " performance"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " reliability"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " by"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " enforcing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " strict"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " guarantees"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " without"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " garbage"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " collection"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "   "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Sentence"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " This"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " matters"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " because"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " it"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " prevents"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " common"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " critical"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " errors"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " like"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " buffer"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " over"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "flows"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " use"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-after"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "-free"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " bugs"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " that"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " often"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " lead"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " security"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " vulnerabilities"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " system"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " crashes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "   "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Total"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ":"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "2"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " sentences"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n\n"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "7"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " "
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " **"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Final"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Output"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Generation"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ".**"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " ("
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "Matches"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " thought"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " process"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": " above"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": ")."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "ot"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:reasoning:0",
+          "delta": {
+            "delta": "reasoning",
+            "text": "\n"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:reasoning:0",
+          "end": {
+            "close": "reasoning",
+            "wire_sent": false
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "\n\nR"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "ust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " systems"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " programming"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " designed"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " for"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " high"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " performance"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " reliability"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " by"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " enforcing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " strict"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " guarantees"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " without"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " garbage"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " collection"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " This"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " matters"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " because"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " it"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " prevents"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " common"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " critical"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " errors"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " like"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " buffer"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " over"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "flows"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " use"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "-after"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "-free"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " bugs"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " that"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " often"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " lead"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " to"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " security"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " vulnerabilities"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " system"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": " crashes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 42,
+            "output_tokens": 559,
+            "total_tokens": 601,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 505
+          },
+          "finish_reason": "stop",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider": "doubleword",
+          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 42,
+              "completion_tokens": 559,
+              "total_tokens": 601,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 505
+              }
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

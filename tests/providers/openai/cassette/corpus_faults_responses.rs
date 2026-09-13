@@ -13,6 +13,7 @@ use crate::ecs_matrix::{Wire, agent::run_agent, faults};
 
 fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: client.completion_model(GPT_5_MINI),
         route: None,
         temperature: None,
@@ -25,6 +26,7 @@ fn missing(
     client: &rig::providers::openai::Client,
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: client.completion_model("gpt-4o-mini-nonexistent-rig-test"),
         route: None,
         temperature: None,

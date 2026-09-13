@@ -253,7 +253,7 @@ async fn streaming_completed_turn_reports_stop_and_cap() {
 // rather than through `reconcile_with_output`.
 // ---------------------------------------------------------------------------
 
-#[ignore = "no recording: the cell's cassette was removed as an orphan in #2501 (its Venice model then reported `stop` on tool turns); `mistral-small-3-2-24b-instruct` reports `tool_calls` on every #2501/#2503 tool turn, and a `stop` beside a call is upgraded to `ToolCalls` at the response (`FinishReason::reconcile_with_output`), so recording `turn_termination_matrix/{blocking,streaming}_tool_turn_reports_tool_calls` with VENICE_API_KEY un-ignores this cell as written"]
+#[ignore = "Venice mistral-small-3-2-24b-instruct answered without calling add in attempts 1, 2 and 3 (2026-09-13, record-venice-termination-blocking-attempt-{1,2,3}.log); exhausted the reasoning-matrix prompt's three-attempt limit"]
 #[tokio::test]
 async fn blocking_tool_turn_reports_tool_calls() {
     {
@@ -299,7 +299,7 @@ async fn blocking_tool_turn_reports_tool_calls() {
     }
 }
 
-#[ignore = "no recording: the cell's cassette was removed as an orphan in #2501 (its Venice model then reported `stop` on tool turns); `mistral-small-3-2-24b-instruct` reports `tool_calls` on every #2501/#2503 tool turn, and a `stop` beside a call is upgraded to `ToolCalls` at the response (`FinishReason::reconcile_with_output`), so recording `turn_termination_matrix/{blocking,streaming}_tool_turn_reports_tool_calls` with VENICE_API_KEY un-ignores this cell as written"]
+#[ignore = "Venice mistral-small-3-2-24b-instruct answered without calling add in attempts 1, 2 and 3 (2026-09-13, record-venice-termination-streaming-attempt-{1,2,3}.log); exhausted the reasoning-matrix prompt's three-attempt limit"]
 #[tokio::test]
 async fn streaming_tool_turn_reports_tool_calls() {
     {

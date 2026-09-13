@@ -88,6 +88,54 @@ fn custom_output_tool_is_advertised_and_finalizes_without_executing_a_tool() {
 }
 
 #[test]
+fn output_tool_history_preserves_reasoning_and_commits_arguments_as_text() {
+    use rig_core::message::{Reasoning, ReasoningContent};
+    use rig_ecs::agent::{MessageParts, Parts, Utterance};
+
+    let reasoning = AssistantContent::Reasoning(Reasoning {
+        id: Some("reasoning-id".into()),
+        content: vec![
+            ReasoningContent::Text {
+                text: "private reasoning".into(),
+                signature: Some("signature".into()),
+            },
+            ReasoningContent::Encrypted("encrypted".into()),
+        ],
+    });
+    let mut app = app();
+    let (model, _) = Scripted::new(
+        MODEL,
+        vec![vec![
+            reasoning.clone(),
+            call("c", "submit", serde_json::json!({"answer":42})),
+        ]],
+    );
+    let model = register(&mut app, MODEL, model);
+    let agent = spawn_agent(app.world_mut(), "t", model);
+    app.world_mut()
+        .entity_mut(agent)
+        .insert((schema(), config()));
+    let run = spawn_run(app.world_mut(), agent, &[], "extract", false, Some(1));
+    settle(&mut app, run);
+
+    let assistant: Vec<_> = app
+        .world_mut()
+        .query_filtered::<(&Parts, &ChildOf), With<Utterance>>()
+        .iter(app.world())
+        .filter_map(|(parts, parent)| match &parts.0 {
+            MessageParts::Assistant { content, .. } if parent.parent() == run => {
+                Some(content.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        assistant,
+        [vec![reasoning, AssistantContent::text("{\"answer\":42}")]]
+    );
+}
+
+#[test]
 fn run_configuration_overrides_and_can_reset_the_agent_configuration() {
     let mut app = app();
     let (model, requests) = Scripted::new(

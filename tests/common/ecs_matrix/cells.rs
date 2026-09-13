@@ -53,8 +53,106 @@ pub(crate) fn reasoning_off() -> serde_json::Value {
     serde_json::json!({ "reasoning_effort": "none" })
 }
 
-fn thinking_params() -> serde_json::Value {
-    serde_json::json!({ "thinking": { "type": "enabled", "budget_tokens": 1024 } })
+/// When the matrix asks the model to think. Existing cells default to Off
+/// without changing their programs; the explicit off row opts into rendering.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Thinking {
+    On,
+    #[default]
+    Off,
+    SecondTurnOnly,
+}
+
+/// The six request dialects, independent of the provider model's Rust type.
+#[derive(Clone, Copy, Debug)]
+#[allow(
+    dead_code,
+    reason = "each provider test target constructs only its own dialect"
+)]
+pub(crate) enum ThinkingWire {
+    OpenAiChat,
+    OpenAiResponses,
+    Gemini,
+    DeepSeek,
+    Doubleword,
+    Venice,
+}
+
+/// The reasoning matrix's contract shape, asserted beside record parity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ReasoningCase {
+    Text,
+    Tool,
+    Output,
+    Off,
+    Capped,
+}
+
+fn openai_chat_thinking(on: bool) -> serde_json::Value {
+    serde_json::json!({"reasoning_effort": if on { "low" } else { "minimal" }})
+}
+
+fn openai_responses_thinking(on: bool) -> serde_json::Value {
+    if on {
+        serde_json::json!({
+            "reasoning": {"effort": "low", "summary": "auto"},
+            "include": ["reasoning.encrypted_content"]
+        })
+    } else {
+        serde_json::json!({"reasoning": {"effort": "minimal"}})
+    }
+}
+
+fn gemini_thinking(on: bool) -> serde_json::Value {
+    serde_json::json!({"generationConfig": {"thinkingConfig": {
+        "includeThoughts": on, "thinkingBudget": if on { 128 } else { 0 }
+    }}})
+}
+
+fn deepseek_thinking(on: bool) -> serde_json::Value {
+    serde_json::json!({"thinking": {"type": if on { "enabled" } else { "disabled" }}})
+}
+
+fn doubleword_thinking(on: bool) -> serde_json::Value {
+    if on {
+        // An empty object would leave SecondTurnOnly's baseline `none`
+        // intact under RequestPatch's shallow merge.
+        openai_chat_thinking(true)
+    } else {
+        reasoning_off()
+    }
+}
+
+fn venice_thinking(on: bool) -> serde_json::Value {
+    use rig::providers::venice::VeniceParameters;
+    if on {
+        VeniceParameters::default().strip_thinking_response(false)
+    } else {
+        VeniceParameters::default().disable_thinking(true)
+    }
+    .into_additional_params()
+}
+
+impl ThinkingWire {
+    /// A function pointer fits the corpus's static programs. The closures
+    /// delegate to one rendering per wire, so on/off cannot drift between
+    /// a builder's defaults and a second-turn patch.
+    pub(crate) fn params(self, on: bool) -> fn() -> serde_json::Value {
+        match (self, on) {
+            (Self::OpenAiChat, true) => || openai_chat_thinking(true),
+            (Self::OpenAiChat, false) => || openai_chat_thinking(false),
+            (Self::OpenAiResponses, true) => || openai_responses_thinking(true),
+            (Self::OpenAiResponses, false) => || openai_responses_thinking(false),
+            (Self::Gemini, true) => || gemini_thinking(true),
+            (Self::Gemini, false) => || gemini_thinking(false),
+            (Self::DeepSeek, true) => || deepseek_thinking(true),
+            (Self::DeepSeek, false) => || deepseek_thinking(false),
+            (Self::Doubleword, true) => || doubleword_thinking(true),
+            (Self::Doubleword, false) => || doubleword_thinking(false),
+            (Self::Venice, true) => || venice_thinking(true),
+            (Self::Venice, false) => || venice_thinking(false),
+        }
+    }
 }
 
 pub(crate) fn bypass_history() -> Vec<rig::message::Message> {
@@ -138,6 +236,11 @@ pub(crate) struct Cell {
     /// `<family>_<cell>`: the golden is `<wire>_<name>`.
     pub name: &'static str,
     pub program: Program,
+    pub thinking: Thinking,
+    /// Render Off explicitly for the reasoning-off row. Ordinary existing
+    /// cells keep their original additional parameters byte-for-byte.
+    pub explicit_thinking_off: bool,
+    pub reasoning: Option<ReasoningCase>,
     pub tools: &'static [ToolKind],
     pub memory: Memory,
     pub bus: Bus,
@@ -163,6 +266,9 @@ pub(crate) struct Cell {
 pub(crate) const CELL: Cell = Cell {
     name: "",
     program: Program::DEFAULT,
+    thinking: Thinking::Off,
+    explicit_thinking_off: false,
+    reasoning: None,
     tools: &[],
     memory: Memory::None,
     bus: Bus::Own,
@@ -205,6 +311,87 @@ const TEXT: Cell = Cell {
     program: BASIC,
     families: C,
     ..CELL
+};
+
+// -- Reasoning, on the same six wires ----------------------------------------
+
+pub(crate) const REASONING_TEXT_UNARY: Cell = Cell {
+    name: "reasoning_text_unary",
+    thinking: Thinking::On,
+    reasoning: Some(ReasoningCase::Text),
+    program: Program {
+        max_tokens: Some(4096),
+        ..BASIC
+    },
+    ..TEXT
+};
+
+pub(crate) const REASONING_TEXT_STREAMED: Cell = Cell {
+    name: "reasoning_text_streamed",
+    program: Program {
+        streamed: true,
+        ..REASONING_TEXT_UNARY.program
+    },
+    events: true,
+    ..REASONING_TEXT_UNARY
+};
+
+pub(crate) const REASONING_TOOL_UNARY: Cell = Cell {
+    name: "reasoning_tool_unary",
+    thinking: Thinking::On,
+    reasoning: Some(ReasoningCase::Tool),
+    program: Program {
+        max_tokens: Some(4096),
+        ..TOOLS
+    },
+    resume_after: Some(1),
+    ..ADD
+};
+
+pub(crate) const REASONING_TOOL_STREAMED: Cell = Cell {
+    name: "reasoning_tool_streamed",
+    program: Program {
+        streamed: true,
+        ..REASONING_TOOL_UNARY.program
+    },
+    events: true,
+    resume_after: None,
+    ..REASONING_TOOL_UNARY
+};
+
+pub(crate) const REASONING_OFF: Cell = Cell {
+    name: "reasoning_off",
+    thinking: Thinking::Off,
+    explicit_thinking_off: true,
+    reasoning: Some(ReasoningCase::Off),
+    ..REASONING_TEXT_UNARY
+};
+
+pub(crate) const REASONING_CAPPED: Cell = Cell {
+    name: "reasoning_capped",
+    reasoning: Some(ReasoningCase::Capped),
+    program: Program {
+        max_tokens: Some(16),
+        hooks: &[Hook::RecordSettled],
+        ending: Ending::Failed(rig::error::ErrorKind::Response),
+        ..REASONING_TEXT_UNARY.program
+    },
+    provider_retries: Some(0),
+    ..REASONING_TEXT_UNARY
+};
+
+#[allow(
+    dead_code,
+    reason = "only Responses and Gemini require a streamed cap twin"
+)]
+pub(crate) const REASONING_CAPPED_STREAMED: Cell = Cell {
+    name: "reasoning_capped_streamed",
+    program: Program {
+        streamed: true,
+        ..REASONING_CAPPED.program
+    },
+    events: true,
+    ..REASONING_CAPPED
 };
 
 // -- §5 budgets and endings; §9.1 stopping (`ecs_endings`) --------------------
@@ -981,10 +1168,12 @@ pub(crate) const OUTPUT_TOOL_UNDER_NONE_DEGRADES: Cell = Cell {
 };
 pub(crate) const OUTPUT_TOOL_THINKING: Cell = Cell {
     name: "output_tool_thinking",
+    thinking: Thinking::On,
+    reasoning: Some(ReasoningCase::Output),
     program: Program {
         output_mode: Some(Output::Tool),
-        additional_params: Some(thinking_params),
         temperature: None,
+        max_tokens: Some(4096),
         ..SCHEMA
     },
     families: C,
@@ -1090,9 +1279,12 @@ pub(crate) const SHAPING_MAX_TOKENS_SECOND_TURN: Cell = Cell {
 };
 pub(crate) const SHAPING_THINKING_SECOND_TURN: Cell = Cell {
     name: "shaping_thinking_second_turn",
+    thinking: Thinking::SecondTurnOnly,
+    reasoning: Some(ReasoningCase::Tool),
     resume_after: Some(1),
     program: Program {
         hooks: &[Hook::PatchThinkingSecond],
+        max_tokens: Some(4096),
         ..TOOLS
     },
     ..ADD

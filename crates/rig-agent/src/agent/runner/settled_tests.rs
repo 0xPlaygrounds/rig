@@ -190,3 +190,71 @@ mod slow_stream {
         );
     }
 }
+
+#[derive(Clone, Default)]
+struct CommittedHistory(Arc<Mutex<Option<Vec<rig_core::message::Message>>>>);
+
+impl AgentHook for CommittedHistory {
+    async fn on_run_settled(&self, _ctx: &HookContext, event: RunSettled<'_>) {
+        let SettledOutcome::Error(error) = event.outcome else {
+            panic!("the reasoning-only capped turn fails");
+        };
+        assert!(error.contains(&rig_core::completion::FinishReason::Length.no_answer_message()));
+        let previous = self
+            .0
+            .lock()
+            .expect("history")
+            .replace(event.messages.expect("the run was constructed").to_vec());
+        assert!(previous.is_none(), "exactly one settlement");
+    }
+}
+
+/// The hook must expose actual committed state on both error surfaces.
+/// A controlled model pins the no-answer decision independently of whether
+/// a live provider happens to spend its small cap entirely on reasoning;
+/// the six-wire capped cassette cells use the same settlement field.
+#[tokio::test]
+async fn capped_reasoning_settlement_exposes_only_the_committed_prompt() {
+    use futures::StreamExt;
+    use rig_core::completion::{FinishReason, Usage};
+    use rig_core::message::{AssistantContent, Message, Reasoning};
+    use rig_core::test_utils::{MockStreamEvent, MockTurn, mock_final};
+
+    for streamed in [false, true] {
+        let model = if streamed {
+            MockCompletionModel::from_stream_turns([[
+                MockStreamEvent::reasoning("unfinished reasoning"),
+                MockStreamEvent::FinalResponse(
+                    mock_final(Usage::new()).with_finish_reason(FinishReason::Length),
+                ),
+            ]])
+        } else {
+            MockCompletionModel::from_turns([MockTurn::from_content(AssistantContent::Reasoning(
+                Reasoning::new("unfinished reasoning"),
+            ))
+            .with_finish_reason(FinishReason::Length)])
+        };
+        let captured = CommittedHistory::default();
+        let agent = AgentBuilder::new(model).add_hook(captured.clone()).build();
+        if streamed {
+            let mut stream = agent.prompt("solve this").stream();
+            let mut failed = false;
+            while let Some(item) = stream.next().await {
+                if item.is_err() {
+                    failed = true;
+                    break;
+                }
+            }
+            assert!(failed);
+        } else {
+            agent
+                .prompt("solve this")
+                .await
+                .expect_err("capped reasoning has no answer");
+        }
+        assert_eq!(
+            captured.0.lock().expect("history").as_deref(),
+            Some([Message::user("solve this")].as_slice())
+        );
+    }
+}

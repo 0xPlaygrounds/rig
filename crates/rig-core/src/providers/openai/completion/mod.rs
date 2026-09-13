@@ -1383,7 +1383,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                         // llama.cpp exposes hidden reasoning on a separate non-standard field.
                         // Keep it structured here so the non-streaming path matches streaming
                         // behavior and does not pollute plain-text response surfaces.
-                        content.push(completion::AssistantContent::reasoning(reasoning));
+                        content.insert(0, completion::AssistantContent::reasoning(reasoning));
                     }
 
                     content.extend(tool_calls.iter().map(|call| {

@@ -319,6 +319,9 @@ pub struct Program {
     pub temperature: Option<f64>,
     pub max_tokens: Option<u64>,
     pub additional_params: Option<fn() -> serde_json::Value>,
+    /// Wire-specific parameters for `PatchThinkingSecond`; `None` retains
+    /// the original Anthropic patch, including its temperature.
+    pub thinking_params: Option<fn() -> serde_json::Value>,
     pub tool_choice: Option<Choice>,
     /// `output_schema_raw(schema)`.
     pub output_schema: Option<fn() -> serde_json::Value>,
@@ -501,6 +504,7 @@ impl Program {
         temperature: None,
         max_tokens: None,
         additional_params: None,
+        thinking_params: None,
         tool_choice: None,
         output_schema: None,
         default_max_turns: None,
@@ -865,7 +869,12 @@ fn answer_text(content: &[AssistantContent]) -> String {
 
 /// The builder with `hooks` added in order, by name.
 pub fn with_hooks<S>(builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S> {
-    add_hooks(builder, hooks)
+    add_hooks(builder, hooks, None)
+}
+
+/// Install the program's hooks with its wire-specific thinking patch.
+pub fn with_program_hooks<S>(builder: AgentBuilder<S>, program: &Program) -> AgentBuilder<S> {
+    add_hooks(builder, program.hooks, program.thinking_params)
 }
 
 // ---------------------------------------------------------------------------
@@ -1962,8 +1971,22 @@ pub fn patch_for_turn(program: &Program, turn: usize) -> Option<RequestPatch> {
     program
         .hooks
         .iter()
-        .filter_map(|hook| hook_patch(*hook, turn))
+        .filter_map(|hook| hook_patch_with_thinking(*hook, turn, program.thinking_params))
         .reduce(RequestPatch::merge)
+}
+
+/// The thinking hook's dialect is data shared by the two interpreters.
+pub fn hook_patch_with_thinking(
+    hook: Hook,
+    turn: usize,
+    thinking_params: Option<fn() -> serde_json::Value>,
+) -> Option<RequestPatch> {
+    if hook == Hook::PatchThinkingSecond
+        && let Some(params) = thinking_params
+    {
+        return (turn == 2).then(|| RequestPatch::new().additional_params(params()));
+    }
+    hook_patch(hook, turn)
 }
 
 macro_rules! patch_hook {
@@ -1992,7 +2015,20 @@ patch_hook!(
 patch_hook!(PatchToolChoiceNoneSecond, Hook::PatchToolChoiceNoneSecond);
 patch_hook!(PatchExtraContext, Hook::PatchExtraContext);
 patch_hook!(PatchMaxTokensSecond, Hook::PatchMaxTokensSecond);
-patch_hook!(PatchThinkingSecond, Hook::PatchThinkingSecond);
+struct PatchThinkingSecond(Option<fn() -> serde_json::Value>);
+
+impl AgentHook for PatchThinkingSecond {
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        match hook_patch_with_thinking(Hook::PatchThinkingSecond, event.turn, self.0) {
+            Some(patch) => CompletionCallAction::patch(patch),
+            None => CompletionCallAction::Continue,
+        }
+    }
+}
 patch_hook!(PatchPreambleSecond, Hook::PatchPreambleSecond);
 patch_hook!(PatchActiveToolsNoneSecond, Hook::PatchActiveToolsNoneSecond);
 patch_hook!(PatchHistoryFirst, Hook::PatchHistoryFirst);
@@ -2084,7 +2120,11 @@ impl AgentHook for RerankDocs {
     }
 }
 
-fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S> {
+fn add_hooks<S>(
+    mut builder: AgentBuilder<S>,
+    hooks: &[Hook],
+    thinking_params: Option<fn() -> serde_json::Value>,
+) -> AgentBuilder<S> {
     for hook in hooks {
         builder = match hook {
             Hook::RetryUnknownTool => builder.add_hook(RetryUnknownTool),
@@ -2126,7 +2166,7 @@ fn add_hooks<S>(mut builder: AgentBuilder<S>, hooks: &[Hook]) -> AgentBuilder<S>
             Hook::PatchToolChoiceNoneSecond => builder.add_hook(PatchToolChoiceNoneSecond),
             Hook::PatchExtraContext => builder.add_hook(PatchExtraContext),
             Hook::PatchMaxTokensSecond => builder.add_hook(PatchMaxTokensSecond),
-            Hook::PatchThinkingSecond => builder.add_hook(PatchThinkingSecond),
+            Hook::PatchThinkingSecond => builder.add_hook(PatchThinkingSecond(thinking_params)),
             Hook::PatchPreambleSecond => builder.add_hook(PatchPreambleSecond),
             Hook::PatchActiveToolsNoneSecond => builder.add_hook(PatchActiveToolsNoneSecond),
             Hook::PatchHistoryFirst => builder.add_hook(PatchHistoryFirst),
@@ -2611,7 +2651,7 @@ pub fn build_agent_unchecked(
     if let Some(default_max_turns) = program.default_max_turns {
         builder = builder.default_max_turns(default_max_turns);
     }
-    builder = add_hooks(builder, program.hooks);
+    builder = with_program_hooks(builder, program);
     if let Some(conversation) = program.conversation {
         let memory = replay
             .replayer(source, &replay.memory_key)

@@ -17,6 +17,7 @@ use crate::ecs_matrix::{
 
 fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: client.completion_model(GPT_5_MINI),
         route: Some(client.completion_model(GPT_5_NANO)),
         temperature: None,
@@ -27,6 +28,7 @@ fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + 
 /// The recording's own model, for the cell over a breadth recording.
 fn legacy(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
         model: client.completion_model(GPT_4O),
         route: None,
         temperature: Some(0.0),

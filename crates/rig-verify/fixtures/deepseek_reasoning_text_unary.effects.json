@@ -1,0 +1,137 @@
+{
+  "header": {
+    "run_spec": 16228459406551979728,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": 4096,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "enabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "We need answer in one or two sentences. Explain what Rust is and why memory safety matters. Concise. Ensure one or two sentences. Could be: Rust is a systems programming language that enforces memory safety at compile time through ownership and borrowing without a garbage collector. Memory safety matters because it prevents bugs like buffer overflows, use-after-free, and data races, which cause crashes and security vulnerabilities. That's two sentences. Good."
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "Rust is a systems programming language that enforces memory safety at compile time through ownership and borrowing, without needing a garbage collector. Memory safety matters because it prevents bugs like buffer overflows, use-after-free, and data races that lead to crashes and security vulnerabilities."
+            }
+          ],
+          "usage": {
+            "input_tokens": 57,
+            "output_tokens": 142,
+            "total_tokens": 199,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 88
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "raw": {
+            "id": "chatcmpl-REDACTED_1",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "Rust is a systems programming language that enforces memory safety at compile time through ownership and borrowing, without needing a garbage collector. Memory safety matters because it prevents bugs like buffer overflows, use-after-free, and data races that lead to crashes and security vulnerabilities.",
+                  "reasoning_content": "We need answer in one or two sentences. Explain what Rust is and why memory safety matters. Concise. Ensure one or two sentences. Could be: Rust is a systems programming language that enforces memory safety at compile time through ownership and borrowing without a garbage collector. Memory safety matters because it prevents bugs like buffer overflows, use-after-free, and data races, which cause crashes and security vulnerabilities. That's two sentences. Good."
+                },
+                "logprobs": null,
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "completion_tokens": 142,
+              "prompt_tokens": 57,
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 57,
+              "total_tokens": 199,
+              "completion_tokens_details": {
+                "reasoning_tokens": 88
+              },
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

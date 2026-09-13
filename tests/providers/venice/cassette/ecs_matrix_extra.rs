@@ -17,6 +17,7 @@ use crate::ecs_matrix::{
 
 fn wire(client: &rig::providers::venice::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: client.completion_model(MISTRAL_SMALL_3_2_24B),
         route: Some(client.completion_model(MISTRAL_SMALL_3_2_24B)),
         temperature: Some(0.0),

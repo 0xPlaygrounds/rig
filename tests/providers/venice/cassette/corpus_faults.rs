@@ -13,6 +13,7 @@ use crate::ecs_matrix::{Wire, agent::run_agent, faults};
 
 fn wire(client: &rig::providers::venice::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: client.completion_model(MISTRAL_SMALL_3_2_24B),
         route: None,
         temperature: Some(0.0),
@@ -25,6 +26,7 @@ fn missing(
     client: &rig::providers::venice::Client,
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: client.completion_model("venice-nonexistent-rig-test"),
         route: None,
         temperature: Some(0.0),

@@ -27,6 +27,7 @@ use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, s
 
 fn wire(client: &rig::providers::venice::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: client.completion_model(MISTRAL_SMALL_3_2_24B),
         route: None,
         temperature: Some(0.0),
@@ -39,6 +40,7 @@ fn missing(
     client: &rig::providers::venice::Client,
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: client.completion_model("venice-nonexistent-rig-test"),
         route: None,
         temperature: Some(0.0),
@@ -96,6 +98,7 @@ fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'st
         .build()
         .expect("client should build");
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: client.completion_model(MISTRAL_SMALL_3_2_24B),
         route: None,
         temperature: Some(0.0),
@@ -112,6 +115,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
         .build()
         .expect("client should build");
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: client.completion_model(MISTRAL_SMALL_3_2_24B),
         route: None,
         temperature: Some(0.0),

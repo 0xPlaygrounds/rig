@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":16,"temperature":0.0,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":128}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Here''s my attempt at summarizing the provided thought process, tailored for an expert audience and in the first person:\n\n**My Rust Musings on Memory Safety**\n\nOkay, so I''m thinking about Rust again, specifically, its unwavering focus on memory safety. We all know the pain of dangling pointers, memory leaks, and data races in other languages. Frankly, I''ve spent enough time debugging those issues to truly appreciate a language that aims to eliminate them at the compilation stage. It''s a fundamental shift in how we approach software development, isn''t it? We''re trading a bit of upfront complexity, learning the borrow checker''s rules, for a huge payoff down the line: fewer runtime errors, increased reliability, and the potential for serious performance gains through fine-grained control. It’s about building more robust systems, even if it forces me to think differently about ownership and lifetimes initially. Ultimately, it’s about writing safer and more efficient code. This topic really gets me going.\n\n\n","thought":true}],"role":"model"},"finishReason":"MAX_TOKENS","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"promptTokenCount":29,"promptTokensDetails":[{"modality":"TEXT","tokenCount":29}],"serviceTier":"standard","thoughtsTokenCount":13,"totalTokenCount":42}}'

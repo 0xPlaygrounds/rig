@@ -244,10 +244,6 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "text",
-              "text": "\n\nParis"
-            },
-            {
               "type": "reasoning",
               "id": null,
               "content": [
@@ -258,6 +254,10 @@
                   }
                 }
               ]
+            },
+            {
+              "type": "text",
+              "text": "\n\nParis"
             }
           ],
           "usage": {

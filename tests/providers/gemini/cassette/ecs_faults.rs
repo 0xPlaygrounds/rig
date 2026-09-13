@@ -28,6 +28,7 @@ use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, s
 
 fn wire(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
         model: client.completion_model(GEMINI_3_FLASH_PREVIEW),
         route: None,
         temperature: Some(0.0),
@@ -40,6 +41,7 @@ fn missing(
     client: &rig::providers::gemini::Client,
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
         model: client.completion_model("gemini-nonexistent-rig-test"),
         route: None,
         temperature: Some(0.0),
@@ -51,6 +53,7 @@ fn missing(
 /// corpus already had.
 fn legacy(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
         model: client.completion_model(GEMINI_2_5_FLASH),
         route: None,
         temperature: Some(0.0),
@@ -108,6 +111,7 @@ fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'st
         .build()
         .expect("client should build");
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
         model: client.completion_model(GEMINI_3_FLASH_PREVIEW),
         route: None,
         temperature: Some(0.0),
@@ -124,6 +128,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
         .build()
         .expect("client should build");
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
         model: client.completion_model(GEMINI_3_FLASH_PREVIEW),
         route: None,
         temperature: Some(0.0),

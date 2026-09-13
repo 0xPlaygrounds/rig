@@ -15,6 +15,7 @@ use crate::ecs_matrix::{Wire, cells, world::run_world};
 
 fn wire(client: &rig::providers::venice::Client) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
+        thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
         model: client.completion_model(MISTRAL_SMALL_3_2_24B),
         route: Some(client.completion_model(MISTRAL_SMALL_3_2_24B)),
         temperature: Some(0.0),
@@ -1058,11 +1059,15 @@ async fn output_tool_under_none_degrades() {
     .await;
 }
 
-#[ignore = "the Venice wire has no request-level thinking control the corpus's Anthropic-shaped `thinking` patch maps to"]
 #[tokio::test]
 async fn output_tool_thinking() {
     with_venice_cassette("corpus_matrix/output_tool_thinking", |client| async move {
-        run_world(&wire(&client), &cells::OUTPUT_TOOL_THINKING, |_| {}).await;
+        run_world(
+            &reasoning_wire(&client),
+            &cells::OUTPUT_TOOL_THINKING,
+            |log| crate::ecs_goldens::golden_effects("venice_output_tool_thinking", log),
+        )
+        .await;
     })
     .await;
 }
@@ -1192,13 +1197,18 @@ async fn shaping_max_tokens_second_turn() {
     .await;
 }
 
-#[ignore = "the Venice wire has no request-level thinking control the corpus's Anthropic-shaped `thinking` patch maps to"]
+#[ignore = "Venice thinking disabled answered directly without the required first-turn add call in all three attempts; record-venice-shaping-thinking-second-turn-attempt-{1,2,3}.log; three attempts exhausted"]
 #[tokio::test]
 async fn shaping_thinking_second_turn() {
     with_venice_cassette(
         "corpus_matrix/shaping_thinking_second_turn",
         |client| async move {
-            run_world(&wire(&client), &cells::SHAPING_THINKING_SECOND_TURN, |_| {}).await;
+            run_world(
+                &reasoning_wire(&client),
+                &cells::SHAPING_THINKING_SECOND_TURN,
+                |_| panic!("unrecorded reasoning scenario: see this test\'s ignore disposition"),
+            )
+            .await;
         },
     )
     .await;
@@ -1308,6 +1318,93 @@ async fn resume_tool_turn() {
     with_venice_cassette("corpus_matrix/resume_tool_turn", |client| async move {
         run_world(&wire(&client), &cells::RESUME_TOOL_TURN, |log| {
             crate::ecs_goldens::golden_effects("venice_resume_tool_turn", log)
+        })
+        .await;
+    })
+    .await;
+}
+
+// Reasoning matrix: the named thinking model, with the shared knob.
+fn reasoning_wire(
+    client: &rig::providers::venice::Client,
+) -> Wire<impl CompletionModel + Clone + 'static> {
+    Wire {
+        thinking: cells::ThinkingWire::Venice,
+        model: client.completion_model(rig::providers::venice::QWEN3_235B_A22B_THINKING),
+        route: None,
+        temperature: Some(0.0),
+        additional_params: None,
+    }
+}
+
+#[tokio::test]
+async fn reasoning_text_unary() {
+    with_venice_cassette("reasoning_matrix/text_unary", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_TEXT_UNARY,
+            |log| crate::ecs_goldens::golden_effects("venice_reasoning_text_unary", log),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_text_streamed() {
+    with_venice_cassette("reasoning_matrix/text_streamed", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_TEXT_STREAMED,
+            |log| crate::ecs_goldens::golden_effects("venice_reasoning_text_streamed", log),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_tool_unary() {
+    with_venice_cassette("reasoning_matrix/tool_unary", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_TOOL_UNARY,
+            |log| crate::ecs_goldens::golden_effects("venice_reasoning_tool_unary", log),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_tool_streamed() {
+    with_venice_cassette("reasoning_matrix/tool_streamed", |client| async move {
+        run_world(
+            &reasoning_wire(&client),
+            &cells::REASONING_TOOL_STREAMED,
+            |log| crate::ecs_goldens::golden_effects("venice_reasoning_tool_streamed", log),
+        )
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_off() {
+    with_venice_cassette("reasoning_matrix/off", |client| async move {
+        run_world(&reasoning_wire(&client), &cells::REASONING_OFF, |log| {
+            crate::ecs_goldens::golden_effects("venice_reasoning_off", log)
+        })
+        .await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn reasoning_capped() {
+    with_venice_cassette("reasoning_matrix/capped", |client| async move {
+        run_world(&reasoning_wire(&client), &cells::REASONING_CAPPED, |log| {
+            crate::ecs_goldens::golden_effects("venice_reasoning_capped", log)
         })
         .await;
     })

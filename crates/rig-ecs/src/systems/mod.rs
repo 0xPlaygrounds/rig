@@ -1977,13 +1977,15 @@ pub fn materialise(
             id: response.message_id.clone(),
             content: content.clone(),
         };
-        commands.spawn((
-            Utterance,
-            assistant.role(),
-            Parts(assistant),
-            next_order_in(&mut orders),
-            ChildOf(run),
-        ));
+        let assistant_entity = commands
+            .spawn((
+                Utterance,
+                assistant.role(),
+                Parts(assistant),
+                next_order_in(&mut orders),
+                ChildOf(run),
+            ))
+            .id();
 
         // Calls to granted tools: the batch, one effect per call `ChildOf`
         // the turn, in call order, held beyond the concurrency.
@@ -2068,10 +2070,26 @@ pub fn materialise(
                             })
                             .unwrap_or_default();
                         if missing.is_empty() || !can_reprompt {
+                            // Match rig-agent's reusable history: the record
+                            // retains the output call, but its committed answer
+                            // is JSON text with all reasoning preserved.
+                            let output = call.function.arguments.to_string();
+                            let mut final_content: Vec<_> = content
+                                .iter()
+                                .filter(|part| !matches!(part, AssistantContent::ToolCall(_)))
+                                .cloned()
+                                .collect();
+                            final_content.push(AssistantContent::text(output.clone()));
+                            commands.entity(assistant_entity).insert(Parts(
+                                MessageParts::Assistant {
+                                    id: response.message_id.clone(),
+                                    content: final_content,
+                                },
+                            ));
                             commands
                                 .entity(run)
                                 .remove::<AwaitingModel>()
-                                .insert((RunResult(call.function.arguments.to_string()), Settled));
+                                .insert((RunResult(output), Settled));
                         } else {
                             let feedback = policy::reprompt_missing_fields(name, &missing);
                             let reprompt = MessageParts::User {
