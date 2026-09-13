@@ -75,6 +75,11 @@ pub(crate) enum ToolKind {
     /// `lookup`, the nesting tool of Matrix Q (served by the world; over a
     /// tool server by the agent).
     Lookup,
+    /// `add` that fails every call (`crate::goldens::FailingAdd`).
+    BrokenAdder,
+    /// `lookup_orchard_label` that fails every call
+    /// (`super::faults::FailingOrchard`).
+    BrokenBeta,
 }
 
 /// The conversation store a cell remembers in.
@@ -85,6 +90,8 @@ pub(crate) enum Memory {
     InMemory,
     /// `FailingMemory::append_fails()`: the append is refused.
     FailingAppend,
+    /// `FailingMemory::load_fails()`: the load is refused.
+    FailingLoad,
 }
 
 /// How the cell is served.
@@ -143,9 +150,17 @@ pub(crate) struct Cell {
     /// Save a scene after this many tool turns' results and resume in a
     /// fresh world over the log's tail (CONTRACT §13).
     pub resume_after: Option<usize>,
+    /// The fault the cell drives, if it is a failure-row cell
+    /// (`super::faults`).
+    pub fault: Option<super::faults::Fault>,
+    /// The scene the cell saves beside its cut (`super::faults::Scene`).
+    pub scene: super::faults::Scene,
+    /// The agent's provider-retry budget (CONTRACT §5); `None` is the
+    /// library's default.
+    pub provider_retries: Option<usize>,
 }
 
-const CELL: Cell = Cell {
+pub(crate) const CELL: Cell = Cell {
     name: "",
     program: Program::DEFAULT,
     tools: &[],
@@ -155,6 +170,9 @@ const CELL: Cell = Cell {
     events: false,
     families: &[],
     resume_after: None,
+    fault: None,
+    scene: super::faults::Scene::None,
+    provider_retries: None,
 };
 
 const C: &[EffectFamily] = &[Completion];

@@ -18,6 +18,12 @@
 //!   despawned, and — where the cell names a cut — saved as a scene at the
 //!   cut and resumed in a fresh world over replayers of the log's tail.
 //!
+//! The failure rows ([`faults`]) are the same shape: a cell names the
+//! fault it drives, the per-wire file supplies the transport (a cassette,
+//! or the sequenced transport over labelled frames) and the wire's own
+//! facts, and the two drivers assert the failure, the record and the
+//! history beside the ending.
+//!
 //! A per-provider file (`tests/providers/<p>/cassette/{corpus,ecs}_matrix*.rs`)
 //! holds only the scenario literals (the cassette census reads them off
 //! the call sites), the wire's models and the wire-specific `#[ignore]`
@@ -33,6 +39,8 @@ pub(crate) mod agent;
 pub(crate) mod cells;
 #[path = "ecs_matrix/extra.rs"]
 pub(crate) mod extra;
+#[path = "ecs_matrix/faults.rs"]
+pub(crate) mod faults;
 #[path = "ecs_matrix/world.rs"]
 pub(crate) mod world;
 
