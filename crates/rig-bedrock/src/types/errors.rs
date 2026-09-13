@@ -128,17 +128,26 @@ fn transient_exception(code: &str) -> bool {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct Transport {
     status: Option<StatusCode>,
+    /// The SDK's own classification: a timeout or a dispatch failure never
+    /// reached the service, so the same call may be retried.
+    transient: Option<bool>,
 }
 
 impl Transport {
     fn of<E, R: RawResponseStatus>(error: &SdkError<E, R>) -> Self {
         Self {
             status: raw_response_status(error),
+            transient: matches!(
+                error,
+                SdkError::TimeoutError(_) | SdkError::DispatchFailure(_)
+            )
+            .then_some(true),
         }
     }
 }
 
-/// The funnel's setters, so [`gated`] can stamp any capability error.
+/// The funnel's setters, so [`gated`] can stamp any capability error, and
+/// its transport variant for a failure that never produced a reply.
 trait ProviderReply: Sized {
     fn stamp(
         self,
@@ -146,6 +155,7 @@ trait ProviderReply: Sized {
         code: Option<String>,
         transient: Option<bool>,
     ) -> Self;
+    fn transport_failure(message: String) -> Self;
 }
 
 macro_rules! provider_reply {
@@ -161,28 +171,39 @@ macro_rules! provider_reply {
                     .with_provider_code(code)
                     .with_transient(transient)
             }
+            fn transport_failure(message: String) -> Self {
+                Self::HttpError(rig_core::http_client::Error::instance(
+                    std::io::Error::other(message),
+                ))
+            }
         }
     )+};
 }
 provider_reply!(CompletionError, EmbeddingError, ImageGenerationError);
 
-/// Route a classified service error into an error type: a genuine provider
+/// Route a classified service error into an error type. A genuine provider
 /// message becomes a provider response body carrying the HTTP status the SDK
 /// saw (then the status classifies it), the exception type as its code, and
-/// — without a status — the exception type's own retry verdict; otherwise
-/// the Rig-authored fallback becomes a plain provider error.
+/// — without a status — the exception type's own retry verdict. Without a
+/// message: a status the SDK saw is still the provider's reply (an empty
+/// body under that status); a timeout or dispatch failure is a transport
+/// failure, retryable like any response-less one; anything else is the
+/// Rig-authored fallback as a plain provider error.
 fn gated<E: ProviderReply>(
     (message, fallback, code): Classified,
     transport: Transport,
     from_body: impl FnOnce(String) -> E,
     provider_error: impl FnOnce(String) -> E,
 ) -> E {
-    match message {
-        Some(body) => {
-            let transient = code.as_deref().map(transient_exception);
-            from_body(body).stamp(transport.status, code, transient)
-        }
-        None => provider_error(fallback),
+    let transient = code
+        .as_deref()
+        .map(transient_exception)
+        .or(transport.transient);
+    match (message, transport.status) {
+        (Some(body), status) => from_body(body).stamp(status, code, transient),
+        (None, Some(status)) => from_body(String::new()).stamp(Some(status), code, transient),
+        (None, None) if transport.transient == Some(true) => E::transport_failure(fallback),
+        (None, None) => provider_error(fallback),
     }
 }
 

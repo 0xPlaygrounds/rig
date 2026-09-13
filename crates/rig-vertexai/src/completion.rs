@@ -163,10 +163,17 @@ fn rpc_error(error: &google_cloud_aiplatform_v1::Error) -> CompletionError {
         .http_status_code()
         .and_then(|code| rig_core::http_client::StatusCode::from_u16(code).ok());
     let code = error.status().map(|status| status.code.name());
+    // The SDK classifies its own response-less failures: a connect, I/O,
+    // timeout or transport error never reached a decision, so the same
+    // call may be retried, as every HTTP wire retries the same condition.
+    let transient = code.map(transient_rpc_code).or_else(|| {
+        (error.is_transport() || error.is_io() || error.is_timeout() || error.is_connect())
+            .then_some(true)
+    });
     CompletionError::from_provider_body(error.to_string())
         .with_provider_status(status)
         .with_provider_code(code.map(str::to_owned))
-        .with_transient(code.map(transient_rpc_code))
+        .with_transient(transient)
 }
 
 /// Whether an RPC code (by its canonical name) is one the same call may

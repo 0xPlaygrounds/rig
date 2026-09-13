@@ -258,6 +258,7 @@ fn exception_types_classify_without_a_status_and_the_status_wins_with_one() {
             classified(),
             Transport {
                 status: Some(StatusCode::TOO_MANY_REQUESTS),
+                transient: None,
             },
             CompletionError::from_provider_body,
             CompletionError::ProviderError,
@@ -269,6 +270,7 @@ fn exception_types_classify_without_a_status_and_the_status_wins_with_one() {
             classified(),
             Transport {
                 status: Some(StatusCode::BAD_REQUEST),
+                transient: None,
             },
             CompletionError::from_provider_body,
             CompletionError::ProviderError,
@@ -299,4 +301,51 @@ fn exception_types_classify_without_a_status_and_the_status_wins_with_one() {
     );
     assert!(matches!(plain, CompletionError::ProviderError(_)));
     assert!(!plain.is_retryable());
+}
+
+/// Without a provider message: a status the SDK saw is still the reply
+/// (an empty body under that status, classified by it); a timeout or
+/// dispatch failure is a transport failure and retries; only a failure
+/// with neither is Rig prose.
+#[test]
+fn a_message_less_failure_keeps_its_status_or_its_transport_verdict() {
+    let none = || (None, UNEXPECTED.to_string(), None);
+    let throttled: CompletionError = gated(
+        none(),
+        Transport {
+            status: Some(StatusCode::TOO_MANY_REQUESTS),
+            transient: None,
+        },
+        CompletionError::from_provider_body,
+        CompletionError::ProviderError,
+    );
+    assert!(throttled.is_retryable());
+    assert_eq!(
+        throttled.provider_response_status(),
+        Some(StatusCode::TOO_MANY_REQUESTS)
+    );
+    assert_eq!(throttled.provider_response_body(), Some(""));
+
+    let timed_out: CompletionError = gated(
+        none(),
+        Transport {
+            status: None,
+            transient: Some(true),
+        },
+        CompletionError::from_provider_body,
+        CompletionError::ProviderError,
+    );
+    assert!(
+        matches!(timed_out, CompletionError::HttpError(_)),
+        "{timed_out:?}"
+    );
+    assert!(timed_out.is_retryable());
+
+    let plain: CompletionError = gated(
+        none(),
+        Transport::default(),
+        CompletionError::from_provider_body,
+        CompletionError::ProviderError,
+    );
+    assert!(matches!(plain, CompletionError::ProviderError(_)));
 }

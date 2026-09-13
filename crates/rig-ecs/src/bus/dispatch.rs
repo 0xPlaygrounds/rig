@@ -100,7 +100,9 @@ pub fn dispatch(
     };
 
     for (entity, _, effect, reserved, inputs, operation) in candidates {
-        if intake.0 >= policy.command_capacity {
+        // Clamped at the read as well as at install: a host may replace the
+        // resource, and a tick still takes at least one effect.
+        if intake.0 >= policy.command_capacity.max(1) {
             return;
         }
         let key = &effect.key;

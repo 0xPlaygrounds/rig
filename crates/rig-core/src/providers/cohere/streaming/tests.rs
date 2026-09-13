@@ -671,3 +671,64 @@ fn test_streaming_event_order() {
         );
     }
 }
+
+/// A `tool-call-start` whose id is empty is keyed by a minted key, not the
+/// empty string: two such calls in one stream stay distinct, their deltas
+/// and ends follow the same key, and nothing panics on the empty-id
+/// assertion.
+#[tokio::test]
+async fn empty_tool_call_ids_are_minted_not_keyed_on_the_empty_string() {
+    use crate::client::CompletionClient;
+    use crate::completion::CompletionModel as _;
+    use crate::streaming::{BlockId, BlockKind, StreamEvent};
+    use crate::test_utils::MockStreamingClient;
+    use futures::StreamExt;
+
+    let call = |n: u32| {
+        [
+            r#"{"type":"tool-call-start","delta":{"message":{"tool_calls":{"id":"","function":{"name":"add","arguments":""}}}}}"#.to_owned(),
+            format!(
+                r#"{{"type":"tool-call-delta","delta":{{"message":{{"tool_calls":{{"function":{{"arguments":"{{\"n\":{n}}}"}}}}}}}}}}"#
+            ),
+            r#"{"type":"tool-call-end"}"#.to_owned(),
+        ]
+    };
+    let sse_bytes = bytes::Bytes::from(
+        std::iter::once(r#"{"type":"message-start","id":"msg_1"}"#.to_owned())
+            .chain(call(1))
+            .chain(call(2))
+            .chain(std::iter::once(
+                r#"{"type":"message-end","delta":{"finish_reason":"TOOL_CALL","usage":{"tokens":{"input_tokens":1,"output_tokens":1}}}}"#.to_owned(),
+            ))
+            .map(|event| format!("data: {event}\n\n"))
+            .collect::<String>(),
+    );
+    let client = cohere_client(MockStreamingClient { sse_bytes });
+    let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
+    let request = model.completion_request("add twice").build();
+    let mut stream = crate::completion::CompletionModel::stream(&model, request)
+        .await
+        .expect("stream should open");
+    let mut starts = Vec::new();
+    let mut ends = Vec::new();
+    while let Some(item) = stream.next().await {
+        match item.expect("stream item should be Ok") {
+            StreamEvent::BlockStart {
+                id,
+                kind: BlockKind::ToolCall,
+                ..
+            } => starts.push(id),
+            StreamEvent::BlockEnd { id, .. } => ends.push(id),
+            _ => {}
+        }
+    }
+    assert_eq!(starts.len(), 2, "two calls: {starts:?}");
+    assert_ne!(starts[0], starts[1], "each id-less call is its own block");
+    assert!(starts.iter().all(BlockId::is_minted), "{starts:?}");
+    for start in &starts {
+        assert!(
+            ends.contains(start),
+            "each call ends under its key: {ends:?}"
+        );
+    }
+}

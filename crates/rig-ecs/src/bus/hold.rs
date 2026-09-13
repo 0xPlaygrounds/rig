@@ -19,16 +19,6 @@ impl HoldOwners {
     pub fn owners(&self) -> impl Iterator<Item = &Emitter> {
         self.0.values()
     }
-
-    /// Drop `owner`'s entry when it holds one: whether it did.
-    pub(crate) fn forget(&mut self, owner: &str) -> bool {
-        self.0.remove(owner).is_some()
-    }
-
-    /// Whether no owner holds the effect.
-    pub(crate) fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
 }
 
 /// An ownership transition published after the corresponding hold mutation.
@@ -49,6 +39,35 @@ struct Transitions {
     depth: usize,
     publishing: bool,
     pending: VecDeque<HoldTransition>,
+}
+
+/// Drop `owner`'s hold on `entity` after `Held` already went (a host removed
+/// the marker directly, bypassing every owner): the owner's release is still
+/// published as a transition, so the witness sees why the call left the
+/// barrier. A no-op when the owner holds nothing. The runtime uses it for
+/// its own batch owner; a policy whose marker a host removed may use it to
+/// close its books the same way.
+pub fn forget_owner(world: &mut World, entity: Entity, owner: &str) {
+    let Some(mut owners) = world.get::<HoldOwners>(entity).cloned() else {
+        return;
+    };
+    let Some(emitter) = owners.0.remove(owner) else {
+        return;
+    };
+    begin(
+        world,
+        HoldTransition {
+            entity,
+            owner: emitter,
+            acquired: false,
+        },
+    );
+    if owners.0.is_empty() {
+        world.entity_mut(entity).remove::<HoldOwners>();
+    } else {
+        world.entity_mut(entity).insert(owners);
+    }
+    finish(world);
 }
 
 fn begin(world: &mut World, event: HoldTransition) {

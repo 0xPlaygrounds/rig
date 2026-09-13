@@ -446,7 +446,7 @@ impl RawChoiceAccumulator {
     /// Open the text block for the message item a text/refusal delta belongs
     /// to, when the wire identifies it and it differs from the open one.
     fn start_text_item(&mut self, item_id: Option<&str>, out: &mut AdapterOutput) {
-        if let Some(item_id) = item_id
+        if let Some(item_id) = item_id.filter(|id| !id.is_empty())
             && self.current_text_item.as_deref() != Some(item_id)
         {
             self.current_text_item = Some(item_id.to_string());
@@ -754,7 +754,11 @@ impl RawChoiceAccumulator {
                 }
             }
             Output::Message(message) => {
-                out.message_id(message.id);
+                // A message item with no id starts no block: there is
+                // nothing to key it on.
+                if let Some(id) = crate::streaming::non_empty_id(message.id) {
+                    out.message_id(id);
+                }
             }
             // An unmodeled output item (e.g. a hosted-tool result such as
             // `web_search_call`) arriving on `response.output_item.done`. Surface

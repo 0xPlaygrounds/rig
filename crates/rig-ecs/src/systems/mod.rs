@@ -1235,12 +1235,7 @@ pub fn batch_marker_follows_the_hold(
             return;
         };
         effect.remove::<BatchHeld>();
-        let Some(mut owners) = effect.get_mut::<crate::bus::HoldOwners>() else {
-            return;
-        };
-        if owners.forget("rig-ecs/batch") && owners.is_empty() {
-            effect.remove::<crate::bus::HoldOwners>();
-        }
+        crate::bus::hold::forget_owner(world, entity, "rig-ecs/batch");
     });
 }
 

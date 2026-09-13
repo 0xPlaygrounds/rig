@@ -41,20 +41,19 @@ fn rpc_codes_classify_retryability_and_keep_the_code() {
     }
 }
 
-/// A failure the SDK could not attribute to the service (an I/O error on
-/// the connection) has no code and no status: the reply is kept, and it
-/// is not retried on a guess.
+/// A response-less failure the SDK classifies as its own (an I/O error on
+/// the connection) has no code and no status, and the same call may be
+/// retried: the request never reached a decision, as on every HTTP wire.
 #[test]
-fn an_unattributed_sdk_failure_has_no_code_and_is_not_retried_on_a_guess() {
+fn an_sdk_transport_failure_has_no_code_and_retries() {
     let error = Error::io(std::io::Error::other("connection reset"));
     let err = rpc_error(&error);
-    assert!(!err.is_retryable());
+    assert!(err.is_retryable());
     assert_eq!(err.provider_response_status(), None);
     let report = err.report();
     assert_eq!(report.code, None);
     assert_eq!(
         report.provider_response.expect("kept").transient,
-        None,
-        "no verdict was given, so none is reported"
+        Some(true)
     );
 }

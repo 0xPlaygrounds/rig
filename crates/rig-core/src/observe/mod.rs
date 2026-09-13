@@ -501,7 +501,8 @@ impl ObservationLog {
     pub fn ring(capacity: usize) -> Self {
         Self {
             ring: true,
-            ..Self::with_capacity(capacity)
+            // A ring of nothing would keep every fact and count it dropped.
+            ..Self::with_capacity(capacity.max(1))
         }
     }
 

@@ -500,12 +500,11 @@ impl AgentRunner {
                 let item = match item {
                     Ok(item) => item,
                     Err(err) => {
-                        // The engine settles an error ending *after*
-                        // yielding it (`on_run_settled` with
-                        // `SettledOutcome::Error`), so the forwarder drains
-                        // the stream before returning, as `run` does: a
-                        // return here dropped the engine at the yield and
-                        // the settled hook never fired for a channelled run.
+                        // The engine settles an error ending before it
+                        // yields it; the forwarder still drains the stream
+                        // before returning, as `run` does, so the engine's
+                        // own teardown (its spans, its bus lineage) runs to
+                        // completion rather than being dropped at the yield.
                         let error = streaming_error_into_prompt(err);
                         while stream.next().await.is_some() {}
                         return Err(error);

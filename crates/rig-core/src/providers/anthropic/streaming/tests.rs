@@ -852,7 +852,7 @@ fn test_thinking_delta_does_not_interfere_with_tool_calls() {
     };
 
     let mut adapter = adapter();
-    adapter.current_tool_call = Some("tool_123".to_string());
+    adapter.current_tool_call = Some(BlockId::wire("tool_123"));
 
     let events = interpret(&mut adapter, event);
 
@@ -880,7 +880,7 @@ fn test_handle_input_json_delta_event() {
     };
 
     let mut adapter = adapter();
-    adapter.current_tool_call = Some("tool_123".to_string());
+    adapter.current_tool_call = Some(BlockId::wire("tool_123"));
 
     let events = interpret(&mut adapter, event);
 
@@ -911,7 +911,7 @@ fn test_handle_input_json_delta_event() {
 #[test]
 fn test_tool_call_accumulation_with_multiple_deltas() {
     let mut adapter = adapter();
-    adapter.current_tool_call = Some("tool_123".to_string());
+    adapter.current_tool_call = Some(BlockId::wire("tool_123"));
 
     // First delta
     let event1 = StreamingEvent::ContentBlockDelta {
@@ -2062,4 +2062,43 @@ mod terminal_emission {
         );
         assert_eq!(terminal.usage.output_tokens, 3);
     }
+}
+
+/// A `tool_use` block whose wire id is empty is keyed by a minted key, not
+/// the empty string: two such blocks in one stream stay distinct, their
+/// deltas and stops follow the same key, and nothing panics.
+#[test]
+fn an_empty_tool_use_id_is_minted_not_keyed_on_the_empty_string() {
+    let mut adapter = adapter();
+    let mut keys = Vec::new();
+    for index in 0..2 {
+        let events = interpret(
+            &mut adapter,
+            StreamingEvent::ContentBlockStart {
+                index,
+                content_block: Content::ToolUse {
+                    id: String::new(),
+                    name: "add".to_string(),
+                    input: serde_json::json!({}),
+                },
+            },
+        );
+        let key = adapter.current_tool_call.clone().expect("an open call");
+        assert!(key.is_minted(), "{key:?}");
+        assert!(
+            events.iter().all(|event| match event {
+                StreamEvent::BlockStart { id, .. } | StreamEvent::BlockDelta { id, .. } =>
+                    id == &key,
+                _ => true,
+            }),
+            "{events:?}"
+        );
+        let stop = interpret(&mut adapter, StreamingEvent::ContentBlockStop { index });
+        assert!(
+            stop.iter()
+                .any(|event| matches!(event, StreamEvent::BlockEnd { id, .. } if id == &key))
+        );
+        keys.push(key);
+    }
+    assert_ne!(keys[0], keys[1], "each id-less call is its own block");
 }

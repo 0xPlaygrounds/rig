@@ -104,3 +104,38 @@ fn despawn_run_removes_an_ended_run_and_refuses_a_live_one() {
         "the agent no longer lists the run"
     );
 }
+
+/// A run cancelled while its model call is in flight has ended, but the
+/// call is still the handler's: `despawn_run` refuses it until the effect
+/// settles, so a host cancels, lets the run drain, then despawns.
+#[test]
+fn despawn_run_refuses_a_run_whose_effect_is_still_in_flight() {
+    let mut app = app_with_capacity(16);
+    let model = register(
+        &mut app,
+        "t/model:never",
+        NeverAnswers {
+            label: "never".into(),
+        },
+    );
+    let agent = spawn_agent(app.world_mut(), "t", model);
+    let run = spawn_run(app.world_mut(), agent, &[], "hi", false, None);
+    tick_until(&mut app, "the model call is in flight", |world| {
+        world
+            .query_filtered::<Entity, With<rig_ecs::bus::InFlight>>()
+            .iter(world)
+            .next()
+            .is_some()
+    });
+    app.world_mut()
+        .entity_mut(run)
+        .insert(rig_ecs::agent::Cancelled("host stop".into()));
+    tick_until(&mut app, "the run fails cancelled", |world| {
+        world.get::<rig_ecs::agent::Failed>(run).is_some()
+    });
+    assert_eq!(
+        despawn_run(app.world_mut(), run),
+        Err(RunBusy::InFlight),
+        "the never-answering call is still in flight"
+    );
+}

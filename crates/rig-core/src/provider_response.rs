@@ -338,6 +338,9 @@ macro_rules! impl_provider_response_helpers {
             /// variant is a fault in the request or the response and is
             /// not retried.
             ///
+            /// A variant added to the enum defaults to "not retried": adding
+            /// one is the moment to decide whether it belongs here.
+            ///
             /// [`transient_transport`]: $crate::error::transient_transport
             /// [`ProviderResponseError::is_retryable`]: $crate::provider_response::ProviderResponseError::is_retryable
             pub fn is_retryable(&self) -> bool {

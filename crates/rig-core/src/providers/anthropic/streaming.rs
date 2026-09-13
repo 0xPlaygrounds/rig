@@ -327,7 +327,9 @@ struct AnthropicAdapter {
     /// `"anthropic"` here would mislabel all of them.
     provider: &'static str,
     /// Wire id of the open client tool-use block, when one is streaming.
-    current_tool_call: Option<String>,
+    current_tool_call: Option<BlockId>,
+    /// Keys for calls whose wire id is empty: an absent id is not an id.
+    tool_ids: streaming::SyntheticIds,
     server_tool_uses: HashMap<usize, ServerToolUseState>,
     current_thinking: Option<ThinkingState>,
     input_tokens: u64,
@@ -348,6 +350,7 @@ impl AnthropicAdapter {
         Self {
             provider,
             current_tool_call: None,
+            tool_ids: streaming::SyntheticIds::tool(),
             server_tool_uses: HashMap::new(),
             current_thinking: None,
             input_tokens: 0,
@@ -373,10 +376,10 @@ impl AnthropicAdapter {
                         return;
                     }
 
-                    if let Some(id) = &self.current_tool_call {
+                    if let Some(key) = &self.current_tool_call {
                         // Emit the delta so UI can show progress; the shared
                         // accumulator assembles the fragments.
-                        out.tool_arguments(&BlockId::wire(id.clone()), partial_json);
+                        out.tool_arguments(key, partial_json);
                     }
                 }
                 ContentDelta::ThinkingDelta { thinking } => {
@@ -462,8 +465,10 @@ impl AnthropicAdapter {
                     )]),
                 ),
                 Content::ToolUse { id, name, .. } => {
-                    self.current_tool_call = Some(id.clone());
-                    out.tool_name(&BlockId::wire(id), name);
+                    let key = streaming::non_empty_id(id)
+                        .map_or_else(|| self.tool_ids.mint(), BlockId::wire);
+                    self.current_tool_call = Some(key.clone());
+                    out.tool_name(&key, name);
                 }
                 Content::Thinking {
                     thinking,
@@ -562,11 +567,8 @@ impl AnthropicAdapter {
                 // `content_block_stop` promises a complete block: empty input
                 // finalizes to `{}`, malformed input surfaces as an error
                 // item (`UnparseableToolInput::Error`) in the accumulator.
-                if let Some(id) = self.current_tool_call.take() {
-                    out.tool_end(
-                        BlockId::wire(id),
-                        ToolCallEnd::new(UnparseableToolInput::Error),
-                    );
+                if let Some(key) = self.current_tool_call.take() {
+                    out.tool_end(key, ToolCallEnd::new(UnparseableToolInput::Error));
                 }
             }
             // Interpreted by `interpret` itself (`message_start` /
