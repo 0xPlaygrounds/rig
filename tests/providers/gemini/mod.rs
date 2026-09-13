@@ -15,6 +15,7 @@ mod cassette {
     mod code_execution_matrix;
     mod corpus_breadth;
     mod corpus_delta;
+    mod corpus_faults;
     mod corpus_matrix;
     mod corpus_retrieval;
     mod corpus_serving;
@@ -23,6 +24,7 @@ mod cassette {
     mod ecs_agent_run_streamed;
     mod ecs_code_execution;
     mod ecs_extractor;
+    mod ecs_faults;
     mod ecs_lifecycle;
     mod ecs_matrix;
     mod ecs_matrix_extra;

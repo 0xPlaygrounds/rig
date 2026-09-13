@@ -1,0 +1,41 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. If a tool reports an error, do not call it again. After both tools have answered, respond in one short sentence that includes the harbor label and the orchard tool''s error text.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"id\":\"call_1374018\",\"name\":\"lookup_harbor_label\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":13,\"promptTokenCount\":181,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":181}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":104,\"totalTokenCount\":298}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{},\"id\":\"call_1374019\",\"name\":\"lookup_orchard_label\"}}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":26,\"promptTokenCount\":181,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":181}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":104,\"totalTokenCount\":311}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":26,\"promptTokenCount\":181,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":181}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":104,\"totalTokenCount\":311}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. If a tool reports an error, do not call it again. After both tools have answered, respond in one short sentence that includes the harbor label and the orchard tool''s error text.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{},"id":"call_1374018","name":"lookup_harbor_label"},"thought":false,"thoughtSignature":"signature_REDACTED_1"},{"functionCall":{"args":{},"id":"call_1374019","name":"lookup_orchard_label"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"id":"call_1374018","name":"lookup_harbor_label","response":{"result":"crimson-harbor"}},"thought":false},{"functionResponse":{"id":"call_1374019","name":"lookup_orchard_label","response":{"result":"the orchard lookup is broken"}},"thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The harbor\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":2,\"promptTokenCount\":247,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":247}],\"serviceTier\":\"standard\",\"totalTokenCount\":249}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" label is crimson-harbor and the orchard tool reports that the orchard lookup is broken\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":19,\"promptTokenCount\":247,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":247}],\"serviceTier\":\"standard\",\"totalTokenCount\":266}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\".\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":20,\"promptTokenCount\":247,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":247}],\"serviceTier\":\"standard\",\"totalTokenCount\":267}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":20,\"promptTokenCount\":351,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":351}],\"serviceTier\":\"standard\",\"totalTokenCount\":371}}\r\n\r\n"
