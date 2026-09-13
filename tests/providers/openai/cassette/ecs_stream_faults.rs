@@ -12,12 +12,14 @@ use rig::error::ErrorKind;
 use rig::observe::{AdapterEnding, AdapterErrorBoundary, AdapterEvent};
 use rig::prelude::*;
 use rig::providers::openai::{self, GPT_4O};
+use rig::streaming::{Delta, StreamEvent};
 use rig::test_utils::SequencedStreamingHttpClient;
 use rig_ecs::{
     agent::{Failure, MaxTokens, Preamble, Role},
     bus::{BusSet, EffectOutcome, RigSchedule, Streamed},
     systems::RigSet,
 };
+use rig_effect_log::EffectLog;
 
 use super::super::support::with_openai_cassette;
 use super::stream_faults::{
@@ -28,8 +30,8 @@ use crate::{
     ecs_agent::EcsAgent,
     stream_faults::{
         CountedSubtract, Invocations, NativeRun, adapter_events, assert_setup_failure, bus_actions,
-        comparable_failure, endings, native_run, sole_failed_completion, sse_bytes, trace_json,
-        truncations,
+        comparable_failure, endings, log_json_without_deliveries, native_run,
+        sole_failed_completion, sse_bytes, trace_json, truncations,
     },
     support::{
         Adder, STREAMING_PREAMBLE, STREAMING_PROMPT, STREAMING_TOOLS_PREAMBLE,
@@ -239,7 +241,7 @@ async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
             run.stream()
                 .events
                 .iter()
-                .any(|event| matches!(event, rig::streaming::StreamEvent::BlockEnd { .. })),
+                .any(|event| matches!(event, StreamEvent::BlockEnd { .. })),
             "the call streamed to its end before the cut: {:?}",
             run.stream().events
         );
@@ -384,8 +386,39 @@ async fn despawning_the_stream_at_the_first_delta_records_a_cancel() {
         comparable_failure(observed.failure()),
         comparable_failure(plain.failure())
     );
-    assert_eq!(observed.log_json(), plain.log_json());
+    // The despawn lands on the tick that collected the first text delta,
+    // and how many deltas that tick collected is scheduling: the witness's
+    // extra work, a loaded CI runner. The two logs agree up to the first
+    // text delta; what a cancelled record kept after it is not a parity fact.
+    assert_eq!(
+        log_json_through_the_first_text_delta(&observed.log),
+        log_json_through_the_first_text_delta(&plain.log)
+    );
     let trace = observed.trace();
     assert_eq!(endings(trace), ["cancelled"]);
     assert_eq!(bus_actions(trace), ["issued", "cancelled"]);
+}
+
+/// The log with its one record's kept events cut after the first text
+/// delta, without its delivery batches.
+fn log_json_through_the_first_text_delta(log: &EffectLog) -> String {
+    let mut log = log.clone();
+    let [record] = log.records.as_mut_slice() else {
+        panic!("one completion record, not {}", log.records.len());
+    };
+    let events = record.events.as_mut().expect("the recorder keeps events");
+    let first_text = events
+        .iter()
+        .position(|event| {
+            matches!(
+                event,
+                StreamEvent::BlockDelta {
+                    delta: Delta::Text { .. },
+                    ..
+                }
+            )
+        })
+        .expect("the despawn waited for a text delta");
+    events.truncate(first_text + 1);
+    log_json_without_deliveries(&log)
 }
