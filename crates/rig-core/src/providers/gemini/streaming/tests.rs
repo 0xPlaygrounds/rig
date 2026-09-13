@@ -865,7 +865,20 @@ async fn blocked_prompt_is_a_provider_error_naming_the_block_reason() {
     let Err(report) = &items[0] else {
         panic!("expected a provider error, got {:?}", items[0]);
     };
-    assert_eq!(report.kind, crate::error::ErrorKind::Provider, "{report:?}");
+    assert_eq!(
+        report.kind,
+        crate::error::ErrorKind::ProviderResponse,
+        "{report:?}"
+    );
+    assert!(
+        report.refusal,
+        "the block is a refusal on the report: {report:?}"
+    );
+    assert_eq!(
+        report.code.as_deref(),
+        Some("PROHIBITED_CONTENT"),
+        "{report:?}"
+    );
     assert!(!report.retryable, "a refusal is not retryable: {report:?}");
     let message = &report.message;
     assert!(message.contains("blocked the prompt"), "{message}");
@@ -892,7 +905,7 @@ async fn blocked_prompt_without_usage_is_still_recognised_and_ends_the_stream() 
     let (items, finished) = collect_stream(&frames).await;
     assert_eq!(items.len(), 1, "exactly the refusal: {items:?}");
     assert!(
-        matches!(&items[0], Err(report) if report.kind == crate::error::ErrorKind::Provider && report.message.contains("SAFETY")),
+        matches!(&items[0], Err(report) if report.kind == crate::error::ErrorKind::ProviderResponse && report.refusal && report.message.contains("SAFETY")),
         "{:?}",
         items[0]
     );
@@ -1022,12 +1035,12 @@ async fn each_block_reason_classifies_the_same_on_the_stream_as_unary() {
         assert_eq!(report.retryable, retryable, "{reason}: {report:?}");
         assert_eq!(
             report.kind,
-            if retryable {
-                crate::error::ErrorKind::ProviderResponse
-            } else {
-                crate::error::ErrorKind::Provider
-            },
+            crate::error::ErrorKind::ProviderResponse,
             "{reason}: {report:?}"
+        );
+        assert_eq!(
+            report.refusal, !retryable,
+            "a block on the content is a refusal, an unknown one is not: {reason}: {report:?}"
         );
         assert!(
             report.message.contains(&format!("block_reason={reason}")),

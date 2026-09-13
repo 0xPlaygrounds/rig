@@ -1232,9 +1232,15 @@ fn assert_fault(app: &mut App, cell: &Cell, run: Entity, log: &EffectLog, gates:
                     report.message.contains("block_reason=SAFETY"),
                     "the block is named: {report:?}"
                 );
-                // No completion wire sets the report's `refusal` flag today
-                // (only a tool's refusal does): pinned as it is, ledgered.
-                assert!(!report.refusal, "{report:?}");
+                // The provider's verdict on the content is a refusal on the
+                // report (CONTRACT §4), the block reason its code.
+                assert!(report.refusal, "the block is a refusal: {report:?}");
+                assert_eq!(report.code.as_deref(), Some("SAFETY"), "{report:?}");
+                let recorded = log.records[0]
+                    .outcome
+                    .as_ref()
+                    .expect_err("the record holds the refusal");
+                assert!(recorded.refusal, "{recorded:?}");
                 assert_eq!(roles, [Role::User]);
             }
             other => panic!(

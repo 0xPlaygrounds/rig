@@ -40,6 +40,11 @@ pub struct ProviderResponseError {
     /// when the transport gave none; a reply with a status is classified by
     /// its status and ignores this.
     pub transient: Option<bool>,
+    /// The reply is the provider's verdict on the content, not a fault: a
+    /// blocked prompt (Gemini's `promptFeedback.blockReason`). Never retried,
+    /// and read as `ErrorReport::refusal` by every conversion. A refusal the
+    /// model *says* (OpenAI's `refusal` part) is an answer, not this.
+    pub refusal: bool,
 }
 
 impl ProviderResponseError {
@@ -52,6 +57,7 @@ impl ProviderResponseError {
             headers: None,
             code: None,
             transient: None,
+            refusal: false,
         }
     }
 
@@ -65,7 +71,15 @@ impl ProviderResponseError {
             headers: None,
             code: None,
             transient: None,
+            refusal: false,
         }
+    }
+
+    /// Mark the reply as the provider's verdict on the content: a refusal,
+    /// final, never retried.
+    pub fn with_refusal(mut self, refusal: bool) -> Self {
+        self.refusal = refusal;
+        self
     }
 
     /// Attach the HTTP status a transport reported beside a reply that was
@@ -94,8 +108,12 @@ impl ProviderResponseError {
     /// Whether the same call may reasonably be retried: by the status when
     /// the reply has one ([`crate::error::retryable_status`]), else by the
     /// transport's own verdict, else not — a reply that says nothing about
-    /// itself is not retried on a guess.
+    /// itself is not retried on a guess. A refusal is never retried: the
+    /// provider judged the content, and the same call gets the same verdict.
     pub fn is_retryable(&self) -> bool {
+        if self.refusal {
+            return false;
+        }
         match self.status {
             Some(status) => crate::error::retryable_status(Some(status.as_u16())),
             None => self.transient.unwrap_or(false),
@@ -158,6 +176,8 @@ struct ProviderResponseErrorWire {
     code: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     transient: Option<bool>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    refusal: bool,
 }
 
 impl serde::Serialize for ProviderResponseError {
@@ -168,6 +188,7 @@ impl serde::Serialize for ProviderResponseError {
             provider_request_id: self.provider_request_id.clone(),
             code: self.code.clone(),
             transient: self.transient,
+            refusal: self.refusal,
         }
         .serialize(serializer)
     }
@@ -189,6 +210,7 @@ impl<'de> serde::Deserialize<'de> for ProviderResponseError {
             headers: None,
             code: wire.code,
             transient: wire.transient,
+            refusal: wire.refusal,
         })
     }
 }

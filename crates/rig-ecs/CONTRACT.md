@@ -86,6 +86,7 @@ preamble through real provider adapters.
 | a call to a granted tool | dispatch and resolve the tool batch (§8) | `anthropic_tool_call_turn` |
 | `Retry`, `Repair`, `Skip` written as a resolution | apply the invalid-call policy (§8.2) | `mock_invalid_tool_call_recovery`, `mock_invalid_repair_to_add`, `mock_invalid_skip_under_auto` |
 | a turn that delivered no answer (no text, no call, no image; reasoning is not an answer) and stopped with a truncating reason (`Length`, `ContentFilter`: `FinishReason::truncated_output`) | the run is `Failed(Provider(report))`, `kind: response`, the message `FinishReason::no_answer_message` — rig-agent's rule (rig#2322), one wording; nothing is committed (rig-agent's transcript differs on a reasoning-only turn, which it keeps as history before failing; the world keeps no utterance — a gap the record cannot see, ledgered) | every `ecs_faults` `filtered_empty` cell |
+| a provider's refusal of the prompt (the REST Gemini wire's `promptFeedback.blockReason` `SAFETY` / `BLOCKLIST` / `PROHIBITED_CONTENT`; the gRPC wire does not read `prompt_feedback` yet) | the run is `Failed(Provider(report))` with `kind: provider_response`, `refusal: true`, `retryable: false`, `code` the block reason, no status; a refusal the model *says* (OpenAI's `refusal` deltas) is an answer, read as usual | `gemini::cassette::ecs_faults::refusal`, `ecs_stream_faults::blocked_prompt_is_a_provider_refusal_not_a_truncation` |
 
 ## 5. Budgets and endings
 
