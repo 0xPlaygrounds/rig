@@ -74,7 +74,7 @@ async fn error_facts_unary() {
                     additional_params: None,
                     streamed: false,
                     status: 400,
-                    code: None,
+                    code: Some("model_not_found"),
                 },
             )
             .await;
@@ -97,7 +97,7 @@ async fn error_facts_streamed() {
                     additional_params: None,
                     streamed: true,
                     status: 400,
-                    code: None,
+                    code: Some("model_not_found"),
                 },
             )
             .await;

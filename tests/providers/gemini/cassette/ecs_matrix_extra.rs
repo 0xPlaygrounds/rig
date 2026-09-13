@@ -78,7 +78,7 @@ async fn error_facts_unary() {
                     additional_params: None,
                     streamed: false,
                     status: 404,
-                    code: None,
+                    code: Some("NOT_FOUND"),
                 },
             )
             .await;
@@ -101,7 +101,7 @@ async fn error_facts_streamed() {
                     additional_params: None,
                     streamed: true,
                     status: 404,
-                    code: None,
+                    code: Some("NOT_FOUND"),
                 },
             )
             .await;

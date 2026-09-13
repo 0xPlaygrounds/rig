@@ -400,3 +400,76 @@ fn provider_response_error_round_trips_its_identity_and_not_its_headers() {
     let bad = r#"{"status":99,"body":"","provider_request_id":null,"headers":null}"#;
     assert!(serde_json::from_str::<ProviderResponseError>(bad).is_err());
 }
+
+/// The machine code a reply names is the transport's own when it gave one,
+/// else the body's: `error.code` as a string, else `error.status`, else
+/// `error.type`; a numeric `code` is the status again and is skipped; a
+/// prose envelope, a non-JSON body and an empty string name none.
+#[test]
+fn a_reply_names_its_machine_code_from_the_transport_then_the_body() {
+    use super::{ProviderResponseError, body_code};
+    assert_eq!(
+        body_code(
+            r#"{"error":{"code":"model_not_found","type":"invalid_request_error","message":"m"}}"#
+        )
+        .as_deref(),
+        Some("model_not_found"),
+        "the OpenAI shape: `error.code` first"
+    );
+    assert_eq!(
+        body_code(r#"{"error":{"code":null,"type":"invalid_request_error","message":"m"}}"#)
+            .as_deref(),
+        Some("invalid_request_error"),
+        "a null code falls through to `error.type`"
+    );
+    assert_eq!(
+        body_code(r#"{"error":{"code":404,"status":"NOT_FOUND","message":"m"}}"#).as_deref(),
+        Some("NOT_FOUND"),
+        "Google's shape: the number is the status, `error.status` is the code"
+    );
+    assert_eq!(
+        body_code(r#"{"type":"error","error":{"type":"authentication_error","message":"m"}}"#)
+            .as_deref(),
+        Some("authentication_error"),
+        "Anthropic's shape: `error.type`"
+    );
+    assert_eq!(
+        body_code(r#"{"error":"Specified model not found"}"#),
+        None,
+        "prose"
+    );
+    assert_eq!(
+        body_code(r#"{"error":{"code":"","message":"m"}}"#),
+        None,
+        "empty"
+    );
+    assert_eq!(body_code("not json"), None);
+    assert_eq!(body_code(""), None);
+
+    let bodied = ProviderResponseError::new(
+        StatusCode::NOT_FOUND,
+        r#"{"error":{"code":"model_not_found","message":"m"}}"#,
+    );
+    assert_eq!(bodied.machine_code().as_deref(), Some("model_not_found"));
+    assert_eq!(bodied.code, None, "the field stays the transport's own");
+    let transport = bodied
+        .clone()
+        .with_code(Some("ResourceNotFoundException".into()));
+    assert_eq!(
+        transport.machine_code().as_deref(),
+        Some("ResourceNotFoundException"),
+        "the transport's code wins over the body's"
+    );
+
+    // The report a completion failure becomes carries it.
+    let report = crate::error::ErrorReport::from(
+        &crate::completion::CompletionError::ProviderResponse(bodied),
+    );
+    assert_eq!(report.code.as_deref(), Some("model_not_found"));
+    assert_eq!(report.http_status, Some(404));
+    let report =
+        crate::error::ErrorReport::from(&crate::completion::CompletionError::ProviderResponse(
+            ProviderResponseError::new(StatusCode::NOT_FOUND, r#"{"error":"prose"}"#),
+        ));
+    assert_eq!(report.code, None);
+}

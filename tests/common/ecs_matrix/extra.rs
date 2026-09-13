@@ -40,13 +40,11 @@ pub(crate) struct ErrorProbe {
     pub streamed: bool,
     /// The recorded status.
     pub status: u16,
-    /// The report's `code`: the provider's own machine-readable code when
-    /// the transport reported one apart from the body (a gRPC code, an AWS
-    /// exception type — `ProviderResponseError::code`); `None` on every
-    /// HTTP wire here, whose reply is a status and a body kept verbatim on
-    /// the report's `provider_response.body` (the body's own `error.code`
-    /// or Gemini's `status` is read off it; the witness projects Gemini's
-    /// into its envelope fact). A contract gap the ledger records.
+    /// The report's `code`: the transport's own machine code when it gave
+    /// one apart from the body (a gRPC code, an AWS exception type), else
+    /// the string the body names under `error.code`, `error.status` or
+    /// `error.type` (`ProviderResponseError::machine_code`, CONTRACT §5);
+    /// `None` on a wire whose envelope is prose (Venice's `{"error":"…"}`).
     pub code: Option<&'static str>,
 }
 

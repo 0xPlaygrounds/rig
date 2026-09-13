@@ -131,7 +131,10 @@ pub struct ErrorReport {
     pub retryable: bool,
     /// Human-readable description (the source's `Display`).
     pub message: String,
-    /// A provider- or tool-specific machine code, when one was reported.
+    /// A provider- or tool-specific machine code, when one was reported:
+    /// for a provider's reply, the transport's own code when it gave one
+    /// apart from the body, else the code the body names
+    /// (`provider_response::body_code`).
     pub code: Option<String>,
     /// The HTTP status, when the failure had one.
     pub http_status: Option<u16>,
@@ -336,7 +339,7 @@ impl From<&CompletionError> for ErrorReport {
             | CompletionError::ProviderError(_) => None,
         };
         let code = match error {
-            CompletionError::ProviderResponse(response) => response.code.clone(),
+            CompletionError::ProviderResponse(response) => response.machine_code(),
             _ => None,
         };
         ErrorReport {
@@ -465,7 +468,7 @@ impl From<&EmbeddingError> for ErrorReport {
             .and_then(|response| response.provider_request_id.clone());
         let code = provider_response
             .as_ref()
-            .and_then(|response| response.code.clone());
+            .and_then(|response| response.machine_code());
         ErrorReport {
             kind,
             retryable,
@@ -511,7 +514,7 @@ impl From<&RerankError> for ErrorReport {
             .and_then(|response| response.provider_request_id.clone());
         let code = provider_response
             .as_ref()
-            .and_then(|response| response.code.clone());
+            .and_then(|response| response.machine_code());
         ErrorReport {
             kind,
             retryable,
