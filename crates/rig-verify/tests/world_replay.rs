@@ -37,8 +37,9 @@ use rig_ecs::bus::{
 use rig_effect_log::{EffectLog, EffectLogRecorder};
 
 /// The goldens the two agent interpreters replay: the same files, the whole
-/// corpus (the contract matrix on five more wires grew it past the original 207).
-const EXPECTED_GOLDENS: usize = 685;
+/// corpus (the contract matrix on five more wires grew it past the original
+/// 207; the failure rows on those wires past 685).
+const EXPECTED_GOLDENS: usize = 721;
 
 const GUARD: Duration = Duration::from_secs(30);
 

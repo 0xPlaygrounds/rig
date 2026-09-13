@@ -143,6 +143,12 @@
     "crates/rig-verify/fixtures/deepseek_endings_tool_outcome_cancelled_streamed.effects.json",
     "crates/rig-verify/fixtures/deepseek_endings_turn_finished_stop.effects.json",
     "crates/rig-verify/fixtures/deepseek_endings_turn_finished_stop_streamed.effects.json",
+    "crates/rig-verify/fixtures/deepseek_fault_batch_second_fails.effects.json",
+    "crates/rig-verify/fixtures/deepseek_fault_batch_second_fails_concurrent.effects.json",
+    "crates/rig-verify/fixtures/deepseek_fault_setup_streamed.effects.json",
+    "crates/rig-verify/fixtures/deepseek_fault_setup_unary.effects.json",
+    "crates/rig-verify/fixtures/deepseek_fault_tool_error.effects.json",
+    "crates/rig-verify/fixtures/deepseek_fault_tool_error_streamed.effects.json",
     "crates/rig-verify/fixtures/deepseek_hooks_demand_done.effects.json",
     "crates/rig-verify/fixtures/deepseek_hooks_deny_tool.effects.json",
     "crates/rig-verify/fixtures/deepseek_hooks_deny_tool_streamed.effects.json",
@@ -226,6 +232,12 @@
     "crates/rig-verify/fixtures/doubleword_endings_tool_outcome_cancelled_streamed.effects.json",
     "crates/rig-verify/fixtures/doubleword_endings_turn_finished_stop.effects.json",
     "crates/rig-verify/fixtures/doubleword_endings_turn_finished_stop_streamed.effects.json",
+    "crates/rig-verify/fixtures/doubleword_fault_batch_second_fails.effects.json",
+    "crates/rig-verify/fixtures/doubleword_fault_batch_second_fails_concurrent.effects.json",
+    "crates/rig-verify/fixtures/doubleword_fault_setup_streamed.effects.json",
+    "crates/rig-verify/fixtures/doubleword_fault_setup_unary.effects.json",
+    "crates/rig-verify/fixtures/doubleword_fault_tool_error.effects.json",
+    "crates/rig-verify/fixtures/doubleword_fault_tool_error_streamed.effects.json",
     "crates/rig-verify/fixtures/doubleword_hooks_demand_done.effects.json",
     "crates/rig-verify/fixtures/doubleword_hooks_deny_tool.effects.json",
     "crates/rig-verify/fixtures/doubleword_hooks_deny_tool_streamed.effects.json",
@@ -415,6 +427,12 @@
     "crates/rig-verify/fixtures/ecs_parity/deepseek_endings_tool_outcome_cancelled_streamed.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_endings_turn_finished_stop.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_endings_turn_finished_stop_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_fault_batch_second_fails.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_fault_batch_second_fails_concurrent.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_fault_setup_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_fault_setup_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_fault_tool_error.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_fault_tool_error_streamed.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_hooks_demand_done.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_hooks_deny_tool.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_hooks_deny_tool_streamed.effects.json",
@@ -498,6 +516,12 @@
     "crates/rig-verify/fixtures/ecs_parity/doubleword_endings_tool_outcome_cancelled_streamed.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_endings_turn_finished_stop.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_endings_turn_finished_stop_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/doubleword_fault_batch_second_fails.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/doubleword_fault_batch_second_fails_concurrent.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/doubleword_fault_setup_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/doubleword_fault_setup_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/doubleword_fault_tool_error.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/doubleword_fault_tool_error_streamed.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_hooks_demand_done.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_hooks_deny_tool.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/doubleword_hooks_deny_tool_streamed.effects.json",
@@ -583,6 +607,12 @@
     "crates/rig-verify/fixtures/ecs_parity/gemini_endings_tool_outcome_cancelled_streamed.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_endings_turn_finished_stop.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_endings_turn_finished_stop_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_fault_batch_second_fails.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_fault_batch_second_fails_concurrent.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_fault_setup_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_fault_setup_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_fault_tool_error.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_fault_tool_error_streamed.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_hooks_demand_done.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_hooks_deny_tool.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_hooks_deny_tool_streamed.effects.json",
@@ -669,6 +699,12 @@
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_endings_tool_outcome_cancelled_streamed.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_endings_turn_finished_stop.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_endings_turn_finished_stop_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_fault_batch_second_fails.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_fault_batch_second_fails_concurrent.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_fault_setup_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_fault_setup_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_fault_tool_error.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_fault_tool_error_streamed.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_hooks_demand_done.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_hooks_deny_tool.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_hooks_deny_tool_streamed.effects.json",
@@ -749,6 +785,12 @@
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_endings_tool_outcome_cancelled_streamed.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_endings_turn_finished_stop.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_endings_turn_finished_stop_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_fault_batch_second_fails.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_fault_batch_second_fails_concurrent.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_fault_setup_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_fault_setup_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_fault_tool_error.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_fault_tool_error_streamed.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_hooks_demand_done.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_hooks_deny_tool.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_hooks_deny_tool_streamed.effects.json",
@@ -825,6 +867,12 @@
     "crates/rig-verify/fixtures/ecs_parity/venice_endings_tool_outcome_cancelled_streamed.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/venice_endings_turn_finished_stop.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/venice_endings_turn_finished_stop_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/venice_fault_batch_second_fails.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/venice_fault_batch_second_fails_concurrent.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/venice_fault_setup_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/venice_fault_setup_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/venice_fault_tool_error.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/venice_fault_tool_error_streamed.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/venice_hooks_demand_done.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/venice_hooks_deny_tool.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/venice_hooks_deny_tool_streamed.effects.json",
@@ -911,6 +959,12 @@
     "crates/rig-verify/fixtures/gemini_endings_tool_outcome_cancelled_streamed.effects.json",
     "crates/rig-verify/fixtures/gemini_endings_turn_finished_stop.effects.json",
     "crates/rig-verify/fixtures/gemini_endings_turn_finished_stop_streamed.effects.json",
+    "crates/rig-verify/fixtures/gemini_fault_batch_second_fails.effects.json",
+    "crates/rig-verify/fixtures/gemini_fault_batch_second_fails_concurrent.effects.json",
+    "crates/rig-verify/fixtures/gemini_fault_setup_streamed.effects.json",
+    "crates/rig-verify/fixtures/gemini_fault_setup_unary.effects.json",
+    "crates/rig-verify/fixtures/gemini_fault_tool_error.effects.json",
+    "crates/rig-verify/fixtures/gemini_fault_tool_error_streamed.effects.json",
     "crates/rig-verify/fixtures/gemini_hooks_demand_done.effects.json",
     "crates/rig-verify/fixtures/gemini_hooks_deny_tool.effects.json",
     "crates/rig-verify/fixtures/gemini_hooks_deny_tool_streamed.effects.json",
@@ -1065,6 +1119,12 @@
     "crates/rig-verify/fixtures/openai_chat_endings_tool_outcome_cancelled_streamed.effects.json",
     "crates/rig-verify/fixtures/openai_chat_endings_turn_finished_stop.effects.json",
     "crates/rig-verify/fixtures/openai_chat_endings_turn_finished_stop_streamed.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_fault_batch_second_fails.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_fault_batch_second_fails_concurrent.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_fault_setup_streamed.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_fault_setup_unary.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_fault_tool_error.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_fault_tool_error_streamed.effects.json",
     "crates/rig-verify/fixtures/openai_chat_hooks_demand_done.effects.json",
     "crates/rig-verify/fixtures/openai_chat_hooks_deny_tool.effects.json",
     "crates/rig-verify/fixtures/openai_chat_hooks_deny_tool_streamed.effects.json",
@@ -1148,6 +1208,12 @@
     "crates/rig-verify/fixtures/openai_responses_endings_tool_outcome_cancelled_streamed.effects.json",
     "crates/rig-verify/fixtures/openai_responses_endings_turn_finished_stop.effects.json",
     "crates/rig-verify/fixtures/openai_responses_endings_turn_finished_stop_streamed.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_fault_batch_second_fails.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_fault_batch_second_fails_concurrent.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_fault_setup_streamed.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_fault_setup_unary.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_fault_tool_error.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_fault_tool_error_streamed.effects.json",
     "crates/rig-verify/fixtures/openai_responses_hooks_demand_done.effects.json",
     "crates/rig-verify/fixtures/openai_responses_hooks_deny_tool.effects.json",
     "crates/rig-verify/fixtures/openai_responses_hooks_deny_tool_streamed.effects.json",
@@ -1232,6 +1298,12 @@
     "crates/rig-verify/fixtures/venice_endings_tool_outcome_cancelled_streamed.effects.json",
     "crates/rig-verify/fixtures/venice_endings_turn_finished_stop.effects.json",
     "crates/rig-verify/fixtures/venice_endings_turn_finished_stop_streamed.effects.json",
+    "crates/rig-verify/fixtures/venice_fault_batch_second_fails.effects.json",
+    "crates/rig-verify/fixtures/venice_fault_batch_second_fails_concurrent.effects.json",
+    "crates/rig-verify/fixtures/venice_fault_setup_streamed.effects.json",
+    "crates/rig-verify/fixtures/venice_fault_setup_unary.effects.json",
+    "crates/rig-verify/fixtures/venice_fault_tool_error.effects.json",
+    "crates/rig-verify/fixtures/venice_fault_tool_error_streamed.effects.json",
     "crates/rig-verify/fixtures/venice_hooks_demand_done.effects.json",
     "crates/rig-verify/fixtures/venice_hooks_deny_tool.effects.json",
     "crates/rig-verify/fixtures/venice_hooks_deny_tool_streamed.effects.json",
@@ -1683,6 +1755,7 @@
     "tests/common/ecs_matrix/agent.rs",
     "tests/common/ecs_matrix/cells.rs",
     "tests/common/ecs_matrix/extra.rs",
+    "tests/common/ecs_matrix/faults.rs",
     "tests/common/ecs_matrix/world.rs",
     "tests/common/goldens.rs",
     "tests/common/stream_faults.rs",
@@ -1860,10 +1933,12 @@
     "tests/providers/copilot/typed_prompt_tools.rs",
     "tests/providers/deepseek/agent.rs",
     "tests/providers/deepseek/agent_tool_sessions.rs",
+    "tests/providers/deepseek/cassette/corpus_faults.rs",
     "tests/providers/deepseek/cassette/corpus_matrix.rs",
     "tests/providers/deepseek/cassette/ecs_completion.rs",
     "tests/providers/deepseek/cassette/ecs_extractor.rs",
     "tests/providers/deepseek/cassette/ecs_extractor_usage.rs",
+    "tests/providers/deepseek/cassette/ecs_faults.rs",
     "tests/providers/deepseek/cassette/ecs_matrix.rs",
     "tests/providers/deepseek/cassette/ecs_matrix_extra.rs",
     "tests/providers/deepseek/cassette/ecs_termination.rs",
@@ -1894,9 +1969,11 @@
     "tests/providers/deepseek/wire_shape_matrix.rs",
     "tests/providers/doubleword/cassette/agent.rs",
     "tests/providers/doubleword/cassette/conformance.rs",
+    "tests/providers/doubleword/cassette/corpus_faults.rs",
     "tests/providers/doubleword/cassette/corpus_matrix.rs",
     "tests/providers/doubleword/cassette/ecs_completion.rs",
     "tests/providers/doubleword/cassette/ecs_extractor.rs",
+    "tests/providers/doubleword/cassette/ecs_faults.rs",
     "tests/providers/doubleword/cassette/ecs_matrix.rs",
     "tests/providers/doubleword/cassette/ecs_matrix_extra.rs",
     "tests/providers/doubleword/cassette/ecs_termination.rs",
@@ -1932,6 +2009,7 @@
     "tests/providers/gemini/cassette/code_execution_matrix.rs",
     "tests/providers/gemini/cassette/corpus_breadth.rs",
     "tests/providers/gemini/cassette/corpus_delta.rs",
+    "tests/providers/gemini/cassette/corpus_faults.rs",
     "tests/providers/gemini/cassette/corpus_matrix.rs",
     "tests/providers/gemini/cassette/corpus_retrieval.rs",
     "tests/providers/gemini/cassette/corpus_serving.rs",
@@ -1940,6 +2018,7 @@
     "tests/providers/gemini/cassette/ecs_agent_run_streamed.rs",
     "tests/providers/gemini/cassette/ecs_code_execution.rs",
     "tests/providers/gemini/cassette/ecs_extractor.rs",
+    "tests/providers/gemini/cassette/ecs_faults.rs",
     "tests/providers/gemini/cassette/ecs_lifecycle.rs",
     "tests/providers/gemini/cassette/ecs_matrix.rs",
     "tests/providers/gemini/cassette/ecs_matrix_extra.rs",
@@ -2151,6 +2230,8 @@
     "tests/providers/openai/cassette/completions_api.rs",
     "tests/providers/openai/cassette/corpus_breadth.rs",
     "tests/providers/openai/cassette/corpus_delta.rs",
+    "tests/providers/openai/cassette/corpus_faults_chat.rs",
+    "tests/providers/openai/cassette/corpus_faults_responses.rs",
     "tests/providers/openai/cassette/corpus_host.rs",
     "tests/providers/openai/cassette/corpus_matrix_chat.rs",
     "tests/providers/openai/cassette/corpus_matrix_responses.rs",
@@ -2161,6 +2242,8 @@
     "tests/providers/openai/cassette/ecs_chat_tool_lifecycle.rs",
     "tests/providers/openai/cassette/ecs_extractor.rs",
     "tests/providers/openai/cassette/ecs_extractor_usage.rs",
+    "tests/providers/openai/cassette/ecs_faults_chat.rs",
+    "tests/providers/openai/cassette/ecs_faults_responses.rs",
     "tests/providers/openai/cassette/ecs_lifecycle.rs",
     "tests/providers/openai/cassette/ecs_matrix_chat.rs",
     "tests/providers/openai/cassette/ecs_matrix_extra_chat.rs",
@@ -2288,9 +2371,11 @@
     "tests/providers/venice/cassette/agent.rs",
     "tests/providers/venice/cassette/audio_generation.rs",
     "tests/providers/venice/cassette/conformance.rs",
+    "tests/providers/venice/cassette/corpus_faults.rs",
     "tests/providers/venice/cassette/corpus_matrix.rs",
     "tests/providers/venice/cassette/ecs_completion.rs",
     "tests/providers/venice/cassette/ecs_extractor.rs",
+    "tests/providers/venice/cassette/ecs_faults.rs",
     "tests/providers/venice/cassette/ecs_matrix.rs",
     "tests/providers/venice/cassette/ecs_matrix_extra.rs",
     "tests/providers/venice/cassette/ecs_prompt_caching.rs",
@@ -10171,6 +10256,72 @@
       "ecs": null
     },
     {
+      "id": "rig::deepseek::deepseek::corpus_faults::batch_second_fails",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_faults::batch_second_fails",
+        "source": "tests/providers/deepseek/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_faults::batch_second_fails_concurrent",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_faults::batch_second_fails_concurrent",
+        "source": "tests/providers/deepseek/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_faults::setup_streamed",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_faults::setup_streamed",
+        "source": "tests/providers/deepseek/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_faults::setup_unary",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_faults::setup_unary",
+        "source": "tests/providers/deepseek/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_faults::tool_error",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_faults::tool_error",
+        "source": "tests/providers/deepseek/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_faults::tool_error_streamed",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_faults::tool_error_streamed",
+        "source": "tests/providers/deepseek/cassette/ecs_faults.rs"
+      }
+    },
+    {
       "id": "rig::deepseek::deepseek::corpus_matrix::causal_completion_concurrent",
       "classification": "agent",
       "source": "tests/providers/deepseek/cassette/corpus_matrix.rs",
@@ -12545,6 +12696,72 @@
       "source": "tests/providers/doubleword/cassette/conformance.rs",
       "configuration": "root-bedrock",
       "ecs": null
+    },
+    {
+      "id": "rig::doubleword::doubleword::cassette::corpus_faults::batch_second_fails",
+      "classification": "agent",
+      "source": "tests/providers/doubleword/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "doubleword",
+        "test": "doubleword::cassette::ecs_faults::batch_second_fails",
+        "source": "tests/providers/doubleword/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::doubleword::doubleword::cassette::corpus_faults::batch_second_fails_concurrent",
+      "classification": "agent",
+      "source": "tests/providers/doubleword/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "doubleword",
+        "test": "doubleword::cassette::ecs_faults::batch_second_fails_concurrent",
+        "source": "tests/providers/doubleword/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::doubleword::doubleword::cassette::corpus_faults::setup_streamed",
+      "classification": "agent",
+      "source": "tests/providers/doubleword/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "doubleword",
+        "test": "doubleword::cassette::ecs_faults::setup_streamed",
+        "source": "tests/providers/doubleword/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::doubleword::doubleword::cassette::corpus_faults::setup_unary",
+      "classification": "agent",
+      "source": "tests/providers/doubleword/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "doubleword",
+        "test": "doubleword::cassette::ecs_faults::setup_unary",
+        "source": "tests/providers/doubleword/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::doubleword::doubleword::cassette::corpus_faults::tool_error",
+      "classification": "agent",
+      "source": "tests/providers/doubleword/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "doubleword",
+        "test": "doubleword::cassette::ecs_faults::tool_error",
+        "source": "tests/providers/doubleword/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::doubleword::doubleword::cassette::corpus_faults::tool_error_streamed",
+      "classification": "agent",
+      "source": "tests/providers/doubleword/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "doubleword",
+        "test": "doubleword::cassette::ecs_faults::tool_error_streamed",
+        "source": "tests/providers/doubleword/cassette/ecs_faults.rs"
+      }
     },
     {
       "id": "rig::doubleword::doubleword::cassette::corpus_matrix::causal_completion_concurrent",
@@ -15134,6 +15351,72 @@
       "source": "tests/providers/gemini/cassette/corpus_delta.rs",
       "configuration": "root-bedrock",
       "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_faults::batch_second_fails",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_faults::batch_second_fails",
+        "source": "tests/providers/gemini/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_faults::batch_second_fails_concurrent",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_faults::batch_second_fails_concurrent",
+        "source": "tests/providers/gemini/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_faults::setup_streamed",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_faults::setup_streamed",
+        "source": "tests/providers/gemini/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_faults::setup_unary",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_faults::setup_unary",
+        "source": "tests/providers/gemini/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_faults::tool_error",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_faults::tool_error",
+        "source": "tests/providers/gemini/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_faults::tool_error_streamed",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_faults::tool_error_streamed",
+        "source": "tests/providers/gemini/cassette/ecs_faults.rs"
+      }
     },
     {
       "id": "rig::gemini::gemini::cassette::corpus_matrix::causal_completion_concurrent",
@@ -24771,6 +25054,138 @@
       "ecs": null
     },
     {
+      "id": "rig::openai::openai::cassette::corpus_faults_chat::batch_second_fails",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_faults_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_faults_chat::batch_second_fails",
+        "source": "tests/providers/openai/cassette/ecs_faults_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_faults_chat::batch_second_fails_concurrent",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_faults_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_faults_chat::batch_second_fails_concurrent",
+        "source": "tests/providers/openai/cassette/ecs_faults_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_faults_chat::setup_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_faults_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_faults_chat::setup_streamed",
+        "source": "tests/providers/openai/cassette/ecs_faults_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_faults_chat::setup_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_faults_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_faults_chat::setup_unary",
+        "source": "tests/providers/openai/cassette/ecs_faults_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_faults_chat::tool_error",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_faults_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_faults_chat::tool_error",
+        "source": "tests/providers/openai/cassette/ecs_faults_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_faults_chat::tool_error_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_faults_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_faults_chat::tool_error_streamed",
+        "source": "tests/providers/openai/cassette/ecs_faults_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_faults_responses::batch_second_fails",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_faults_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_faults_responses::batch_second_fails",
+        "source": "tests/providers/openai/cassette/ecs_faults_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_faults_responses::batch_second_fails_concurrent",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_faults_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_faults_responses::batch_second_fails_concurrent",
+        "source": "tests/providers/openai/cassette/ecs_faults_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_faults_responses::setup_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_faults_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_faults_responses::setup_streamed",
+        "source": "tests/providers/openai/cassette/ecs_faults_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_faults_responses::setup_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_faults_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_faults_responses::setup_unary",
+        "source": "tests/providers/openai/cassette/ecs_faults_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_faults_responses::tool_error",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_faults_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_faults_responses::tool_error",
+        "source": "tests/providers/openai/cassette/ecs_faults_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_faults_responses::tool_error_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_faults_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_faults_responses::tool_error_streamed",
+        "source": "tests/providers/openai/cassette/ecs_faults_responses.rs"
+      }
+    },
+    {
       "id": "rig::openai::openai::cassette::corpus_host::embed_prompt_effect_log_is_the_golden_fixture",
       "classification": "unclassified",
       "source": "tests/providers/openai/cassette/corpus_host.rs",
@@ -31940,6 +32355,72 @@
       "source": "tests/providers/venice/cassette/conformance.rs",
       "configuration": "root-bedrock",
       "ecs": null
+    },
+    {
+      "id": "rig::venice::venice::cassette::corpus_faults::batch_second_fails",
+      "classification": "agent",
+      "source": "tests/providers/venice/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "venice",
+        "test": "venice::cassette::ecs_faults::batch_second_fails",
+        "source": "tests/providers/venice/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::venice::venice::cassette::corpus_faults::batch_second_fails_concurrent",
+      "classification": "agent",
+      "source": "tests/providers/venice/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "venice",
+        "test": "venice::cassette::ecs_faults::batch_second_fails_concurrent",
+        "source": "tests/providers/venice/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::venice::venice::cassette::corpus_faults::setup_streamed",
+      "classification": "agent",
+      "source": "tests/providers/venice/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "venice",
+        "test": "venice::cassette::ecs_faults::setup_streamed",
+        "source": "tests/providers/venice/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::venice::venice::cassette::corpus_faults::setup_unary",
+      "classification": "agent",
+      "source": "tests/providers/venice/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "venice",
+        "test": "venice::cassette::ecs_faults::setup_unary",
+        "source": "tests/providers/venice/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::venice::venice::cassette::corpus_faults::tool_error",
+      "classification": "agent",
+      "source": "tests/providers/venice/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "venice",
+        "test": "venice::cassette::ecs_faults::tool_error",
+        "source": "tests/providers/venice/cassette/ecs_faults.rs"
+      }
+    },
+    {
+      "id": "rig::venice::venice::cassette::corpus_faults::tool_error_streamed",
+      "classification": "agent",
+      "source": "tests/providers/venice/cassette/corpus_faults.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "venice",
+        "test": "venice::cassette::ecs_faults::tool_error_streamed",
+        "source": "tests/providers/venice/cassette/ecs_faults.rs"
+      }
     },
     {
       "id": "rig::venice::venice::cassette::corpus_matrix::causal_completion_concurrent",
