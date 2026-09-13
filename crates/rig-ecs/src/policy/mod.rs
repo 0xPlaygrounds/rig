@@ -147,6 +147,20 @@ pub fn missing_required_fields(
     }
 }
 
+/// Whether a text answer already is the structured output: it parses as
+/// JSON and lacks none of the schema's required fields (any JSON, without
+/// a schema). The run accepts such a text where the output tool was due
+/// rather than spend a turn reprompting for it (the answer came through
+/// the wrong channel, not wrong), as rig-agent's
+/// `text_satisfies_output_schema` does.
+pub fn text_satisfies_schema(schema: Option<&serde_json::Value>, text: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(text.trim())
+        .ok()
+        .is_some_and(|value| {
+            schema.is_none_or(|schema| missing_required_fields(schema, &value).is_empty())
+        })
+}
+
 /// The reprompt when the output tool was called without every required
 /// field: a tool result on the call, naming the fields.
 pub fn reprompt_missing_fields(name: &str, missing: &[String]) -> String {

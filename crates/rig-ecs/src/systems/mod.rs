@@ -19,7 +19,9 @@
 
 use bevy_ecs::prelude::*;
 use rig_core::{
-    completion::message::{AssistantContent, ToolChoice, ToolResultContent, UserContent},
+    completion::message::{
+        AssistantContent, ToolChoice, ToolResultContent, UserContent, canonical_streamed_choice,
+    },
     effect::{EffectKind, FamilyDescriptor, Outcome},
     error::ErrorKind,
 };
@@ -1150,7 +1152,16 @@ pub fn fold(
         }
         match outcome {
             Some(EffectOutcome(Ok(Outcome::Completion(response)))) => {
-                outputs.content = response.choice.clone();
+                // A streamed turn is committed in the canonical order every
+                // driver commits one in (reasoning, text, calls): the fold's
+                // arrival order is the wire's, and a wire that delivers a
+                // reasoning part last (Gemini's thought signature) would
+                // otherwise commit a turn no other driver commits.
+                outputs.content = if streamed.is_some() {
+                    canonical_streamed_choice(response.choice.clone())
+                } else {
+                    response.choice.clone()
+                };
                 outputs.message_id = response.message_id.clone();
                 outputs.done = true;
                 progress.mark();
@@ -1979,7 +1990,15 @@ pub fn materialise(
                                 .insert((OutputRetries(retries.0 + 1), Assembling));
                         }
                     }
-                    None if can_reprompt => {
+                    // A text that already is the structured output settles the
+                    // run (CONTRACT §4); one that is not is reprompted while
+                    // the budget lasts.
+                    None if can_reprompt
+                        && !policy::text_satisfies_schema(
+                            schema.as_ref(),
+                            &policy::answer_text(&content),
+                        ) =>
+                    {
                         let reprompt = MessageParts::User {
                             content: vec![UserContent::text(policy::text::reprompt_text_answer(
                                 name,

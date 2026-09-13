@@ -47,22 +47,10 @@ use rig_core::completion::{CompletionError, Message, Usage};
 use rig_core::json_utils;
 use rig_core::streaming::{BlockClose, BlockKind, Delta, StreamEvent};
 
-/// Assemble assistant content in canonical replay order: reasoning blocks,
-/// then text, then trailing items (tool calls, images). Maps its inputs 1:1,
-/// so the result is empty exactly when every input is.
-pub fn ordered_assistant_content(
-    reasoning_items: impl IntoIterator<Item = Reasoning>,
-    text_items: impl IntoIterator<Item = AssistantContent>,
-    trailing_items: impl IntoIterator<Item = AssistantContent>,
-) -> Vec<AssistantContent> {
-    let mut content_items = reasoning_items
-        .into_iter()
-        .map(AssistantContent::Reasoning)
-        .collect::<Vec<_>>();
-    content_items.extend(text_items);
-    content_items.extend(trailing_items);
-    content_items
-}
+/// The canonical replay order of a streamed turn, `rig_core`'s: reasoning
+/// blocks, then text, then trailing items. rig-ecs's fold applies the same
+/// rule through `rig_core::message::canonical_streamed_choice`.
+pub use rig_core::message::ordered_assistant_content;
 
 /// [`ordered_assistant_content`], as an `Option` for slots where an empty
 /// assembly means "no message".

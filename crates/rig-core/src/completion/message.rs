@@ -100,6 +100,59 @@ pub fn non_empty<T>(items: Vec<T>) -> Option<Vec<T>> {
     if items.is_empty() { None } else { Some(items) }
 }
 
+/// Assemble assistant content in canonical replay order: reasoning blocks,
+/// then text, then trailing items (tool calls, images). Maps its inputs 1:1,
+/// so the result is empty exactly when every input is.
+///
+/// The order a **streamed** turn with reasoning or tool calls is committed
+/// to history in by rig-agent's stream assembler and rig-ecs's fold
+/// ([`canonical_streamed_choice`]): a wire that delivers a reasoning part
+/// after the text — Gemini's thought signature rides the last chunk —
+/// still commits the turn reasoning-first. A unary reply keeps the
+/// provider's order.
+pub fn ordered_assistant_content(
+    reasoning_items: impl IntoIterator<Item = Reasoning>,
+    text_items: impl IntoIterator<Item = AssistantContent>,
+    trailing_items: impl IntoIterator<Item = AssistantContent>,
+) -> Vec<AssistantContent> {
+    let mut content_items = reasoning_items
+        .into_iter()
+        .map(AssistantContent::Reasoning)
+        .collect::<Vec<_>>();
+    content_items.extend(text_items);
+    content_items.extend(trailing_items);
+    content_items
+}
+
+/// [`ordered_assistant_content`] over one delivered streamed choice, by
+/// rig-agent's rule (`StreamedTurnAssembler::canonical_choice_with`): a
+/// turn with a reasoning block or a tool call is regrouped by kind, each
+/// group in arrival order; a turn with neither keeps the provider's order.
+/// Image parts stay after the calls here (rig-agent's assembler does not
+/// carry them through its regrouped branch).
+pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<AssistantContent> {
+    let regroup = choice.iter().any(|part| {
+        matches!(
+            part,
+            AssistantContent::Reasoning(_) | AssistantContent::ToolCall(_)
+        )
+    });
+    if !regroup {
+        return choice;
+    }
+    let mut reasoning = Vec::new();
+    let mut text = Vec::new();
+    let mut trailing = Vec::new();
+    for part in choice {
+        match part {
+            AssistantContent::Reasoning(block) => reasoning.push(block),
+            AssistantContent::Text(_) => text.push(part),
+            AssistantContent::ToolCall(_) | AssistantContent::Image(_) => trailing.push(part),
+        }
+    }
+    ordered_assistant_content(reasoning, text, trailing)
+}
+
 /// Describes the content of a message, which can be text, a tool result, an image, audio, or
 ///  a document. Dependent on provider supporting the content type. Multimedia content is generally
 ///  base64 (defined by it's format) encoded but additionally supports urls (for some providers).
