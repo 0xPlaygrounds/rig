@@ -2106,10 +2106,10 @@ fn an_empty_tool_use_id_is_minted_not_keyed_on_the_empty_string() {
 /// This asserts internal wire construction parity; the provider response is not
 /// involved, so no new live recording or synthetic cassette is necessary.
 #[test]
-fn streaming_adaptive_effort_and_schema_share_blocking_conversion()
--> Result<(), Box<dyn std::error::Error>> {
+fn streaming_adaptive_effort_and_schema_share_blocking_conversion() {
     let schema =
-        serde_json::from_value(json!({"type":"object","properties":{"answer":{"type":"string"}}}))?;
+        serde_json::from_value(json!({"type":"object","properties":{"answer":{"type":"string"}}}))
+            .expect("valid adaptive request fixture");
     let request = CompletionRequest {
         model: None,
         chat_history: vec![RigMessage::user("Answer the question")],
@@ -2124,7 +2124,8 @@ fn streaming_adaptive_effort_and_schema_share_blocking_conversion()
         output_schema: Some(schema),
         record_telemetry_content: false,
     };
-    let streaming = built_streaming_body(CLAUDE_OPUS_4_8, request.clone(), false)?;
+    let streaming = built_streaming_body(CLAUDE_OPUS_4_8, request.clone(), false)
+        .expect("valid adaptive request fixture");
     let blocking = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
         model: CLAUDE_OPUS_4_8,
         request,
@@ -2132,8 +2133,9 @@ fn streaming_adaptive_effort_and_schema_share_blocking_conversion()
         automatic_caching: false,
         automatic_caching_ttl: None,
         static_prefix_cache_ttl: None,
-    })?;
-    let mut expected = serde_json::to_value(blocking)?;
+    })
+    .expect("valid adaptive request fixture");
+    let mut expected = serde_json::to_value(blocking).expect("valid adaptive request fixture");
     expected["stream"] = json!(true);
     assert_eq!(streaming, expected);
     assert_eq!(streaming["thinking"]["type"], "adaptive");
@@ -2142,5 +2144,4 @@ fn streaming_adaptive_effort_and_schema_share_blocking_conversion()
         streaming["output_config"]["format"]["schema"]["type"],
         "object"
     );
-    Ok(())
 }

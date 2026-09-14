@@ -4266,10 +4266,10 @@ fn adaptive_request(
 /// cassettes separately cover provider traffic. This catches duplicate JSON keys
 /// which parsing a response fixture cannot reveal.
 #[test]
-fn adaptive_parameters_merge_schema_effort_tools_and_passthrough()
--> Result<(), Box<dyn std::error::Error>> {
+fn adaptive_parameters_merge_schema_effort_tools_and_passthrough() {
     let schema =
-        serde_json::from_value(json!({"type":"object","properties":{"answer":{"type":"string"}}}))?;
+        serde_json::from_value(json!({"type":"object","properties":{"answer":{"type":"string"}}}))
+            .expect("valid adaptive request fixture");
     let request = adaptive_request(
         CLAUDE_SONNET_4_6,
         json!({
@@ -4279,11 +4279,12 @@ fn adaptive_parameters_merge_schema_effort_tools_and_passthrough()
             "metadata":{"user_id":"test-only"}
         }),
         Some(schema),
-    )?;
-    let serialized = serde_json::to_string(&request)?;
+    ).expect("valid adaptive request fixture");
+    let serialized = serde_json::to_string(&request).expect("valid adaptive request fixture");
     assert_eq!(serialized.matches("\"output_config\"").count(), 1);
     assert_eq!(serialized.matches("\"thinking\"").count(), 1);
-    let value: serde_json::Value = serde_json::from_str(&serialized)?;
+    let value: serde_json::Value =
+        serde_json::from_str(&serialized).expect("valid adaptive request fixture");
     assert_eq!(
         value["thinking"],
         json!({"type":"adaptive","display":"omitted"})
@@ -4293,14 +4294,12 @@ fn adaptive_parameters_merge_schema_effort_tools_and_passthrough()
     assert_eq!(value["output_config"]["format"]["schema"]["type"], "object");
     assert_eq!(value["tools"].as_array().map(Vec::len), Some(1));
     assert_eq!(value["metadata"]["user_id"], "test-only");
-    Ok(())
 }
 
 /// Local validation and unknown-model passthrough are conversion rules rather
 /// than provider response behavior, so a deterministic unit test is sufficient.
 #[test]
-fn adaptive_parameters_validate_legacy_models_without_rejecting_newer_ones()
--> Result<(), Box<dyn std::error::Error>> {
+fn adaptive_parameters_validate_legacy_models_without_rejecting_newer_ones() {
     for model in [
         "claude-sonnet-4-5",
         "claude-opus-4-1-20250805",
@@ -4319,19 +4318,25 @@ fn adaptive_parameters_validate_legacy_models_without_rejecting_newer_ones()
             model,
             json!({"thinking":{"type":"adaptive"},"output_config":{"effort":"max"}}),
             None,
-        )?;
+        )
+        .expect("valid adaptive request fixture");
     }
     adaptive_request(
         CLAUDE_OPUS_4_8,
         json!({"output_config":{"effort":"xhigh"}}),
         None,
-    )?;
+    )
+    .expect("valid adaptive request fixture");
     for thinking in [
         json!({"type":"disabled"}),
         json!({"type":"enabled","budget_tokens":1024}),
     ] {
-        let request = adaptive_request(CLAUDE_OPUS_4_6, json!({"thinking":thinking}), None)?;
-        assert_eq!(serde_json::to_value(request)?["thinking"], thinking);
+        let request = adaptive_request(CLAUDE_OPUS_4_6, json!({"thinking":thinking}), None)
+            .expect("valid adaptive request fixture");
+        assert_eq!(
+            serde_json::to_value(request).expect("valid adaptive request fixture")["thinking"],
+            thinking
+        );
     }
     assert!(
         adaptive_request(
@@ -4341,5 +4346,4 @@ fn adaptive_parameters_validate_legacy_models_without_rejecting_newer_ones()
         )
         .is_err()
     );
-    Ok(())
 }
