@@ -12,6 +12,7 @@ use crate::support::{
 use anyhow::Result;
 use rig::prelude::*;
 use rig::tool::Tool;
+use rig_ecs::systems::RunCommands;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 #[tokio::test]
@@ -225,14 +226,10 @@ async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
                 .world_mut()
                 .entity_mut(agent.agent)
                 .insert(DefaultMaxTurns(None));
-            let run = rig_ecs::systems::spawn_run(
-                agent.app.world_mut(),
-                agent.agent,
-                &[],
-                "",
-                false,
-                None,
-            );
+            let run = agent
+                .app
+                .world_mut()
+                .spawn_run(agent.agent, &[], "", false, None);
             // Before scheduling, replace the fresh user utterance with its
             // actual multimodal parts. This is the native graph input surface.
             let (entity, parent) = agent

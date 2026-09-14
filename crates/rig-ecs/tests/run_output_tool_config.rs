@@ -15,7 +15,7 @@ use rig_ecs::{
         Failed, Failure, Grant, MaxTurns, Order, Output, OutputKind, OutputRetries,
         OutputToolConfig, OutputToolName, Run, RunResult, Settled, ToolChoiceSpec, scene::RunScene,
     },
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use run_support::*;
 
@@ -64,7 +64,9 @@ fn custom_output_tool_is_advertised_and_finalizes_without_executing_a_tool() {
         config(),
         ToolChoiceSpec(Some(ToolChoice::Required)),
     ));
-    let run = spawn_run(app.world_mut(), agent, &[], "extract", false, Some(1));
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "extract", false, Some(1));
     settle(&mut app, run);
     let requests = requests.lock().unwrap();
     assert_eq!(requests.len(), 1);
@@ -115,7 +117,9 @@ fn output_tool_history_preserves_reasoning_and_commits_arguments_as_text() {
     app.world_mut()
         .entity_mut(agent)
         .insert((schema(), config()));
-    let run = spawn_run(app.world_mut(), agent, &[], "extract", false, Some(1));
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "extract", false, Some(1));
     settle(&mut app, run);
 
     let assistant: Vec<_> = app
@@ -155,7 +159,9 @@ fn run_configuration_overrides_and_can_reset_the_agent_configuration() {
     app.world_mut()
         .entity_mut(agent)
         .insert((schema(), config()));
-    let run = spawn_run(app.world_mut(), agent, &[], "extract", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "extract", false, None);
     app.world_mut()
         .entity_mut(run)
         .insert(OutputToolConfig::default());
@@ -194,7 +200,9 @@ fn reserved_name_collision_fails_before_provider_or_tool_dispatch() {
         .insert((schema(), config()));
     app.world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
-    let run = spawn_run(app.world_mut(), agent, &[], "extract", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "extract", false, None);
     tick_until(&mut app, "collision refusal", |world| {
         world.get::<Failed>(run).is_some()
     });
@@ -229,7 +237,9 @@ fn a_committed_name_survives_later_configuration_changes() {
     app.world_mut()
         .entity_mut(agent)
         .insert((schema(), config(), MaxTurns(2)));
-    let run = spawn_run(app.world_mut(), agent, &[], "extract", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "extract", false, None);
     let observed = requests.clone();
     app.add_systems(
         rig_ecs::bus::RigSchedule,
@@ -270,7 +280,7 @@ fn output_configuration_without_a_schema_does_not_create_a_tool() {
     let model = register(&mut app, MODEL, model);
     let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut().entity_mut(agent).insert(config());
-    let run = spawn_run(app.world_mut(), agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     tick_until(&mut app, "plain settlement", |world| {
         world.get::<Settled>(run).is_some()
     });
@@ -288,7 +298,9 @@ fn scene_restores_custom_configuration_in_a_fresh_world() {
         .world_mut()
         .entity_mut(agent)
         .insert((schema(), OutputToolConfig::default()));
-    let run = spawn_run(original.world_mut(), agent, &[], "extract", false, None);
+    let run = original
+        .world_mut()
+        .spawn_run(agent, &[], "extract", false, None);
     original.world_mut().entity_mut(run).insert(config());
     let scene = RunScene::save(original.world_mut()).unwrap();
     let scene: RunScene = serde_json::from_str(&serde_json::to_string(&scene).unwrap()).unwrap();
@@ -326,7 +338,9 @@ fn replay_identity_includes_each_effective_output_tool_setting() {
     app.world_mut()
         .entity_mut(agent)
         .insert((schema(), config()));
-    let run = spawn_run(app.world_mut(), agent, &[], "extract", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "extract", false, None);
     let inherited = rig_ecs::replay::spec_hash(app.world_mut(), run).unwrap();
     for changed in [
         OutputToolConfig {
@@ -368,7 +382,9 @@ fn reserved_name_commits_tool_mode_despite_native_or_auto_preference() {
         app.world_mut()
             .entity_mut(agent)
             .insert((Output { mode, ..schema() }, config()));
-        let run = spawn_run(app.world_mut(), agent, &[], "extract", false, Some(1));
+        let run = app
+            .world_mut()
+            .spawn_run(agent, &[], "extract", false, Some(1));
         settle(&mut app, run);
         let requests = requests.lock().unwrap();
         assert_eq!(requests.len(), 1);
@@ -406,7 +422,9 @@ fn description_only_configuration_keeps_collision_safe_automatic_naming() {
     ));
     app.world_mut()
         .spawn((Grant(real), Order(0), ChildOf(agent)));
-    let run = spawn_run(app.world_mut(), agent, &[], "extract", false, Some(1));
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "extract", false, Some(1));
     settle(&mut app, run);
     let requests = requests.lock().unwrap();
     assert_eq!(requests.len(), 1);

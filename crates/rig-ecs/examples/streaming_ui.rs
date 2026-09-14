@@ -23,7 +23,7 @@ use rig_ecs::{
     agent::MessageParts,
     bus::{Handlers, RigSchedule},
     prelude::*,
-    systems::spawn_run,
+    systems::RunCommands,
 };
 
 fn main() {
@@ -56,14 +56,7 @@ fn ask(mut handlers: Handlers, mut commands: Commands) {
     .filter_map(MessageParts::from_message)
     .collect();
     commands.queue(move |world: &mut World| {
-        spawn_run(
-            world,
-            agent,
-            &history,
-            "Another one, about Rust.",
-            true,
-            None,
-        );
+        world.spawn_run(agent, &history, "Another one, about Rust.", true, None);
     });
 }
 

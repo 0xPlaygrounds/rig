@@ -11,7 +11,7 @@ use rig_ecs::{
         Turn,
     },
     bus::{BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule},
-    systems::{Fresh, Materialised, RigSet, spawn_run},
+    systems::{Fresh, Materialised, RigSet, RunCommands},
 };
 use std::{
     collections::BTreeSet,
@@ -171,14 +171,10 @@ pub(super) async fn prompt_with_mode(
     taps: Vec<EventTap>,
     readers: Vec<ScratchpadReader>,
 ) -> String {
-    let run = spawn_run(
-        ecs.app.world_mut(),
-        ecs.agent,
-        &[],
-        prompt,
-        streamed,
-        Some(max_turns),
-    );
+    let run = ecs
+        .app
+        .world_mut()
+        .spawn_run(ecs.agent, &[], prompt, streamed, Some(max_turns));
     ecs.app
         .world_mut()
         .entity_mut(run)

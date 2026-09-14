@@ -28,10 +28,10 @@ use rig_core::message::AssistantContent;
 use rig_ecs::{
     agent::{Grant, Run},
     assets::{
-        Applied, AssetsPlugin, AssetsSet, Prompt, PromptHandle, ToolDefinitions, ToolsHandle,
+        Applied, AssetsPlugin, AssetsSet, PromptAsset, PromptHandle, ToolDefinitions, ToolsHandle,
     },
     bus::{Handlers, run_to_quiescence},
-    systems::spawn_run,
+    systems::RunCommands,
 };
 
 fn main() {
@@ -84,7 +84,7 @@ fn ask(mut handlers: Handlers, mut commands: Commands, server: Res<AssetServer>)
 /// Once both assets applied, one run — the granted tools counted from
 /// the agent's `Grant` children.
 fn start_when_applied(
-    agents: Query<Entity, (With<Applied<Prompt>>, With<Applied<ToolDefinitions>>)>,
+    agents: Query<Entity, (With<Applied<PromptAsset>>, With<Applied<ToolDefinitions>>)>,
     grants: Query<&ChildOf, With<Grant>>,
     runs: Query<(), With<Run>>,
     mut commands: Commands,
@@ -96,7 +96,7 @@ fn start_when_applied(
         let granted = grants.iter().filter(|link| link.parent() == agent).count();
         println!("granted {granted} tool(s) from agent.tools.json");
         commands.queue(move |world: &mut World| {
-            spawn_run(world, agent, &[], "Calculate 2 - 5.", false, None);
+            world.spawn_run(agent, &[], "Calculate 2 - 5.", false, None);
         });
     }
 }

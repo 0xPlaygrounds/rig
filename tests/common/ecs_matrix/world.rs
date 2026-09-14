@@ -52,7 +52,7 @@ use rig_ecs::{
         materialize_bindings, run_to_quiescence,
     },
     replay::{stamp_legacy_builder_header, stamp_run},
-    systems::{Fresh, RigSet, RunBusy, despawn_run, install_agent, spawn_run},
+    systems::{Fresh, RigSet, RunBusy, RunCommands, install_agent},
 };
 use rig_effect_log::{Checkpoint, EffectLog, EffectLogRecorder, RequestCheck};
 use tokio::sync::Semaphore;
@@ -1214,7 +1214,7 @@ fn assert_despawn(app: &mut App, agent: Entity, run: Entity, before: usize) {
             .is_some_and(|runs| runs.runs().contains(&run)),
         "the agent lists its run"
     );
-    despawn_run(world, run).expect("a settled run despawns");
+    world.despawn_run(run).expect("a settled run despawns");
     assert!(
         !world
             .get::<Runs>(agent)
@@ -1772,14 +1772,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     for (n, prompt) in prompts.into_iter().enumerate() {
         before.push(live_entities(app.world_mut()));
         let world = app.world_mut();
-        let mut run = spawn_run(
-            world,
-            agent,
-            &history,
-            prompt,
-            program.streamed,
-            program.max_turns,
-        );
+        let mut run = world.spawn_run(agent, &history, prompt, program.streamed, program.max_turns);
         if cell.name == "checkpoint_parallel_batch" {
             super::checkpoint_world::bind_parallel_run(world, run);
         }
@@ -1830,7 +1823,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
                 world.get::<Failed>(run)
             );
             assert_eq!(
-                despawn_run(world, run),
+                world.despawn_run(run),
                 Err(RunBusy::InFlight),
                 "{}: the tool is still in flight",
                 cell.name

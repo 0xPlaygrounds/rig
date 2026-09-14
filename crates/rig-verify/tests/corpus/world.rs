@@ -31,7 +31,7 @@ use rig_ecs::{
         run_to_quiescence,
     },
     replay::stamp_legacy_builder_header,
-    systems::{install_agent, spawn_run},
+    systems::{RunCommands, install_agent},
 };
 use rig_effect_log::{EffectLogRecorder, EffectLogReplayer, RequestCheck};
 
@@ -207,14 +207,7 @@ pub fn world_agent_reproduces(program: &Program) {
     let start = Instant::now();
     for (n, prompt) in prompts.into_iter().enumerate() {
         let world = app.world_mut();
-        let run = spawn_run(
-            world,
-            agent,
-            &history,
-            prompt,
-            program.streamed,
-            program.max_turns,
-        );
+        let run = world.spawn_run(agent, &history, prompt, program.streamed, program.max_turns);
         if let Some(concurrency) = program.tool_concurrency {
             world.entity_mut(run).insert(ToolPolicy { concurrency });
         }

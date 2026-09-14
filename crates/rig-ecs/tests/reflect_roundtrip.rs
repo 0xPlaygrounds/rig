@@ -37,7 +37,7 @@ use rig_ecs::{
         StreamRequested, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Utterance,
     },
     bus::{EffectOutcome, Held, IdCounter, PendingEffect, Reserved, Streamed},
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use run_support::*;
 use serde::de::DeserializeSeed;
@@ -102,7 +102,7 @@ fn populated() -> bevy_app::App {
         rig_ecs::agent::Order(1),
         ChildOf(agent),
     ));
-    let run = spawn_run(world, agent, &[], "add one and two", false, None);
+    let run = world.spawn_run(agent, &[], "add one and two", false, None);
     rig_ecs::agent::checkpoint::hold_after_tool_turn(world, run, "reflection", 99)
         .expect("a future hold preserves normal settlement");
     tick_until(&mut app, "the run", |world| {
@@ -186,6 +186,7 @@ fn populated() -> bevy_app::App {
             rig_ecs::systems::Folded(rig_ecs::agent::OutputKind::Auto),
             rig_ecs::agent::AwaitingModel,
             rig_ecs::agent::ResolvingTools,
+            rig_ecs::agent::Prompt(vec![rig_core::message::UserContent::text("p")]),
             (
                 rig_ecs::agent::Assembling,
                 rig_ecs::agent::ProviderRetries(2),

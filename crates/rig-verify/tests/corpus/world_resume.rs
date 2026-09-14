@@ -20,7 +20,7 @@ use rig_ecs::{
     },
     bus::{EffectLogResource, EffectOutcome, IdCounter, RigSchedule},
     replay::{stamp_legacy_builder_header, stamp_run},
-    systems::{Fresh, spawn_run},
+    systems::{Fresh, RunCommands},
 };
 use rig_effect_log::{Checkpoint, EffectLog, RequestCheck};
 
@@ -71,8 +71,7 @@ pub fn world_resume_reproduces(
                 .collect()
         })
         .unwrap_or_default();
-    let run = spawn_run(
-        world,
+    let run = world.spawn_run(
         agent,
         &history,
         program.prompt,

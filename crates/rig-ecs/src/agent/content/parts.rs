@@ -165,6 +165,7 @@ pub enum ToolResultStatus {
     Refused,
     /// Nothing ran: the runtime skipped the call (a `skipped` result), or
     /// the result is synthetic — invalid-call feedback, the invalid-peer
+    /// notice, an output-tool reprompt.
     Skipped,
     /// A `Denied` outcome (a layer's `deny`, a `Gate` system's denial).
     Denied,

@@ -25,7 +25,7 @@ use rig_ecs::{
         Settled, UsesModel,
     },
     bus::{Handlers, Recording, run_to_quiescence},
-    systems::{install_agent, spawn_run},
+    systems::{RunCommands, install_agent},
 };
 use rig_effect_log::EffectLogRecorder;
 
@@ -197,14 +197,10 @@ impl EcsAgent {
         streamed: bool,
         max_turns: Option<usize>,
     ) -> String {
-        let run = spawn_run(
-            self.app.world_mut(),
-            self.agent,
-            &[],
-            prompt,
-            streamed,
-            max_turns,
-        );
+        let run = self
+            .app
+            .world_mut()
+            .spawn_run(self.agent, &[], prompt, streamed, max_turns);
         self.wait_for_success(run).await
     }
 

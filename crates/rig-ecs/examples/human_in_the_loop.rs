@@ -28,7 +28,7 @@ use rig_ecs::{
     agent::{Order, ToolCallSlot, Turn},
     bus::{Handlers, PendingEffect, RigSchedule},
     prelude::*,
-    systems::spawn_run,
+    systems::RunCommands,
 };
 
 fn main() {
@@ -56,7 +56,7 @@ fn ask(mut handlers: Handlers, mut commands: Commands) {
     );
     commands.spawn((Grant(tools[0]), Order(0), ChildOf(agent)));
     commands.queue(move |world: &mut World| {
-        spawn_run(world, agent, &[], "Email Ada to say hello.", false, None);
+        world.spawn_run(agent, &[], "Email Ada to say hello.", false, None);
     });
 }
 

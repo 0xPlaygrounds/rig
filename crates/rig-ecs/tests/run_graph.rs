@@ -31,7 +31,7 @@ use rig_ecs::{
         UsesModel, Utterance,
     },
     bus::{EffectLogResource, PendingEffect, RigSchedule},
-    systems::{RigSet, spawn_run},
+    systems::{RigSet, RunCommands},
 };
 use rig_effect_log::EffectLogRecorder;
 use run_support::*;
@@ -90,7 +90,9 @@ fn an_utterance_despawned_before_assemble_leaves_the_next_request() {
             content: vec![rig_core::message::AssistantContent::text("B")],
         },
     ];
-    let run = spawn_run(app.world_mut(), agent, &history, "C", false, Some(1));
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &history, "C", false, Some(1));
     settle(&mut app, run, "answered");
     let requests = requests.lock().expect("requests");
     assert_eq!(requests.len(), 1);
@@ -116,8 +118,12 @@ fn one_document_attached_to_two_runs_appears_in_both_requests() {
         .id();
     app.world_mut()
         .spawn((Context(document), Order(0), ChildOf(agent)));
-    let first = spawn_run(app.world_mut(), agent, &[], "first?", false, Some(1));
-    let second = spawn_run(app.world_mut(), agent, &[], "second?", false, Some(1));
+    let first = app
+        .world_mut()
+        .spawn_run(agent, &[], "first?", false, Some(1));
+    let second = app
+        .world_mut()
+        .spawn_run(agent, &[], "second?", false, Some(1));
     settle(&mut app, first, "first");
     settle(&mut app, second, "second");
     let requests = requests.lock().expect("requests");
@@ -148,16 +154,18 @@ fn a_tool_granted_by_a_relationship_is_advertised_and_gone_after_removal() {
         },
     );
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let before = spawn_run(app.world_mut(), agent, &[], "one", false, Some(1));
+    let before = app.world_mut().spawn_run(agent, &[], "one", false, Some(1));
     settle(&mut app, before, "before the grant");
     let grant = app
         .world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)))
         .id();
-    let during = spawn_run(app.world_mut(), agent, &[], "two", false, Some(1));
+    let during = app.world_mut().spawn_run(agent, &[], "two", false, Some(1));
     settle(&mut app, during, "with the grant");
     app.world_mut().despawn(grant);
-    let after = spawn_run(app.world_mut(), agent, &[], "three", false, Some(1));
+    let after = app
+        .world_mut()
+        .spawn_run(agent, &[], "three", false, Some(1));
     settle(&mut app, after, "after the grant");
     let requests = requests.lock().expect("requests");
     let advertised: Vec<Vec<String>> = requests
@@ -179,10 +187,10 @@ fn uses_model_swapped_on_a_run_changes_the_next_requests_key() {
     let fast_model = register(&mut app, "t/model:fast", fast_model);
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     let agent = spawn_agent(app.world_mut(), "t", default_model);
-    let first = spawn_run(app.world_mut(), agent, &[], "one", false, Some(1));
+    let first = app.world_mut().spawn_run(agent, &[], "one", false, Some(1));
     assert_eq!(settle(&mut app, first, "default"), "from default");
     // A routing system's spelling: the run's own model, before Assemble.
-    let second = spawn_run(app.world_mut(), agent, &[], "two", false, Some(1));
+    let second = app.world_mut().spawn_run(agent, &[], "two", false, Some(1));
     app.world_mut()
         .entity_mut(second)
         .insert(UsesModel(fast_model));
@@ -216,7 +224,7 @@ fn a_patch_system_rewrites_the_folded_request_and_the_record_holds_it() {
         .resource_mut::<Schedules>()
         .add_systems(RigSchedule, patch_temperature.in_set(RigSet::Patch));
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let run = spawn_run(app.world_mut(), agent, &[], "one", false, Some(1));
+    let run = app.world_mut().spawn_run(agent, &[], "one", false, Some(1));
     settle(&mut app, run, "patched");
     assert_eq!(
         requests.lock().expect("requests")[0].temperature,
@@ -264,7 +272,9 @@ fn a_system_before_assemble_rewrites_an_utterance() {
     let model = register(&mut app, "t/model:default", model);
     add_before_assemble(&mut app, shout_the_prompt);
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let run = spawn_run(app.world_mut(), agent, &[], "quietly", false, Some(1));
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "quietly", false, Some(1));
     settle(&mut app, run, "shouted");
     let requests = requests.lock().expect("requests");
     assert_eq!(
@@ -296,7 +306,7 @@ fn despawning_the_effect_in_patch_fails_the_run_cancelled() {
         .resource_mut::<Schedules>()
         .add_systems(RigSchedule, stop_the_run.in_set(RigSet::Patch));
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let run = spawn_run(app.world_mut(), agent, &[], "one", false, Some(1));
+    let run = app.world_mut().spawn_run(agent, &[], "one", false, Some(1));
     tick_until(&mut app, "cancelled", |world| {
         world.get::<rig_ecs::agent::Failed>(run).is_some()
     });

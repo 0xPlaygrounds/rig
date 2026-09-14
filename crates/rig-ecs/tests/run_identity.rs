@@ -22,7 +22,7 @@ use rig_ecs::{
     agent::{Grant, Order, PolicyVersion, Preamble},
     bus::{EffectLogResource, Scope},
     replay::{check_replayable, required_row, spec_hash, stamp_legacy_builder_header, stamp_run},
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder};
 use run_support::*;
@@ -45,7 +45,7 @@ fn a_worlds_log_names_its_program_by_scope() {
     let (model, _) = Capturing::new(MODEL, "ok");
     let model = register(&mut app, MODEL, model);
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let run = spawn_run(app.world_mut(), agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     let recorder = app.world().resource::<EffectLogResource>().0.clone();
     stamp_legacy_builder_header(app.world_mut(), agent, &recorder, None, Vec::new());
     stamp_run(app.world_mut(), run, &recorder).expect("the run stamps its program identity");
@@ -77,7 +77,7 @@ fn check_replayable_refuses_a_foreign_log_by_name() {
     app.world_mut().entity_mut(agent).insert(Preamble(Some(
         "You are a concise assistant. Answer directly.".to_owned(),
     )));
-    let run = spawn_run(app.world_mut(), agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     app.world_mut()
         .entity_mut(agent)
         .insert(PolicyVersion("identity-test/v1".into()));

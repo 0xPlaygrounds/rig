@@ -24,11 +24,11 @@ use super::{
     Conversation, Cursor, DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Failed, Grant,
     InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory, MaxTokens, MaxTurns,
     MemoryAppendScheduled, Order, OrderCounter, Output, OutputRetries, OutputToolConfig,
-    OutputToolName, Outputs, Owner, Preamble, ProviderRetried, ProviderRetries, ProviderRetrying,
-    Remembered, Remembering, Remembers, Reprompt, RequestPatch, Resolution, ResolvingTools,
-    Retrievable, Retrieval, Retrieves, Retrieving, Retry, Role, Route, Run, RunCounter, RunOf,
-    RunResult, RunSeq, Settled, StreamRequested, Temperature, ToolAccess, ToolCallSlot,
-    ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Usage, UsesModel, Utterance,
+    OutputToolName, Outputs, Owner, Preamble, Prompt, ProviderRetried, ProviderRetries,
+    ProviderRetrying, Ready, Remembered, Remembering, Remembers, Reprompt, RequestPatch,
+    Resolution, ResolvingTools, Retrievable, Retrieval, Retrieves, Retrieving, Retry, Role, Route,
+    Run, RunCounter, RunOf, RunResult, RunSeq, Settled, StreamRequested, Temperature, ToolAccess,
+    ToolCallSlot, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Usage, UsesModel, Utterance,
 };
 use crate::bus::{Bound, ProviderBinding, Scope};
 
@@ -391,6 +391,7 @@ impl LoadedBindings {
 /// Validate `scene.bindings` against `world` and spawn them: each as a
 /// `ProviderBinding` entity carrying its saved `Bound` (so the graph's
 /// links to the key resolve), or — the existing handler wins — attached to
+/// the entity already bound to its key. Nothing is served, resolved or
 /// fetched here. Refused before any spawn: a duplicate key in the scene, a
 /// saved descriptor whose key is not the binding's, an existing handler of
 /// another family under the key.
@@ -686,6 +687,7 @@ impl RunScene {
                 ToolCallPart => "tool_call_part", ToolResultPart => "tool_result_part", ReasoningPart => "reasoning_part", JsonPart => "json_part",
                 ToolResultStatus => "tool_result_status", ToolResultLimit => "tool_result_limit",
                 Run => "run", RunSeq => "run_seq", StreamRequested => "streamed", Cursor => "cursor",
+                Ready => "ready", Prompt => "prompt",
                 Assembling => "assembling", AwaitingModel => "awaiting_model",
                 Settled => "settled", Failed => "failed", RunResult => "run_result",
                 Usage => "usage", OutputRetries => "output_retries",
@@ -880,6 +882,14 @@ impl RunScene {
                     "tool result status is not on a tool result part",
                 ));
             }
+            if validation.get::<Run>(*entity).is_none() {
+                if validation.get::<Ready>(*entity).is_some() {
+                    return Err(extension_error("ready is not on a run"));
+                }
+                if validation.get::<Prompt>(*entity).is_some() {
+                    return Err(extension_error("prompt is not on a run"));
+                }
+            }
         }
         for entity in &entities {
             if validation.get::<RequestPartEdit>(*entity).is_some() {
@@ -995,6 +1005,7 @@ impl RunScene {
                 ToolCallPart => "tool_call_part", ToolResultPart => "tool_result_part", ReasoningPart => "reasoning_part", JsonPart => "json_part",
                 ToolResultStatus => "tool_result_status", ToolResultLimit => "tool_result_limit",
                 Run => "run", RunSeq => "run_seq", StreamRequested => "streamed", Cursor => "cursor",
+                Ready => "ready", Prompt => "prompt",
                 Assembling => "assembling", AwaitingModel => "awaiting_model",
                 Settled => "settled", Failed => "failed", RunResult => "run_result",
                 Usage => "usage", OutputRetries => "output_retries",

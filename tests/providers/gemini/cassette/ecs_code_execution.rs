@@ -4,7 +4,7 @@ use crate::{ecs_agent::EcsAgent, ecs_lifecycle, ecs_observation};
 use rig::{completion::CompletionModel, message::Message, prelude::*, providers::gemini};
 use rig_ecs::{
     agent::{AdditionalParams, MaxTokens, Temperature},
-    systems::spawn_run,
+    systems::RunCommands,
 };
 
 fn agent(model: impl CompletionModel + 'static, params: serde_json::Value) -> EcsAgent {
@@ -63,8 +63,7 @@ async fn blocking_code_execution_replayed_in_chat_history() {
             let history = [Message::user(prompt), Message::assistant(first)].map(|message| {
                 rig_ecs::agent::MessageParts::from_message(&message).expect("conversation message")
             });
-            let run = spawn_run(
-                ecs.app.world_mut(),
+            let run = ecs.app.world_mut().spawn_run(
                 ecs.agent,
                 &history,
                 "Now double that number and state the result.",

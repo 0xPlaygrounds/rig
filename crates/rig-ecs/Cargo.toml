@@ -21,7 +21,7 @@ replay = ["dep:rig-effect-log"]
 # them, `reflect::ReflectedScene` — the graph as reflected data beside the
 # serde scene. rig-core takes no Bevy dependency: the wrappers live here.
 reflect = ["dep:bevy_reflect", "bevy_ecs/bevy_reflect"]
-# Prompts and tool definitions as assets: `assets::{Prompt, ToolDefinitions}`
+# Prompts and tool definitions as assets: `assets::{PromptAsset, ToolDefinitions}`
 # with `bevy_asset` loaders, and the systems that turn them into a
 # `Preamble` and `Grant`s. The one feature that needs `bevy_app`:
 # `bevy_asset` is built on it.

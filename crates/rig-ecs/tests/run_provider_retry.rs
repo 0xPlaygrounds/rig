@@ -49,7 +49,7 @@ use rig_ecs::{
         Witnessing,
     },
     replay::stamp_run,
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder};
 use run_support::*;
@@ -193,7 +193,7 @@ fn a_retryable_failure_after_tool_work_is_reissued_and_the_tool_runs_once() {
         Err(unavailable("status 503 Service Unavailable")),
         Ok(done()),
     ]);
-    let run = spawn_run(app.world_mut(), agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
     stamp_run(app.world_mut(), run, &recorder).expect("the run stamps its program identity");
     ended(&mut app, run, "the retried run");
     assert_eq!(
@@ -249,7 +249,7 @@ fn a_retryable_failure_after_tool_work_is_reissued_and_the_tool_runs_once() {
     replay
         .world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
-    let run = spawn_run(replay.world_mut(), agent, &[], "add", false, None);
+    let run = replay.world_mut().spawn_run(agent, &[], "add", false, None);
     ended(&mut replay, run, "the replayed run");
     assert_eq!(
         replay.world().get::<RunResult>(run).map(|r| r.0.clone()),
@@ -270,7 +270,7 @@ fn a_spent_budget_ends_the_run_with_the_last_report() {
         Ok(done()),
     ]);
     app.world_mut().entity_mut(agent).insert(ProviderRetries(2));
-    let run = spawn_run(app.world_mut(), agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
     ended(&mut app, run, "the exhausted run");
     let Failure::Provider(report) = failure(app.world(), run) else {
         panic!("{:?}", failure(app.world(), run));
@@ -298,7 +298,7 @@ fn a_non_retryable_failure_after_tool_work_ends_the_run_at_once() {
         Err(ErrorReport::new(ErrorKind::Provider, "blocked: SAFETY")),
         Ok(done()),
     ]);
-    let run = spawn_run(app.world_mut(), agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
     ended(&mut app, run, "the refused run");
     let Failure::Provider(report) = failure(app.world(), run) else {
         panic!("{:?}", failure(app.world(), run));
@@ -314,7 +314,7 @@ fn a_zero_budget_never_retries() {
     let (mut app, agent, requests, _, _) =
         tooling(vec![Err(unavailable("status 503")), Ok(done())]);
     app.world_mut().entity_mut(agent).insert(ProviderRetries(0));
-    let run = spawn_run(app.world_mut(), agent, &[], "hi", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "hi", false, None);
     ended(&mut app, run, "the unretried run");
     assert!(matches!(failure(app.world(), run), Failure::Provider(_)));
     assert_eq!(requests.lock().unwrap().len(), 1);
@@ -368,7 +368,7 @@ fn a_host_hold_is_where_a_backoff_goes_and_a_cancel_during_it_ends_the_run() {
     app.world_mut()
         .resource_mut::<Schedules>()
         .add_systems(RigSchedule, hold_retried_completion.in_set(BusSet::Gate));
-    let run = spawn_run(app.world_mut(), agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
     tick_until(&mut app, "the retry is held", |world| {
         world
             .query_filtered::<Entity, (With<PendingEffect>, With<Held>)>()
@@ -411,7 +411,7 @@ fn a_scene_saved_during_the_hold_resumes_into_the_retry() {
     app.world_mut()
         .resource_mut::<Schedules>()
         .add_systems(RigSchedule, hold_retried_completion.in_set(BusSet::Gate));
-    let run = spawn_run(app.world_mut(), agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
     stamp_run(app.world_mut(), run, &recorder).expect("the run stamps its program identity");
     tick_until(&mut app, "the retry is held", |world| {
         world
@@ -542,7 +542,7 @@ fn a_truncated_stream_is_reissued() {
     );
     let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut().entity_mut(agent).insert(MaxTurns(4));
-    let run = spawn_run(app.world_mut(), agent, &[], "hi", true, None);
+    let run = app.world_mut().spawn_run(agent, &[], "hi", true, None);
     ended(&mut app, run, "the retried stream");
     assert_eq!(
         app.world().get::<RunResult>(run).map(|r| r.0.clone()),

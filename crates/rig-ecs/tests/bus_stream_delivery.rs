@@ -363,7 +363,7 @@ fn live_visibility_is_independent_of_recorder_event_retention() {
 
 #[test]
 fn final_delivery_precedes_run_settlement_and_terminal_graph_cleanup() {
-    use rig_ecs::{agent::Settled, systems::spawn_run};
+    use rig_ecs::{agent::Settled, systems::RunCommands};
     let mut app = run_support::app();
     let trace = observe(&mut app);
     let final_seen = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -391,7 +391,7 @@ fn final_delivery_precedes_run_settlement_and_terminal_graph_cleanup() {
         },
     );
     let agent = run_support::spawn_agent(app.world_mut(), "test", model);
-    let run = spawn_run(app.world_mut(), agent, &[], "hello", true, None);
+    let run = app.world_mut().spawn_run(agent, &[], "hello", true, None);
     run_support::tick_until(&mut app, "settled run removed", |world| {
         world.get_entity(run).is_err()
     });
@@ -505,7 +505,7 @@ fn retried_streams_have_distinct_delivery_identities_and_identical_requests() {
     use rig_core::streaming::Delta;
     use rig_ecs::{
         agent::{MaxTurns, RunResult, Settled},
-        systems::spawn_run,
+        systems::RunCommands,
     };
     let mut app = run_support::app();
     let requests = Arc::new(Mutex::new(Vec::new()));
@@ -531,7 +531,7 @@ fn retried_streams_have_distinct_delivery_identities_and_identical_requests() {
             }
         }
     });
-    let run = spawn_run(app.world_mut(), agent, &[], "hello", true, None);
+    let run = app.world_mut().spawn_run(agent, &[], "hello", true, None);
     run_support::tick_until(&mut app, "retry completed", |world| {
         world.get::<Settled>(run).is_some()
     });

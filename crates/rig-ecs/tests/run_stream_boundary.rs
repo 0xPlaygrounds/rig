@@ -19,7 +19,7 @@ use rig_core::{
 use rig_ecs::{
     agent::{Failed, Failure, InvalidCall},
     bus::{EffectOutcome, Streamed},
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use run_support::*;
 use std::sync::{Arc, Mutex};
@@ -137,7 +137,7 @@ fn exhausted_early_retry_fails_without_waiting_for_eof() {
         NameThenGate(Arc::new(Mutex::new(Some(gate)))),
     );
     let agent = spawn_agent(app.world_mut(), "boundary", model);
-    let run = spawn_run(app.world_mut(), agent, &[], "add", true, Some(2));
+    let run = app.world_mut().spawn_run(agent, &[], "add", true, Some(2));
     tick_until(&mut app, "exhausted retry fails before EOF", |world| {
         world.get::<Failed>(run).is_some()
     });
@@ -176,7 +176,7 @@ fn early_skip_retains_prefix_and_drained_usage_without_dispatching_tool() {
     let agent = spawn_agent(app.world_mut(), "boundary", model);
     app.world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
-    let run = spawn_run(app.world_mut(), agent, &[], "add", true, Some(2));
+    let run = app.world_mut().spawn_run(agent, &[], "add", true, Some(2));
     tick_until(&mut app, "skip before EOF", |world| {
         world.resource::<RepairCount>().0 == 1
     });
@@ -275,7 +275,7 @@ fn early_repair_survives_raw_block_completion_and_provider_identity() {
     let agent = spawn_agent(app.world_mut(), "boundary", model);
     app.world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
-    let run = spawn_run(app.world_mut(), agent, &[], "add", true, Some(2));
+    let run = app.world_mut().spawn_run(agent, &[], "add", true, Some(2));
     tick_until(&mut app, "repair before EOF", |world| {
         world.resource::<RepairCount>().0 == 1
     });
@@ -397,14 +397,9 @@ fn invalid_tool_name_is_actionable_before_completion_outcome() {
         NameThenGate(Arc::new(Mutex::new(Some(gate)))),
     );
     let agent = spawn_agent(app.world_mut(), "boundary", model);
-    let run = spawn_run(
-        app.world_mut(),
-        agent,
-        &[],
-        "call an unavailable tool",
-        true,
-        Some(1),
-    );
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "call an unavailable tool", true, Some(1));
     tick_until(
         &mut app,
         "tool name delivered while producer is gated",

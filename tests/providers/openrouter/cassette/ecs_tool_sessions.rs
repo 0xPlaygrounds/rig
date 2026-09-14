@@ -12,6 +12,7 @@ use crate::support::{
 use anyhow::Result;
 use rig::prelude::*;
 use rig::tool::Tool;
+use rig_ecs::systems::RunCommands;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 #[tokio::test]
@@ -232,8 +233,7 @@ async fn nested_structured_output_schema_roundtrip() -> Result<()> {
                     }
                 }))),
             ));
-            let run = rig_ecs::systems::spawn_run(
-                agent.app.world_mut(),
+            let run = agent.app.world_mut().spawn_run(
                 agent.agent,
                 &[],
                 "Create the OpenRouter cassette release validation plan.",

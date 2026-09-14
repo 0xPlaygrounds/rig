@@ -16,7 +16,7 @@ use rig_ecs::{
         Temperature, UsesModel,
     },
     bus::{Handlers, Recording, run_to_quiescence},
-    systems::{install_agent, spawn_run},
+    systems::{RunCommands, install_agent},
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder};
 use std::{sync::Arc, time::Duration};
@@ -76,7 +76,7 @@ pub(super) async fn run(
         .id();
     tool(&mut app, agent, add, 0);
     tool(&mut app, agent, subtract, 1);
-    let run = spawn_run(app.world_mut(), agent, &[], prompt, true, Some(6));
+    let run = app.world_mut().spawn_run(agent, &[], prompt, true, Some(6));
     let bus = app.world().resource::<rig_ecs::bus::Policy>().0;
     rig_ecs::replay::stamp_legacy_builder_header(
         app.world_mut(),

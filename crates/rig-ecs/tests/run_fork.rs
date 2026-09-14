@@ -20,7 +20,7 @@ use rig_core::message::AssistantContent;
 use rig_ecs::{
     agent::{Run, RunResult, RunSeq, Runs, Settled, Utterance, fork},
     bus::Scope,
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use run_support::*;
 
@@ -37,7 +37,7 @@ fn a_forked_run_settles_beside_the_original() {
     );
     let model = register(&mut app, "t/model:default", model);
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let run = spawn_run(app.world_mut(), agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     let second = fork(app.world_mut(), run);
     let third = fork(app.world_mut(), run);
     let world = app.world_mut();

@@ -3,7 +3,8 @@
 //!
 //! | set | true before | written during |
 //! |---|---|---|
-//! | `Advance` | a run in `Assembling` has no fresh turn | a turn is spawned `ChildOf` the run with its adverts and attachments, or the run fails `MaxTurns` |
+//! | `Advance` (first) | a `Ready` run has no phase | `open_runs`: the `Prompt` becomes the last utterance; the run is `Assembling`, or `LoadingMemory` with its `Load` effect |
+//! | `Advance` | a `Ready` run in `Assembling` has no fresh turn | a turn is spawned `ChildOf` the run with its adverts and attachments, or the run fails `MaxTurns` |
 //! | `Select` | a run may lack a model of its own | the agent's `UsesModel` is copied to the run |
 //! | `Assemble` | a fresh turn's graph is complete | the fold spawns the turn's effect; the run is `AwaitingModel` |
 //! | `Patch` | the folded effect is a `PendingEffect` | a user system may rewrite it (the second steering slot) |
@@ -89,8 +90,19 @@ pub enum RigSet {
     Settle,
 }
 
-/// A run that wants a turn: `Assembling`, not failed.
-pub type Wanting = (With<Assembling>, Without<Failed>);
+/// A run that wants a turn: `Ready`, `Assembling`, not failed.
+pub type Wanting = (With<Assembling>, With<crate::agent::Ready>, Without<Failed>);
+/// A `Ready` run that has neither a phase nor an ending: `open_runs` opens it.
+pub type Unopened = (
+    With<Run>,
+    With<crate::agent::Ready>,
+    Without<Failed>,
+    Without<Settled>,
+    Without<Assembling>,
+    Without<LoadingMemory>,
+    Without<AwaitingModel>,
+    Without<ResolvingTools>,
+);
 /// A run with no model of its own yet.
 pub type Unselected = (With<Run>, Without<UsesModel>);
 /// What `Fold` reads of an effect.
@@ -243,7 +255,7 @@ pub fn install_agent(world: &mut World) {
             .after(BusSet::Judge),
     );
     schedule.add_systems((
-        advance.in_set(RigSet::Advance),
+        (open_runs, advance).chain().in_set(RigSet::Advance),
         attach_retrieved
             .after(RigSet::Advance)
             .before(RigSet::Select),
@@ -291,7 +303,7 @@ macro_rules! content_or_fail {
     };
 }
 
-/// Why [`despawn_run`] left a run in the world.
+/// Why a despawn left a run in the world.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunBusy {
     /// The entity is not a run.
@@ -303,14 +315,255 @@ pub enum RunBusy {
     InFlight,
 }
 
-/// Despawn an ended run and everything that is its: turns, utterances,
-/// adverts, attachments and the settled effects under them (`ChildOf` is
-/// linked, so the despawn is deep), a `Streamed` fold included. The world
-/// keeps nothing of a run by itself — a host that runs for long must
-/// despawn the runs it is done reading, or their graphs and folds
-/// accumulate for the life of the world. Refused while the run has not
-/// ended or an effect of it is still in flight; nothing is despawned then.
-pub fn despawn_run(world: &mut World, run: Entity) -> Result<(), RunBusy> {
+/// A queued `despawn_run` ([`RunCommands`] on `Commands`) refused the run:
+/// triggered on the run entity when the command applies, with the reason
+/// the exclusive form would have returned. The run is left as it was.
+#[derive(EntityEvent, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RunDespawnRefused {
+    /// The run that stays.
+    pub entity: Entity,
+    /// Why.
+    pub reason: RunBusy,
+}
+
+/// The components every run is made of: what [`RunCommands::spawn_run`]
+/// spawns, for a host that assembles a run by hand — `world.spawn((RunBundle::new(world, agent, false), Prompt::from("…")))`,
+/// its history utterances `ChildOf` the run in `Order`, an optional
+/// [`MaxTurns`], and last [`Ready`]. [`RunSeq`] is the world's next run
+/// number and [`Scope`] is `{owner}/run#{seq}`, both taken from the world
+/// by [`RunBundle::new`].
+#[derive(Bundle, Debug, Clone)]
+pub struct RunBundle {
+    /// The run marker.
+    pub run: Run,
+    /// The run's agent.
+    pub run_of: RunOf,
+    /// The run's number in the world.
+    pub seq: RunSeq,
+    /// Whether the model is asked for a stream.
+    pub streamed: StreamRequested,
+    /// The turn cursor, at zero.
+    pub cursor: Cursor,
+    /// The output-tool reprompts spent, none.
+    pub output_retries: OutputRetries,
+    /// The invalid-call retries spent, none.
+    pub invalid_retries: crate::agent::InvalidRetries,
+    /// The provider retries spent, none.
+    pub provider_retried: ProviderRetried,
+    /// The output tool's name, unresolved.
+    pub output_tool_name: OutputToolName,
+    /// The usage tally, empty.
+    pub usage: Usage,
+    /// The witness scope: `{owner}/run#{seq}`.
+    pub scope: Scope,
+}
+
+impl RunBundle {
+    /// A fresh run of `agent`: takes the next [`RunSeq`] from the world's
+    /// [`RunCounter`] and the agent's `Owner` for the [`Scope`].
+    pub fn new(world: &mut World, agent: Entity, streamed: bool) -> Self {
+        let seq = {
+            let mut counter = world.resource_mut::<RunCounter>();
+            let seq = counter.0;
+            counter.0 += 1;
+            seq
+        };
+        let owner = world
+            .get::<crate::agent::Owner>(agent)
+            .map(|owner| owner.0.clone())
+            .unwrap_or_default();
+        Self {
+            run: Run,
+            run_of: RunOf(agent),
+            seq: RunSeq(seq),
+            streamed: StreamRequested(streamed),
+            cursor: Cursor::default(),
+            output_retries: OutputRetries::default(),
+            invalid_retries: crate::agent::InvalidRetries::default(),
+            provider_retried: ProviderRetried::default(),
+            output_tool_name: OutputToolName::default(),
+            usage: Usage::default(),
+            scope: Scope(format!("{owner}/run#{seq}")),
+        }
+    }
+}
+
+/// The run entry points, on `Commands` and on `World`. The `Commands`
+/// form queues the work and reserves the entity: the run exists — its
+/// bundle, its utterances, its `Ready` — once the commands apply, and
+/// `Advance` sees it on the first schedule pass after that; a run spawned
+/// in a system is visible to the runtime only after that system's
+/// commands are flushed. The `World` form does the same work at once.
+/// Commands queued in order apply in order: a `cancel_run` or
+/// `despawn_run` queued after a `spawn_run` finds the run.
+pub trait RunCommands {
+    /// What `despawn_run` reports: the refusal, on `World`; nothing on
+    /// `Commands`, which triggers [`RunDespawnRefused`] on the run instead.
+    type Despawned;
+
+    /// Spawn a run of `agent` with `prompt` as its first utterance, after
+    /// `history`: the host's one entry point. The prompt is a user
+    /// message's parts (`&str` text, or text and images kept in their
+    /// given order, [`Prompt`]). Returns the run entity. On `Commands`
+    /// the entity is reserved at once and populated when the command
+    /// applies; a run despawned before or while it is populated (a host
+    /// `Add<Run>` observer that refuses it, say) is simply gone.
+    fn spawn_run(
+        &mut self,
+        agent: Entity,
+        history: &[MessageParts],
+        prompt: impl Into<Prompt>,
+        streamed: bool,
+        max_turns: Option<usize>,
+    ) -> Entity;
+
+    /// Stop `run` with `reason` (CONTRACT §9.1): `Cancelled(reason)` on the
+    /// run. A run that ended keeps its ending; an entity that is not a run
+    /// is left alone. A run cancelled before it opened (`Ready` written by
+    /// hand, not yet seen by `Advance`) fails with its unread [`Prompt`]
+    /// still on it, and a scene saves the prompt with the failed run.
+    fn cancel_run(&mut self, run: Entity, reason: impl Into<String>);
+
+    /// Despawn an ended run and everything that is its: turns, utterances,
+    /// adverts, attachments and the settled effects under them (`ChildOf`
+    /// is linked, so the despawn is deep), a `Streamed` fold included.
+    /// The world keeps nothing of a run by itself — a host that runs for
+    /// long must despawn the runs it is done reading, or their graphs and
+    /// folds accumulate for the life of the world. Refused while the run
+    /// has not ended or an effect of it is still in flight; nothing is
+    /// despawned then.
+    fn despawn_run(&mut self, run: Entity) -> Self::Despawned;
+}
+
+impl RunCommands for World {
+    type Despawned = Result<(), RunBusy>;
+
+    fn spawn_run(
+        &mut self,
+        agent: Entity,
+        history: &[MessageParts],
+        prompt: impl Into<Prompt>,
+        streamed: bool,
+        max_turns: Option<usize>,
+    ) -> Entity {
+        let run = self.spawn_empty().id();
+        spawn_run_at(
+            self,
+            run,
+            agent,
+            history,
+            prompt.into(),
+            streamed,
+            max_turns,
+        );
+        run
+    }
+
+    fn cancel_run(&mut self, run: Entity, reason: impl Into<String>) {
+        cancel_run_in(self, run, reason.into());
+    }
+
+    fn despawn_run(&mut self, run: Entity) -> Result<(), RunBusy> {
+        despawn_run_in(self, run)
+    }
+}
+
+impl RunCommands for Commands<'_, '_> {
+    type Despawned = ();
+
+    fn spawn_run(
+        &mut self,
+        agent: Entity,
+        history: &[MessageParts],
+        prompt: impl Into<Prompt>,
+        streamed: bool,
+        max_turns: Option<usize>,
+    ) -> Entity {
+        let run = self.spawn_empty().id();
+        let history = history.to_vec();
+        let prompt = prompt.into();
+        self.queue(move |world: &mut World| {
+            spawn_run_at(world, run, agent, &history, prompt, streamed, max_turns);
+        });
+        run
+    }
+
+    fn cancel_run(&mut self, run: Entity, reason: impl Into<String>) {
+        let reason = reason.into();
+        self.queue(move |world: &mut World| cancel_run_in(world, run, reason));
+    }
+
+    fn despawn_run(&mut self, run: Entity) {
+        self.queue(move |world: &mut World| {
+            if let Err(reason) = despawn_run_in(world, run) {
+                world.trigger(RunDespawnRefused {
+                    entity: run,
+                    reason,
+                });
+            }
+        });
+    }
+}
+
+/// The run on the reserved `run` entity: the bundle, the prompt, the
+/// history utterances, `Ready`, and the opening at once, so the world form
+/// hands back a run whose utterances are in the graph. Every step looks
+/// the run up afresh: a run despawned before it was populated, or by a
+/// host observer while it was (an `Add<Run>` observer that refuses it,
+/// say), is simply gone — the steps after the despawn do nothing, and no
+/// utterance is spawned under a run that is not there.
+fn spawn_run_at(
+    world: &mut World,
+    run: Entity,
+    agent: Entity,
+    history: &[MessageParts],
+    prompt: Prompt,
+    streamed: bool,
+    max_turns: Option<usize>,
+) {
+    if world.get_entity(run).is_err() {
+        return;
+    }
+    let bundle = RunBundle::new(world, agent, streamed);
+    let Ok(mut entity) = world.get_entity_mut(run) else {
+        return;
+    };
+    entity.insert((bundle, prompt));
+    if let Some(limit) = max_turns {
+        let Ok(mut entity) = world.get_entity_mut(run) else {
+            return;
+        };
+        entity.insert(MaxTurns(limit));
+    }
+    for parts in history.iter().cloned() {
+        if world.get_entity(run).is_err() {
+            return;
+        }
+        if let Err(error) = spawn_utterance(world, run, parts) {
+            if let Ok(mut entity) = world.get_entity_mut(run) {
+                entity
+                    .remove::<Prompt>()
+                    .insert(Failed(Failure::Content(error)));
+            }
+            return;
+        }
+    }
+    let Ok(mut entity) = world.get_entity_mut(run) else {
+        return;
+    };
+    entity.insert(crate::agent::Ready);
+    open_run(world, run);
+}
+
+fn cancel_run_in(world: &mut World, run: Entity, reason: String) {
+    if let Ok(mut entity) = world.get_entity_mut(run)
+        && entity.contains::<Run>()
+    {
+        entity.insert(Cancelled(reason));
+    }
+}
+
+fn despawn_run_in(world: &mut World, run: Entity) -> Result<(), RunBusy> {
     if world.get::<Run>(run).is_none() {
         return Err(RunBusy::NotARun);
     }
@@ -333,36 +586,59 @@ pub fn despawn_run(world: &mut World, run: Entity) -> Result<(), RunBusy> {
     Ok(())
 }
 
-/// Spawn a run of `agent` with `prompt` as its first utterance, after
-/// `history`: the host's one entry point. The prompt is a user message's
-/// parts (`&str` text, or text and images kept in their given order,
-/// [`Prompt`]). Returns the run entity.
-pub fn spawn_run(
-    world: &mut World,
-    agent: Entity,
-    history: &[MessageParts],
-    prompt: impl Into<Prompt>,
-    streamed: bool,
-    max_turns: Option<usize>,
-) -> Entity {
-    let prompt = MessageParts::User {
-        content: prompt.into().0,
+/// First in `RigSet::Advance`: every [`Ready`] run without a phase and
+/// without an ending is opened — its [`Prompt`] spawned as its last
+/// utterance and taken off, then its first phase: `Assembling`, or, for
+/// an agent that `Remembers` given no history, `LoadingMemory` with the
+/// conversation's `Load` effect (CONTRACT §11). A run the host populates
+/// by hand starts here, the pass after it writes `Ready`; a run
+/// `spawn_run` made was opened at once. A `Prompt` a hand-made run gives
+/// before `Ready` is never read before the run opens.
+pub fn open_runs(mut commands: Commands, runs: Query<Entity, Unopened>) {
+    // Queued: the opening writes the graph, and the chain's sync point
+    // applies it before `advance` reads.
+    for run in &runs {
+        commands.queue(move |world: &mut World| open_run(world, run));
+    }
+}
+
+/// Open `run` (see [`open_runs`]): a no-op unless the run is `Ready`,
+/// phaseless and not ended.
+fn open_run(world: &mut World, run: Entity) {
+    let Some(entity) = world.get_entity(run).ok() else {
+        return;
     };
-    let seq = {
-        let mut counter = world.resource_mut::<RunCounter>();
-        let seq = counter.0;
-        counter.0 += 1;
-        seq
-    };
-    let owner = world
-        .get::<crate::agent::Owner>(agent)
-        .map(|owner| owner.0.clone())
-        .unwrap_or_default();
+    if !entity.contains::<Run>()
+        || !entity.contains::<crate::agent::Ready>()
+        || entity.contains::<Failed>()
+        || entity.contains::<Settled>()
+        || entity.contains::<Assembling>()
+        || entity.contains::<LoadingMemory>()
+        || entity.contains::<AwaitingModel>()
+        || entity.contains::<ResolvingTools>()
+    {
+        return;
+    }
+    let agent = entity.get::<RunOf>().map(|run_of| run_of.0);
+    let had_history = entity.get::<Children>().is_some_and(|children| {
+        children
+            .iter()
+            .any(|child| world.get::<Utterance>(child).is_some())
+    });
+    if let Some(Prompt(content)) = world.entity_mut(run).take::<Prompt>()
+        && let Err(error) = spawn_utterance(world, run, MessageParts::User { content })
+    {
+        world
+            .entity_mut(run)
+            .insert(Failed(Failure::Content(error)));
+        world.resource_mut::<Progress>().mark();
+        return;
+    }
     // An agent that remembers, and a run given no history: the conversation
     // is loaded before the first turn (CONTRACT §11).
-    let memory = history
-        .is_empty()
+    let memory = (!had_history)
         .then(|| {
+            let agent = agent?;
             let handler = world.get::<Remembers>(agent).map(|remembers| remembers.0)?;
             let conversation = world
                 .get::<Conversation>(agent)
@@ -371,59 +647,30 @@ pub fn spawn_run(
             Some((key, conversation))
         })
         .flatten();
-    let mut run = world.spawn((
-        Run,
-        RunOf(agent),
-        RunSeq(seq),
-        StreamRequested(streamed),
-        Cursor::default(),
-        OutputRetries::default(),
-        crate::agent::InvalidRetries::default(),
-        ProviderRetried::default(),
-        OutputToolName::default(),
-        Usage::default(),
-        Scope(format!("{owner}/run#{seq}")),
-    ));
-    if let Some(limit) = max_turns {
-        run.insert(MaxTurns(limit));
-    }
-    match &memory {
-        Some((_, conversation)) => {
-            run.insert((
+    match memory {
+        Some((key, conversation)) => {
+            world.entity_mut(run).insert((
                 LoadingMemory,
                 Remembering,
                 Conversation(conversation.clone()),
             ));
+            world.spawn((
+                PendingEffect::new(
+                    key,
+                    EffectKind::Memory {
+                        op: rig_core::effect::MemoryOp::Load {
+                            conversation: rig_core::id::ConversationId::from(conversation.as_str()),
+                        },
+                    },
+                ),
+                ChildOf(run),
+            ));
         }
         None => {
-            run.insert(Assembling);
+            world.entity_mut(run).insert(Assembling);
         }
     }
-    let run = run.id();
-    for parts in history.iter().cloned().chain(std::iter::once(prompt)) {
-        if let Err(error) = spawn_utterance(world, run, parts) {
-            world
-                .entity_mut(run)
-                .remove::<(Assembling, LoadingMemory)>()
-                .insert(Failed(Failure::Content(error)));
-            return run;
-        }
-    }
-    if let Some((key, conversation)) = memory {
-        world.spawn((
-            PendingEffect::new(
-                key,
-                EffectKind::Memory {
-                    op: rig_core::effect::MemoryOp::Load {
-                        conversation: rig_core::id::ConversationId::from(conversation.as_str()),
-                    },
-                },
-            ),
-            ChildOf(run),
-        ));
-    }
-
-    run
+    world.resource_mut::<Progress>().mark();
 }
 
 /// Spawn one utterance `ChildOf` `run`, next in order.
@@ -479,7 +726,7 @@ fn links_in_order<'a, L: Component, F: bevy_ecs::query::QueryFilter>(
     found.into_iter().map(|(_, link)| link).collect()
 }
 
-/// `RigSet::Advance`: a run in `Assembling` with no fresh turn gets one —
+/// `RigSet::Advance`: a `Ready` run in `Assembling` with no fresh turn gets one —
 /// `ChildOf` the run, with an advert per grant and an attachment per
 /// context link, in the agent's order (an agent with `Retrieves` links
 /// gets a `Retrieving` turn instead: the adverts and attachments come with

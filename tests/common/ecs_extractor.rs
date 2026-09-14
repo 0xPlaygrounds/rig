@@ -16,7 +16,7 @@ use rig_ecs::{
         AdditionalParams, DefaultMaxTurns, InvalidCalls, Output, OutputKind, OutputToolConfig,
         Outputs, Turn, Unhandled, Usage,
     },
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
@@ -87,14 +87,11 @@ impl<T: JsonSchema + DeserializeOwned> EcsExtractor<T> {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        let run = spawn_run(
-            self.ecs.app.world_mut(),
-            self.ecs.agent,
-            &history,
-            prompt,
-            false,
-            Some(1),
-        );
+        let run =
+            self.ecs
+                .app
+                .world_mut()
+                .spawn_run(self.ecs.agent, &history, prompt, false, Some(1));
         let text = self
             .ecs
             .wait_for_outcome(run)

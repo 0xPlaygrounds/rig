@@ -75,7 +75,9 @@ fn outcome(error_first: bool, resolution: Resolution) -> (Failure, usize) {
         );
     let model = register(&mut app, "boundary/model", ErrorAndName { error_first });
     let agent = spawn_agent(app.world_mut(), "boundary", model);
-    let run = spawn_run(app.world_mut(), agent, &[], "calls", true, Some(1));
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "calls", true, Some(1));
     tick_until(&mut app, "ordered stream failure", |world| {
         world.get::<Failed>(run).is_some()
     });

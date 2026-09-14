@@ -53,7 +53,7 @@ use rig_ecs::{
         scene::{WorldScene, load_world, save_world},
     },
     bus::{Bus, Handlers, PendingEffect, RigSchedule},
-    systems::{Fresh, RigSet, install_agent, spawn_run},
+    systems::{Fresh, RigSet, RunCommands, install_agent},
 };
 use run_support::*;
 
@@ -114,7 +114,7 @@ impl Fixture {
         .unwrap()
         .unwrap();
         let agent = world.spawn((Owner("owner".into()), UsesModel(model))).id();
-        let run = spawn_run(&mut world, agent, &history(), "next", false, None);
+        let run = world.spawn_run(agent, &history(), "next", false, None);
         Self {
             world,
             agent,
@@ -509,7 +509,7 @@ fn streaming_and_unary_assemble_the_same_request() {
     let mut f = Fixture::new();
     // The streamed run takes its first turn from `Advance`; the fixture's
     // unary run takes the one the fixture spawns. One pass, two requests.
-    let streamed = spawn_run(&mut f.world, f.agent, &history(), "next", true, None);
+    let streamed = f.world.spawn_run(f.agent, &history(), "next", true, None);
     let fresh = graph_messages(&mut f.world, f.run);
     assert_eq!(graph_messages(&mut f.world, streamed), fresh);
     let (unary, delta) = f.turn();
@@ -608,7 +608,9 @@ fn every_request_equals_a_fresh_render_and_only_new_utterances_are_rendered() {
     app.world_mut()
         .resource_mut::<Schedules>()
         .add_systems(RigSchedule, observe.in_set(RigSet::Patch));
-    let run = spawn_run(app.world_mut(), agent, &[], "add things", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "add things", false, None);
     tick_until(&mut app, "the run settles", |world| {
         world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some()
     });
@@ -642,7 +644,9 @@ fn a_loaded_scene_assembles_identical_requests_and_rebuilds_its_views() {
     // The control: the whole run in one world, with a hold after the
     // second tool turn released at once.
     let (mut control, agent, control_requests) = tooling(script(3));
-    let run = spawn_run(control.world_mut(), agent, &[], "add things", false, None);
+    let run = control
+        .world_mut()
+        .spawn_run(agent, &[], "add things", false, None);
     hold_after_tool_turn(control.world_mut(), run, "cache", 2).unwrap();
     tick_until(&mut control, "held", |world| {
         assert!(world.get::<Failed>(run).is_none());

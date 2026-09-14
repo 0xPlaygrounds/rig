@@ -19,7 +19,7 @@ use rig_core::serve::ServingPolicy;
 use rig_ecs::{
     agent::{Runs, Settled},
     bus::{Bus, Policy, run_to_quiescence},
-    systems::{RunBusy, despawn_run, install_agent, spawn_run},
+    systems::{RunBusy, RunCommands, install_agent},
 };
 use run_support::*;
 
@@ -49,7 +49,7 @@ fn a_zero_command_capacity_still_takes_an_effect_per_tick() {
     let (model, _) = Capturing::new("m", "hello");
     let model = register(&mut app, "t/model:m", model);
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let run = spawn_run(app.world_mut(), agent, &[], "hi", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "hi", false, None);
     tick_until(&mut app, "the run settles under a zero bound", |world| {
         world.get::<Settled>(run).is_some()
     });
@@ -66,14 +66,14 @@ fn despawn_run_removes_an_ended_run_and_refuses_a_live_one() {
     let live = |app: &mut App| app.world_mut().query::<Entity>().iter(app.world()).count();
     let before = live(&mut app);
 
-    let run = spawn_run(app.world_mut(), agent, &[], "hi", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "hi", false, None);
     assert_eq!(
-        despawn_run(app.world_mut(), run),
+        app.world_mut().despawn_run(run),
         Err(RunBusy::Unsettled),
         "a run that has not ended stays"
     );
     assert_eq!(
-        despawn_run(app.world_mut(), agent),
+        app.world_mut().despawn_run(agent),
         Err(RunBusy::NotARun),
         "only a run is despawned this way"
     );
@@ -90,7 +90,9 @@ fn despawn_run_removes_an_ended_run_and_refuses_a_live_one() {
             .is_some_and(|runs| runs.iter().any(|r| r == run))
     );
 
-    despawn_run(app.world_mut(), run).expect("an ended run despawns");
+    app.world_mut()
+        .despawn_run(run)
+        .expect("an ended run despawns");
     app.update();
     assert_eq!(
         live(&mut app),
@@ -119,7 +121,7 @@ fn despawn_run_refuses_a_run_whose_effect_is_still_in_flight() {
         },
     );
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let run = spawn_run(app.world_mut(), agent, &[], "hi", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "hi", false, None);
     tick_until(&mut app, "the model call is in flight", |world| {
         world
             .query_filtered::<Entity, With<rig_ecs::bus::InFlight>>()
@@ -134,7 +136,7 @@ fn despawn_run_refuses_a_run_whose_effect_is_still_in_flight() {
         world.get::<rig_ecs::agent::Failed>(run).is_some()
     });
     assert_eq!(
-        despawn_run(app.world_mut(), run),
+        app.world_mut().despawn_run(run),
         Err(RunBusy::InFlight),
         "the never-answering call is still in flight"
     );

@@ -19,7 +19,7 @@ use rig::streaming::{Delta, StreamEvent};
 use rig_ecs::{
     agent::{DefaultMaxTurns, Failure, MaxTurns, RunResult, Settled, Temperature},
     bus::{BusSet, EffectOutcome, RigSchedule, Streamed},
-    systems::{RigSet, spawn_run},
+    systems::{RigSet, RunCommands},
 };
 
 // Application consumer at the public publication boundary. Despawning the
@@ -66,14 +66,10 @@ async fn cancel_after_tool_call_delta_effect_log_is_the_golden_fixture() {
                     .after(BusSet::Collect)
                     .before(RigSet::Fold),
             );
-            let run = spawn_run(
-                ecs.app.world_mut(),
-                ecs.agent,
-                &[],
-                NOTE_PROMPT,
-                true,
-                Some(3),
-            );
+            let run = ecs
+                .app
+                .world_mut()
+                .spawn_run(ecs.agent, &[], NOTE_PROMPT, true, Some(3));
             let error = ecs
                 .wait_for_outcome(run)
                 .await
@@ -186,14 +182,10 @@ async fn model_error_effect_log_is_the_golden_fixture() {
             .entity_mut(ecs.agent)
             .insert(Temperature(Some(0.0)));
 
-        let run = spawn_run(
-            ecs.app.world_mut(),
-            ecs.agent,
-            &[],
-            BASIC_PROMPT,
-            false,
-            None,
-        );
+        let run = ecs
+            .app
+            .world_mut()
+            .spawn_run(ecs.agent, &[], BASIC_PROMPT, false, None);
         let error = ecs
             .wait_for_outcome(run)
             .await
@@ -230,14 +222,10 @@ async fn model_error_streamed_effect_log_is_the_golden_fixture() {
             .entity_mut(ecs.agent)
             .insert(Temperature(Some(0.0)));
 
-        let run = spawn_run(
-            ecs.app.world_mut(),
-            ecs.agent,
-            &[],
-            BASIC_PROMPT,
-            true,
-            None,
-        );
+        let run = ecs
+            .app
+            .world_mut()
+            .spawn_run(ecs.agent, &[], BASIC_PROMPT, true, None);
         let error = ecs
             .wait_for_outcome(run)
             .await
@@ -280,14 +268,10 @@ async fn max_turns_exhausted_effect_log_is_the_golden_fixture() {
                 .insert(Temperature(Some(0.0)));
             ecs.tool(Adder);
 
-            let run = spawn_run(
-                ecs.app.world_mut(),
-                ecs.agent,
-                &[],
-                ADD_PROMPT,
-                false,
-                Some(1),
-            );
+            let run = ecs
+                .app
+                .world_mut()
+                .spawn_run(ecs.agent, &[], ADD_PROMPT, false, Some(1));
             let error = ecs
                 .wait_for_outcome(run)
                 .await

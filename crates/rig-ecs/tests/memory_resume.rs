@@ -25,7 +25,7 @@ use rig_ecs::{
         scene::{load_world, save_world},
     },
     bus::{EffectOutcome, Held, Issued, PendingEffect, RigSchedule},
-    systems::{RigSet, spawn_run},
+    systems::{RigSet, RunCommands},
 };
 use run_support::*;
 
@@ -89,7 +89,7 @@ fn start(app: &mut bevy_app::App, model: Entity, memory: Entity) -> Entity {
     app.world_mut()
         .entity_mut(agent)
         .insert((Remembers(memory), Conversation("conversation".into())));
-    spawn_run(app.world_mut(), agent, &[], "go", false, None)
+    app.world_mut().spawn_run(agent, &[], "go", false, None)
 }
 
 fn appends(world: &mut World) -> Vec<Entity> {

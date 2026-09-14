@@ -5,7 +5,7 @@ use rig::{completion::CompletionModel, effect::Outcome, message::Message};
 use rig_ecs::{
     agent::{DefaultMaxTurns, Order, Run, Temperature, ToolPolicy, Usage, Utterance},
     bus::EffectOutcome,
-    systems::spawn_run,
+    systems::RunCommands,
 };
 
 use crate::ecs_agent::EcsAgent;
@@ -43,14 +43,10 @@ pub(super) async fn execute(
     max_turns: Option<usize>,
     tool_concurrency: Option<usize>,
 ) -> NativeResponse {
-    let run = spawn_run(
-        ecs.app.world_mut(),
-        ecs.agent,
-        &[],
-        prompt,
-        streamed,
-        max_turns,
-    );
+    let run = ecs
+        .app
+        .world_mut()
+        .spawn_run(ecs.agent, &[], prompt, streamed, max_turns);
     if let Some(concurrency) = tool_concurrency {
         ecs.app
             .world_mut()

@@ -14,7 +14,7 @@ use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_ecs::{
     agent::MessageParts,
     bus::{EffectOutcome, Policy},
-    systems::spawn_run,
+    systems::RunCommands,
 };
 #[path = "ecs_memory/runtime.rs"]
 mod runtime;
@@ -130,14 +130,10 @@ async fn history_bypass_effect_log_is_the_golden_fixture() {
             .iter()
             .map(|m| MessageParts::from_message(m).expect("history message"))
             .collect();
-        let run = spawn_run(
-            ecs.app.world_mut(),
-            ecs.agent,
-            &history,
-            NAME_PROMPT,
-            false,
-            None,
-        );
+        let run = ecs
+            .app
+            .world_mut()
+            .spawn_run(ecs.agent, &history, NAME_PROMPT, false, None);
         let output = ecs.wait_for_success(run).await;
         assert!(output.contains("Ada"), "{}", output);
         let log = ecs.effect_log();

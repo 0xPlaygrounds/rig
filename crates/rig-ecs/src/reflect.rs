@@ -154,6 +154,8 @@ pub fn install_reflect(world: &mut World) {
             agent::content::reflect::ImageDetailReflect,
             agent::MessageParts,
             agent::Run,
+            agent::Ready,
+            agent::Prompt,
             agent::RunOf,
             agent::Runs,
             agent::RunSeq,

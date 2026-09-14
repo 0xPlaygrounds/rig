@@ -33,7 +33,7 @@ use rig_ecs::{
         scene::RunScene,
     },
     bus::{Bus, Handlers, PendingEffect, RigSchedule},
-    systems::{Fresh, install_agent, spawn_run},
+    systems::{Fresh, RunCommands, install_agent},
 };
 
 const LONG: &str = "0123456789abcdefghijklmnopqrstuvwxyz";
@@ -82,7 +82,7 @@ fn fixture(text: &str) -> (World, Entity, Entity, Entity) {
     .unwrap()
     .unwrap();
     let agent = world.spawn((Owner("owner".into()), UsesModel(model))).id();
-    let run = spawn_run(&mut world, agent, &history(text), "next", false, None);
+    let run = world.spawn_run(agent, &history(text), "next", false, None);
     let turn = world.spawn((Turn, Fresh, Order(100), ChildOf(run))).id();
     (world, agent, run, turn)
 }

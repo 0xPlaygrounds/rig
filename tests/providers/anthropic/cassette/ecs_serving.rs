@@ -23,7 +23,7 @@ use rig_ecs::{
         Conversation, Cursor, PolicyVersion, Remembers, Route, Temperature, ToolPolicy, UsesModel,
     },
     bus::{Bound, EffectOutcome, Handlers, PendingEffect, Policy, RigSchedule},
-    systems::{Fresh, RigSet, spawn_run},
+    systems::{Fresh, RigSet, RunCommands},
 };
 use std::sync::Arc;
 #[derive(Resource)]
@@ -96,14 +96,10 @@ async fn two_tools(
     ecs.app.world_mut().resource_mut::<Policy>().0 = bus;
     ecs.tool(AlphaSignal);
     ecs.tool(BetaSignal);
-    let run = spawn_run(
-        ecs.app.world_mut(),
-        ecs.agent,
-        &[],
-        TWO_TOOL_STREAM_PROMPT,
-        true,
-        Some(8),
-    );
+    let run = ecs
+        .app
+        .world_mut()
+        .spawn_run(ecs.agent, &[], TWO_TOOL_STREAM_PROMPT, true, Some(8));
     ecs.app
         .world_mut()
         .entity_mut(run)

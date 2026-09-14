@@ -6,21 +6,17 @@ use super::EcsAgent;
 #[tokio::test]
 async fn expected_budget_failure_retains_completed_effects_and_run_identity() {
     use rig_core::{effect::EffectFamily, test_utils::MockTurn};
-    use rig_ecs::{agent::Failure, systems::spawn_run};
+    use rig_ecs::{agent::Failure, systems::RunCommands};
     let model = MockCompletionModel::from_turns([
         MockTurn::tool_call("first", "add", serde_json::json!({"x":1,"y":2})),
         MockTurn::tool_call("second", "add", serde_json::json!({"x":3,"y":4})),
     ]);
     let mut ecs = EcsAgent::for_golden(model, "", false);
     ecs.tool(crate::support::Adder);
-    let run = spawn_run(
-        ecs.app.world_mut(),
-        ecs.agent,
-        &[],
-        "add twice",
-        false,
-        Some(2),
-    );
+    let run = ecs
+        .app
+        .world_mut()
+        .spawn_run(ecs.agent, &[], "add twice", false, Some(2));
     assert_eq!(
         ecs.wait_for_outcome(run).await,
         Err(Failure::MaxTurns { limit: 2 })

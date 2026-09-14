@@ -15,7 +15,7 @@ use rig_core::{
 use rig_ecs::{
     agent::{Conversation, Cursor, PolicyVersion, Remembers, Run, Settled, Temperature},
     bus::{Bound, EffectOutcome, Handlers, PendingEffect, RigSchedule},
-    systems::{RigSet, spawn_run},
+    systems::{RigSet, RunCommands},
 };
 use std::sync::Arc;
 
@@ -181,8 +181,7 @@ pub(super) async fn run_prompts(
 ) -> Vec<String> {
     let mut outputs = vec![];
     for &prompt in prompts {
-        let run = spawn_run(
-            ecs.app.world_mut(),
+        let run = ecs.app.world_mut().spawn_run(
             ecs.agent,
             &[],
             prompt,

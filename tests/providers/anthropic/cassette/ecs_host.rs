@@ -16,7 +16,7 @@ use rig::{
 use rig_ecs::{
     agent::{PolicyVersion, Temperature},
     bus::{EffectOutcome, Handlers, PendingEffect, Policy, RigSchedule},
-    systems::{RigSet, spawn_run},
+    systems::{RigSet, RunCommands},
 };
 use std::sync::Arc;
 #[path = "ecs_host/policies.rs"]
@@ -143,14 +143,10 @@ fn agent(
 }
 async fn run_prompt(ecs: &mut EcsAgent, host: &Host) -> String {
     let prompt = if host.with_tool { ADD_PROMPT } else { PROMPT };
-    let run = spawn_run(
-        ecs.app.world_mut(),
-        ecs.agent,
-        &[],
-        prompt,
-        host.streamed,
-        Some(3),
-    );
+    let run = ecs
+        .app
+        .world_mut()
+        .spawn_run(ecs.agent, &[], prompt, host.streamed, Some(3));
     let output = ecs.wait_for_success(run).await;
     // Native Settled publishes before an application-owned settled note finishes.
     // Await its real acknowledgement before exposing this consumer's response.

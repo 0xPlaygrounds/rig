@@ -26,6 +26,24 @@ explained in [the test guide](../../tests/ecs_parity/README.md).
 
 The fold is the only constructor of a `CompletionRequest` in the crate (`tests/core/rig_ecs_bus_module.rs::the_agent_modules_hold_the_discipline`).
 
+A run is spawned through `systems::RunCommands` — `spawn_run(agent, history,
+prompt, streamed, max_turns)` on `World` (at once) or on `Commands` (the
+entity reserved, the work queued: the run exists when the commands apply,
+and `Advance` sees it on the first schedule pass after that). Either form
+spawns the `RunBundle` (`Run`, `RunOf`, `RunSeq`, `StreamRequested`,
+`Cursor`, the retry tallies, `OutputToolName`, `Usage`, `Scope`) with the
+`Prompt` component and an optional `MaxTurns`, the history utterances
+`ChildOf` the run in `Order`, then `Ready`, then opens the run. A host
+assembling a run by hand spawns the same bundle and `Prompt`, its
+utterances, and writes `Ready` last. `open_runs` (first in
+`RigSet::Advance`) opens every `Ready` run that has no phase and no
+ending: the `Prompt` is spawned as the run's last utterance and taken off
+the run, then the first phase — `Assembling`, or `LoadingMemory` with the
+conversation's `Load` effect for an agent that `Remembers` given no history
+(§11). `Advance` takes only `Ready` runs in `Assembling`: before `Ready`
+nothing reads the run, so assembly never sees a half-populated prompt or
+history. Pinned by `tests/run_commands.rs`.
+
 A user utterance's content is the caller's, verbatim: `spawn_run` takes a
 `Prompt` (a user message's parts), and those parts — text and image, in the order given, each
 image's bytes or URL, media type and options unchanged — are what every
@@ -162,6 +180,8 @@ preamble through real provider adapters.
 | a provider's reply becomes an `ErrorReport` through the one funnel (`rig_core::provider_response`): `kind: provider_response`, `http_status` the reply's, `retryable` by the status table (`rig_core::error::retryable_status`), `code` the transport's own when it gave one apart from the body, else the string the body names under `error.code`, `error.status` or `error.type` (`ProviderResponseError::machine_code`), else `None`; the body itself stays on `provider_response.body` | every `ecs_faults` setup cell; `provider_response::tests` |
 | a non-retryable report, a cancellation, or a spent budget ends the run `Failed(Provider)` with that report, as before; no tool is ever re-run by a retry, and the log holds every attempt as its own effect | `tests/run_provider_retry.rs` |
 | time is the host's: the library issues the retry on the next pass; a backoff is a hold a `Gate` system acquires on the re-issued effect and releases when due, so replay needs no clock | `tests/run_provider_retry.rs` (`a_host_hold_is_where_a_backoff_goes...`) |
+| `RunCommands::cancel_run(run, reason)` writes `Cancelled(reason)` (§9.1) — at once on `World`, when the commands apply on `Commands`; a cancel queued behind a `spawn_run` ends the run before its first pass, and no request is ever made; an ended run keeps its ending; a non-run is left alone; a run cancelled before it opened (`Ready` by hand, no pass yet) fails with its unread `Prompt` still on it, and a scene saves that prompt with the failed run | `tests/run_commands.rs` (`a_cancel_queued_behind_the_spawn_ends_the_run_before_it_starts`) |
+| `RunCommands::despawn_run(run)` takes an ended run and its whole graph out of the world; refused (`RunBusy::{NotARun, Unsettled, InFlight}`, nothing despawned) while the run has not ended or an effect of it is in flight or unanswered. The `World` form returns the refusal; the `Commands` form triggers `RunDespawnRefused { entity, reason }` on the run when the command applies, `NotARun` on an id an earlier command already despawned. A run despawned before or while `spawn_run` populates it (a host `Add<Run>` observer refusing it) is simply gone: the steps after the despawn do nothing, and no utterance is spawned under it | `tests/run_lifetime.rs`; `tests/run_commands.rs` (`a_queued_despawn_is_refused_by_event_while_the_run_lives`, `a_reserved_run_despawned_before_it_was_populated_is_gone`, `a_second_queued_despawn_of_a_gone_run_is_refused_as_not_a_run`) |
 
 ## 6. The header
 
@@ -590,8 +610,12 @@ key of another family. Pinned by `bus_binding.rs`
 `a_scene_load_validates_its_bindings`) and by every world-resume cell
 whose restored world materializes `golden/model:default` from the scene.
 
+`Ready` and an unread `Prompt` are scene data (`ready`, `prompt`): a run
+saved before it opened loads unopened — `Ready`, `Prompt`, no phase — and
 opens on the loaded world's first pass; a run saved mid-run loads with its
+`Ready` and its phase and goes on. A run without `Ready` never advances,
 loaded or not. Pinned by `tests/run_commands.rs`
+(`a_ready_run_saved_before_it_opened_starts_after_the_load`) and by every
 resumed world cell.
 
 Cached utterance views (§1) are not saved: a loaded utterance holds no

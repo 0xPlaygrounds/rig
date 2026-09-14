@@ -32,7 +32,7 @@ use rig_core::{
 use rig_ecs::{
     agent::{Failed, Grant, MaxTurns, Order, Settled, Utterance},
     bus::{PendingEffect, RigSchedule},
-    systems::{RigSet, spawn_run},
+    systems::{RigSet, RunCommands},
 };
 use run_support::*;
 
@@ -153,7 +153,9 @@ fn renders_per_turn_over_a_long_tool_loop() {
     );
 
     let started = Instant::now();
-    let run = spawn_run(app.world_mut(), agent, &[], "read everything", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "read everything", false, None);
     tick_until(&mut app, "the run settles", |world| {
         world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some()
     });

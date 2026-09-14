@@ -22,7 +22,7 @@ use rig_ecs::{
     agent::{Run, fork},
     bus::Handlers,
     prelude::*,
-    systems::spawn_run,
+    systems::RunCommands,
 };
 
 const N: usize = 3;
@@ -45,14 +45,7 @@ fn ask(mut handlers: Handlers, mut commands: Commands) {
     let (model, _) = support::register(&mut handlers, model, Vec::new());
     let agent = support::agent(&mut commands, model, "You are concise.", 1);
     commands.queue(move |world: &mut World| {
-        let run = spawn_run(
-            world,
-            agent,
-            &[],
-            "What is Rust, in one sentence?",
-            false,
-            None,
-        );
+        let run = world.spawn_run(agent, &[], "What is Rust, in one sentence?", false, None);
         for _ in 1..N {
             fork(world, run);
         }
