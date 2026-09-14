@@ -14,7 +14,7 @@ explained in [the test guide](../../tests/ecs_parity/README.md).
 |---|---|---|---|
 | `model` | none: always `null`; the model is the handler key the effect is dispatched to (`UsesModel` on the run, else the agent, → the handler entity's `Bound.key`) | — | every golden `/records/0/kind/request/model` |
 | `chat_history[0]` | the effective preamble as `system`, when there is one: the agent's `Preamble` (the run's override first) joined with the output mode's augmentation by `"\n\n"` (§3); no preamble and no augmentation is no system message | first | `anthropic_completion_smoke` `/…/chat_history/0`; `anthropic_request_shape_without_preamble` (no system message); `anthropic_request_shape_append_preamble` (the preamble's own `"\n"` join is the program's, stored already joined) |
-| `chat_history[1..]` | every `Utterance` `ChildOf` the run, in `Order`: the prior history the run was spawned with, then the prompt, then — turn by turn — the assistant utterance `Materialise` spawned and the reprompt utterance it added | `Order` ascending | `anthropic_request_shape_prior_history` `/…/chat_history` (system, user, assistant(id null), user); `mock_output_tool_text_reprompt` `/records/1/…/chat_history` (…, assistant text, user reprompt); `mock_output_tool_missing_field_reprompt` `/records/1/…/chat_history` (…, assistant call, user tool result) |
+| `chat_history[1..]` | every `Utterance` `ChildOf` the run, in `Order`, reconstructed from its typed content children in sibling `Order`: the prior history the run was spawned with, then the prompt, then — turn by turn — the assistant utterance `Materialise` spawned and the reprompt utterance it added | `Order` ascending | `anthropic_request_shape_prior_history` `/…/chat_history` (system, user, assistant(id null), user); `mock_output_tool_text_reprompt` `/records/1/…/chat_history` (…, assistant text, user reprompt); `mock_output_tool_missing_field_reprompt` `/records/1/…/chat_history` (…, assistant call, user tool result) |
 | `documents` | the turn's `Attachment` links, in `Order`, each to a document entity (`DocumentId`, `DocumentText`, `DocumentProps`) — the agent's `Context` links are attached to every turn by `Advance` | link `Order` | `anthropic_request_shape_static_context` `/…/documents` (`static_doc_0`, `static_doc_1`; no `additional_props` key when empty) |
 | `tools` | the turn's `Advert` links, in `Order`, each to a tool handler entity whose `Bound.descriptor.family` is `Tool { name, description, parameters }` — the agent's `Grant` links, advertised by `Advance`; then the output tool (§3) when the resolved mode is `Tool` | grant `Order`, output tool last | `anthropic_request_shape_tool_choice_none` `/…/tools/0` (`add`, its description and parameters verbatim from the descriptor); `anthropic_output_tool_unary` `/…/tools/0` (`final_result`) |
 | `temperature` | `Temperature` (run, else agent) | — | `anthropic_completion_smoke` (`null`), `anthropic_output_tool_unary` (`0.0`) |
@@ -36,6 +36,35 @@ content. Pinned by the `*_image_*` goldens
 (`inline_mixed_order`: text, image, text, the same image, text; `inline_tool_unary`:
 the image in the second request and after a scene load; `inline_followup`: the
 image loaded from memory, once, before a text-only prompt).
+
+Content entities live in `agent::content::parts`: `TextPart`, `ImagePart`,
+`AudioPart`, `VideoPart`, `DocumentPart`, `ToolCallPart`, `ReasoningPart`, and
+`ToolResultPart`. A tool result owns ordered `TextPart`, `ImagePart`, or `JsonPart`
+children. `Role` and the assistant's `MessageId` belong to the utterance. Sibling
+orders are local indices; duplicate orders, conflicting part types, missing
+required components, and invalid role/content combinations are rejected.
+`read_message` and the `ContentGraph` system parameter reconstruct transport DTOs
+at conversion boundaries. `write_message` replaces persistent utterance content;
+it does not implement a request-only patch. Individual component edits affect
+that part only; reordering/reparenting changes subsequent graph reads.
+
+`BinaryAssets` shares raw and base64 image/audio/video/document payloads by
+SHA-256 of decoded bytes. Per-use `PartSource` keeps URLs, file IDs, literal
+strings, explicit unknown sources, media/detail metadata, and the binary source
+representation. Base64 padding and noncanonical trailing symbols are preserved
+without retaining the entire spelling again. Repeated spellings use a bounded,
+transient hash index to avoid another decode while indexed. Default limits are
+64 MiB per payload, 256 MiB retained decoded bytes, and 65,536 distinct assets.
+Invalid binary input fails the run as `Failure::Content`, before model dispatch.
+
+Collection is explicit: `collect_binary_assets` scans every content entity in
+the world, including other runs and conversation owners, and also retains the
+host's supplied pins. A missing root refuses collection without changing the
+store. Despawning one owner does not itself drop a shared payload. A host should
+collect after releasing owners/pins; otherwise the retained store remains subject
+to its allocation limit. `run_content_binary` and `run_content_parts` cover source spelling,
+all existing content variants, nested JSON/image results, metadata and shared
+asset lifetime.
 
 ## 2. The verbatim strings
 
@@ -241,6 +270,22 @@ No hook trait: a user system writes a component at a set boundary and a library 
 
 ### 9.3 The completion call: `RequestPatch` on the turn
 
+`content::parts::RequestPartEdit` adds entity targeting: spawn an ordered link
+`(RequestPartEdit, EditTarget(part), Order, ChildOf(fresh_turn))` before Assemble.
+`Text` replaces only a TextPart's text, preserving annotations; `Remove` omits the
+part and its nested result items from this request. Stored history and siblings
+are unchanged. Edits run in sibling Order; the last edit to a target wins, and
+duplicate edit orders fail. A removed parent takes precedence over edits to its
+children. Targets must belong to this run's history. Missing targets or orders,
+wrong types and combination with replacement RequestPatch.history fail before
+model dispatch. Successful folds consume the edit links; scene relationships
+remap them when saved before folding. Gate/Judge systems can query these same
+part entities and edit their typed components persistently; those writes affect
+subsequent folds, while an already captured PendingEffect remains a request
+snapshot. Effect denial uses the existing Gate outcome path and does not mutate
+content implicitly. `run_content_edits` covers targeting, ownership and remapping.
+
+
 `agent::RequestPatch` (the corpus's `rig_agent::agent::RequestPatch` as data: `preamble`, `temperature`, `max_tokens`, `tool_choice`, `active_tools`, `additional_params`, `extra_context`, `history`) inserted on the fresh turn before `Assemble` (a system on `Added<Fresh>`, reading `Cursor.turn` for the turn number); `assemble` folds it in as `prepare_request` did. Several hooks patching one turn merge in registration order (`RequestPatch::merge`: `extra_context` appends, object `additional_params` shallow-merge with later keys winning, `active_tools` intersect, scalars and `history` last-writer-wins); a user system that finds a patch on the turn merges over it.
 
 | field | what the fold does | pinned by |
@@ -385,6 +430,35 @@ The required row names `<owner>/memory` as `memory` from `Remembers`. `Memory { 
 | a route never selected | in the row, never dispatched | `anthropic_serving_model_route_unselected` |
 
 ## 13. Resume is a scene load; two runs
+
+The graph scene includes typed content children and a `binaries` table in
+content-hash order. Each retained graph payload is written once in that table;
+part sources reference its SHA-256 identity. Loading builds an isolated merged
+asset store under the destination's limits and validates content in a separate
+world before inserting destination graph entities. Hash mismatches, missing
+handles, duplicate asset IDs/orders, invalid content parents and malformed
+part components are refused before destination mutation. Relationships are
+remapped through scene entity indices. `run_content_scene` tests these guarantees
+with populated destination worlds and shared payloads.
+
+`WorldScene` JSON uses the required `rig-ecs/world/2` envelope. Its binary table
+also pools copies in captured effect requests, stream logs and extension values.
+References preserve the original base64 spelling or raw-byte representation;
+reserved reference-shaped application objects are escaped and restored exactly.
+In-memory transport DTOs and effect logs retain their existing values. The JSON
+reader rejects duplicate keys and limits nesting to 64, tree nodes to 1,000,000,
+and accounted bytes to 512 MiB, including expanded references. The serializer
+checks the transformed envelope against the reader's limits before succeeding.
+Before DTO validation, loading separately charges every typed binary handle
+against a cumulative 512 MiB expansion budget, including repeated handles. Raw bytes count
+as individual JSON nodes. `WorldScene::from_json` additionally checks input byte
+length before parsing; generic serde input is bounded during tree construction,
+although its deserializer may allocate an individual string before visitation.
+The binary table retains the asset-count and decoded-byte limits from section 1.
+Scenes using the previous envelope must be recreated. `run_content_scene` exercises
+effect-copy pooling, literal escaping and missing references; the wire reader's
+unit tests exercise depth, byte, node and duplicate-key rejection.
+
 
 The bus scene preserves consumed effect IDs even when their entities have been
 removed. Its optional `next_id` stores allocation history only when surviving

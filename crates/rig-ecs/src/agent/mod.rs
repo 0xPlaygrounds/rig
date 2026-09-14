@@ -13,12 +13,13 @@
 //! | Steering (§9) | [`Cancelled`] on a run; [`Retry`] and [`RequestPatch`] on a turn; [`Resolution`] on an invalid call; `UsesModel` on a run |
 //! | Model, Tool | the bus module's handler entities (`Bound`) |
 //! | Document | [`DocumentId`], [`DocumentText`], [`DocumentProps`]; attached to a turn by an [`Attachment`] link entity |
-//! | Utterance | [`Utterance`] + [`Role`] + [`Parts`] (the message's parts, verbatim), [`Order`]; `ChildOf` the run |
+//! | Utterance | [`Utterance`] + [`Role`] + ordered [`content::parts::ContentPart`] child entities, [`Order`]; `ChildOf` the run |
 //! | Run | [`Run`] + [`RunOf`] → agent; [`RunSeq`]; a phase marker ([`Assembling`], [`AwaitingModel`], [`ResolvingTools`], [`Settled`], [`Failed`]); [`Cursor`]; [`RunResult`]; [`Usage`]; retries; [`OutputToolName`]; the run's own overrides of the agent's settings ([`ToolPolicy`], [`ToolContextSpec`] among them) |
 //! | Turn | [`Turn`], `ChildOf` the run; [`Advert`] link entities → the tools it advertised; [`Attachment`] link entities → the documents it carried; [`Outputs`]; [`Reprompt`]; [`Batch`] while its tool calls are out |
 //! | Effect | the bus module's, `ChildOf` the turn: the completion, then one per tool call ([`ToolCallSlot`] names which) |
 //! | Invalid call | [`InvalidCall`] + [`Resolution`], `ChildOf` the turn |
 
+pub mod content;
 #[cfg(feature = "reflect")]
 pub mod reflect;
 pub mod scene;
@@ -472,12 +473,6 @@ pub enum Role {
     Assistant,
 }
 
-/// The utterance's parts, in order, as the wire's content: kept as the
-/// wire type so the fold writes the message verbatim.
-#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
-pub struct Parts(pub MessageParts);
-
 /// The content of one message, by role.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "snake_case")]
@@ -683,6 +678,8 @@ pub struct Failed(pub Failure);
     reflect(opaque, Debug, PartialEq, Serialize, Deserialize)
 )]
 pub enum Failure {
+    /// The run's content graph or binary source is invalid.
+    Content(content::parts::ContentError),
     /// The model-call budget ran out.
     MaxTurns {
         /// The budget.
@@ -817,7 +814,9 @@ pub struct Retry {
 
 /// A per-turn patch of the request, written on the fresh turn before
 /// `Assemble` folds it in (CONTRACT §9.3): what a completion-call hook
-/// changed about one model call, as data. Two systems patching one turn
+/// changed about one model call, as data. For entity-targeted edits, attach ordered
+/// [`content::parts::RequestPartEdit`] links to this same fresh turn. These cannot
+/// be combined with replacement `history`. Two systems patching one turn
 /// [`merge`](Self::merge) in schedule order.
 #[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(
@@ -952,7 +951,6 @@ const _: () = {
     assert_serde::<Owner>();
     assert_serde::<Preamble>();
     assert_serde::<Output>();
-    assert_serde::<Parts>();
     assert_serde::<Failed>();
     assert_serde::<Outputs>();
     assert_serde::<InvalidCall>();

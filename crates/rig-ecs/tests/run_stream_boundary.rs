@@ -32,7 +32,7 @@ use rig_core::{
     streaming::{BlockClose, StreamFinal, ToolCallEnd},
 };
 use rig_ecs::{
-    agent::{Grant, MessageParts, Order, Parts, Resolution, RunResult, Settled, Usage},
+    agent::{Grant, MessageParts, Order, Resolution, RunResult, Settled, Usage},
     bus::RigSchedule,
     systems::RigSet,
 };
@@ -205,18 +205,22 @@ fn early_skip_retains_prefix_and_drained_usage_without_dispatching_tool() {
     assert_eq!(app.world().resource::<RepairCount>().0, 1);
     let calls: Vec<_> = app
         .world_mut()
-        .query::<(&ChildOf, &Parts)>()
+        .query_filtered::<(&ChildOf, Entity), With<rig_ecs::agent::Utterance>>()
         .iter(app.world())
         .filter(|(parent, _)| parent.parent() == run)
-        .flat_map(|(_, parts)| match &parts.0 {
-            MessageParts::Assistant { content, .. } => content
-                .iter()
-                .filter_map(|part| match part {
-                    AssistantContent::ToolCall(call) => Some(call.clone()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>(),
-            _ => vec![],
+        .flat_map(|(_, entity)| {
+            match rig_ecs::agent::content::parts::read_message(app.world(), entity)
+                .expect("valid history graph")
+            {
+                MessageParts::Assistant { content, .. } => content
+                    .iter()
+                    .filter_map(|part| match part {
+                        AssistantContent::ToolCall(call) => Some(call.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>(),
+                _ => vec![],
+            }
         })
         .collect();
     assert_eq!(calls.len(), 1);
@@ -308,18 +312,22 @@ fn early_repair_survives_raw_block_completion_and_provider_identity() {
     );
     let calls: Vec<_> = app
         .world_mut()
-        .query::<(&ChildOf, &Parts)>()
+        .query_filtered::<(&ChildOf, Entity), With<rig_ecs::agent::Utterance>>()
         .iter(app.world())
         .filter(|(parent, _)| parent.parent() == run)
-        .flat_map(|(_, parts)| match &parts.0 {
-            MessageParts::Assistant { content, .. } => content
-                .iter()
-                .filter_map(|part| match part {
-                    AssistantContent::ToolCall(call) => Some(call.clone()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>(),
-            _ => vec![],
+        .flat_map(|(_, entity)| {
+            match rig_ecs::agent::content::parts::read_message(app.world(), entity)
+                .expect("valid history graph")
+            {
+                MessageParts::Assistant { content, .. } => content
+                    .iter()
+                    .filter_map(|part| match part {
+                        AssistantContent::ToolCall(call) => Some(call.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>(),
+                _ => vec![],
+            }
         })
         .collect();
     assert_eq!(calls.len(), 1);

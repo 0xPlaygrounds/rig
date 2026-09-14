@@ -28,7 +28,6 @@ use rig_core::{
     completion::message::{Message, ToolCallId, ToolChoice},
     effect::{EffectId, HandlerKey},
     error::{ErrorKind, ErrorReport},
-    message::AssistantContent,
 };
 use rig_ecs::{
     agent::{
@@ -150,40 +149,80 @@ fn populated() -> bevy_app::App {
         rig_ecs::agent::Attachment(document),
         StreamRequested(true),
     ));
-    app.world_mut().spawn((
-        Utterance,
-        rig_ecs::agent::Parts(MessageParts::User {
+    let utterance = app
+        .world_mut()
+        .spawn((
+            Utterance,
+            rig_ecs::agent::Role::User,
+            Streamed {
+                errors: vec![(0, ErrorReport::new(ErrorKind::Cancelled, "stopped"))],
+                events: Vec::new(),
+                text: "so far".to_owned(),
+                outcome: Some(Err(ErrorReport::new(ErrorKind::Cancelled, "stopped"))),
+            },
+            rig_ecs::agent::OutputToolName(Some("out".to_owned())),
+            rig_ecs::agent::Retry { feedback: None },
+            rig_ecs::agent::ToolCallSlot {
+                index: 0,
+                id: ToolCallId::new("c9").expect("an id"),
+                provider: None,
+                name: "add".to_owned(),
+            },
+            rig_ecs::systems::Fresh,
+            rig_ecs::systems::Folded(rig_ecs::agent::OutputKind::Auto),
+            rig_ecs::agent::AwaitingModel,
+            rig_ecs::agent::ResolvingTools,
+            (
+                rig_ecs::agent::Assembling,
+                rig_ecs::agent::ProviderRetries(2),
+                rig_ecs::agent::ProviderRetrying,
+            ),
+            rig_ecs::agent::Batch { calls: 2 },
+            rig_ecs::bus::InFlight {
+                key: HandlerKey::from(ADD),
+            },
+        ))
+        .id();
+    rig_ecs::agent::content::parts::write_message(
+        app.world_mut(),
+        utterance,
+        MessageParts::User {
             content: vec![rig_core::message::UserContent::text("u")],
-        }),
-        rig_ecs::agent::Role::User,
-        Streamed {
-            errors: vec![(0, ErrorReport::new(ErrorKind::Cancelled, "stopped"))],
-            events: Vec::new(),
-            text: "so far".to_owned(),
-            outcome: Some(Err(ErrorReport::new(ErrorKind::Cancelled, "stopped"))),
         },
-        rig_ecs::agent::OutputToolName(Some("out".to_owned())),
-        rig_ecs::agent::Retry { feedback: None },
-        rig_ecs::agent::ToolCallSlot {
-            index: 0,
-            id: ToolCallId::new("c9").expect("an id"),
-            provider: None,
-            name: "add".to_owned(),
+    )
+    .expect("valid reflected content");
+
+    use rig_core::message::{
+        AssistantContent, Audio, Document, Image, Reasoning, UserContent, Video,
+    };
+    for parts in [
+        MessageParts::User {
+            content: vec![
+                UserContent::Image(Image::default()),
+                UserContent::Audio(Audio::default()),
+                UserContent::Video(Video::default()),
+                UserContent::Document(Document::default()),
+            ],
         },
-        rig_ecs::systems::Fresh,
-        rig_ecs::systems::Folded(rig_ecs::agent::OutputKind::Auto),
-        rig_ecs::agent::AwaitingModel,
-        rig_ecs::agent::ResolvingTools,
-        (
-            rig_ecs::agent::Assembling,
-            rig_ecs::agent::ProviderRetries(2),
-            rig_ecs::agent::ProviderRetrying,
-        ),
-        rig_ecs::agent::Batch { calls: 2 },
-        rig_ecs::bus::InFlight {
-            key: HandlerKey::from(ADD),
+        MessageParts::Assistant {
+            id: Some("message".into()),
+            content: vec![AssistantContent::Reasoning(Reasoning::new("thought"))],
         },
-    ));
+    ] {
+        let entity = app.world_mut().spawn(Utterance).id();
+        rig_ecs::agent::content::parts::write_message(app.world_mut(), entity, parts)
+            .expect("valid reflected variants");
+    }
+    use rig_ecs::agent::content::parts::{EditTarget, RequestPartEdit};
+    let target = app
+        .world()
+        .get::<Children>(utterance)
+        .unwrap()
+        .iter()
+        .next()
+        .unwrap();
+    app.world_mut()
+        .spawn((EditTarget(target), RequestPartEdit::Text("patched".into())));
     app
 }
 
@@ -272,6 +311,8 @@ fn every_component_round_trips_through_reflection() {
             "rig_ecs::agent::RunOf",
             "rig_ecs::agent::Runs",
             "rig_ecs::agent::UsesModel",
+            "rig_ecs::agent::content::parts::EditTarget",
+            "rig_ecs::agent::content::parts::EditedBy",
         ],
         "exactly the relationships hold an Entity"
     );

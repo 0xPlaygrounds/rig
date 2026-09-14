@@ -14,7 +14,7 @@ use rig::effect_log::EffectLog;
 use rig::message::{AssistantContent, Message, ReasoningContent, canonical_streamed_choice};
 use rig::observe::{AdapterEnding, AdapterEvent, Emitter, HostAction, ObservationLog, Stage};
 use rig::streaming::{Delta, StreamEvent};
-use rig_ecs::agent::{Order, Parts, Utterance};
+use rig_ecs::agent::{Order, Utterance};
 use rig_ecs::bus::{Streamed, Subjects, Witnessing};
 use serde::{Deserialize, Serialize};
 
@@ -286,10 +286,17 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
 
 pub(crate) fn assistant_history(world: &mut World, run: Entity) -> Vec<Message> {
     let mut rows: Vec<_> = world
-        .query_filtered::<(&ChildOf, &Order, &Parts), With<Utterance>>()
+        .query_filtered::<(Entity, &ChildOf, &Order), With<Utterance>>()
         .iter(world)
-        .filter(|(parent, _, _)| parent.parent() == run)
-        .map(|(_, order, parts)| (order.0, parts.0.to_message()))
+        .filter(|(_, parent, _)| parent.parent() == run)
+        .map(|(entity, _, order)| {
+            (
+                order.0,
+                rig_ecs::agent::content::parts::read_message(world, entity)
+                    .expect("valid content graph")
+                    .to_message(),
+            )
+        })
         .collect();
     rows.sort_by_key(|(order, _)| *order);
     rows.into_iter().map(|(_, message)| message).collect()

@@ -9,7 +9,7 @@ use rig::{
 };
 use rig_ecs::{
     agent::{
-        Cancelled, DefaultMaxTurns, Failure, Order, Owner, Parts, Temperature, ToolCallSlot, Turn,
+        Cancelled, DefaultMaxTurns, Failure, Order, Owner, Temperature, ToolCallSlot, Turn,
         Utterance,
     },
     bus::{BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule},
@@ -215,10 +215,17 @@ pub(super) async fn cancelled(ecs: &mut EcsAgent, prompt: &str, max_turns: usize
     };
     let world = ecs.app.world_mut();
     let mut history: Vec<_> = world
-        .query_filtered::<(&ChildOf, &Order, &Parts), With<Utterance>>()
+        .query_filtered::<(Entity, &ChildOf, &Order), With<Utterance>>()
         .iter(world)
-        .filter(|(parent, _, _)| parent.parent() == run)
-        .map(|(_, order, parts)| (order.0, parts.0.to_message()))
+        .filter(|(_, parent, _)| parent.parent() == run)
+        .map(|(entity, _, order)| {
+            (
+                order.0,
+                rig_ecs::agent::content::parts::read_message(world, entity)
+                    .expect("valid content graph")
+                    .to_message(),
+            )
+        })
         .collect();
     history.sort_by_key(|(order, _)| *order);
     PromptError::PromptCancelled {

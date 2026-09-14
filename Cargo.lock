@@ -10592,6 +10592,7 @@ dependencies = [
 name = "rig-ecs"
 version = "0.42.0"
 dependencies = [
+ "base64 0.22.1",
  "bevy_app",
  "bevy_asset",
  "bevy_ecs",
@@ -10604,6 +10605,8 @@ dependencies = [
  "rig-effect-log",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
  "wasm-bindgen-test",
 ]
 

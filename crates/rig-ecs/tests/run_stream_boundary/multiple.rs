@@ -203,12 +203,16 @@ fn later_failure_keeps_its_prefix_with_earlier_repair_and_reused_block() {
     );
     let content: Vec<_> = app
         .world_mut()
-        .query::<(&ChildOf, &Parts)>()
+        .query_filtered::<(&ChildOf, Entity), With<rig_ecs::agent::Utterance>>()
         .iter(app.world())
         .filter(|(parent, _)| parent.parent() == run)
-        .flat_map(|(_, parts)| match &parts.0 {
-            MessageParts::Assistant { content, .. } => content.clone(),
-            _ => vec![],
+        .flat_map(|(_, entity)| {
+            match rig_ecs::agent::content::parts::read_message(app.world(), entity)
+                .expect("valid history graph")
+            {
+                MessageParts::Assistant { content, .. } => content.clone(),
+                _ => vec![],
+            }
         })
         .collect();
     let names: Vec<_> = content

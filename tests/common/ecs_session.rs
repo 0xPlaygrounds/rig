@@ -6,7 +6,7 @@ use anyhow::{Result, anyhow};
 use bevy_ecs::prelude::*;
 use rig::message::Message;
 use rig_ecs::{
-    agent::{Order, Parts, Utterance},
+    agent::{Order, Utterance},
     systems::spawn_run,
 };
 
@@ -56,10 +56,17 @@ pub(crate) async fn run_session(
     let mut history: Vec<_> = ecs
         .app
         .world_mut()
-        .query_filtered::<(&ChildOf, &Order, &Parts), With<Utterance>>()
+        .query_filtered::<(Entity, &ChildOf, &Order), With<Utterance>>()
         .iter(ecs.app.world())
-        .filter(|(parent, _, _)| parent.parent() == run)
-        .map(|(_, order, parts)| (order.0, parts.0.to_message()))
+        .filter(|(_, parent, _)| parent.parent() == run)
+        .map(|(entity, _, order)| {
+            (
+                order.0,
+                rig_ecs::agent::content::parts::read_message(ecs.app.world(), entity)
+                    .expect("valid content graph")
+                    .to_message(),
+            )
+        })
         .collect();
     history.sort_by_key(|(order, _)| *order);
     Ok(SessionResult {

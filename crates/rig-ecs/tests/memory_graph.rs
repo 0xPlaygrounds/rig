@@ -193,10 +193,17 @@ fn quiet(world: &mut World) -> bool {
 
 fn utterances(world: &mut World, run: Entity) -> Vec<(bool, MessageParts)> {
     let mut found: Vec<(Order, bool, MessageParts)> = world
-        .query_filtered::<(&ChildOf, &Order, Has<Remembered>, &rig_ecs::agent::Parts), With<Utterance>>()
+        .query_filtered::<(&ChildOf, &Order, Has<Remembered>, Entity), With<Utterance>>()
         .iter(world)
         .filter(|(child_of, ..)| child_of.parent() == run)
-        .map(|(_, order, remembered, parts)| (*order, remembered, parts.0.clone()))
+        .map(|(_, order, remembered, entity)| {
+            (
+                *order,
+                remembered,
+                rig_ecs::agent::content::parts::read_message(world, entity)
+                    .expect("valid memory graph"),
+            )
+        })
         .collect();
     found.sort_by_key(|(order, ..)| *order);
     found

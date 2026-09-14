@@ -16,8 +16,8 @@ use rig::{
 };
 use rig_ecs::{
     agent::{
-        Cancelled, DefaultMaxTurns, Failure, Order, Parts, RunResult, Settled, ToolChoiceSpec,
-        Turn, Utterance,
+        Cancelled, DefaultMaxTurns, Failure, Order, RunResult, Settled, ToolChoiceSpec, Turn,
+        Utterance,
     },
     bus::{BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule},
     systems::spawn_run,
@@ -384,10 +384,17 @@ fn history(ecs: &mut EcsAgent, run: Entity) -> Vec<Message> {
     let mut messages: Vec<_> = ecs
         .app
         .world_mut()
-        .query_filtered::<(&ChildOf, &Order, &Parts), With<Utterance>>()
+        .query_filtered::<(Entity, &ChildOf, &Order), With<Utterance>>()
         .iter(ecs.app.world())
-        .filter(|(parent, _, _)| parent.parent() == run)
-        .map(|(_, order, parts)| (order.0, parts.0.to_message()))
+        .filter(|(_, parent, _)| parent.parent() == run)
+        .map(|(entity, _, order)| {
+            (
+                order.0,
+                rig_ecs::agent::content::parts::read_message(ecs.app.world(), entity)
+                    .expect("valid content graph")
+                    .to_message(),
+            )
+        })
         .collect();
     messages.sort_by_key(|(order, _)| *order);
     messages.into_iter().map(|(_, message)| message).collect()

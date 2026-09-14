@@ -6,7 +6,7 @@ use rig::{
     streaming::{StreamEvent, StreamFinal},
 };
 use rig_ecs::{
-    agent::{Cursor, MessageParts, Parts, Run, RunResult, Settled, Turn},
+    agent::{Cursor, MessageParts, Run, RunResult, Settled, Turn},
     bus::{PendingEffect, RigSchedule, Seq, Streamed},
     systems::RigSet,
 };
@@ -76,7 +76,7 @@ impl LifecycleProbe {
 }
 fn start(
     runs: Query<(Entity, &Cursor), Added<Run>>,
-    mut utterances: Query<(&ChildOf, &mut Parts)>,
+    utterances: Query<(Entity, &ChildOf), With<rig_ecs::agent::Utterance>>,
     probe: Res<LifecycleProbe>,
     mut commands: Commands,
 ) {
@@ -94,10 +94,14 @@ fn start(
         commands.entity(run).insert(entries);
         if let Some(prompt) = &probe.rewrite_to {
             let mut count = 0;
-            for (parent, mut parts) in &mut utterances {
+            for (entity, parent) in &utterances {
                 if parent.parent() == run {
-                    parts.0 = MessageParts::from_message(&rig::message::Message::user(prompt))
+                    let message = MessageParts::from_message(&rig::message::Message::user(prompt))
                         .expect("a user prompt has message parts");
+                    commands.queue(move |world: &mut World| {
+                        rig_ecs::agent::content::parts::write_message(world, entity, message)
+                            .expect("valid replacement prompt");
+                    });
                     count += 1;
                 }
             }

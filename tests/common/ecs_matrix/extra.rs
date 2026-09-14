@@ -14,8 +14,8 @@ use rig::observe::{AdapterEnding, AdapterErrorBoundary, AdapterEvent};
 use rig::streaming::{Delta, StreamEvent};
 use rig_ecs::{
     agent::{
-        AdditionalParams, Cancelled, Failed, Failure, MaxTokens, MessageParts, Order, Parts,
-        Preamble, Settled, ToolCallSlot, ToolPolicy, Turn, Utterance,
+        AdditionalParams, Cancelled, Failed, Failure, MaxTokens, MessageParts, Order, Preamble,
+        Settled, ToolCallSlot, ToolPolicy, Turn, Utterance,
         scene::{load_world, save_world},
     },
     bus::{BusSet, EffectOutcome, Held, PendingEffect, RigSchedule, Streamed, release_hold},
@@ -285,10 +285,16 @@ pub(crate) async fn minted_ids<M: CompletionModel + Clone + 'static>(
     assert_eq!(slots.len(), 2, "two calls in one turn: {slots:?}");
     assert_ne!(slots[0].id, slots[1].id, "distinct minted ids: {slots:?}");
     let mut utterances: Vec<(u64, MessageParts)> = world
-        .query_filtered::<(&ChildOf, &Order, &Parts), With<Utterance>>()
+        .query_filtered::<(Entity, &ChildOf, &Order), With<Utterance>>()
         .iter(world)
-        .filter(|(parent, _, _)| parent.parent() == run)
-        .map(|(_, order, parts)| (order.0, parts.0.clone()))
+        .filter(|(_, parent, _)| parent.parent() == run)
+        .map(|(entity, _, order)| {
+            (
+                order.0,
+                rig_ecs::agent::content::parts::read_message(world, entity)
+                    .expect("valid content graph"),
+            )
+        })
         .collect();
     utterances.sort_by_key(|(order, _)| *order);
     // prompt, the call turn, the results, the answer

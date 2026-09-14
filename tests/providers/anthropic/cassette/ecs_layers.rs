@@ -24,8 +24,7 @@ use rig::{
 };
 use rig_ecs::{
     agent::{
-        Conversation, Grant, Order, Parts, PolicyVersion, Remembered, Remembers, Temperature,
-        ToolCallSlot,
+        Conversation, Grant, Order, PolicyVersion, Remembered, Remembers, Temperature, ToolCallSlot,
     },
     bus::{BusSet, EffectOutcome, Handlers, Issued, PendingEffect, RigSchedule},
     systems::{Fresh, RigSet},
@@ -95,7 +94,8 @@ fn patch_args(mut tools: UnissuedTools) {
 struct HistoryChecks(usize);
 fn check_history(
     fresh: Query<&ChildOf, Added<Fresh>>,
-    remembered: Query<(&ChildOf, &Order, &Parts), With<Remembered>>,
+    remembered: Query<(&ChildOf, &Order, Entity), With<Remembered>>,
+    content: rig_ecs::agent::content::parts::ContentGraph,
     mut checks: ResMut<HistoryChecks>,
 ) {
     for turn in &fresh {
@@ -107,7 +107,10 @@ fn check_history(
         assert_eq!(
             history
                 .iter()
-                .map(|(_, _, parts)| parts.0.to_message())
+                .map(|(_, _, entity)| content
+                    .message(*entity)
+                    .expect("valid remembered graph")
+                    .to_message())
                 .collect::<Vec<_>>(),
             replaced_history()
         );
