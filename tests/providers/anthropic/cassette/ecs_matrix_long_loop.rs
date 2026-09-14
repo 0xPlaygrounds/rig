@@ -196,8 +196,9 @@ async fn output_cap_midway() {
     with_anthropic_cassette("long_loop_matrix/output_cap_midway", |client| async move {
         long_loop_world::run_world(
             &wire(&client),
-            // Failed(Response): the cut write_file call is a response error
-            // on this wire (recording confirms).
+            // Answer: on this wire the cap cuts a text preamble at turn 1
+            // (`stop_reason: max_tokens`), no call is dispatched, and the
+            // run settles `Ok` on a `Length` finish (recording confirms).
             &long_loop::OUTPUT_CAP_MIDWAY_LENGTH_ANSWER,
             golden_anthropic_long_loop_output_cap_midway,
         )

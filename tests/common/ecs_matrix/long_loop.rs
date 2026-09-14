@@ -724,6 +724,24 @@ fn requested_calls(record: &EffectRecord) -> Vec<(String, serde_json::Value)> {
     }
 }
 
+/// The ids of the calls a completion record's response asked for, in
+/// call order: the `i`-th id belongs to the `i`-th record of `turn.tools`
+/// (`assert_log` step 1 pins the two orders together).
+fn requested_call_ids(record: &EffectRecord) -> Vec<&rig::message::ToolCallId> {
+    match &record.outcome {
+        Ok(Outcome::Completion(response)) => response
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                AssistantContent::ToolCall(call) => Some(&call.id),
+                _ => None,
+            })
+            .collect(),
+        Ok(other) => panic!("a completion record answers a completion, not {other:?}"),
+        Err(_) => Vec::new(),
+    }
+}
+
 fn dispatched_call(record: &EffectRecord) -> (String, serde_json::Value) {
     match &record.kind {
         EffectKind::ToolCall { name, args } => (
@@ -924,6 +942,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
     // `Message::System`) and the prompt.
     let mut previous: Option<&[Message]> = None;
     let mut tool_turns_before = 0;
+    let mut last_tool_turn: Option<&Turn<'_>> = None;
     for (n, turn) in turns.iter().enumerate() {
         let history = request_history(turn.completion);
         assert_eq!(
@@ -963,11 +982,55 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                     "{}: the turn's tool-result utterance carries only results",
                     cell.name
                 );
+                // The utterance *is* the turn's executed results: one part
+                // per tool record, in call order (a parallel batch completes
+                // in scheduling order, but is replayed in call order),
+                // each answering its record's call id with the record's
+                // committed output byte for byte — row 3's requirement
+                // that the 48 KiB result reaches the next request intact.
+                let source = last_tool_turn.expect("the history grew after a completed tool turn");
+                let parts: Vec<&rig::message::ToolResult> = match results {
+                    Message::User { content } => content
+                        .iter()
+                        .filter_map(|part| match part {
+                            UserContent::ToolResult(result) => Some(result),
+                            _ => None,
+                        })
+                        .collect(),
+                    other => panic!("{}: a tool-result utterance, not {other:?}", cell.name),
+                };
+                let ids = requested_call_ids(source.completion);
+                assert_eq!(
+                    parts.len(),
+                    source.tools.len(),
+                    "{}: request {n}'s tool-result utterance carries one result per executed call",
+                    cell.name
+                );
+                for (i, ((part, record), id)) in
+                    parts.iter().zip(&source.tools).zip(&ids).enumerate()
+                {
+                    let (name, _) = dispatched_call(record);
+                    assert_eq!(
+                        &part.call, *id,
+                        "{}: request {n}'s result {i} ({name}) answers the turn's {i}th call, in call order",
+                        cell.name
+                    );
+                    let replayed = rig::tool::ToolOutput::content(part.content.clone())
+                        .expect("a tool-result part carries content")
+                        .render();
+                    assert_eq!(
+                        replayed,
+                        dispatched_result(record).output().render(),
+                        "{}: request {n}'s result {i} ({name}) is the committed result, byte for byte",
+                        cell.name
+                    );
+                }
             }
         }
         previous = Some(history);
         if !turn.tools.is_empty() && turn.completion.outcome.is_ok() {
             tool_turns_before += 1;
+            last_tool_turn = Some(turn);
         }
     }
 
