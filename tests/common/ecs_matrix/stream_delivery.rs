@@ -40,6 +40,7 @@ pub(crate) fn applicable(cell: &Cell) -> bool {
     matches!(
         cell.name,
         "checkpoint_multi_turn_streamed"
+            | "long_loop_long_streamed"
             | "shaping_extra_context_streamed"
             | "serving_concurrent_concurrency_two_events"
     )

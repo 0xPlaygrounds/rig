@@ -50,10 +50,12 @@ pub(crate) async fn checkpoint_attempt(
     provider: &str,
     scenario: &str,
 ) {
-    if !scenario.starts_with("checkpoint_matrix") {
+    if !scenario.starts_with("checkpoint_matrix") && !scenario.starts_with("long_loop_matrix") {
         return;
     }
-    let Some(directory) = std::env::var_os("RIG_CHECKPOINT_ATTEMPT_DIR") else {
+    let Some(directory) = std::env::var_os("RIG_CHECKPOINT_ATTEMPT_DIR")
+        .or_else(|| std::env::var_os("RIG_LONG_LOOP_ATTEMPT_DIR"))
+    else {
         return;
     };
     let path = PathBuf::from(directory)

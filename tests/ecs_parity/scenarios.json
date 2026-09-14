@@ -2017,6 +2017,8 @@
     "tests/common/ecs_matrix/extra.rs",
     "tests/common/ecs_matrix/faults.rs",
     "tests/common/ecs_matrix/image.rs",
+    "tests/common/ecs_matrix/long_loop.rs",
+    "tests/common/ecs_matrix/long_loop_world.rs",
     "tests/common/ecs_matrix/reasoning.rs",
     "tests/common/ecs_matrix/stream_delivery.rs",
     "tests/common/ecs_matrix/world.rs",
@@ -2035,6 +2037,7 @@
     "tests/providers/anthropic/cassette/corpus_layers.rs",
     "tests/providers/anthropic/cassette/corpus_matrix_checkpoint.rs",
     "tests/providers/anthropic/cassette/corpus_matrix_image.rs",
+    "tests/providers/anthropic/cassette/corpus_matrix_long_loop.rs",
     "tests/providers/anthropic/cassette/corpus_memory.rs",
     "tests/providers/anthropic/cassette/corpus_oracle.rs",
     "tests/providers/anthropic/cassette/corpus_outcome.rs",
@@ -2055,6 +2058,7 @@
     "tests/providers/anthropic/cassette/ecs_lifecycle.rs",
     "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
     "tests/providers/anthropic/cassette/ecs_matrix_image.rs",
+    "tests/providers/anthropic/cassette/ecs_matrix_long_loop.rs",
     "tests/providers/anthropic/cassette/ecs_matrix_stream_delivery.rs",
     "tests/providers/anthropic/cassette/ecs_memory.rs",
     "tests/providers/anthropic/cassette/ecs_ordering.rs",
@@ -2205,6 +2209,7 @@
     "tests/providers/deepseek/cassette/corpus_faults.rs",
     "tests/providers/deepseek/cassette/corpus_matrix.rs",
     "tests/providers/deepseek/cassette/corpus_matrix_checkpoint.rs",
+    "tests/providers/deepseek/cassette/corpus_matrix_long_loop.rs",
     "tests/providers/deepseek/cassette/ecs_completion.rs",
     "tests/providers/deepseek/cassette/ecs_extractor.rs",
     "tests/providers/deepseek/cassette/ecs_extractor_usage.rs",
@@ -2212,6 +2217,7 @@
     "tests/providers/deepseek/cassette/ecs_matrix.rs",
     "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs",
     "tests/providers/deepseek/cassette/ecs_matrix_extra.rs",
+    "tests/providers/deepseek/cassette/ecs_matrix_long_loop.rs",
     "tests/providers/deepseek/cassette/ecs_termination.rs",
     "tests/providers/deepseek/cassette/ecs_tool_sessions.rs",
     "tests/providers/deepseek/cassette/turn_termination_matrix.rs",
@@ -2284,6 +2290,7 @@
     "tests/providers/gemini/cassette/corpus_matrix.rs",
     "tests/providers/gemini/cassette/corpus_matrix_checkpoint.rs",
     "tests/providers/gemini/cassette/corpus_matrix_image.rs",
+    "tests/providers/gemini/cassette/corpus_matrix_long_loop.rs",
     "tests/providers/gemini/cassette/corpus_retrieval.rs",
     "tests/providers/gemini/cassette/corpus_serving.rs",
     "tests/providers/gemini/cassette/document_ordering.rs",
@@ -2297,6 +2304,7 @@
     "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs",
     "tests/providers/gemini/cassette/ecs_matrix_extra.rs",
     "tests/providers/gemini/cassette/ecs_matrix_image.rs",
+    "tests/providers/gemini/cassette/ecs_matrix_long_loop.rs",
     "tests/providers/gemini/cassette/ecs_ordering.rs",
     "tests/providers/gemini/cassette/ecs_parity.rs",
     "tests/providers/gemini/cassette/ecs_prompt_caching.rs",
@@ -2513,6 +2521,8 @@
     "tests/providers/openai/cassette/corpus_matrix_checkpoint_responses.rs",
     "tests/providers/openai/cassette/corpus_matrix_image_chat.rs",
     "tests/providers/openai/cassette/corpus_matrix_image_responses.rs",
+    "tests/providers/openai/cassette/corpus_matrix_long_loop_chat.rs",
+    "tests/providers/openai/cassette/corpus_matrix_long_loop_responses.rs",
     "tests/providers/openai/cassette/corpus_matrix_responses.rs",
     "tests/providers/openai/cassette/corpus_output.rs",
     "tests/providers/openai/cassette/corpus_retrieval.rs",
@@ -2531,6 +2541,8 @@
     "tests/providers/openai/cassette/ecs_matrix_extra_responses.rs",
     "tests/providers/openai/cassette/ecs_matrix_image_chat.rs",
     "tests/providers/openai/cassette/ecs_matrix_image_responses.rs",
+    "tests/providers/openai/cassette/ecs_matrix_long_loop_chat.rs",
+    "tests/providers/openai/cassette/ecs_matrix_long_loop_responses.rs",
     "tests/providers/openai/cassette/ecs_matrix_responses.rs",
     "tests/providers/openai/cassette/ecs_ordering.rs",
     "tests/providers/openai/cassette/ecs_parity.rs",
@@ -3347,6 +3359,83 @@
         "binary": "anthropic",
         "test": "anthropic::cassette::ecs_matrix_image::url_tool_unary",
         "source": "tests/providers/anthropic/cassette/ecs_matrix_image.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_long_loop::big_result",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_long_loop::big_result",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_long_loop::long_streamed",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_long_loop::long_streamed",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_long_loop::long_unary",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_long_loop::long_unary",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_long_loop::max_turns_midway",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_long_loop::max_turns_midway",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_long_loop::output_cap_midway",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_long_loop::output_cap_midway",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_long_loop::parallel_calls",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_long_loop::parallel_calls",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_long_loop::tool_error_midway",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_long_loop::tool_error_midway",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_long_loop.rs"
       }
     },
     {
@@ -4172,6 +4261,55 @@
       "id": "rig::anthropic::anthropic::cassette::ecs_matrix_checkpoint::streamed_tool_result_mismatch",
       "classification": "infrastructure",
       "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_long_loop::invalid_args_midway",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_long_loop::long_unary_cut_1",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_long_loop::long_unary_cut_2",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_long_loop::long_unary_cut_3",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_long_loop::long_unary_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_long_loop::provider_fault_midway",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_long_loop::streamed_tool_result_mismatch",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_long_loop.rs",
       "configuration": "root-bedrock",
       "ecs": null
     },
@@ -11880,6 +12018,83 @@
       }
     },
     {
+      "id": "rig::deepseek::deepseek::corpus_matrix_long_loop::big_result",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix_long_loop::big_result",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_matrix_long_loop::long_streamed",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix_long_loop::long_streamed",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_matrix_long_loop::long_unary",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix_long_loop::long_unary",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_matrix_long_loop::max_turns_midway",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix_long_loop::max_turns_midway",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_matrix_long_loop::output_cap_midway",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix_long_loop::output_cap_midway",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_matrix_long_loop::parallel_calls",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix_long_loop::parallel_calls",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_matrix_long_loop::tool_error_midway",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix_long_loop::tool_error_midway",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
       "id": "rig::deepseek::deepseek::document_ordering::chat_completions_keeps_documents_after_system_before_history",
       "classification": "unclassified",
       "source": "tests/providers/deepseek/document_ordering.rs",
@@ -11967,6 +12182,55 @@
       "id": "rig::deepseek::deepseek::ecs_matrix_checkpoint::streamed_tool_result_mismatch",
       "classification": "infrastructure",
       "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_long_loop::invalid_args_midway",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_long_loop::long_unary_cut_1",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_long_loop::long_unary_cut_2",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_long_loop::long_unary_cut_3",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_long_loop::long_unary_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_long_loop::provider_fault_midway",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_long_loop::streamed_tool_result_mismatch",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_long_loop.rs",
       "configuration": "root-bedrock",
       "ecs": null
     },
@@ -17281,6 +17545,83 @@
       }
     },
     {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_long_loop::big_result",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_long_loop::big_result",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_long_loop::long_streamed",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_long_loop::long_streamed",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_long_loop::long_unary",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_long_loop::long_unary",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_long_loop::max_turns_midway",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_long_loop::max_turns_midway",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_long_loop::output_cap_midway",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_long_loop::output_cap_midway",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_long_loop::parallel_calls",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_long_loop::parallel_calls",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_long_loop::tool_error_midway",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_long_loop::tool_error_midway",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_long_loop.rs"
+      }
+    },
+    {
       "id": "rig::gemini::gemini::cassette::corpus_retrieval::context_and_tools_effect_log_is_the_golden_fixture",
       "classification": "unclassified",
       "source": "tests/providers/gemini/cassette/corpus_retrieval.rs",
@@ -17452,6 +17793,55 @@
       "id": "rig::gemini::gemini::cassette::ecs_matrix_checkpoint::streamed_tool_result_mismatch",
       "classification": "infrastructure",
       "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_long_loop::invalid_args_midway",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_long_loop::long_unary_cut_1",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_long_loop::long_unary_cut_2",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_long_loop::long_unary_cut_3",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_long_loop::long_unary_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_long_loop::provider_fault_midway",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_long_loop.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_long_loop::streamed_tool_result_mismatch",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_long_loop.rs",
       "configuration": "root-bedrock",
       "ecs": null
     },
@@ -27531,6 +27921,160 @@
       }
     },
     {
+      "id": "rig::openai::openai::cassette::corpus_matrix_long_loop_chat::big_result",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_long_loop_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_long_loop_chat::big_result",
+        "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_long_loop_chat::long_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_long_loop_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_long_loop_chat::long_streamed",
+        "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_long_loop_chat::long_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_long_loop_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_long_loop_chat::long_unary",
+        "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_long_loop_chat::max_turns_midway",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_long_loop_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_long_loop_chat::max_turns_midway",
+        "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_long_loop_chat::output_cap_midway",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_long_loop_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_long_loop_chat::output_cap_midway",
+        "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_long_loop_chat::parallel_calls",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_long_loop_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_long_loop_chat::parallel_calls",
+        "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_long_loop_chat::tool_error_midway",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_long_loop_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_long_loop_chat::tool_error_midway",
+        "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_long_loop_responses::big_result",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_long_loop_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_long_loop_responses::big_result",
+        "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_long_loop_responses::long_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_long_loop_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_long_loop_responses::long_streamed",
+        "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_long_loop_responses::long_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_long_loop_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_long_loop_responses::long_unary",
+        "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_long_loop_responses::max_turns_midway",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_long_loop_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_long_loop_responses::max_turns_midway",
+        "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_long_loop_responses::output_cap_midway",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_long_loop_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_long_loop_responses::output_cap_midway",
+        "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_long_loop_responses::parallel_calls",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_long_loop_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_long_loop_responses::parallel_calls",
+        "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_long_loop_responses::tool_error_midway",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_long_loop_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_long_loop_responses::tool_error_midway",
+        "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_responses.rs"
+      }
+    },
+    {
       "id": "rig::openai::openai::cassette::corpus_matrix_responses::causal_completion_concurrent",
       "classification": "agent",
       "source": "tests/providers/openai/cassette/corpus_matrix_responses.rs",
@@ -28689,6 +29233,104 @@
       "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_responses::streamed_tool_result_mismatch",
       "classification": "infrastructure",
       "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_long_loop_chat::invalid_args_midway",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_long_loop_chat::long_unary_cut_1",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_long_loop_chat::long_unary_cut_2",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_long_loop_chat::long_unary_cut_3",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_long_loop_chat::long_unary_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_long_loop_chat::provider_fault_midway",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_long_loop_chat::streamed_tool_result_mismatch",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_long_loop_responses::invalid_args_midway",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_long_loop_responses::long_unary_cut_1",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_long_loop_responses::long_unary_cut_2",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_long_loop_responses::long_unary_cut_3",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_long_loop_responses::long_unary_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_long_loop_responses::provider_fault_midway",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_long_loop_responses::streamed_tool_result_mismatch",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_long_loop_responses.rs",
       "configuration": "root-bedrock",
       "ecs": null
     },

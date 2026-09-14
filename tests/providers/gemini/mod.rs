@@ -19,6 +19,7 @@ mod cassette {
     mod corpus_matrix;
     mod corpus_matrix_checkpoint;
     mod corpus_matrix_image;
+    mod corpus_matrix_long_loop;
     mod corpus_retrieval;
     mod corpus_serving;
     mod document_ordering;
@@ -32,6 +33,7 @@ mod cassette {
     mod ecs_matrix_checkpoint;
     mod ecs_matrix_extra;
     mod ecs_matrix_image;
+    mod ecs_matrix_long_loop;
     mod ecs_ordering;
     mod ecs_parity;
     mod ecs_prompt_caching;

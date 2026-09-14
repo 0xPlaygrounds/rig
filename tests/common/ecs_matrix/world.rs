@@ -354,6 +354,13 @@ fn at_cut(world: &mut World, run: Entity, tool_turns: usize) -> bool {
     true
 }
 
+/// The families whose cut is the #2514 hold after a committed tool turn
+/// (`hold_after_tool_turn`, owner `matrix/checkpoint`): the checkpoint
+/// rows and the long tool loop.
+fn holds_tool_turn(cell: &Cell) -> bool {
+    cell.name.starts_with("checkpoint_") || super::long_loop::is_long_loop(cell)
+}
+
 /// A tool adapter as an erased handler over the test's runtime.
 fn tool_handler<S>(adapter: S, runtime: &tokio::runtime::Handle) -> ErasedHandler
 where
@@ -575,6 +582,36 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
                 "checkpoint_large",
                 tool_handler(
                     ToolAdapter::new(super::checkpoint::CheckpointLarge),
+                    &runtime,
+                ),
+            ),
+            // The repository tree is host state, leased per cell and rebound
+            // unchanged to a restored world (`super::long_loop`).
+            ToolKind::RepoListFiles => (
+                "list_files",
+                tool_handler(
+                    ToolAdapter::new(super::long_loop::ListFiles(super::long_loop::repo(cell))),
+                    &runtime,
+                ),
+            ),
+            ToolKind::RepoReadFile => (
+                "read_file",
+                tool_handler(
+                    ToolAdapter::new(super::long_loop::ReadFile(super::long_loop::repo(cell))),
+                    &runtime,
+                ),
+            ),
+            ToolKind::RepoWriteFile => (
+                "write_file",
+                tool_handler(
+                    ToolAdapter::new(super::long_loop::WriteFile(super::long_loop::repo(cell))),
+                    &runtime,
+                ),
+            ),
+            ToolKind::RepoRunTests => (
+                "run_tests",
+                tool_handler(
+                    ToolAdapter::new(super::long_loop::RunTests(super::long_loop::repo(cell))),
                     &runtime,
                 ),
             ),
@@ -1662,7 +1699,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             );
         }
         let cut_after = (n == last).then_some(cell.resume_after).flatten();
-        if cell.name.starts_with("checkpoint_")
+        if holds_tool_turn(cell)
             && let Some(cut_after) = cut_after
         {
             world.init_resource::<CheckpointCut>();
@@ -1728,12 +1765,21 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             let (scene, _, _) = cut.take().expect("the tool-result cut");
             let encoded_scene = serde_json::to_string(&scene).expect("scene JSON");
             let encoded_head = serde_json::to_string(&recorder.log()).expect("head JSON");
-            super::checkpoint::write_cut_evidence(
-                cell,
-                cut_after.expect("cut number"),
-                &encoded_scene,
-                &encoded_head,
-            );
+            if super::long_loop::is_long_loop(cell) {
+                super::long_loop::write_cut_evidence(
+                    cell,
+                    cut_after.expect("cut number"),
+                    &encoded_scene,
+                    &encoded_head,
+                );
+            } else {
+                super::checkpoint::write_cut_evidence(
+                    cell,
+                    cut_after.expect("cut number"),
+                    &encoded_scene,
+                    &encoded_head,
+                );
+            }
             let witness = gates.witness.clone();
             if cell.name == "checkpoint_parallel_batch" {
                 super::checkpoint_world::assert_parallel_complete(app.world());
@@ -1749,7 +1795,15 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             let restore_started = Instant::now();
             (app, agent, recorder, gates) =
                 open_inner(wire, cell, &program, None, Some(&scene), witness);
-            if cell.name.starts_with("checkpoint_") {
+            if super::long_loop::is_long_loop(cell) {
+                super::long_loop::write_restore_timing(
+                    cell,
+                    cut_after.expect("cut number"),
+                    encoded_scene.len(),
+                    encoded_head.len(),
+                    restore_started.elapsed().as_micros(),
+                );
+            } else if cell.name.starts_with("checkpoint_") {
                 eprintln!(
                     "CHECKPOINT_SCENE {}",
                     serde_json::json!({
@@ -1772,7 +1826,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
                 corpus::program_hooks(&program, OWNER),
             );
             stamp_run(app.world_mut(), run, &recorder).expect("stamp restored run");
-            if cell.name.starts_with("checkpoint_") {
+            if holds_tool_turn(cell) {
                 assert!(
                     app.world().get::<ToolTurnHolds>(run).is_some(),
                     "scene retains hold"
@@ -1807,6 +1861,12 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
         super::checkpoint_world::assert_parallel_complete(app.world());
     }
     if let Some(mut head) = saved_head {
+        // The head's signature froze at the cut; the tail's recorder saw
+        // the handlers the head never reached. Join both, as one recorder
+        // over the whole run would have.
+        for (key, family) in log.header.signature.iter() {
+            head.header.signature.insert_if_absent(key.clone(), *family);
+        }
         head.records.extend(log.records);
         log = head;
     }
@@ -1872,6 +1932,11 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     }
     if two_signals {
         assert_batch(&mut app, cell);
+    }
+    if super::long_loop::is_long_loop(cell) {
+        super::long_loop::assert_log(cell, wire.thinking, &log);
+        let history = super::reasoning::assistant_history(app.world_mut(), run);
+        super::long_loop::assert_transcript(cell, &log, &history);
     }
     assert_fault(&mut app, cell, run, &log, &gates);
     // (3) the cut, resumed; the failed run's scene, loaded.
