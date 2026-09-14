@@ -2018,6 +2018,7 @@
     "tests/common/ecs_matrix/faults.rs",
     "tests/common/ecs_matrix/image.rs",
     "tests/common/ecs_matrix/reasoning.rs",
+    "tests/common/ecs_matrix/stream_delivery.rs",
     "tests/common/ecs_matrix/world.rs",
     "tests/common/goldens.rs",
     "tests/common/stream_faults.rs",
@@ -2054,6 +2055,7 @@
     "tests/providers/anthropic/cassette/ecs_lifecycle.rs",
     "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
     "tests/providers/anthropic/cassette/ecs_matrix_image.rs",
+    "tests/providers/anthropic/cassette/ecs_matrix_stream_delivery.rs",
     "tests/providers/anthropic/cassette/ecs_memory.rs",
     "tests/providers/anthropic/cassette/ecs_ordering.rs",
     "tests/providers/anthropic/cassette/ecs_outcome.rs",
@@ -4163,6 +4165,27 @@
       "id": "rig::anthropic::anthropic::cassette::ecs_matrix_checkpoint::parallel_batch_cut_final",
       "classification": "infrastructure",
       "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_checkpoint::streamed_tool_result_mismatch",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_stream_delivery::parallel",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_stream_delivery.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_stream_delivery::text",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_stream_delivery.rs",
       "configuration": "root-bedrock",
       "ecs": null
     },
@@ -11941,6 +11964,13 @@
       "ecs": null
     },
     {
+      "id": "rig::deepseek::deepseek::ecs_matrix_checkpoint::streamed_tool_result_mismatch",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
       "id": "rig::deepseek::deepseek::extractor::extractor_smoke",
       "classification": "agent",
       "source": "tests/providers/deepseek/extractor.rs",
@@ -17413,6 +17443,13 @@
     },
     {
       "id": "rig::gemini::gemini::cassette::ecs_matrix_checkpoint::parallel_batch_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_checkpoint::streamed_tool_result_mismatch",
       "classification": "infrastructure",
       "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs",
       "configuration": "root-bedrock",
@@ -28565,6 +28602,13 @@
       "ecs": null
     },
     {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_chat::streamed_tool_result_mismatch",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
       "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_responses::large_result_cut_final",
       "classification": "infrastructure",
       "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs",
@@ -28636,6 +28680,13 @@
     },
     {
       "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_responses::parallel_batch_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_responses::streamed_tool_result_mismatch",
       "classification": "infrastructure",
       "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs",
       "configuration": "root-bedrock",

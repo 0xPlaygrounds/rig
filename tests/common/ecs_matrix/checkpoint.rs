@@ -353,6 +353,20 @@ pub(crate) async fn run_agent<M: rig::completion::CompletionModel + Clone + 'sta
 /// the last byte of the large tool result, and prove the strict matcher refuses
 /// it. Positive native cuts independently construct and send their own requests.
 pub(crate) async fn assert_large_request_rejected(provider: &'static str, scenario: &'static str) {
+    assert_request_body_rejected(provider, scenario, false).await;
+}
+
+/// Mutate the first actual tool-result continuation in the streamed loop.
+/// This exercises the matcher, independently of native positive request parity.
+pub(crate) async fn assert_stream_request_rejected(provider: &'static str, scenario: &'static str) {
+    assert_request_body_rejected(provider, scenario, true).await;
+}
+
+async fn assert_request_body_rejected(
+    provider: &'static str,
+    scenario: &'static str,
+    streamed: bool,
+) {
     use futures::FutureExt;
     use std::panic::AssertUnwindSafe;
 
@@ -362,18 +376,22 @@ pub(crate) async fn assert_large_request_rejected(provider: &'static str, scenar
         "negative matcher tests never record"
     );
     let path = crate::cassettes::cassette_path(provider, scenario);
-    let yaml = std::fs::read_to_string(&path).expect("the live large-result recording exists");
+    let yaml = std::fs::read_to_string(&path).expect("the live recording exists");
     let interactions: Vec<serde_json::Value> = serde_yaml::Deserializer::from_str(&yaml)
         .map(|document| serde_json::Value::deserialize(document).expect("recorded YAML document"))
         .collect();
     assert_eq!(
         interactions.len(),
-        2,
-        "one tool call followed by its answer request"
+        if streamed { 5 } else { 2 },
+        "the complete recorded tool program"
     );
     let bodies = crate::cassettes::recorded_interaction_bodies(provider, scenario);
-    let payload = large_result();
-    assert_eq!(payload.len(), 49152);
+    let payload = if streamed {
+        "cobalt-17".to_owned()
+    } else {
+        large_result()
+    };
+    assert_eq!(payload.len(), if streamed { 9 } else { 49152 });
     assert_eq!(
         bodies[1].0.matches(&payload).count(),
         1,
@@ -382,7 +400,7 @@ pub(crate) async fn assert_large_request_rejected(provider: &'static str, scenar
     let start = bodies[1].0.find(&payload).expect("the full payload");
     let at = start + payload.len() - 1;
     let mut changed = bodies[1].0.as_bytes().to_vec();
-    assert_eq!(changed[at], b'f');
+    assert_eq!(changed[at], if streamed { b'7' } else { b'f' });
     changed[at] = b'X';
     let changed = String::from_utf8(changed).expect("one ASCII substitution");
     assert_eq!(changed.len(), bodies[1].0.len());
@@ -495,15 +513,17 @@ pub(crate) async fn assert_large_request_rejected(provider: &'static str, scenar
             "all other request attributes match: {field}"
         );
     }
-    let second = post(&client, provider, &base, &interactions[1], &bodies[1].0).await;
-    assert_eq!(
-        u64::from(second.0),
-        interactions[1]["then"]["status"]
-            .as_u64()
-            .expect("recorded second status"),
-        "original second request still matches; the miss consumed nothing: {}",
-        second.1
-    );
+    for (interaction, body) in interactions.iter().zip(&bodies).skip(1) {
+        let original = post(&client, provider, &base, interaction, &body.0).await;
+        assert_eq!(
+            u64::from(original.0),
+            interaction["then"]["status"]
+                .as_u64()
+                .expect("recorded status"),
+            "original request still matches; the miss consumed nothing: {}",
+            original.1
+        );
+    }
     let failed = AssertUnwindSafe(cassette.finish())
         .catch_unwind()
         .await
@@ -523,10 +543,12 @@ pub(crate) async fn assert_large_request_rejected(provider: &'static str, scenar
     );
     assert!(
         !message.contains("left unused interactions"),
-        "both original requests were consumed: {message}"
+        "all original requests were consumed: {message}"
     );
     eprintln!(
-        "CHECKPOINT_NEGATIVE provider={provider} scenario={scenario} result_offset=49151 body_offset={at} changed_bytes=1 status=404 original_requests_consumed=2"
+        "CHECKPOINT_NEGATIVE provider={provider} scenario={scenario} result_offset={} body_offset={at} changed_bytes=1 status=404 original_requests_consumed={}",
+        payload.len() - 1,
+        interactions.len()
     );
 }
 

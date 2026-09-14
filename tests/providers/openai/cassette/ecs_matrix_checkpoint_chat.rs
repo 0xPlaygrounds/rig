@@ -315,3 +315,13 @@ async fn large_result_last_byte_mismatch() {
     checkpoint::assert_large_request_rejected("openai", "checkpoint_matrix_chat/large_result")
         .await;
 }
+
+/// Negative matcher probe against the same streamed loop used by native consumers.
+#[tokio::test]
+async fn streamed_tool_result_mismatch() {
+    checkpoint::assert_stream_request_rejected(
+        "openai",
+        "checkpoint_matrix_chat/multi_turn_streamed",
+    )
+    .await;
+}
