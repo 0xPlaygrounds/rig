@@ -160,8 +160,10 @@ where
     F: FnOnce(openai::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
+    let spec = spec.into();
     let (cassette, client) = openai_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    crate::cassettes::checkpoint_attempt(&cassette, "openai", spec.scenario()).await;
     cassette.finish_after_test(result).await;
 }
 

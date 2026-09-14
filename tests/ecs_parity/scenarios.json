@@ -22,6 +22,10 @@
     "crates/rig-verify/fixtures/anthropic_causal_completion_concurrent.effects.json",
     "crates/rig-verify/fixtures/anthropic_causal_completion_serial.effects.json",
     "crates/rig-verify/fixtures/anthropic_causal_completion_streamed.effects.json",
+    "crates/rig-verify/fixtures/anthropic_checkpoint_large_result.effects.json",
+    "crates/rig-verify/fixtures/anthropic_checkpoint_multi_turn_streamed.effects.json",
+    "crates/rig-verify/fixtures/anthropic_checkpoint_multi_turn_unary.effects.json",
+    "crates/rig-verify/fixtures/anthropic_checkpoint_parallel_batch.effects.json",
     "crates/rig-verify/fixtures/anthropic_completion_smoke.effects.json",
     "crates/rig-verify/fixtures/anthropic_concurrent_tools_serial.effects.json",
     "crates/rig-verify/fixtures/anthropic_endings_answer_outcome_cancelled.effects.json",
@@ -141,6 +145,10 @@
     "crates/rig-verify/fixtures/deepseek_causal_completion_concurrent.effects.json",
     "crates/rig-verify/fixtures/deepseek_causal_completion_serial.effects.json",
     "crates/rig-verify/fixtures/deepseek_causal_completion_streamed.effects.json",
+    "crates/rig-verify/fixtures/deepseek_checkpoint_large_result.effects.json",
+    "crates/rig-verify/fixtures/deepseek_checkpoint_multi_turn_streamed.effects.json",
+    "crates/rig-verify/fixtures/deepseek_checkpoint_multi_turn_unary.effects.json",
+    "crates/rig-verify/fixtures/deepseek_checkpoint_parallel_batch.effects.json",
     "crates/rig-verify/fixtures/deepseek_endings_answer_outcome_cancelled.effects.json",
     "crates/rig-verify/fixtures/deepseek_endings_answer_turn_stop.effects.json",
     "crates/rig-verify/fixtures/deepseek_endings_text_delta_stop.effects.json",
@@ -334,6 +342,10 @@
     "crates/rig-verify/fixtures/ecs_parity/anthropic_causal_completion_concurrent.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/anthropic_causal_completion_serial.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/anthropic_causal_completion_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/anthropic_checkpoint_large_result.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/anthropic_checkpoint_multi_turn_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/anthropic_checkpoint_multi_turn_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/anthropic_checkpoint_parallel_batch.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/anthropic_completion_smoke.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/anthropic_endings_answer_outcome_cancelled.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/anthropic_endings_answer_turn_stop.effects.json",
@@ -448,6 +460,10 @@
     "crates/rig-verify/fixtures/ecs_parity/deepseek_causal_completion_concurrent.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_causal_completion_serial.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_causal_completion_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_checkpoint_large_result.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_checkpoint_multi_turn_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_checkpoint_multi_turn_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/deepseek_checkpoint_parallel_batch.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_endings_answer_outcome_cancelled.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_endings_answer_turn_stop.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/deepseek_endings_text_delta_stop.effects.json",
@@ -646,6 +662,10 @@
     "crates/rig-verify/fixtures/ecs_parity/gemini_causal_completion_concurrent.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_causal_completion_serial.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_causal_completion_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_checkpoint_large_result.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_checkpoint_multi_turn_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_checkpoint_multi_turn_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/gemini_checkpoint_parallel_batch.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_endings_answer_outcome_cancelled.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_endings_answer_turn_stop.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/gemini_endings_tool_dispatch_cancelled_streamed.effects.json",
@@ -745,6 +765,10 @@
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_causal_completion_concurrent.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_causal_completion_serial.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_causal_completion_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_checkpoint_large_result.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_checkpoint_multi_turn_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_checkpoint_multi_turn_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_chat_checkpoint_parallel_batch.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_endings_answer_outcome_cancelled.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_endings_answer_turn_stop.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_endings_text_delta_stop.effects.json",
@@ -845,6 +869,10 @@
     "crates/rig-verify/fixtures/ecs_parity/openai_chat_shaping_tool_choice_required_first.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_output_prompted_unary.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_output_tool_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_checkpoint_large_result.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_checkpoint_multi_turn_streamed.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_checkpoint_multi_turn_unary.effects.json",
+    "crates/rig-verify/fixtures/ecs_parity/openai_responses_checkpoint_parallel_batch.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_endings_answer_outcome_cancelled.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_endings_answer_turn_stop.effects.json",
     "crates/rig-verify/fixtures/ecs_parity/openai_responses_endings_tool_call_delta_stop.effects.json",
@@ -1040,6 +1068,10 @@
     "crates/rig-verify/fixtures/gemini_causal_completion_concurrent.effects.json",
     "crates/rig-verify/fixtures/gemini_causal_completion_serial.effects.json",
     "crates/rig-verify/fixtures/gemini_causal_completion_streamed.effects.json",
+    "crates/rig-verify/fixtures/gemini_checkpoint_large_result.effects.json",
+    "crates/rig-verify/fixtures/gemini_checkpoint_multi_turn_streamed.effects.json",
+    "crates/rig-verify/fixtures/gemini_checkpoint_multi_turn_unary.effects.json",
+    "crates/rig-verify/fixtures/gemini_checkpoint_parallel_batch.effects.json",
     "crates/rig-verify/fixtures/gemini_delta_interactions_baseline.effects.json",
     "crates/rig-verify/fixtures/gemini_endings_answer_outcome_cancelled.effects.json",
     "crates/rig-verify/fixtures/gemini_endings_answer_turn_stop.effects.json",
@@ -1208,6 +1240,10 @@
     "crates/rig-verify/fixtures/openai_chat_causal_completion_concurrent.effects.json",
     "crates/rig-verify/fixtures/openai_chat_causal_completion_serial.effects.json",
     "crates/rig-verify/fixtures/openai_chat_causal_completion_streamed.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_checkpoint_large_result.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_checkpoint_multi_turn_streamed.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_checkpoint_multi_turn_unary.effects.json",
+    "crates/rig-verify/fixtures/openai_chat_checkpoint_parallel_batch.effects.json",
     "crates/rig-verify/fixtures/openai_chat_endings_answer_outcome_cancelled.effects.json",
     "crates/rig-verify/fixtures/openai_chat_endings_answer_turn_stop.effects.json",
     "crates/rig-verify/fixtures/openai_chat_endings_text_delta_stop.effects.json",
@@ -1311,6 +1347,10 @@
     "crates/rig-verify/fixtures/openai_host_embed_prompt_streamed.effects.json",
     "crates/rig-verify/fixtures/openai_output_prompted_unary.effects.json",
     "crates/rig-verify/fixtures/openai_output_tool_unary.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_checkpoint_large_result.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_checkpoint_multi_turn_streamed.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_checkpoint_multi_turn_unary.effects.json",
+    "crates/rig-verify/fixtures/openai_responses_checkpoint_parallel_batch.effects.json",
     "crates/rig-verify/fixtures/openai_responses_endings_answer_outcome_cancelled.effects.json",
     "crates/rig-verify/fixtures/openai_responses_endings_answer_turn_stop.effects.json",
     "crates/rig-verify/fixtures/openai_responses_endings_tool_call_delta_stop.effects.json",
@@ -1506,6 +1546,10 @@
     "crates/rig-verify/fixtures/venice_shaping_tool_choice_none_on_committed_output.effects.json",
     "crates/rig-verify/fixtures/venice_shaping_tool_choice_required_first.effects.json",
     "tests/cassettes/anthropic/agent/completion_smoke.yaml",
+    "tests/cassettes/anthropic/checkpoint_matrix/large_result.yaml",
+    "tests/cassettes/anthropic/checkpoint_matrix/multi_turn_streamed.yaml",
+    "tests/cassettes/anthropic/checkpoint_matrix/multi_turn_unary.yaml",
+    "tests/cassettes/anthropic/checkpoint_matrix/parallel_batch.yaml",
     "tests/cassettes/anthropic/corpus_causal/completion_concurrent.yaml",
     "tests/cassettes/anthropic/corpus_causal/completion_serial.yaml",
     "tests/cassettes/anthropic/corpus_causal/completion_streamed.yaml",
@@ -1709,6 +1753,10 @@
     "tests/cassettes/deepseek/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml",
     "tests/cassettes/deepseek/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml",
     "tests/cassettes/deepseek/agent_tool_sessions/tool_choice_required_specific_and_none.yaml",
+    "tests/cassettes/deepseek/checkpoint_matrix/large_result.yaml",
+    "tests/cassettes/deepseek/checkpoint_matrix/multi_turn_streamed.yaml",
+    "tests/cassettes/deepseek/checkpoint_matrix/multi_turn_unary.yaml",
+    "tests/cassettes/deepseek/checkpoint_matrix/parallel_batch.yaml",
     "tests/cassettes/deepseek/corpus_matrix/output_tool_thinking.yaml",
     "tests/cassettes/deepseek/extractor/extractor_smoke.yaml",
     "tests/cassettes/deepseek/extractor_usage/extract_and_extract_with_usage_return_same_data.yaml",
@@ -1749,6 +1797,10 @@
     "tests/cassettes/gemini/agent_tools/string_output_verbatim_struct_output_json.yaml",
     "tests/cassettes/gemini/agent_tools/tool_concurrency_one_preserves_parallel_call_contract.yaml",
     "tests/cassettes/gemini/agent_tools/zero_arg_tool_call_round_trips.yaml",
+    "tests/cassettes/gemini/checkpoint_matrix/large_result.yaml",
+    "tests/cassettes/gemini/checkpoint_matrix/multi_turn_streamed.yaml",
+    "tests/cassettes/gemini/checkpoint_matrix/multi_turn_unary.yaml",
+    "tests/cassettes/gemini/checkpoint_matrix/parallel_batch.yaml",
     "tests/cassettes/gemini/code_execution_matrix/blocking_agent_prompt_answers_after_code_execution.yaml",
     "tests/cassettes/gemini/code_execution_matrix/blocking_code_execution_replayed_in_chat_history.yaml",
     "tests/cassettes/gemini/code_execution_matrix/streaming_agent_prompt_answers_after_code_execution.yaml",
@@ -1850,6 +1902,14 @@
     "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt4o_parallel_model.yaml",
     "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt4o_zero_agent.yaml",
     "tests/cassettes/openai/chat_tool_lifecycle_matrix/streaming_gpt4o_zero_model.yaml",
+    "tests/cassettes/openai/checkpoint_matrix_chat/large_result.yaml",
+    "tests/cassettes/openai/checkpoint_matrix_chat/multi_turn_streamed.yaml",
+    "tests/cassettes/openai/checkpoint_matrix_chat/multi_turn_unary.yaml",
+    "tests/cassettes/openai/checkpoint_matrix_chat/parallel_batch.yaml",
+    "tests/cassettes/openai/checkpoint_matrix_responses/large_result.yaml",
+    "tests/cassettes/openai/checkpoint_matrix_responses/multi_turn_streamed.yaml",
+    "tests/cassettes/openai/checkpoint_matrix_responses/multi_turn_unary.yaml",
+    "tests/cassettes/openai/checkpoint_matrix_responses/parallel_batch.yaml",
     "tests/cassettes/openai/corpus_matrix_chat/output_tool_thinking.yaml",
     "tests/cassettes/openai/corpus_matrix_responses/output_tool_thinking.yaml",
     "tests/cassettes/openai/extractor/extractor_smoke.yaml",
@@ -1952,6 +2012,8 @@
     "tests/common/ecs_matrix.rs",
     "tests/common/ecs_matrix/agent.rs",
     "tests/common/ecs_matrix/cells.rs",
+    "tests/common/ecs_matrix/checkpoint.rs",
+    "tests/common/ecs_matrix/checkpoint_world.rs",
     "tests/common/ecs_matrix/extra.rs",
     "tests/common/ecs_matrix/faults.rs",
     "tests/common/ecs_matrix/image.rs",
@@ -1970,6 +2032,7 @@
     "tests/providers/anthropic/cassette/corpus_hooks.rs",
     "tests/providers/anthropic/cassette/corpus_host.rs",
     "tests/providers/anthropic/cassette/corpus_layers.rs",
+    "tests/providers/anthropic/cassette/corpus_matrix_checkpoint.rs",
     "tests/providers/anthropic/cassette/corpus_matrix_image.rs",
     "tests/providers/anthropic/cassette/corpus_memory.rs",
     "tests/providers/anthropic/cassette/corpus_oracle.rs",
@@ -1989,6 +2052,7 @@
     "tests/providers/anthropic/cassette/ecs_host.rs",
     "tests/providers/anthropic/cassette/ecs_layers.rs",
     "tests/providers/anthropic/cassette/ecs_lifecycle.rs",
+    "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
     "tests/providers/anthropic/cassette/ecs_matrix_image.rs",
     "tests/providers/anthropic/cassette/ecs_memory.rs",
     "tests/providers/anthropic/cassette/ecs_ordering.rs",
@@ -2138,11 +2202,13 @@
     "tests/providers/deepseek/agent_tool_sessions.rs",
     "tests/providers/deepseek/cassette/corpus_faults.rs",
     "tests/providers/deepseek/cassette/corpus_matrix.rs",
+    "tests/providers/deepseek/cassette/corpus_matrix_checkpoint.rs",
     "tests/providers/deepseek/cassette/ecs_completion.rs",
     "tests/providers/deepseek/cassette/ecs_extractor.rs",
     "tests/providers/deepseek/cassette/ecs_extractor_usage.rs",
     "tests/providers/deepseek/cassette/ecs_faults.rs",
     "tests/providers/deepseek/cassette/ecs_matrix.rs",
+    "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs",
     "tests/providers/deepseek/cassette/ecs_matrix_extra.rs",
     "tests/providers/deepseek/cassette/ecs_termination.rs",
     "tests/providers/deepseek/cassette/ecs_tool_sessions.rs",
@@ -2214,6 +2280,7 @@
     "tests/providers/gemini/cassette/corpus_delta.rs",
     "tests/providers/gemini/cassette/corpus_faults.rs",
     "tests/providers/gemini/cassette/corpus_matrix.rs",
+    "tests/providers/gemini/cassette/corpus_matrix_checkpoint.rs",
     "tests/providers/gemini/cassette/corpus_matrix_image.rs",
     "tests/providers/gemini/cassette/corpus_retrieval.rs",
     "tests/providers/gemini/cassette/corpus_serving.rs",
@@ -2225,6 +2292,7 @@
     "tests/providers/gemini/cassette/ecs_faults.rs",
     "tests/providers/gemini/cassette/ecs_lifecycle.rs",
     "tests/providers/gemini/cassette/ecs_matrix.rs",
+    "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs",
     "tests/providers/gemini/cassette/ecs_matrix_extra.rs",
     "tests/providers/gemini/cassette/ecs_matrix_image.rs",
     "tests/providers/gemini/cassette/ecs_ordering.rs",
@@ -2439,6 +2507,8 @@
     "tests/providers/openai/cassette/corpus_faults_responses.rs",
     "tests/providers/openai/cassette/corpus_host.rs",
     "tests/providers/openai/cassette/corpus_matrix_chat.rs",
+    "tests/providers/openai/cassette/corpus_matrix_checkpoint_chat.rs",
+    "tests/providers/openai/cassette/corpus_matrix_checkpoint_responses.rs",
     "tests/providers/openai/cassette/corpus_matrix_image_chat.rs",
     "tests/providers/openai/cassette/corpus_matrix_image_responses.rs",
     "tests/providers/openai/cassette/corpus_matrix_responses.rs",
@@ -2453,6 +2523,8 @@
     "tests/providers/openai/cassette/ecs_faults_responses.rs",
     "tests/providers/openai/cassette/ecs_lifecycle.rs",
     "tests/providers/openai/cassette/ecs_matrix_chat.rs",
+    "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs",
+    "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs",
     "tests/providers/openai/cassette/ecs_matrix_extra_chat.rs",
     "tests/providers/openai/cassette/ecs_matrix_extra_responses.rs",
     "tests/providers/openai/cassette/ecs_matrix_image_chat.rs",
@@ -3141,6 +3213,50 @@
         "binary": "anthropic",
         "test": "anthropic::cassette::ecs_layers::two_layers_effect_log_is_the_golden_fixture",
         "source": "tests/providers/anthropic/cassette/ecs_layers.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_checkpoint::large_result",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_checkpoint::large_result",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_checkpoint::multi_turn_streamed",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_checkpoint::multi_turn_streamed",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_checkpoint::multi_turn_unary",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_checkpoint::multi_turn_unary",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs"
+      }
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::corpus_matrix_checkpoint::parallel_batch",
+      "classification": "agent",
+      "source": "tests/providers/anthropic/cassette/corpus_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "anthropic",
+        "test": "anthropic::cassette::ecs_matrix_checkpoint::parallel_batch",
+        "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs"
       }
     },
     {
@@ -3970,6 +4086,83 @@
       "id": "rig::anthropic::anthropic::cassette::document_file_id::streaming_document_file_id_roundtrip_live",
       "classification": "unclassified",
       "source": "tests/providers/anthropic/cassette/document_file_id.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_checkpoint::large_result_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_checkpoint::large_result_last_byte_mismatch",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_checkpoint::multi_turn_streamed_cut_1",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_checkpoint::multi_turn_streamed_cut_2",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_checkpoint::multi_turn_streamed_cut_3",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_checkpoint::multi_turn_streamed_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_checkpoint::multi_turn_unary_cut_1",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_checkpoint::multi_turn_unary_cut_2",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_checkpoint::multi_turn_unary_cut_3",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_checkpoint::multi_turn_unary_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::anthropic::anthropic::cassette::ecs_matrix_checkpoint::parallel_batch_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/anthropic/cassette/ecs_matrix_checkpoint.rs",
       "configuration": "root-bedrock",
       "ecs": null
     },
@@ -11620,9 +11813,130 @@
       }
     },
     {
+      "id": "rig::deepseek::deepseek::corpus_matrix_checkpoint::large_result",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix_checkpoint::large_result",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_matrix_checkpoint::multi_turn_streamed",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix_checkpoint::multi_turn_streamed",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_matrix_checkpoint::multi_turn_unary",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix_checkpoint::multi_turn_unary",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs"
+      }
+    },
+    {
+      "id": "rig::deepseek::deepseek::corpus_matrix_checkpoint::parallel_batch",
+      "classification": "agent",
+      "source": "tests/providers/deepseek/cassette/corpus_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "deepseek",
+        "test": "deepseek::ecs_matrix_checkpoint::parallel_batch",
+        "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs"
+      }
+    },
+    {
       "id": "rig::deepseek::deepseek::document_ordering::chat_completions_keeps_documents_after_system_before_history",
       "classification": "unclassified",
       "source": "tests/providers/deepseek/document_ordering.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_checkpoint::large_result_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_checkpoint::large_result_last_byte_mismatch",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_checkpoint::multi_turn_streamed_cut_1",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_checkpoint::multi_turn_streamed_cut_2",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_checkpoint::multi_turn_streamed_cut_3",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_checkpoint::multi_turn_streamed_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_checkpoint::multi_turn_unary_cut_1",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_checkpoint::multi_turn_unary_cut_2",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_checkpoint::multi_turn_unary_cut_3",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_checkpoint::multi_turn_unary_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::deepseek::deepseek::ecs_matrix_checkpoint::parallel_batch_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/deepseek/cassette/ecs_matrix_checkpoint.rs",
       "configuration": "root-bedrock",
       "ecs": null
     },
@@ -16805,6 +17119,50 @@
       }
     },
     {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_checkpoint::large_result",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_checkpoint::large_result",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_checkpoint::multi_turn_streamed",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_checkpoint::multi_turn_streamed",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_checkpoint::multi_turn_unary",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_checkpoint::multi_turn_unary",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs"
+      }
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::corpus_matrix_checkpoint::parallel_batch",
+      "classification": "agent",
+      "source": "tests/providers/gemini/cassette/corpus_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "gemini",
+        "test": "gemini::cassette::ecs_matrix_checkpoint::parallel_batch",
+        "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs"
+      }
+    },
+    {
       "id": "rig::gemini::gemini::cassette::corpus_matrix_image::inline_followup",
       "classification": "agent",
       "source": "tests/providers/gemini/cassette/corpus_matrix_image.rs",
@@ -16980,6 +17338,83 @@
       "id": "rig::gemini::gemini::cassette::dynamic_tools::sample_caps_retrieved_definitions",
       "classification": "unclassified",
       "source": "tests/providers/gemini/cassette/dynamic_tools.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_checkpoint::large_result_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_checkpoint::large_result_last_byte_mismatch",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_checkpoint::multi_turn_streamed_cut_1",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_checkpoint::multi_turn_streamed_cut_2",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_checkpoint::multi_turn_streamed_cut_3",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_checkpoint::multi_turn_streamed_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_checkpoint::multi_turn_unary_cut_1",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_checkpoint::multi_turn_unary_cut_2",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_checkpoint::multi_turn_unary_cut_3",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_checkpoint::multi_turn_unary_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::gemini::gemini::cassette::ecs_matrix_checkpoint::parallel_batch_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/gemini/cassette/ecs_matrix_checkpoint.rs",
       "configuration": "root-bedrock",
       "ecs": null
     },
@@ -26795,6 +27230,94 @@
       }
     },
     {
+      "id": "rig::openai::openai::cassette::corpus_matrix_checkpoint_chat::large_result",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_checkpoint_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_checkpoint_chat::large_result",
+        "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_checkpoint_chat::multi_turn_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_checkpoint_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_checkpoint_chat::multi_turn_streamed",
+        "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_checkpoint_chat::multi_turn_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_checkpoint_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_checkpoint_chat::multi_turn_unary",
+        "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_checkpoint_chat::parallel_batch",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_checkpoint_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_checkpoint_chat::parallel_batch",
+        "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_checkpoint_responses::large_result",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_checkpoint_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_checkpoint_responses::large_result",
+        "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_checkpoint_responses::multi_turn_streamed",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_checkpoint_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_checkpoint_responses::multi_turn_streamed",
+        "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_checkpoint_responses::multi_turn_unary",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_checkpoint_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_checkpoint_responses::multi_turn_unary",
+        "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs"
+      }
+    },
+    {
+      "id": "rig::openai::openai::cassette::corpus_matrix_checkpoint_responses::parallel_batch",
+      "classification": "agent",
+      "source": "tests/providers/openai/cassette/corpus_matrix_checkpoint_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": {
+        "binary": "openai",
+        "test": "openai::cassette::ecs_matrix_checkpoint_responses::parallel_batch",
+        "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs"
+      }
+    },
+    {
       "id": "rig::openai::openai::cassette::corpus_matrix_image_chat::inline_followup",
       "classification": "agent",
       "source": "tests/providers/openai/cassette/corpus_matrix_image_chat.rs",
@@ -27961,6 +28484,160 @@
       "id": "rig::openai::openai::cassette::document_ordering::responses_keeps_documents_after_system_before_history",
       "classification": "unclassified",
       "source": "tests/providers/openai/cassette/document_ordering.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_chat::large_result_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_chat::large_result_last_byte_mismatch",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_chat::multi_turn_streamed_cut_1",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_chat::multi_turn_streamed_cut_2",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_chat::multi_turn_streamed_cut_3",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_chat::multi_turn_streamed_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_chat::multi_turn_unary_cut_1",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_chat::multi_turn_unary_cut_2",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_chat::multi_turn_unary_cut_3",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_chat::multi_turn_unary_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_chat::parallel_batch_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_chat.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_responses::large_result_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_responses::large_result_last_byte_mismatch",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_responses::multi_turn_streamed_cut_1",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_responses::multi_turn_streamed_cut_2",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_responses::multi_turn_streamed_cut_3",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_responses::multi_turn_streamed_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_responses::multi_turn_unary_cut_1",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_responses::multi_turn_unary_cut_2",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_responses::multi_turn_unary_cut_3",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_responses::multi_turn_unary_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs",
+      "configuration": "root-bedrock",
+      "ecs": null
+    },
+    {
+      "id": "rig::openai::openai::cassette::ecs_matrix_checkpoint_responses::parallel_batch_cut_final",
+      "classification": "infrastructure",
+      "source": "tests/providers/openai/cassette/ecs_matrix_checkpoint_responses.rs",
       "configuration": "root-bedrock",
       "ecs": null
     },

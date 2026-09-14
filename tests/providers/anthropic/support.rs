@@ -96,8 +96,10 @@ where
     F: FnOnce(anthropic::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
+    let spec = spec.into();
     let (cassette, client) = anthropic_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    crate::cassettes::checkpoint_attempt(&cassette, "anthropic", spec.scenario()).await;
     cassette.finish_after_test(result).await;
 }
 

@@ -212,6 +212,9 @@ fn typed_tool(
     tool: ToolKind,
 ) -> AgentBuilder<WithBuilderTools> {
     match tool {
+        ToolKind::CheckpointStep => builder.tool(super::checkpoint::CheckpointStep),
+        ToolKind::CheckpointBatch => builder.tool(super::checkpoint::CheckpointBatch),
+        ToolKind::CheckpointLarge => builder.tool(super::checkpoint::CheckpointLarge),
         ToolKind::Adder => builder.tool(Adder),
         ToolKind::Alpha => builder.tool(AlphaSignal),
         ToolKind::Beta => builder.tool(BetaSignal),
@@ -253,6 +256,9 @@ fn grant<M: CompletionModel + Clone + 'static>(
         }
         [first, rest @ ..] => {
             let mut builder = match first {
+                ToolKind::CheckpointStep => builder.tool(super::checkpoint::CheckpointStep),
+                ToolKind::CheckpointBatch => builder.tool(super::checkpoint::CheckpointBatch),
+                ToolKind::CheckpointLarge => builder.tool(super::checkpoint::CheckpointLarge),
                 ToolKind::Adder => builder.tool(Adder),
                 ToolKind::Alpha => builder.tool(AlphaSignal),
                 ToolKind::Beta => builder.tool(BetaSignal),
@@ -442,6 +448,10 @@ pub(crate) async fn run_agent<M: CompletionModel + Clone + 'static>(
                 "the reasoning is not the answer"
             );
         }
+    }
+    if cell.name.starts_with("checkpoint_") {
+        super::checkpoint::write_attempt(cell, &log);
+        super::checkpoint::assert_log(cell, &log);
     }
     if cell.image.is_some() {
         super::image::assert_log(cell, &log);

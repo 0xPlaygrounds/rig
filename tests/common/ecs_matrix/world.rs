@@ -16,6 +16,10 @@
 //! the record (the failure's facts, the stream's fold, the history that
 //! was never committed, `despawn_run` refusing until the fault drained).
 
+use rig_ecs::agent::checkpoint::{
+    ToolTurnCommit, ToolTurnHolds, TurnAssistant, TurnResults, hold_after_tool_turn,
+    release_tool_turn_hold,
+};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -280,29 +284,74 @@ pub(crate) fn one_pass(world: &mut World) {
     world.run_schedule(RigSchedule);
 }
 
-/// Whether `run` is at the cut: `tool_turns` batches landed, the run
-/// wants its next turn (`Assembling`, the cursor at `tool_turns`, no fresh
-/// turn yet), and no answered effect is still open.
+#[derive(Resource, Default)]
+struct CheckpointCut;
+
+/// Select the completed tool batch through the public durable commit and its
+/// actual utterance links. Scheduling conditions remain independent checks:
+/// this cut has no next fresh turn or answered effect still open.
 fn at_cut(world: &mut World, run: Entity, tool_turns: usize) -> bool {
-    let assembling = world.get::<Assembling>(run).is_some()
-        && world
-            .get::<Cursor>(run)
-            .is_some_and(|cursor| cursor.turn == tool_turns);
-    if !assembling {
+    let commits: Vec<_> = world
+        .query::<(&ChildOf, &ToolTurnCommit, &TurnAssistant, &TurnResults)>()
+        .iter(world)
+        .filter(|(parent, _, _, _)| parent.parent() == run)
+        .map(|(_, commit, assistant, results)| (commit.turn, assistant.0, results.0))
+        .collect();
+    if commits.len() != tool_turns || world.get::<Assembling>(run).is_none() {
         return false;
     }
-    let fresh = world
+    if world
         .query_filtered::<&ChildOf, With<Fresh>>()
         .iter(world)
-        .any(|child_of| child_of.parent() == run);
-    if fresh {
+        .any(|parent| parent.parent() == run)
+        || world
+            .query_filtered::<(), (With<EffectOutcome>, With<InFlight>)>()
+            .iter(world)
+            .next()
+            .is_some()
+    {
         return false;
     }
-    let open = world
-        .query_filtered::<(), (With<EffectOutcome>, With<InFlight>)>()
-        .iter(world)
-        .count();
-    open == 0
+    let latest = commits
+        .iter()
+        .map(|(turn, _, _)| *turn)
+        .max()
+        .expect("a tool-result cut has a committed turn");
+    assert_eq!(
+        world.get::<Cursor>(run).expect("run cursor").turn,
+        latest,
+        "the cursor agrees with the selected durable commit"
+    );
+    for (_, assistant, results) in commits {
+        for (utterance, role) in [
+            (assistant, rig_ecs::agent::Role::Assistant),
+            (results, rig_ecs::agent::Role::User),
+        ] {
+            assert!(
+                world.get::<Utterance>(utterance).is_some(),
+                "commit links an actual utterance"
+            );
+            assert_eq!(
+                world
+                    .get::<ChildOf>(utterance)
+                    .expect("utterance owner")
+                    .parent(),
+                run,
+                "committed utterance belongs to this run"
+            );
+            assert_eq!(
+                world.get::<rig_ecs::agent::Role>(utterance),
+                Some(&role),
+                "commit link role"
+            );
+        }
+        assert!(
+            world.get::<Order>(assistant).expect("assistant order").0
+                < world.get::<Order>(results).expect("results order").0,
+            "tool results follow their actual assistant utterance"
+        );
+    }
+    true
 }
 
 /// A tool adapter as an erased handler over the test's runtime.
@@ -397,6 +446,9 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
         EffectLogRecorder::new()
     };
     EffectLogResource::install(app.world_mut(), recorder.clone());
+    if cell.name == "checkpoint_parallel_batch" {
+        super::checkpoint_world::install_parallel(&mut app);
+    }
     let world = app.world_mut();
     let runtime = tokio::runtime::Handle::current();
     let layered =
@@ -501,6 +553,24 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
                         inner: Adder,
                         gate: gates.tool.clone(),
                     }),
+                    &runtime,
+                ),
+            ),
+            ToolKind::CheckpointStep => (
+                "checkpoint_step",
+                tool_handler(
+                    ToolAdapter::new(super::checkpoint::CheckpointStep),
+                    &runtime,
+                ),
+            ),
+            ToolKind::CheckpointBatch => (
+                "checkpoint_batch",
+                tool_handler(super::checkpoint_world::parallel_adapter(world), &runtime),
+            ),
+            ToolKind::CheckpointLarge => (
+                "checkpoint_large",
+                tool_handler(
+                    ToolAdapter::new(super::checkpoint::CheckpointLarge),
                     &runtime,
                 ),
             ),
@@ -716,10 +786,28 @@ async fn drive_until(
     let start = Instant::now();
     loop {
         if cut_after.is_some() && cut.is_none() {
-            one_pass(app.world_mut());
+            let checkpoint = app.world().contains_resource::<CheckpointCut>();
+            if checkpoint {
+                app.update();
+            } else {
+                one_pass(app.world_mut());
+            }
             if let Some(tool_turns) = cut_after
                 && at_cut(app.world_mut(), run, tool_turns)
             {
+                if checkpoint {
+                    let records = recorder.log().records;
+                    let cursor = app.world().get::<Cursor>(run).unwrap().turn;
+                    for _ in 0..3 {
+                        app.update();
+                    }
+                    assert_eq!(
+                        serde_json::to_value(recorder.log().records).unwrap(),
+                        serde_json::to_value(records).unwrap(),
+                        "held updates dispatch nothing"
+                    );
+                    assert_eq!(app.world().get::<Cursor>(run).unwrap().turn, cursor);
+                }
                 let next_id = app.world().resource::<IdCounter>().0;
                 let scene = save_world(app.world_mut()).expect("every component serializes");
                 let at = recorder.log().records.len();
@@ -1543,6 +1631,9 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             program.streamed,
             program.max_turns,
         );
+        if cell.name == "checkpoint_parallel_batch" {
+            super::checkpoint_world::bind_parallel_run(world, run);
+        }
         if let Some(concurrency) = program.tool_concurrency {
             world.entity_mut(run).insert(ToolPolicy { concurrency });
         }
@@ -1563,6 +1654,13 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             );
         }
         let cut_after = (n == last).then_some(cell.resume_after).flatten();
+        if cell.name.starts_with("checkpoint_")
+            && let Some(cut_after) = cut_after
+        {
+            world.init_resource::<CheckpointCut>();
+            hold_after_tool_turn(world, run, "matrix/checkpoint", cut_after).expect("arm cut");
+        }
+
         if n == last && matches!(cell.fault, Some(Fault::StopWhileToolRuns)) {
             // The stop lands while the parked tool is in flight; the tool
             // is left to its handler and the run cannot despawn until it
@@ -1622,14 +1720,34 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             let (scene, _, _) = cut.take().expect("the tool-result cut");
             let encoded_scene = serde_json::to_string(&scene).expect("scene JSON");
             let encoded_head = serde_json::to_string(&recorder.log()).expect("head JSON");
+            super::checkpoint::write_cut_evidence(
+                cell,
+                cut_after.expect("cut number"),
+                &encoded_scene,
+                &encoded_head,
+            );
             let witness = gates.witness.clone();
+            if cell.name == "checkpoint_parallel_batch" {
+                super::checkpoint_world::assert_parallel_complete(app.world());
+            }
             drop(std::mem::replace(&mut app, App::new()));
             let scene: WorldScene =
                 serde_json::from_str(&encoded_scene).expect("restore scene JSON");
             saved_head =
                 Some(serde_json::from_str::<EffectLog>(&encoded_head).expect("restore head JSON"));
+            let restore_started = Instant::now();
             (app, agent, recorder, gates) =
                 open_inner(wire, cell, &program, None, Some(&scene), witness);
+            if cell.name.starts_with("checkpoint_") {
+                eprintln!(
+                    "CHECKPOINT_SCENE {}",
+                    serde_json::json!({
+                        "cell": cell.name, "cut": cut_after,
+                        "scene_bytes": encoded_scene.len(), "head_bytes": encoded_head.len(),
+                        "restore_us": restore_started.elapsed().as_micros(),
+                    })
+                );
+            }
             run = app
                 .world_mut()
                 .query_filtered::<Entity, With<Run>>()
@@ -1643,6 +1761,21 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
                 corpus::program_hooks(&program, OWNER),
             );
             stamp_run(app.world_mut(), run, &recorder).expect("stamp restored run");
+            if cell.name.starts_with("checkpoint_") {
+                assert!(
+                    app.world().get::<ToolTurnHolds>(run).is_some(),
+                    "scene retains hold"
+                );
+                for _ in 0..3 {
+                    app.update();
+                }
+                assert!(
+                    recorder.log().records.is_empty(),
+                    "restored hold dispatches nothing"
+                );
+                release_tool_turn_hold(app.world_mut(), run, "matrix/checkpoint")
+                    .expect("release restored cut");
+            }
             drive_run(&mut app, run, None, &mut cut, &recorder).await;
         } else {
             drive_run(&mut app, run, cut_after, &mut cut, &recorder).await;
@@ -1659,6 +1792,9 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     }
     let run = *runs.last().expect("a run");
     let mut log = recorder.log();
+    if cell.name == "checkpoint_parallel_batch" && saved_head.is_none() {
+        super::checkpoint_world::assert_parallel_complete(app.world());
+    }
     if let Some(mut head) = saved_head {
         head.records.extend(log.records);
         log = head;

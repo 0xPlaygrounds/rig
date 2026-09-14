@@ -2,12 +2,16 @@
 mod corpus_faults;
 #[path = "cassette/corpus_matrix.rs"]
 mod corpus_matrix;
+#[path = "cassette/corpus_matrix_checkpoint.rs"]
+mod corpus_matrix_checkpoint;
 #[path = "cassette/ecs_completion.rs"]
 mod ecs_completion;
 #[path = "cassette/ecs_faults.rs"]
 mod ecs_faults;
 #[path = "cassette/ecs_matrix.rs"]
 mod ecs_matrix;
+#[path = "cassette/ecs_matrix_checkpoint.rs"]
+mod ecs_matrix_checkpoint;
 #[path = "cassette/ecs_matrix_extra.rs"]
 mod ecs_matrix_extra;
 #[path = "cassette/ecs_termination.rs"]

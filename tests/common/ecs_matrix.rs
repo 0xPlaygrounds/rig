@@ -37,6 +37,10 @@ pub(crate) mod corpus;
 pub(crate) mod agent;
 #[path = "ecs_matrix/cells.rs"]
 pub(crate) mod cells;
+#[path = "ecs_matrix/checkpoint.rs"]
+pub(crate) mod checkpoint;
+#[path = "ecs_matrix/checkpoint_world.rs"]
+pub(crate) mod checkpoint_world;
 #[path = "ecs_matrix/extra.rs"]
 pub(crate) mod extra;
 #[path = "ecs_matrix/faults.rs"]

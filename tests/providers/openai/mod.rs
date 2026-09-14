@@ -21,6 +21,8 @@ mod cassette {
     mod corpus_faults_responses;
     mod corpus_host;
     mod corpus_matrix_chat;
+    mod corpus_matrix_checkpoint_chat;
+    mod corpus_matrix_checkpoint_responses;
     mod corpus_matrix_image_chat;
     mod corpus_matrix_image_responses;
     mod corpus_matrix_responses;
@@ -35,6 +37,8 @@ mod cassette {
     mod ecs_faults_responses;
     mod ecs_lifecycle;
     mod ecs_matrix_chat;
+    mod ecs_matrix_checkpoint_chat;
+    mod ecs_matrix_checkpoint_responses;
     mod ecs_matrix_extra_chat;
     mod ecs_matrix_extra_responses;
     mod ecs_matrix_image_chat;

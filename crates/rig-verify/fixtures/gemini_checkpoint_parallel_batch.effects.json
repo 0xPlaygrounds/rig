@@ -1,0 +1,532 @@
+{
+  "header": {
+    "run_spec": 15601792922881411894,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "golden/tool:checkpoint_batch#0",
+        "family": {
+          "family": "tool",
+          "name": "checkpoint_batch",
+          "description": "Read one deterministic batch slot (0, 1, or 2). Slot 1 intentionally returns an error; do not retry it.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "slot": {
+                "type": "integer",
+                "enum": [
+                  0,
+                  1,
+                  2
+                ]
+              }
+            },
+            "required": [
+              "slot"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/tool:checkpoint_batch#0": "tool"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/tool:checkpoint_batch#0": "tool"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In a single parallel batch call checkpoint_batch exactly three times, in order with slot=0, slot=1, slot=2. One call intentionally fails; do not retry it. After all three results arrive, answer checkpoint-complete."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "checkpoint_batch",
+              "description": "Read one deterministic batch slot (0, 1, or 2). Slot 1 intentionally returns an error; do not retry it.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "slot": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1,
+                      2
+                    ]
+                  }
+                },
+                "required": [
+                  "slot"
+                ],
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:0"
+              },
+              "function": {
+                "name": "checkpoint_batch",
+                "arguments": {
+                  "slot": 0
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:1"
+              },
+              "function": {
+                "name": "checkpoint_batch",
+                "arguments": {
+                  "slot": 1
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "generated",
+                "id": "minted:tool:2"
+              },
+              "function": {
+                "name": "checkpoint_batch",
+                "arguments": {
+                  "slot": 2
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 144,
+            "output_tokens": 45,
+            "total_tokens": 189,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash-lite",
+          "raw": {
+            "responseId": "id_REDACTED_1",
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "functionCall": {
+                        "name": "checkpoint_batch",
+                        "args": {
+                          "slot": 0
+                        }
+                      }
+                    },
+                    {
+                      "functionCall": {
+                        "name": "checkpoint_batch",
+                        "args": {
+                          "slot": 1
+                        }
+                      }
+                    },
+                    {
+                      "functionCall": {
+                        "name": "checkpoint_batch",
+                        "args": {
+                          "slot": 2
+                        }
+                      }
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "safetyRatings": null,
+                "citationMetadata": null,
+                "tokenCount": null,
+                "avgLogprobs": null,
+                "logprobsResult": null,
+                "index": 0,
+                "finishMessage": "Model generated function call(s)."
+              }
+            ],
+            "promptFeedback": null,
+            "usageMetadata": {
+              "promptTokenCount": 144,
+              "candidatesTokenCount": 45,
+              "totalTokenCount": 189,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 144
+                }
+              ]
+            },
+            "modelVersion": "gemini-2.5-flash-lite"
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 2,
+      "key": "golden/tool:checkpoint_batch#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "checkpoint_batch",
+        "args": "{\"slot\":0}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "checkpoint-slot-zero"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 3,
+      "key": "golden/tool:checkpoint_batch#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "checkpoint_batch",
+        "args": "{\"slot\":1}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "error",
+            "value": {
+              "kind": "other",
+              "message": "checkpoint-slot-one-intentional-error",
+              "model_output": [
+                {
+                  "type": "text",
+                  "text": "the tool failed"
+                }
+              ],
+              "retryable": null,
+              "code": null,
+              "http_status": null,
+              "refusal": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 4,
+      "key": "golden/tool:checkpoint_batch#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "checkpoint_batch",
+        "args": "{\"slot\":2}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "checkpoint-slot-two"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 5,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In a single parallel batch call checkpoint_batch exactly three times, in order with slot=0, slot=1, slot=2. One call intentionally fails; do not retry it. After all three results arrive, answer checkpoint-complete."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
+                  "function": {
+                    "name": "checkpoint_batch",
+                    "arguments": {
+                      "slot": 0
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:1"
+                  },
+                  "function": {
+                    "name": "checkpoint_batch",
+                    "arguments": {
+                      "slot": 1
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "generated",
+                    "id": "minted:tool:2"
+                  },
+                  "function": {
+                    "name": "checkpoint_batch",
+                    "arguments": {
+                      "slot": 2
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:0"
+                  },
+                  "name": "checkpoint_batch",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "checkpoint-slot-zero"
+                    }
+                  ]
+                },
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:1"
+                  },
+                  "name": "checkpoint_batch",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "the tool failed"
+                    }
+                  ]
+                },
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "generated",
+                    "id": "minted:tool:2"
+                  },
+                  "name": "checkpoint_batch",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "checkpoint-slot-two"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "checkpoint_batch",
+              "description": "Read one deterministic batch slot (0, 1, or 2). Slot 1 intentionally returns an error; do not retry it.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "slot": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1,
+                      2
+                    ]
+                  }
+                },
+                "required": [
+                  "slot"
+                ],
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "checkpoint-complete"
+            }
+          ],
+          "usage": {
+            "input_tokens": 240,
+            "output_tokens": 3,
+            "total_tokens": 243,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-2.5-flash-lite",
+          "raw": {
+            "responseId": "id_REDACTED_2",
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "text": "checkpoint-complete"
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "safetyRatings": null,
+                "citationMetadata": null,
+                "tokenCount": null,
+                "avgLogprobs": null,
+                "logprobsResult": null,
+                "index": 0,
+                "finishMessage": null
+              }
+            ],
+            "promptFeedback": null,
+            "usageMetadata": {
+              "promptTokenCount": 240,
+              "candidatesTokenCount": 3,
+              "totalTokenCount": 243,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 240
+                }
+              ]
+            },
+            "modelVersion": "gemini-2.5-flash-lite"
+          }
+        }
+      }
+    }
+  ]
+}

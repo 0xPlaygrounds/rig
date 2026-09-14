@@ -385,8 +385,10 @@ where
     F: FnOnce(gemini::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
+    let spec = spec.into();
     let (cassette, client) = gemini_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    crate::cassettes::checkpoint_attempt(&cassette, "gemini", spec.scenario()).await;
     cassette.finish_after_test(result).await;
 }
 
