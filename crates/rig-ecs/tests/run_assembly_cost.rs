@@ -1,6 +1,6 @@
 //! Assembly cost over a long tool loop: renders per turn and elapsed.
 //!
-//! Ignored by default: `cargo test -p rig-ecs --test assembly_cost -- --ignored --nocapture`.
+//! Ignored by default: `cargo test -p rig-ecs --test run_assembly_cost -- --ignored --nocapture`.
 //! Prints one line per turn — the history length (what an uncached assembly
 //! renders every turn), the full part-subtree renders the turn made
 //! (`AssemblyStats`), the cache hits, and the elapsed time of the turn —

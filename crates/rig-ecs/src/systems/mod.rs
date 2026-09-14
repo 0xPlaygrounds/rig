@@ -329,7 +329,7 @@ pub struct RunDespawnRefused {
 /// The components every run is made of: what [`RunCommands::spawn_run`]
 /// spawns, for a host that assembles a run by hand — `world.spawn((RunBundle::new(world, agent, false), Prompt::from("…")))`,
 /// its history utterances `ChildOf` the run in `Order`, an optional
-/// [`MaxTurns`], and last [`Ready`]. [`RunSeq`] is the world's next run
+/// [`MaxTurns`], and last [`Ready`](crate::agent::Ready). [`RunSeq`] is the world's next run
 /// number and [`Scope`] is `{owner}/run#{seq}`, both taken from the world
 /// by [`RunBundle::new`].
 #[derive(Bundle, Debug, Clone)]
@@ -586,7 +586,7 @@ fn despawn_run_in(world: &mut World, run: Entity) -> Result<(), RunBusy> {
     Ok(())
 }
 
-/// First in `RigSet::Advance`: every [`Ready`] run without a phase and
+/// First in `RigSet::Advance`: every [`Ready`](crate::agent::Ready) run without a phase and
 /// without an ending is opened — its [`Prompt`] spawned as its last
 /// utterance and taken off, then its first phase: `Assembling`, or, for
 /// an agent that `Remembers` given no history, `LoadingMemory` with the

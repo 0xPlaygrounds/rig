@@ -102,7 +102,7 @@ runs). A view made by another `ENCODER_VERSION` is a miss. The turn's
 `RequestPartEdit`s and the `ToolResultLimit` are applied over the view, as
 over a fresh render, and an utterance an edit targets is rendered with the
 edit, uncached. The request is unchanged: every folded `chat_history` equals
-a fresh uncached render (`message_cache.rs`). Views are runtime state, never
+a fresh uncached render (`run_message_cache.rs`). Views are runtime state, never
 scene or memory data (§13); `AssemblyStats` counts renders, hits, evictions
 and assemblies for measurement.
 
@@ -526,7 +526,7 @@ as saved (`Register`):
 | `extra_params` the kind does not take, or a builder that refuses | `ExtraParams`, `Client` |
 
 A kind the reader does not know is refused by serde before anything is
-spawned. Pinned by `bus_binding.rs`; the harness (`tests/common/ecs_matrix/world.rs`)
+spawned. Pinned by `run_binding.rs`; the harness (`tests/common/ecs_matrix/world.rs`)
 binds `golden/model:default` this way on every ungated cassette wire, with
 a resolver that maps the reference `cassette` to the cassette's key and a
 factory that hands out the cassette transport, and every cell's request is
@@ -605,7 +605,7 @@ already serves keeps its handler — the binding rides on that entity and a
 later materialization reports it `kept` — so a world over the log's
 replayers loads the same scene unchanged. Refused before any spawn: a key
 bound twice in the scene, a descriptor saved under another key, a served
-key of another family. Pinned by `bus_binding.rs`
+key of another family. Pinned by `run_binding.rs`
 (`a_scene_loads_its_bindings_as_data_and_materializes_on_the_hosts_word`,
 `a_scene_load_validates_its_bindings`) and by every world-resume cell
 whose restored world materializes `golden/model:default` from the scene.
@@ -621,7 +621,7 @@ resumed world cell.
 Cached utterance views (§1) are not saved: a loaded utterance holds no
 `CachedMessage`, the first assembly after a load renders every utterance of
 the run from the graph and caches it, and the request it folds is the one
-the saving world would have folded (`message_cache.rs`
+the saving world would have folded (`run_message_cache.rs`
 `a_loaded_scene_assembles_identical_requests_and_rebuilds_its_views`).
 
 
