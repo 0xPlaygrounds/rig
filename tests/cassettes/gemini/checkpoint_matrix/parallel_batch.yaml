@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash-lite:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"In a single parallel batch call checkpoint_batch exactly three times, in order with slot=0, slot=1, slot=2. One call intentionally fails; do not retry it. After all three results arrive, answer checkpoint-complete.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2048,"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Read one deterministic batch slot (0, 1, or 2). Slot 1 intentionally returns an error; do not retry it.","name":"checkpoint_batch","parameters":{"properties":{"slot":{"enum":[],"type":"integer"}},"required":["slot"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"slot":0},"name":"checkpoint_batch"}},{"functionCall":{"args":{"slot":1},"name":"checkpoint_batch"}},{"functionCall":{"args":{"slot":2},"name":"checkpoint_batch"}}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-lite","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":45,"promptTokenCount":144,"promptTokensDetails":[{"modality":"TEXT","tokenCount":144}],"serviceTier":"standard","totalTokenCount":189}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash-lite:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"In a single parallel batch call checkpoint_batch exactly three times, in order with slot=0, slot=1, slot=2. One call intentionally fails; do not retry it. After all three results arrive, answer checkpoint-complete.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"slot":0},"name":"checkpoint_batch"},"thought":false},{"functionCall":{"args":{"slot":1},"name":"checkpoint_batch"},"thought":false},{"functionCall":{"args":{"slot":2},"name":"checkpoint_batch"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"checkpoint_batch","response":{"result":"checkpoint-slot-zero"}},"thought":false},{"functionResponse":{"name":"checkpoint_batch","response":{"result":"the tool failed"}},"thought":false},{"functionResponse":{"name":"checkpoint_batch","response":{"result":"checkpoint-slot-two"}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2048,"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Read one deterministic batch slot (0, 1, or 2). Slot 1 intentionally returns an error; do not retry it.","name":"checkpoint_batch","parameters":{"properties":{"slot":{"enum":[],"type":"integer"}},"required":["slot"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"checkpoint-complete"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-lite","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":3,"promptTokenCount":240,"promptTokensDetails":[{"modality":"TEXT","tokenCount":240}],"serviceTier":"standard","totalTokenCount":243}}'

@@ -19,6 +19,7 @@
 //! | Effect | the bus module's, `ChildOf` the turn: the completion, then one per tool call ([`ToolCallSlot`] names which) |
 //! | Invalid call | [`InvalidCall`] + [`Resolution`], `ChildOf` the turn |
 
+pub mod checkpoint;
 pub mod content;
 #[cfg(feature = "reflect")]
 pub mod reflect;
@@ -987,20 +988,54 @@ pub fn fork(world: &mut World, run: Entity) -> Entity {
         .and_then(|run_of| world.get::<Owner>(run_of.0))
         .map(|owner| owner.0.clone())
         .unwrap_or_default();
-    let clone = world
-        .entity_mut(run)
-        .clone_and_spawn_with_opt_out(|builder| {
-            builder.linked_cloning(true).deny::<(
-                crate::bus::PendingEffect,
-                crate::bus::Seq,
-                crate::bus::Issued,
-                crate::bus::Reserved,
-                crate::bus::EffectOutcome,
-                crate::bus::ToolInputs,
-                crate::bus::ToolOutputs,
-                ToolCallSlot,
-            )>();
-        });
+    // Cross-sibling relationship hooks cannot run while linked cloning has
+    // only reserved (not yet spawned) their target entities. Restore these
+    // edges after the clone queue has completed, using its actual entity map.
+    use bevy_ecs::entity::{EntityCloner, EntityHashMap};
+    use checkpoint::{AssistantForTurns, ResultsForTurns, TurnAssistant, TurnResults};
+    let links: Vec<_> = world
+        .query::<(
+            Entity,
+            &ChildOf,
+            Option<&TurnAssistant>,
+            Option<&TurnResults>,
+        )>()
+        .iter(world)
+        .filter(|(_, parent, _, _)| parent.parent() == run)
+        .map(|(turn, _, assistant, results)| (turn, assistant.copied(), results.copied()))
+        .collect();
+    let clone = world.spawn_empty().id();
+    let mut mapped = EntityHashMap::default();
+    mapped.insert(run, clone);
+    let mut cloner = EntityCloner::build_opt_out(world);
+    cloner.linked_cloning(true).deny::<(
+        crate::bus::PendingEffect,
+        crate::bus::Seq,
+        crate::bus::Issued,
+        crate::bus::Reserved,
+        crate::bus::EffectOutcome,
+        crate::bus::ToolInputs,
+        crate::bus::ToolOutputs,
+        ToolCallSlot,
+        TurnAssistant,
+        AssistantForTurns,
+        TurnResults,
+        ResultsForTurns,
+    )>();
+    cloner.finish().clone_entity_mapped(world, run, &mut mapped);
+    world.flush();
+    for (turn, assistant, results) in links {
+        if let Some(turn) = mapped.get(&turn).copied() {
+            if let Some(TurnAssistant(target)) = assistant {
+                let target = mapped.get(&target).copied().unwrap_or(target);
+                world.entity_mut(turn).insert(TurnAssistant(target));
+            }
+            if let Some(TurnResults(target)) = results {
+                let target = mapped.get(&target).copied().unwrap_or(target);
+                world.entity_mut(turn).insert(TurnResults(target));
+            }
+        }
+    }
     world
         .entity_mut(clone)
         .insert((RunSeq(seq), crate::bus::Scope(format!("{owner}/run#{seq}"))));

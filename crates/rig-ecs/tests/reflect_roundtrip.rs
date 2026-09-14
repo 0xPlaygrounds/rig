@@ -91,6 +91,8 @@ fn populated() -> bevy_app::App {
         ChildOf(agent),
     ));
     let run = spawn_run(world, agent, &[], "add one and two", false, None);
+    rig_ecs::agent::checkpoint::hold_after_tool_turn(world, run, "reflection", 99)
+        .expect("a future hold preserves normal settlement");
     tick_until(&mut app, "the run", |world| {
         world.get::<rig_ecs::agent::Settled>(run).is_some()
     });
@@ -311,6 +313,10 @@ fn every_component_round_trips_through_reflection() {
             "rig_ecs::agent::RunOf",
             "rig_ecs::agent::Runs",
             "rig_ecs::agent::UsesModel",
+            "rig_ecs::agent::checkpoint::AssistantForTurns",
+            "rig_ecs::agent::checkpoint::ResultsForTurns",
+            "rig_ecs::agent::checkpoint::TurnAssistant",
+            "rig_ecs::agent::checkpoint::TurnResults",
             "rig_ecs::agent::content::parts::EditTarget",
             "rig_ecs::agent::content::parts::EditedBy",
         ],

@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use super::PolicyVersion;
+use super::checkpoint::{ToolTurnCommit, ToolTurnHolds, TurnAssistant, TurnResults};
 use super::content::{
     binary::{BinaryAssets, BinaryRecord},
     parts::*,
@@ -538,6 +539,7 @@ impl RunScene {
                 InvalidRetries => "invalid_retries", OutputToolName => "output_tool_name",
                 ProviderRetries => "provider_retries", ProviderRetried => "provider_retried", ProviderRetrying => "provider_retrying",
                 Scope => "scope", Turn => "turn", Outputs => "outputs", Reprompt => "reprompt",
+                ToolTurnCommit => "tool_turn_commit", ToolTurnHolds => "tool_turn_holds",
                 InvalidCall => "invalid_call", Resolution => "resolution",
                 ToolPolicy => "tool_policy", ToolContextSpec => "tool_context",
                 ResolvingTools => "resolving_tools", Batch => "batch",
@@ -624,6 +626,22 @@ impl RunScene {
                 let target = target_of(world, *part)
                     .ok_or_else(|| extension_error("request edit target missing from scene"))?;
                 relations.push(("edit_target".to_owned(), target));
+            }
+            for (name, target) in [
+                (
+                    "turn_assistant",
+                    world.get::<TurnAssistant>(entity).map(|link| link.0),
+                ),
+                (
+                    "turn_results",
+                    world.get::<TurnResults>(entity).map(|link| link.0),
+                ),
+            ] {
+                if let Some(target) = target {
+                    let index = index_of(target)
+                        .ok_or_else(|| extension_error("committed utterance missing from scene"))?;
+                    relations.push((name.to_owned(), Target::Scene { index }));
+                }
             }
             saved.push(SceneEntity {
                 kind,
@@ -721,6 +739,57 @@ impl RunScene {
                 }
             }
         }
+        for entity in &entities {
+            if let Some(holds) = validation.get::<ToolTurnHolds>(*entity)
+                && (validation.get::<Run>(*entity).is_none()
+                    || holds
+                        .owners()
+                        .any(|(owner, turn)| owner.is_empty() || turn == 0))
+            {
+                return Err(extension_error("invalid tool-turn hold"));
+            }
+            let assistant = validation.get::<TurnAssistant>(*entity);
+            let results = validation.get::<TurnResults>(*entity);
+            let commit = validation.get::<ToolTurnCommit>(*entity);
+            if assistant.is_some() || results.is_some() || commit.is_some() {
+                let run = validation
+                    .get::<ChildOf>(*entity)
+                    .map(ChildOf::parent)
+                    .filter(|run| validation.get::<Run>(*run).is_some())
+                    .ok_or_else(|| extension_error("tool-turn link has no run"))?;
+                if validation.get::<Turn>(*entity).is_none() {
+                    return Err(extension_error("tool-turn link is not on a turn"));
+                }
+                for (target, role) in [
+                    (assistant.map(|link| link.0), Role::Assistant),
+                    (results.map(|link| link.0), Role::User),
+                ] {
+                    if let Some(target) = target
+                        && (validation.get::<ChildOf>(target).map(ChildOf::parent) != Some(run)
+                            || validation.get::<Utterance>(target).is_none()
+                            || validation.get::<Role>(target) != Some(&role))
+                    {
+                        return Err(extension_error(
+                            "tool-turn utterance has invalid ownership or role",
+                        ));
+                    }
+                }
+                if let Some(commit) = commit {
+                    if commit.turn == 0
+                        || assistant.is_none()
+                        || results.is_none()
+                        || validation.get::<Batch>(*entity).is_some()
+                        || validation
+                            .get::<Cursor>(run)
+                            .is_none_or(|cursor| commit.turn > cursor.turn)
+                    {
+                        return Err(extension_error("invalid committed tool turn"));
+                    }
+                } else if results.is_some() {
+                    return Err(extension_error("tool results have no commit"));
+                }
+            }
+        }
         let assets = validation
             .remove_resource::<BinaryAssets>()
             .ok_or_else(|| extension_error("validated asset store missing"))?;
@@ -771,6 +840,7 @@ impl RunScene {
                 InvalidRetries => "invalid_retries", OutputToolName => "output_tool_name",
                 ProviderRetries => "provider_retries", ProviderRetried => "provider_retried", ProviderRetrying => "provider_retrying",
                 Scope => "scope", Turn => "turn", Outputs => "outputs", Reprompt => "reprompt",
+                ToolTurnCommit => "tool_turn_commit", ToolTurnHolds => "tool_turn_holds",
                 InvalidCall => "invalid_call", Resolution => "resolution",
                 ToolPolicy => "tool_policy", ToolContextSpec => "tool_context",
                 ResolvingTools => "resolving_tools", Batch => "batch",
@@ -820,6 +890,12 @@ impl RunScene {
                 };
                 let mut entity = world.entity_mut(entity);
                 match name.as_str() {
+                    "turn_assistant" => {
+                        entity.insert(TurnAssistant(to));
+                    }
+                    "turn_results" => {
+                        entity.insert(TurnResults(to));
+                    }
                     "uses_model" => {
                         entity.insert(UsesModel(to));
                     }

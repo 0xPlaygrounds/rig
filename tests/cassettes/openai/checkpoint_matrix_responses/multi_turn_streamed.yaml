@@ -1,0 +1,286 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"model":"gpt-4.1-mini","stream":true,"temperature":0.0,"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"checkpoint_step","status":"in_progress","type":"function_call"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_1","output_index":0,"sequence_number":3,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"token","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_2","output_index":0,"sequence_number":4,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\":\"","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_3","output_index":0,"sequence_number":5,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"start","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_4","output_index":0,"sequence_number":6,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\"}","item_id":"fc_REDACTED_1","obfuscation":"obfuscation_REDACTED_5","output_index":0,"sequence_number":7,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{\"token\":\"start\"}","item_id":"fc_REDACTED_1","output_index":0,"sequence_number":8,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{\"token\":\"start\"}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"checkpoint_step","status":"completed","type":"function_call"},"output_index":0,"sequence_number":9,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"arguments":"{\"token\":\"start\"}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"checkpoint_step","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":136,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":16,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":152},"user":null},"sequence_number":10,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{\"token\":\"start\"}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"checkpoint_step","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"{\"step\":1,\"next_token\":\"cobalt-17\",\"done\":false}","status":"completed","type":"function_call_output"}],"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"model":"gpt-4.1-mini","stream":true,"temperature":0.0,"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: x-request-id
+    value: req_REDACTED_2
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"checkpoint_step","status":"in_progress","type":"function_call"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{\"","item_id":"fc_REDACTED_2","obfuscation":"obfuscation_REDACTED_6","output_index":0,"sequence_number":3,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"token","item_id":"fc_REDACTED_2","obfuscation":"obfuscation_REDACTED_7","output_index":0,"sequence_number":4,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\":\"","item_id":"fc_REDACTED_2","obfuscation":"obfuscation_REDACTED_8","output_index":0,"sequence_number":5,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"c","item_id":"fc_REDACTED_2","obfuscation":"obfuscation_REDACTED_9","output_index":0,"sequence_number":6,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"obalt","item_id":"fc_REDACTED_2","obfuscation":"obfuscation_REDACTED_10","output_index":0,"sequence_number":7,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"-","item_id":"fc_REDACTED_2","obfuscation":"obfuscation_REDACTED_11","output_index":0,"sequence_number":8,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"17","item_id":"fc_REDACTED_2","obfuscation":"obfuscation_REDACTED_12","output_index":0,"sequence_number":9,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\"}","item_id":"fc_REDACTED_2","obfuscation":"obfuscation_REDACTED_13","output_index":0,"sequence_number":10,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{\"token\":\"cobalt-17\"}","item_id":"fc_REDACTED_2","output_index":0,"sequence_number":11,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{\"token\":\"cobalt-17\"}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"checkpoint_step","status":"completed","type":"function_call"},"output_index":0,"sequence_number":12,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"arguments":"{\"token\":\"cobalt-17\"}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"checkpoint_step","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":178,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":19,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":197},"user":null},"sequence_number":13,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{\"token\":\"start\"}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"checkpoint_step","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"{\"step\":1,\"next_token\":\"cobalt-17\",\"done\":false}","status":"completed","type":"function_call_output"},{"arguments":"{\"token\":\"cobalt-17\"}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"checkpoint_step","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_2","output":"{\"step\":2,\"next_token\":\"orchard-29\",\"done\":false}","status":"completed","type":"function_call_output"}],"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"model":"gpt-4.1-mini","stream":true,"temperature":0.0,"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: x-request-id
+    value: req_REDACTED_3
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_3","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_3","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"checkpoint_step","status":"in_progress","type":"function_call"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{\"","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_14","output_index":0,"sequence_number":3,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"token","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_15","output_index":0,"sequence_number":4,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\":\"","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_16","output_index":0,"sequence_number":5,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"orch","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_17","output_index":0,"sequence_number":6,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"ard","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_18","output_index":0,"sequence_number":7,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"-","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_19","output_index":0,"sequence_number":8,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"29","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_20","output_index":0,"sequence_number":9,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\"}","item_id":"fc_REDACTED_3","obfuscation":"obfuscation_REDACTED_21","output_index":0,"sequence_number":10,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{\"token\":\"orchard-29\"}","item_id":"fc_REDACTED_3","output_index":0,"sequence_number":11,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{\"token\":\"orchard-29\"}","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"checkpoint_step","status":"completed","type":"function_call"},"output_index":0,"sequence_number":12,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_3","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"arguments":"{\"token\":\"orchard-29\"}","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"checkpoint_step","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":223,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":19,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":242},"user":null},"sequence_number":13,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{\"token\":\"start\"}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"checkpoint_step","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"{\"step\":1,\"next_token\":\"cobalt-17\",\"done\":false}","status":"completed","type":"function_call_output"},{"arguments":"{\"token\":\"cobalt-17\"}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"checkpoint_step","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_2","output":"{\"step\":2,\"next_token\":\"orchard-29\",\"done\":false}","status":"completed","type":"function_call_output"},{"arguments":"{\"token\":\"orchard-29\"}","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"checkpoint_step","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_3","output":"{\"step\":3,\"next_token\":\"harbor-43\",\"done\":false}","status":"completed","type":"function_call_output"}],"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"model":"gpt-4.1-mini","stream":true,"temperature":0.0,"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: x-request-id
+    value: req_REDACTED_4
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_4","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_4","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"arguments":"","call_id":"call_REDACTED_4","id":"fc_REDACTED_4","name":"checkpoint_step","status":"in_progress","type":"function_call"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"{\"","item_id":"fc_REDACTED_4","obfuscation":"obfuscation_REDACTED_22","output_index":0,"sequence_number":3,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"token","item_id":"fc_REDACTED_4","obfuscation":"obfuscation_REDACTED_23","output_index":0,"sequence_number":4,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\":\"","item_id":"fc_REDACTED_4","obfuscation":"obfuscation_REDACTED_24","output_index":0,"sequence_number":5,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"har","item_id":"fc_REDACTED_4","obfuscation":"obfuscation_REDACTED_25","output_index":0,"sequence_number":6,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"bor","item_id":"fc_REDACTED_4","obfuscation":"obfuscation_REDACTED_26","output_index":0,"sequence_number":7,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"-","item_id":"fc_REDACTED_4","obfuscation":"obfuscation_REDACTED_27","output_index":0,"sequence_number":8,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"43","item_id":"fc_REDACTED_4","obfuscation":"obfuscation_REDACTED_28","output_index":0,"sequence_number":9,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.delta
+    data: {"delta":"\"}","item_id":"fc_REDACTED_4","obfuscation":"obfuscation_REDACTED_29","output_index":0,"sequence_number":10,"type":"response.function_call_arguments.delta"}
+
+    event: response.function_call_arguments.done
+    data: {"arguments":"{\"token\":\"harbor-43\"}","item_id":"fc_REDACTED_4","output_index":0,"sequence_number":11,"type":"response.function_call_arguments.done"}
+
+    event: response.output_item.done
+    data: {"item":{"arguments":"{\"token\":\"harbor-43\"}","call_id":"call_REDACTED_4","id":"fc_REDACTED_4","name":"checkpoint_step","status":"completed","type":"function_call"},"output_index":0,"sequence_number":12,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_4","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"arguments":"{\"token\":\"harbor-43\"}","call_id":"call_REDACTED_4","id":"fc_REDACTED_4","name":"checkpoint_step","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":268,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":19,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":287},"user":null},"sequence_number":13,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{\"token\":\"start\"}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"checkpoint_step","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"{\"step\":1,\"next_token\":\"cobalt-17\",\"done\":false}","status":"completed","type":"function_call_output"},{"arguments":"{\"token\":\"cobalt-17\"}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"checkpoint_step","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_2","output":"{\"step\":2,\"next_token\":\"orchard-29\",\"done\":false}","status":"completed","type":"function_call_output"},{"arguments":"{\"token\":\"orchard-29\"}","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"checkpoint_step","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_3","output":"{\"step\":3,\"next_token\":\"harbor-43\",\"done\":false}","status":"completed","type":"function_call_output"},{"arguments":"{\"token\":\"harbor-43\"}","call_id":"call_REDACTED_4","id":"fc_REDACTED_4","name":"checkpoint_step","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_4","output":"{\"step\":4,\"next_token\":null,\"done\":true}","status":"completed","type":"function_call_output"}],"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"model":"gpt-4.1-mini","stream":true,"temperature":0.0,"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: x-request-id
+    value: req_REDACTED_5
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_5","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_5","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_REDACTED_1","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"checkpoint","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_30","output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"-com","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_31","output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"plete","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_32","output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","logprobs":[],"output_index":0,"sequence_number":7,"text":"checkpoint-complete","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"checkpoint-complete","type":"output_text"},"sequence_number":8,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"checkpoint-complete","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":9,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_5","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"checkpoint-complete","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":310,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":5,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":315},"user":null},"sequence_number":10,"type":"response.completed"}
+

@@ -508,6 +508,49 @@ external deduplication or reconciliation is the host's responsibility.
 | a system that answers an open key (the nesting program's `lookup`) | runs after `Dispatch` and before `Collect`, so `settle` records its answer in the same pass: a scene saved when the run wants its next turn has no open record | `mock_causal_depth_two` checkpointed |
 | two runs on one agent | two `spawn_run`s in sequence, the second after the first ended and the world went quiet; the conversation shared through memory (§11) | `anthropic_memory_two_runs`, `openai_breadth_memory_two_runs` |
 
+## Tool-turn checkpoint boundary
+
+`agent::checkpoint::ToolTurnCommit` is durable state on an existing tool-bearing
+turn. Its `turn` is the model-turn cursor, not a count of successful batches.
+`TurnAssistant` links that turn to its committed assistant utterance;
+`TurnResults` links it to the one user utterance containing all batch results in
+call order. The result link and commit are published only after the complete
+accepted batch lands. An individual outcome or `Materialised` marker is not a
+commit. A failed/cancelled batch has no new commit; previously committed turns
+remain history. Invalid-call recovery without dispatched tools does not create
+a tool-batch commit. A mixed real-tool/output-tool batch commits its results
+before its existing settlement; an output-tool-only answer has no batch commit.
+
+`hold_after_tool_turn(world, run, owner, minimum_turn)` arms a named owner's hold
+on the run. Model turns start at one. It permits the awaited batch to execute,
+then blocks `Advance` once any committed turn reaches that threshold, including
+inside a run-to-quiescence update. Each owner must release its own hold with
+`release_tool_turn_hold`; re-arming cannot move an existing hold later. Unknown
+owner releases are idempotent. Owner names are a host coordination convention,
+not a security boundary. Arming cannot retract a turn already advanced or an
+already dispatched request. Unrelated runs continue. Budget checks precede the
+hold, so an exhausted run fails normally; cancellation and terminal cleanup do
+not require a release. Hosts may release residual holds on terminal runs.
+
+`ToolTurnCommitted { run, turn }` is a live event explicitly triggered after
+committed graph writes and phase changes are visible. Independent observers
+receive the same event. If an earlier terminal component observer deletes the
+owning graph, the subsequent live notification is suppressed; that observer can
+inspect durable commit state before deleting it. `RigSet::Checkpoint`, after `Materialise` and before
+`Settle`, is the public schedule slot for inspection and checkpoint handling.
+The next pass cannot advance a held run. Scene loading restores durable commit
+state and relationships and retains every owner hold, but does not trigger this
+live event. Generic `On<Add, ToolTurnCommit>`/change detection can still fire on
+load; applications must use the live event or explicitly account for restoration.
+
+A committed boundary is run-local. The existing whole-world scene restrictions
+still reject unsafe unrelated effects/streams. The scene remaps utterance links
+and validates their roles and run ownership before destination mutation. Saving
+and restoring host tools, workspace state and external side effects remains the
+host's responsibility; no exactly-once external-write guarantee is added. A
+restored run stays held until explicit release. Holds do not alter provider
+requests, effect identities, usage, retry budgets or the existing run policy hash.
+
 ## Returned replies and collection cadence
 
 An initial `Serve` task prepares the reply and folds a unary stream to its first

@@ -1,0 +1,37 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":[{"text":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","type":"text"}],"role":"system"},{"content":"In a single parallel batch call checkpoint_batch exactly three times, in order with slot=0, slot=1, slot=2. One call intentionally fails; do not retry it. After all three results arrive, answer checkpoint-complete.","role":"user"}],"model":"gpt-4.1-mini","temperature":0.0,"tools":[{"function":{"description":"Read one deterministic batch slot (0, 1, or 2). Slot 1 intentionally returns an error; do not retry it.","name":"checkpoint_batch","parameters":{"additionalProperties":false,"properties":{"slot":{"enum":[0,1,2],"type":"integer"}},"required":["slot"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"annotations":[],"content":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"slot\": 0}","name":"checkpoint_batch"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{\"slot\": 1}","name":"checkpoint_batch"},"id":"call_REDACTED_2","type":"function"},{"function":{"arguments":"{\"slot\": 2}","name":"checkpoint_batch"},"id":"call_REDACTED_3","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-4.1-mini-2025-04-14","object":"chat.completion","service_tier":"default","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":61,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":153,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":214}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":[{"text":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","type":"text"}],"role":"system"},{"content":"In a single parallel batch call checkpoint_batch exactly three times, in order with slot=0, slot=1, slot=2. One call intentionally fails; do not retry it. After all three results arrive, answer checkpoint-complete.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"slot\":0}","name":"checkpoint_batch"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{\"slot\":1}","name":"checkpoint_batch"},"id":"call_REDACTED_2","type":"function"},{"function":{"arguments":"{\"slot\":2}","name":"checkpoint_batch"},"id":"call_REDACTED_3","type":"function"}]},{"content":"checkpoint-slot-zero","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"the tool failed","role":"tool","tool_call_id":"call_REDACTED_2"},{"content":"checkpoint-slot-two","role":"tool","tool_call_id":"call_REDACTED_3"}],"model":"gpt-4.1-mini","temperature":0.0,"tools":[{"function":{"description":"Read one deterministic batch slot (0, 1, or 2). Slot 1 intentionally returns an error; do not retry it.","name":"checkpoint_batch","parameters":{"additionalProperties":false,"properties":{"slot":{"enum":[0,1,2],"type":"integer"}},"required":["slot"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_2
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"annotations":[],"content":"checkpoint-complete","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"gpt-4.1-mini-2025-04-14","object":"chat.completion","service_tier":"default","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":4,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":239,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":243}}'

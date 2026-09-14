@@ -107,6 +107,11 @@ impl CassetteSpec {
         }
     }
 
+    /// The scenario identity used for recording and replay.
+    pub const fn scenario(self) -> &'static str {
+        self.scenario
+    }
+
     /// Allow matching an unused interaction in any order.
     pub const fn unordered(mut self) -> Self {
         self.replay_matching = ReplayMatching::Unordered;

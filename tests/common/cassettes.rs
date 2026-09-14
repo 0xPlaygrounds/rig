@@ -42,3 +42,26 @@ pub(crate) fn recorded_statuses_and_bodies(provider: &str, scenario: &str) -> Ve
 pub(crate) fn recorded_sse_json_frames(provider: &str, scenario: &str) -> Vec<serde_json::Value> {
     rig_cassette::recorded_sse_json_frames(&cassette_root(), provider, scenario)
 }
+
+/// Save completed checkpoint-matrix exchanges before a failing body unwinds.
+/// This is attempt evidence, never a replacement for cassette finalization.
+pub(crate) async fn checkpoint_attempt(
+    cassette: &ProviderCassette,
+    provider: &str,
+    scenario: &str,
+) {
+    if !scenario.starts_with("checkpoint_matrix") {
+        return;
+    }
+    let Some(directory) = std::env::var_os("RIG_CHECKPOINT_ATTEMPT_DIR") else {
+        return;
+    };
+    let path = PathBuf::from(directory)
+        .join(provider)
+        .join(format!("{scenario}.yaml"));
+    let written = cassette.checkpoint_recording(&path).await;
+    eprintln!(
+        "CHECKPOINT_ATTEMPT cassette={} completed_exchanges_saved={written}",
+        path.display()
+    );
+}

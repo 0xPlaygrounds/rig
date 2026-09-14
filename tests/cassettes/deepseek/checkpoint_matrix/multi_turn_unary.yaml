@@ -1,0 +1,84 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","role":"system"},{"content":"Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls.","role":"user"}],"model":"deepseek-flash","temperature":0.0,"thinking":{"type":"disabled"},"tools":[{"function":{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"I''ll start the checkpoint sequence.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"token\": \"start\"}","name":"checkpoint_step"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":44,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":366,"prompt_tokens":366,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":410}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","role":"system"},{"content":"Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls.","role":"user"},{"content":"I''ll start the checkpoint sequence.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"token\":\"start\"}","name":"checkpoint_step"},"id":"call_REDACTED_1","index":0,"type":"function"}]},{"content":"{\"step\":1,\"next_token\":\"cobalt-17\",\"done\":false}","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"deepseek-flash","temperature":0.0,"thinking":{"type":"disabled"},"tools":[{"function":{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"token\": \"cobalt-17\"}","name":"checkpoint_step"},"id":"call_REDACTED_2","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":41,"prompt_cache_hit_tokens":256,"prompt_cache_miss_tokens":182,"prompt_tokens":438,"prompt_tokens_details":{"cached_tokens":256},"total_tokens":479}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","role":"system"},{"content":"Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls.","role":"user"},{"content":"I''ll start the checkpoint sequence.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"token\":\"start\"}","name":"checkpoint_step"},"id":"call_REDACTED_1","index":0,"type":"function"}]},{"content":"{\"step\":1,\"next_token\":\"cobalt-17\",\"done\":false}","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"token\":\"cobalt-17\"}","name":"checkpoint_step"},"id":"call_REDACTED_2","index":0,"type":"function"}]},{"content":"{\"step\":2,\"next_token\":\"orchard-29\",\"done\":false}","role":"tool","tool_call_id":"call_REDACTED_2"}],"model":"deepseek-flash","temperature":0.0,"thinking":{"type":"disabled"},"tools":[{"function":{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"token\": \"orchard-29\"}","name":"checkpoint_step"},"id":"call_REDACTED_3","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_3","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":41,"prompt_cache_hit_tokens":256,"prompt_cache_miss_tokens":251,"prompt_tokens":507,"prompt_tokens_details":{"cached_tokens":256},"total_tokens":548}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","role":"system"},{"content":"Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls.","role":"user"},{"content":"I''ll start the checkpoint sequence.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"token\":\"start\"}","name":"checkpoint_step"},"id":"call_REDACTED_1","index":0,"type":"function"}]},{"content":"{\"step\":1,\"next_token\":\"cobalt-17\",\"done\":false}","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"token\":\"cobalt-17\"}","name":"checkpoint_step"},"id":"call_REDACTED_2","index":0,"type":"function"}]},{"content":"{\"step\":2,\"next_token\":\"orchard-29\",\"done\":false}","role":"tool","tool_call_id":"call_REDACTED_2"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"token\":\"orchard-29\"}","name":"checkpoint_step"},"id":"call_REDACTED_3","index":0,"type":"function"}]},{"content":"{\"step\":3,\"next_token\":\"harbor-43\",\"done\":false}","role":"tool","tool_call_id":"call_REDACTED_3"}],"model":"deepseek-flash","temperature":0.0,"thinking":{"type":"disabled"},"tools":[{"function":{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"token\": \"harbor-43\"}","name":"checkpoint_step"},"id":"call_REDACTED_4","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_4","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":42,"prompt_cache_hit_tokens":384,"prompt_cache_miss_tokens":193,"prompt_tokens":577,"prompt_tokens_details":{"cached_tokens":384},"total_tokens":619}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","role":"system"},{"content":"Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls.","role":"user"},{"content":"I''ll start the checkpoint sequence.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"token\":\"start\"}","name":"checkpoint_step"},"id":"call_REDACTED_1","index":0,"type":"function"}]},{"content":"{\"step\":1,\"next_token\":\"cobalt-17\",\"done\":false}","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"token\":\"cobalt-17\"}","name":"checkpoint_step"},"id":"call_REDACTED_2","index":0,"type":"function"}]},{"content":"{\"step\":2,\"next_token\":\"orchard-29\",\"done\":false}","role":"tool","tool_call_id":"call_REDACTED_2"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"token\":\"orchard-29\"}","name":"checkpoint_step"},"id":"call_REDACTED_3","index":0,"type":"function"}]},{"content":"{\"step\":3,\"next_token\":\"harbor-43\",\"done\":false}","role":"tool","tool_call_id":"call_REDACTED_3"},{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"token\":\"harbor-43\"}","name":"checkpoint_step"},"id":"call_REDACTED_4","index":0,"type":"function"}]},{"content":"{\"step\":4,\"next_token\":null,\"done\":true}","role":"tool","tool_call_id":"call_REDACTED_4"}],"model":"deepseek-flash","temperature":0.0,"thinking":{"type":"disabled"},"tools":[{"function":{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","name":"checkpoint_step","parameters":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"checkpoint-complete","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_5","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":4,"prompt_cache_hit_tokens":384,"prompt_cache_miss_tokens":260,"prompt_tokens":644,"prompt_tokens_details":{"cached_tokens":384},"total_tokens":648}}'

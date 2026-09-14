@@ -1,0 +1,1486 @@
+{
+  "header": {
+    "run_spec": 15601792922881411894,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      },
+      {
+        "key": "golden/tool:checkpoint_step#0",
+        "family": {
+          "family": "tool",
+          "name": "checkpoint_step",
+          "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "token": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "token"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/tool:checkpoint_step#0": "tool"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/tool:checkpoint_step#0": "tool"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "checkpoint_step",
+              "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "token"
+                ],
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1",
+                "item_id": "fc_REDACTED_1"
+              },
+              "function": {
+                "name": "checkpoint_step",
+                "arguments": {
+                  "token": "start"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 136,
+            "output_tokens": 16,
+            "total_tokens": 152,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "resp_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "openai",
+          "model": "gpt-4.1-mini-2025-04-14",
+          "raw": {
+            "id": "resp_REDACTED_1",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
+            "max_output_tokens": 2048,
+            "model": "gpt-4.1-mini-2025-04-14",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "usage": {
+              "input_tokens": 136,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 16,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 152
+            },
+            "output": [
+              {
+                "id": "fc_REDACTED_1",
+                "arguments": "{\"token\":\"start\"}",
+                "call_id": "call_REDACTED_1",
+                "name": "checkpoint_step",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "checkpoint_step",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "token"
+                  ],
+                  "type": "object"
+                },
+                "strict": true,
+                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 2,
+      "key": "golden/tool:checkpoint_step#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "checkpoint_step",
+        "args": "{\"token\":\"start\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "step": 1,
+                  "next_token": "cobalt-17",
+                  "done": false
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 3,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "checkpoint_step",
+                    "arguments": {
+                      "token": "start"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "name": "checkpoint_step",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "step": 1,
+                        "next_token": "cobalt-17",
+                        "done": false
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "checkpoint_step",
+              "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "token"
+                ],
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_2"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_2",
+                "item_id": "fc_REDACTED_2"
+              },
+              "function": {
+                "name": "checkpoint_step",
+                "arguments": {
+                  "token": "cobalt-17"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 178,
+            "output_tokens": 19,
+            "total_tokens": 197,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "resp_REDACTED_2",
+          "provider_request_id": "req_REDACTED_2",
+          "finish_reason": "tool_calls",
+          "provider": "openai",
+          "model": "gpt-4.1-mini-2025-04-14",
+          "raw": {
+            "id": "resp_REDACTED_2",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
+            "max_output_tokens": 2048,
+            "model": "gpt-4.1-mini-2025-04-14",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "usage": {
+              "input_tokens": 178,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 19,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 197
+            },
+            "output": [
+              {
+                "id": "fc_REDACTED_2",
+                "arguments": "{\"token\":\"cobalt-17\"}",
+                "call_id": "call_REDACTED_2",
+                "name": "checkpoint_step",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "checkpoint_step",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "token"
+                  ],
+                  "type": "object"
+                },
+                "strict": true,
+                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 4,
+      "key": "golden/tool:checkpoint_step#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "checkpoint_step",
+        "args": "{\"token\":\"cobalt-17\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "step": 2,
+                  "next_token": "orchard-29",
+                  "done": false
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 5,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "checkpoint_step",
+                    "arguments": {
+                      "token": "start"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "name": "checkpoint_step",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "step": 1,
+                        "next_token": "cobalt-17",
+                        "done": false
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "checkpoint_step",
+                    "arguments": {
+                      "token": "cobalt-17"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "name": "checkpoint_step",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "step": 2,
+                        "next_token": "orchard-29",
+                        "done": false
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "checkpoint_step",
+              "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "token"
+                ],
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_3"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_3",
+                "item_id": "fc_REDACTED_3"
+              },
+              "function": {
+                "name": "checkpoint_step",
+                "arguments": {
+                  "token": "orchard-29"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 223,
+            "output_tokens": 19,
+            "total_tokens": 242,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "resp_REDACTED_3",
+          "provider_request_id": "req_REDACTED_3",
+          "finish_reason": "tool_calls",
+          "provider": "openai",
+          "model": "gpt-4.1-mini-2025-04-14",
+          "raw": {
+            "id": "resp_REDACTED_3",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
+            "max_output_tokens": 2048,
+            "model": "gpt-4.1-mini-2025-04-14",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "usage": {
+              "input_tokens": 223,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 19,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 242
+            },
+            "output": [
+              {
+                "id": "fc_REDACTED_3",
+                "arguments": "{\"token\":\"orchard-29\"}",
+                "call_id": "call_REDACTED_3",
+                "name": "checkpoint_step",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "checkpoint_step",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "token"
+                  ],
+                  "type": "object"
+                },
+                "strict": true,
+                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 6,
+      "key": "golden/tool:checkpoint_step#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "checkpoint_step",
+        "args": "{\"token\":\"orchard-29\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "step": 3,
+                  "next_token": "harbor-43",
+                  "done": false
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 7,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "checkpoint_step",
+                    "arguments": {
+                      "token": "start"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "name": "checkpoint_step",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "step": 1,
+                        "next_token": "cobalt-17",
+                        "done": false
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "checkpoint_step",
+                    "arguments": {
+                      "token": "cobalt-17"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "name": "checkpoint_step",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "step": 2,
+                        "next_token": "orchard-29",
+                        "done": false
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3",
+                    "item_id": "fc_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "checkpoint_step",
+                    "arguments": {
+                      "token": "orchard-29"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3",
+                    "item_id": "fc_REDACTED_3"
+                  },
+                  "name": "checkpoint_step",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "step": 3,
+                        "next_token": "harbor-43",
+                        "done": false
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "checkpoint_step",
+              "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "token"
+                ],
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_4"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_4",
+                "item_id": "fc_REDACTED_4"
+              },
+              "function": {
+                "name": "checkpoint_step",
+                "arguments": {
+                  "token": "harbor-43"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 268,
+            "output_tokens": 19,
+            "total_tokens": 287,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "resp_REDACTED_4",
+          "provider_request_id": "req_REDACTED_4",
+          "finish_reason": "tool_calls",
+          "provider": "openai",
+          "model": "gpt-4.1-mini-2025-04-14",
+          "raw": {
+            "id": "resp_REDACTED_4",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
+            "max_output_tokens": 2048,
+            "model": "gpt-4.1-mini-2025-04-14",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "usage": {
+              "input_tokens": 268,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 19,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 287
+            },
+            "output": [
+              {
+                "id": "fc_REDACTED_4",
+                "arguments": "{\"token\":\"harbor-43\"}",
+                "call_id": "call_REDACTED_4",
+                "name": "checkpoint_step",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "checkpoint_step",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "token"
+                  ],
+                  "type": "object"
+                },
+                "strict": true,
+                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 8,
+      "key": "golden/tool:checkpoint_step#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "checkpoint_step",
+        "args": "{\"token\":\"harbor-43\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": {
+                  "step": 4,
+                  "next_token": null,
+                  "done": true
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 9,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "checkpoint_step",
+                    "arguments": {
+                      "token": "start"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1",
+                    "item_id": "fc_REDACTED_1"
+                  },
+                  "name": "checkpoint_step",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "step": 1,
+                        "next_token": "cobalt-17",
+                        "done": false
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "checkpoint_step",
+                    "arguments": {
+                      "token": "cobalt-17"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2",
+                    "item_id": "fc_REDACTED_2"
+                  },
+                  "name": "checkpoint_step",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "step": 2,
+                        "next_token": "orchard-29",
+                        "done": false
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3",
+                    "item_id": "fc_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "checkpoint_step",
+                    "arguments": {
+                      "token": "orchard-29"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3",
+                    "item_id": "fc_REDACTED_3"
+                  },
+                  "name": "checkpoint_step",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "step": 3,
+                        "next_token": "harbor-43",
+                        "done": false
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4",
+                    "item_id": "fc_REDACTED_4"
+                  },
+                  "function": {
+                    "name": "checkpoint_step",
+                    "arguments": {
+                      "token": "harbor-43"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4",
+                    "item_id": "fc_REDACTED_4"
+                  },
+                  "name": "checkpoint_step",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": {
+                        "step": 4,
+                        "next_token": null,
+                        "done": true
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "checkpoint_step",
+              "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "token"
+                ],
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "checkpoint-complete"
+            }
+          ],
+          "usage": {
+            "input_tokens": 310,
+            "output_tokens": 5,
+            "total_tokens": 315,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": "resp_REDACTED_5",
+          "provider_request_id": "req_REDACTED_5",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-4.1-mini-2025-04-14",
+          "raw": {
+            "id": "resp_REDACTED_5",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.",
+            "max_output_tokens": 2048,
+            "model": "gpt-4.1-mini-2025-04-14",
+            "reasoning": {
+              "context": null,
+              "effort": null,
+              "summary": null
+            },
+            "usage": {
+              "input_tokens": 310,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 5,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 315
+            },
+            "output": [
+              {
+                "id": "msg_REDACTED_1",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "checkpoint-complete",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "name": "checkpoint_step",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "token"
+                  ],
+                  "type": "object"
+                },
+                "strict": true,
+                "description": "Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.",
+                "output_schema": null
+              }
+            ],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
+          }
+        }
+      }
+    }
+  ]
+}

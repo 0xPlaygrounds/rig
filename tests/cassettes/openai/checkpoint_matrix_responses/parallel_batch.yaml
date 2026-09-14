@@ -1,0 +1,37 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"In a single parallel batch call checkpoint_batch exactly three times, in order with slot=0, slot=1, slot=2. One call intentionally fails; do not retry it. After all three results arrive, answer checkpoint-complete.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"model":"gpt-4.1-mini","temperature":0.0,"tools":[{"description":"Read one deterministic batch slot (0, 1, or 2). Slot 1 intentionally returns an error; do not retry it.","name":"checkpoint_batch","parameters":{"additionalProperties":false,"properties":{"slot":{"enum":[0,1,2],"type":"integer"}},"required":["slot"],"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"arguments":"{\"slot\":0}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"checkpoint_batch","status":"completed","type":"function_call"},{"arguments":"{\"slot\":1}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"checkpoint_batch","status":"completed","type":"function_call"},{"arguments":"{\"slot\":2}","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"checkpoint_batch","status":"completed","type":"function_call"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read one deterministic batch slot (0, 1, or 2). Slot 1 intentionally returns an error; do not retry it.","name":"checkpoint_batch","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"slot":{"enum":[0,1,2],"type":"integer"}},"required":["slot"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":151,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":62,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":213},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"In a single parallel batch call checkpoint_batch exactly three times, in order with slot=0, slot=1, slot=2. One call intentionally fails; do not retry it. After all three results arrive, answer checkpoint-complete.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{\"slot\":0}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"checkpoint_batch","status":"completed","type":"function_call"},{"arguments":"{\"slot\":1}","call_id":"call_REDACTED_2","id":"fc_REDACTED_2","name":"checkpoint_batch","status":"completed","type":"function_call"},{"arguments":"{\"slot\":2}","call_id":"call_REDACTED_3","id":"fc_REDACTED_3","name":"checkpoint_batch","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"checkpoint-slot-zero","status":"completed","type":"function_call_output"},{"call_id":"call_REDACTED_2","output":"the tool failed","status":"completed","type":"function_call_output"},{"call_id":"call_REDACTED_3","output":"checkpoint-slot-two","status":"completed","type":"function_call_output"}],"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"model":"gpt-4.1-mini","temperature":0.0,"tools":[{"description":"Read one deterministic batch slot (0, 1, or 2). Slot 1 intentionally returns an error; do not retry it.","name":"checkpoint_batch","parameters":{"additionalProperties":false,"properties":{"slot":{"enum":[0,1,2],"type":"integer"}},"required":["slot"],"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_2
+  body: '{"background":false,"billing":{"payer":"developer"},"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","max_output_tokens":2048,"max_tool_calls":null,"metadata":{},"model":"gpt-4.1-mini-2025-04-14","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"checkpoint-complete","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"description":"Read one deterministic batch slot (0, 1, or 2). Slot 1 intentionally returns an error; do not retry it.","name":"checkpoint_batch","output_schema":null,"parameters":{"additionalProperties":false,"properties":{"slot":{"enum":[0,1,2],"type":"integer"}},"required":["slot"],"type":"object"},"strict":true,"type":"function"}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":226,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":5,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":231},"user":null}'

@@ -167,6 +167,9 @@ pub(crate) fn bypass_history() -> Vec<rig::message::Message> {
 /// The tools a cell grants, in registration order (`golden/tool:<name>#<n>`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ToolKind {
+    CheckpointStep,
+    CheckpointBatch,
+    CheckpointLarge,
     /// `add` (`crate::support::Adder`).
     Adder,
     /// `lookup_harbor_label`.
