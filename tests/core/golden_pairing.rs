@@ -55,11 +55,11 @@ impl<'ast> Visit<'ast> for Sites {
         {
             match syn::parse2::<matrix_registry::GoldenMatrix>(node.tokens.clone()) {
                 Ok(matrix) => {
-                    if !matrix
+                    if matrix
                         .oracle
                         .segments
                         .last()
-                        .is_some_and(|s| s.ident == "golden_effects")
+                        .is_none_or(|s| s.ident != "golden_effects")
                     {
                         self.failures
                             .push(format!("{}: unknown matrix oracle", self.file));
