@@ -49,16 +49,20 @@ fn agent(
     streamed: bool,
 ) -> EcsAgent {
     let model = client.completion_model(CLAUDE_SONNET_4_6);
-    let mut ecs = if matches!(ending, StopOnToolCallDelta) {
-        // Backpressure after the real first delta lets the native policy cancel
-        // before transport scheduling can publish additional argument chunks.
-        EcsAgent::for_golden(
-            super::ecs_outcome::FirstToolDelta::new(model),
+    // Backpressure after the real first delta lets the native policy cancel
+    // before transport scheduling can publish additional chunks.
+    let mut ecs = match ending {
+        StopOnToolCallDelta => EcsAgent::for_golden(
+            super::ecs_outcome::FirstDelta::tool(model),
             preamble,
             streamed,
-        )
-    } else {
-        EcsAgent::for_golden(model, preamble, streamed)
+        ),
+        StopOnTextDelta => EcsAgent::for_golden(
+            super::ecs_outcome::FirstDelta::text(model),
+            preamble,
+            streamed,
+        ),
+        _ => EcsAgent::for_golden(model, preamble, streamed),
     };
     ecs.app.world_mut().entity_mut(ecs.agent).insert((
         Temperature(Some(0.0)),

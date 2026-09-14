@@ -1,7 +1,7 @@
 //! Synthetic controls for the success runner's observation contract. These
 //! are harness checks, not genuine provider captures or migrated scenarios.
 
-use super::EcsAgent;
+use super::{EcsAgent, io_runtime};
 
 #[tokio::test]
 async fn expected_budget_failure_retains_completed_effects_and_run_identity() {
@@ -151,7 +151,7 @@ async fn successful_response_waits_for_actual_memory_append() {
                     started: started.clone(),
                     release: release.clone(),
                 }),
-                runtime: tokio::runtime::Handle::current(),
+                runtime: io_runtime(),
             },
         )
     })

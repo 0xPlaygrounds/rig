@@ -1,8 +1,9 @@
 use super::*;
 use futures::{FutureExt, Stream};
 use rig::{
+    completion::Usage,
     error::{ErrorKind, ErrorReport},
-    streaming::{BlockId, BlockKind},
+    streaming::{BlockClose, BlockId, BlockKind, StreamFinal},
 };
 use std::{
     collections::VecDeque,
@@ -66,6 +67,7 @@ async fn boundary_pauses_before_polling_and_release_preserves_every_item() {
             polls: polls.clone(),
             dropped: dropped.clone(),
         }),
+        DeltaBoundary::Tool,
         release.clone(),
     );
     let mut observed = Vec::new();
@@ -94,6 +96,91 @@ async fn boundary_pauses_before_polling_and_release_preserves_every_item() {
     assert!(dropped.load(Ordering::SeqCst));
 }
 
+/// An always-ready upstream exposes the gate's boundary without transport timing.
+#[tokio::test]
+async fn text_boundary_pauses_before_polling_and_release_preserves_every_item() {
+    let mut expected = items();
+    let id = BlockId::Wire("text".into());
+    expected.extend([
+        Ok(StreamEvent::BlockStart {
+            id: id.clone(),
+            kind: BlockKind::Text {
+                additional_params: None,
+            },
+        }),
+        Ok(StreamEvent::BlockDelta {
+            id: id.clone(),
+            delta: Delta::Text {
+                text: "first".into(),
+            },
+        }),
+        Err(ErrorReport::new(ErrorKind::Provider, "error after text")),
+        Ok(StreamEvent::BlockDelta {
+            id: id.clone(),
+            delta: Delta::Text {
+                text: " second".into(),
+            },
+        }),
+        Ok(StreamEvent::BlockEnd {
+            id,
+            end: BlockClose::Text,
+            block: None,
+        }),
+        Ok(StreamEvent::Final(
+            StreamFinal::new("anthropic", Usage::new())
+                .with_message_id("message")
+                .with_raw(serde_json::json!({"stop_reason": "end_turn"})),
+        )),
+    ]);
+    let polls = Arc::new(AtomicUsize::new(0));
+    let dropped = Arc::new(AtomicBool::new(false));
+    let release = Arc::new(Semaphore::new(0));
+    let mut stream = gate_events(
+        Box::pin(Tracked {
+            items: expected.clone().into(),
+            polls: polls.clone(),
+            dropped: dropped.clone(),
+        }),
+        DeltaBoundary::Text,
+        release.clone(),
+    );
+    let mut observed = Vec::new();
+    for _ in 0..6 {
+        observed.push(
+            stream
+                .next()
+                .now_or_never()
+                .expect("tool deltas do not pause the text gate")
+                .expect("prefix through the first text delta"),
+        );
+    }
+    assert!(
+        stream.next().now_or_never().is_none(),
+        "no EOF or later item at the text boundary"
+    );
+    assert_eq!(
+        polls.load(Ordering::SeqCst),
+        6,
+        "no upstream poll after the first text delta"
+    );
+    assert!(
+        !dropped.load(Ordering::SeqCst),
+        "paused provider is still owned"
+    );
+    release.add_permits(1);
+    observed.extend(
+        stream
+            .collect::<Vec<_>>()
+            .now_or_never()
+            .expect("one release drains all remaining items without another pause"),
+    );
+    assert_eq!(
+        serde_json::to_value(observed).unwrap(),
+        serde_json::to_value(expected).unwrap()
+    );
+    assert!(dropped.load(Ordering::SeqCst));
+}
+
 #[tokio::test]
 async fn cancelling_a_paused_stream_drops_the_provider() {
     let dropped = Arc::new(AtomicBool::new(false));
@@ -103,6 +190,7 @@ async fn cancelling_a_paused_stream_drops_the_provider() {
             polls: Arc::default(),
             dropped: dropped.clone(),
         }),
+        DeltaBoundary::Tool,
         Arc::new(Semaphore::new(0)),
     );
     for _ in 0..3 {

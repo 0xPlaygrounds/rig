@@ -3,7 +3,7 @@ use super::super::support::with_anthropic_corpus_shaping_cassette;
 use super::corpus_shaping::{
     ADD_PROMPT, CONTEXT_PROMPT, NAME_PROMPT, SUM_EVENT_PROMPT, TOOL_TURN, request_at,
 };
-use crate::ecs_agent::{EcsAgent, RuntimeHandler};
+use crate::ecs_agent::{EcsAgent, RuntimeHandler, io_runtime};
 use crate::goldens::{PIRATE_PREAMBLE, SHAPING_CONTEXT, event_schema, families};
 use crate::support::{Adder, BASIC_PREAMBLE, TOOLS_PREAMBLE};
 use bevy_ecs::prelude::*;
@@ -287,7 +287,7 @@ async fn route_on_first_turn_effect_log_is_the_golden_fixture() {
                                 client.completion_model(CLAUDE_HAIKU_4_5),
                             ),
                         ),
-                        runtime: tokio::runtime::Handle::current(),
+                        runtime: io_runtime(),
                     },
                 )
             })
@@ -345,7 +345,7 @@ async fn late_route_effect_log_is_the_golden_fixture() {
                         "late",
                         client.completion_model(CLAUDE_HAIKU_4_5),
                     )),
-                    runtime: tokio::runtime::Handle::current(),
+                    runtime: io_runtime(),
                 },
             )
         })

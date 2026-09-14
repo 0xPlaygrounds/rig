@@ -3,7 +3,7 @@ use super::super::support::with_anthropic_corpus_hooks_cassette;
 use super::corpus_hooks::{
     ADD_PROMPT, request_at, tool_record_args, tool_record_outputs, tool_result_texts,
 };
-use crate::ecs_agent::{EcsAgent, RuntimeHandler};
+use crate::ecs_agent::{EcsAgent, RuntimeHandler, io_runtime};
 use crate::goldens::{
     DENY_REASON, LOOKUP_ARGS, PIRATE_PREAMBLE, REPLACED_ANSWER, REPLACED_RESULT, families,
 };
@@ -39,7 +39,7 @@ async fn observe_everything_effect_log_is_the_golden_fixture() {
                                     rig_core::memory::InMemoryConversationMemory::new(),
                                 ),
                             ),
-                            runtime: tokio::runtime::Handle::current(),
+                            runtime: io_runtime(),
                         },
                     )
                 })

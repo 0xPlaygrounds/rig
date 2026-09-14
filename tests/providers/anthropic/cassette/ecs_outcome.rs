@@ -10,7 +10,7 @@ use crate::ecs_agent::EcsAgent;
 use crate::goldens::{BROKEN_ADD, FailingAdd, WriteNote, families};
 use crate::support::{Adder, BASIC_PREAMBLE, BASIC_PROMPT, TOOLS_PREAMBLE};
 use bevy_ecs::prelude::*;
-pub(super) use delivery::FirstToolDelta;
+pub(super) use delivery::FirstDelta;
 use rig::effect::EffectFamily;
 use rig::error::ErrorKind;
 use rig::prelude::*;
@@ -50,7 +50,7 @@ async fn cancel_after_tool_call_delta_effect_log_is_the_golden_fixture() {
         "corpus_outcome/cancel_after_tool_call_delta",
         |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                delivery::FirstToolDelta::new(client.completion_model(CLAUDE_SONNET_4_6)),
+                delivery::FirstDelta::tool(client.completion_model(CLAUDE_SONNET_4_6)),
                 NOTE_PREAMBLE,
                 true,
             );

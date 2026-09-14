@@ -7,7 +7,10 @@
 #[path = "ecs_agent/tests.rs"]
 mod tests;
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, LazyLock},
+    time::Duration,
+};
 
 use bevy_app::{App, Update};
 use bevy_ecs::prelude::*;
@@ -30,12 +33,30 @@ use rig_ecs::{
 };
 use rig_effect_log::EffectLogRecorder;
 
-/// Enter the supplied runtime on each handler poll, without spawning detached
-/// work. The ECS task still owns the future, so dropping it drops transport IO.
+/// Transport runtime driven independently of the test's `app.update()` loop.
+///
+/// The static owns the runtime for the process lifetime, so handles remain valid
+/// across tests. Building it requires neither entering nor blocking a runtime,
+/// including when first called from a current-thread Tokio test.
+pub fn io_runtime() -> tokio::runtime::Handle {
+    static IO: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .thread_name("ecs-harness-io")
+            .enable_all()
+            .build()
+            .expect("the harness IO runtime starts")
+    });
+    IO.handle().clone()
+}
+
+/// Enter the supplied runtime ([`io_runtime`]) on each future and stream poll.
+/// ECS retains ownership of both: cancelling the effect drops its request or
+/// stream instead of leaving a detached request task on the transport runtime.
 pub struct RuntimeHandler<S> {
     /// Service whose future is polled with the transport runtime entered.
     pub inner: Arc<S>,
-    /// Tokio runtime handle used while polling the service future.
+    /// Tokio runtime handle used while polling the service future and stream.
     pub runtime: tokio::runtime::Handle,
 }
 
@@ -142,7 +163,7 @@ impl EcsAgent {
                         if golden_identity { "default" } else { "parity" },
                         model,
                     )),
-                    runtime: tokio::runtime::Handle::current(),
+                    runtime: io_runtime(),
                 },
             )
         })
@@ -181,7 +202,7 @@ impl EcsAgent {
                 },
                 RuntimeHandler {
                     inner: Arc::new(ToolAdapter::new(tool)),
-                    runtime: tokio::runtime::Handle::current(),
+                    runtime: io_runtime(),
                 },
             )
         })
@@ -193,8 +214,8 @@ impl EcsAgent {
         self.tool_count += 1;
     }
 
-    /// Execute with ordinary plugin defaults, yielding to transport IO between
-    /// updates. The deadline is a failing test guard, never a successful ending.
+    /// Execute with ordinary plugin defaults. Transport IO progresses independently
+    /// of updates; the deadline is a failing test guard, never a successful ending.
     pub async fn prompt(&mut self, prompt: &str, streamed: bool) -> String {
         self.prompt_with_max_turns(prompt, streamed, None).await
     }

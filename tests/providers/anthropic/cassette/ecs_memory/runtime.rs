@@ -1,6 +1,6 @@
 //! Native memory setup and application clear policies. Every operation uses the bus.
 use crate::{
-    ecs_agent::{EcsAgent, RuntimeHandler},
+    ecs_agent::{EcsAgent, RuntimeHandler, io_runtime},
     goldens::{CONVERSATION, MEMORY_KEY},
     support::BASIC_PREAMBLE,
 };
@@ -37,7 +37,7 @@ pub(super) fn register_memory(
             MEMORY_KEY,
             RuntimeHandler {
                 inner: Arc::new(MemoryAdapter::new(memory)),
-                runtime: tokio::runtime::Handle::current(),
+                runtime: io_runtime(),
             },
         )
     })

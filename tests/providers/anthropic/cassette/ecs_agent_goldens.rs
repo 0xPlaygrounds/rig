@@ -13,7 +13,7 @@ use rig_ecs::{
 
 use super::super::support::with_anthropic_cassette;
 use crate::{
-    ecs_agent::{EcsAgent, RuntimeHandler},
+    ecs_agent::{EcsAgent, RuntimeHandler, io_runtime},
     support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response},
 };
 
@@ -48,7 +48,7 @@ async fn memory_conversation_effect_log_is_the_golden_fixture() {
                                 inner: Arc::new(MemoryAdapter::new(
                                     InMemoryConversationMemory::new(),
                                 )),
-                                runtime: tokio::runtime::Handle::current(),
+                                runtime: io_runtime(),
                             },
                         )
                     })

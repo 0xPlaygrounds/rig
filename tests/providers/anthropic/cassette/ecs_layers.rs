@@ -4,7 +4,7 @@ use super::super::support::{
 };
 use super::corpus_layers::{ADD_PROMPT, NAME_PROMPT, tool_record_args, tool_record_outputs};
 use crate::{
-    ecs_agent::{EcsAgent, RuntimeHandler},
+    ecs_agent::{EcsAgent, RuntimeHandler, io_runtime},
     goldens::{
         Adder, CONVERSATION, DENY_REASON, DenyAddLayer, MEMORY_KEY, PATCHED_AGAIN_ARGS,
         PATCHED_ARGS, PatchAddArgsLayer, PatchAgainLayer, REPLACED_RESULT, ReplaceAddResultLayer,
@@ -48,7 +48,7 @@ fn layered_agent(
     // inner exchange, before the outer after-verdict changes the delivered result.
     let handler = layers(ErasedHandler::new(RuntimeHandler {
         inner: Arc::new(ToolAdapter::new(Adder)),
-        runtime: tokio::runtime::Handle::current(),
+        runtime: io_runtime(),
     }));
     ecs.declared_policies = handler.descriptor().layers.clone();
     let tool = Handlers::with(ecs.app.world_mut(), |h| {
@@ -128,7 +128,7 @@ fn memory_agent(client: rig::providers::anthropic::Client) -> EcsAgent {
                 inner: Arc::new(MemoryAdapter::new(
                     rig::memory::InMemoryConversationMemory::new(),
                 )),
-                runtime: tokio::runtime::Handle::current(),
+                runtime: io_runtime(),
             })
             .layered(ReplaceLoadLayer);
             memory_entity = Some(

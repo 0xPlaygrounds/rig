@@ -75,7 +75,7 @@ async fn host_acknowledgements_precede_continuation() {
                         started: started.clone(),
                         release: release.clone(),
                     }),
-                    runtime: tokio::runtime::Handle::current(),
+                    runtime: io_runtime(),
                 },
             )
         })
